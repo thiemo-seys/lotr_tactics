@@ -186,7 +186,7 @@ Tick 0 only sets up the fight; units start acting at tick 1.
   - Initial units are ranked by own-perspective row (front first), then by column.
   - Summons get the next free slot when they spawn.
 - Each tick, units act sorted by (slot, team). On even ticks team A goes first within each slot; on odd ticks team B goes first.
-- Each unit also has a unique numeric `id` for identity and events.
+- Each unit also has a unique numeric `id` for identity and events. Ids are given in creation order: team A's starting units by slot, then team B's, then summons as they spawn.
 
 ### 6.4 Each tick (from tick 1)
 
@@ -577,10 +577,11 @@ Numbers are from `design.md` section 4. Where a trait lists several values, they
 ## 13. End of combat and result
 
 - After every death, if a team has no living units (summons count), the fight ends immediately and the other team wins. Nothing else is processed.
+- The same check runs once at the end of tick 0, so a team with no units loses at once. If neither team has units, the outcome is a draw.
 - If tick 1349 finishes with both teams alive, the outcome is a draw. Both players take damage outside the sim.
 - **The result contains:**
   - the outcome: `A`, `B` or `draw`
-  - for each team, the surviving **non-summon** units with unit id and star level (the round system uses this for player damage)
+  - for each team, the surviving **non-summon** units with unit id and star level, in slot order (the round system uses this for player damage)
   - the final tick
   - the event log
 
@@ -613,18 +614,21 @@ interface CombatResult {
 }
 
 interface Combat {
-  readonly tick: number;
-  readonly state: CombatState;   // units, positions, health, mana, statuses (read-only for the renderer)
-  step(): CombatEvent[];         // advance one tick, return that tick's events
+  readonly tick: number;           // the last tick processed; creating the combat processes tick 0
+  readonly state: CombatState;     // units, positions, health, mana, statuses (read-only for the renderer)
+  readonly events: CombatEvent[];  // every event so far, including tick 0's
+  step(): CombatEvent[];           // process the next tick and return its events; throws once the fight is over
   isOver(): boolean;
-  result(): CombatResult;
+  result(): CombatResult;          // throws until the fight is over
 }
 
-function createCombat(input: CombatInput): Combat;
+function createCombat(input: CombatInput): Combat;           // throws on invalid input
 function simulateCombat(input: CombatInput): CombatResult;   // runs to the end
 ```
 
-The client creates the same combat and calls `step()` once per tick, reading `state` for health and mana bars and using events for animations.
+The client creates the same combat, plays tick 0's events from `events`, then calls `step()` once per tick, reading `state` for health and mana bars and using events for animations.
+
+Invalid input throws: an unknown unit id, a star level other than 1–3, a placement outside the team's half, two units of one team on the same hex, a seed that isn't an integer, or a stage below 1.
 
 ### Events
 
