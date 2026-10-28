@@ -219,6 +219,7 @@ All numbers are *(placeholder)*.
 - Each player sees their own side at the bottom; the opponent's side is mirrored.
 - The simulation runs at 30 ticks per second.
 - A fight lasts 30 seconds, then 15 seconds of overtime in which all damage ramps up. If both sides still have units at the end, both players lose the round.
+- A side with no units on the board loses the fight at once. If neither side has units, both players lose the round.
 
 ### Stats
 
