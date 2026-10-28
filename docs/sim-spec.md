@@ -435,8 +435,8 @@ All of these are computed in the caster's perspective (section 5).
   - `T' = C + (T − C) × k` with `k = ceil(16 / distance)`.
   - Add a small fixed nudge (`+1e-6, +2e-6, −3e-6`) before rounding.
 - Take the hexes after the caster in order:
-  - `line(n)` takes the first `n`.
-  - `line(edge)` takes hexes until the line leaves the board.
+  - `line(n)` takes the first `n`, including any off the board (they hold no units).
+  - `line(edge)` takes every hex that is on the board. A line running along the board's jagged side edge can step off the board and back on, so an off-board hex is skipped rather than ending the line.
 
 **Facing direction**
 - The neighbour direction whose hex is closest to the target.
