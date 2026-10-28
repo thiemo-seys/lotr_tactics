@@ -37,7 +37,7 @@ These are not in `design.md` yet. They were chosen to remove ambiguity and can b
 | Action order | Units act one at a time in a fixed order; which team goes first alternates every tick |
 | Movement | 15 ticks per hex; position updates at the start of the step |
 | Projectiles | Ranged attacks only; 12 hexes per second |
-| Mana from damage taken | 6% of post-reduction damage taken, max 15 per hit |
+| Mana from damage taken | 6% of post-reduction damage taken, rounded down, max 15 per hit |
 | Cast time | 15 ticks; ability effects apply at the start of the cast |
 | Dashes and leaps | Instant in the sim (the renderer animates them); unit is busy for 9 ticks after |
 | Overtime | +10% damage per full second of overtime |
@@ -88,6 +88,7 @@ The server runs the fight with authority, and the client replays it from the sam
 - Every sort must have a complete tie-break, so no two items ever compare as equal.
 - Iterate units in the defined action order (section 6.3), never in an incidental order.
 - Round damage, healing and shields to whole numbers when they are applied.
+- Mana is always a whole number (section 10.1).
 
 ### Random generator
 
@@ -188,7 +189,7 @@ Tick 0 only sets up the fight; units start acting at tick 1.
 
 1. **Expire** statuses and shields whose `expiresTick` is the current tick.
 2. **Resolve the queue:** projectiles and delayed effects due this tick, ordered by due tick, then by creation order.
-3. **Regeneration:** Istari mana and Ent health (section 12).
+3. **Regeneration**, on ticks 30, 60, 90, …: Istari mana and Ent health (section 12).
 4. **Act:** each living unit in action order. A unit that is stunned or busy (moving, casting, recovering from a dash) does nothing. Otherwise:
    1. If mana ≥ max mana: cast its ability (section 10).
    2. Else make sure it has a target (section 8).
@@ -336,7 +337,7 @@ final      = Math.round(reduced × (1 − target's damage reduction)), at least 
 - **Target's damage reduction:** the Witch-king's passive (50% against Gondor and Rohan sources other than Éowyn).
 - **Shields** absorb `final` first, earliest-expiring shield first. The rest comes off Health.
 - **Defender mana gain:**
-  - 6% of `final` (absorbed plus health damage), capped at 15 per hit.
+  - `Math.floor(final × 6 / 100)`, where `final` is absorbed plus health damage, capped at 15 per hit.
   - Nobody gains mana from any source while casting.
 - **Death:** at Health ≤ 0 the unit dies immediately.
   - Its hex is freed.
@@ -354,6 +355,7 @@ final      = Math.round(reduced × (1 − target's damage reduction)), at least 
 
 ### 10.1 Casting
 
+- Mana is always a whole number: start and max values, +10 per attack, damage mana rounded down (section 9.1) and Istari mana in whole amounts (section 12.3).
 - Mana is capped at max mana; anything beyond is lost.
 - **When mana ≥ max:** at its action step, a unit that isn't stunned or busy casts.
   - Mana resets to 0.
@@ -418,7 +420,7 @@ Model abilities as data: a list of steps, each with a **selector** (who or where
 - `stunImmune(s)`
 - `dashAdjacentTo(unit)`
 - `dashThroughLine(n)`
-- `summon(unitId, count)`
+- `summon(unitId, count)`: placed like Orc trait grunts (section 12.3), each on a free hex next to the caster on its own half, otherwise the nearest free hex on its own half. A summon with no free hex on its own half doesn't appear.
 - `delay(s, steps)`
 
 **Passives:** always-on rules attached to the unit (the Witch-king).
@@ -501,7 +503,7 @@ The same numbers as `design.md` section 5, written as selectors and effects.
 | **Théoden** | `dashThroughLine(3)`: damage 1.0 D physical; stun 1s |
 | **Dáin** | `adjacentEnemies`: damage 0.9 D physical; stun 1.5s |
 | **Saruman** | `area(1)` around `farthestEnemy`: damage 1.2 D magic |
-| **Gothmog** | `summon(orc-grunt, 2)` next to self; Orc-origin `alliesWithin(2)`: +25% Attack Damage for 5s |
+| **Gothmog** | `summon(orc-grunt, 2)` (placement in section 10.3); Orc-origin `alliesWithin(2)`: +25% Attack Damage for 5s |
 | **Gandalf** | `area(2)` around target: damage 1.0 D magic; stun 2s |
 | **Galadriel** | `allAllies`: shield 0.5 S; `enemiesWithin(3)`: damage 0.8 D magic |
 | **Witch-king** | `highestHealthEnemy`: dash next to it; `adjacentEnemies`: damage 1.0 D magic; slow 30% for 3s. **Passive:** takes 50% less damage from Gondor- and Rohan-origin sources, except Éowyn |
@@ -555,7 +557,7 @@ Numbers are from `design.md` section 4. Where a trait lists several values, they
 | Dwarf | Static; damage | Dwarves gain flat Armor and a damage amp against Large targets. |
 | Gondor | Tick 0 | All allies standing in their team's row 3 gain flat Armor and Magic Resist for the whole fight. |
 | Rohan | On death | When a non-summon Rohan unit dies, every other living Rohan ally gains a permanent Attack Speed % buff (stacks). |
-| Istari | Every tick | Istari gain `rate / 30` mana per tick (not while casting). |
+| Istari | Every 30 ticks | Istari gain the trait's mana per second in one go, on ticks 30, 60, 90, … A unit that is casting on that tick gets none. |
 | Orc | Tick 0 | Spawn 1 / 2 / 4 grunts. Spread them round-robin across Orc units in slot order, each on a free hex next to that Orc on its own half. Otherwise use the nearest free hex on its own half. |
 | Nazgûl | Continuous | Enemies within 2 hexes of any living Nazgûl are slowed. It doesn't stack with itself; the strongest-slow rule applies. |
 | Ent | Every 30 ticks | Treebeard heals 2% of max Health. He is Large. |
@@ -667,7 +669,8 @@ Every event has a `tick`.
 - Armor and Magic Resist formula; damage amps; overtime multiplier; shields absorbing first; Witch-king reduction.
 
 **Mana**
-- Gain per attack and per hit, including the cap.
+- Gain per attack and per hit, including rounding down and the cap.
+- Istari gain mana only on ticks 30, 60, 90, …, and none if they are casting on that tick.
 - No gain while casting.
 - Casting at full mana, resetting to 0, busy for 15 ticks.
 
@@ -681,6 +684,7 @@ Every event has a `tick`.
 **Abilities**
 - Ability values for a sample unit at each star level match section 10.2, and extra Ability Power scales them once (+80 Ability Power → ×1.8).
 - Healing stops at max Health, and the `heal` event reports only the Health restored.
+- Gothmog's grunts go next to him on his own half, fall back to the nearest free hex on his half, and don't appear when his half is full.
 - One scripted scenario per unit, checking targets, damage and statuses.
 
 **End of combat**

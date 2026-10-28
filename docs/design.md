@@ -65,7 +65,7 @@ Each unit has one origin and one or two classes. All numbers are *(placeholder)*
 | Dwarf | 3 | 2/3 | Dwarves gain +30 / +60 Armor and deal +20% / +40% damage to Large units |
 | Gondor | 4 | 2/4 | All front-row allies gain +20 / +45 Armor and Magic Resist |
 | Rohan | 5 | 2/4 | Each time a Rohan unit falls, the other Rohan units gain +10% / +25% Attack Speed (stacks) |
-| Istari | 3 | 2/3 | Istari gain +3 / +6 mana per second |
+| Istari | 3 | 2/3 | Istari gain +3 / +6 mana once per second |
 | Orc | 6 | 2/4/6 | 1 / 2 / 4 Orc grunts spawn at combat start; grunts get stronger each stage |
 | Nazgûl | 3 | 2/3 | Enemies within 2 hexes of a Nazgûl attack 15% / 30% slower |
 | Ent (unique) | 1 | 1 | Treebeard is Large and regenerates 2% max Health per second |
@@ -257,7 +257,8 @@ All numbers are *(placeholder)*.
 ### Mana and abilities
 
 - A unit gains 10 mana per basic attack.
-- When hit, a unit gains mana equal to a share of the damage taken, capped per hit.
+- When hit, a unit gains mana equal to a share of the damage taken, rounded down and capped per hit.
+- Mana is always a whole number.
 - At full mana, the unit casts its ability instead of its next basic attack, then mana resets to 0. No mana is gained while casting.
 - Abilities are built from shared building blocks. Most abilities are data combining these; the few that don't fit get custom code.
   - **Shapes:** single target, area, line, cone, bounce
