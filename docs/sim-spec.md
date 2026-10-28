@@ -51,15 +51,16 @@ These are not in `design.md` yet. They were chosen to remove ambiguity and can b
 ## 3. Package and tooling
 
 - TypeScript monorepo; this milestone only creates `packages/sim`.
-- Suggested tooling: pnpm workspaces, TypeScript `strict`, ES modules, Vitest.
+- Tooling: pnpm workspaces, TypeScript `strict`, ES modules, Vitest, and ESLint, which enforces the section 4 rules in `packages/sim/src`.
 - `sim` has **no runtime dependencies** and uses no DOM or Node APIs, so the same code runs in the browser and on the server.
 - Suggested layout:
 
 ```
 packages/sim/
   src/
-    hex.ts            coordinates, distance, neighbours, lines, mirroring
+    hex.ts            coordinates, distance, neighbours, lines, cones, mirroring
     rng.ts            seeded random generator
+    types.ts          shared types such as Team
     data/
       templates.ts    stat templates
       traits.ts       trait definitions and numbers
