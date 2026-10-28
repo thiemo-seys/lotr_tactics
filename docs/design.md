@@ -426,7 +426,7 @@ Built from day one to:
 
 ## 11. Build order
 
-1. `sim`: hex grid, movement, targeting, attacks, mana and abilities, with headless tests
+1. `sim`: hex grid, movement, targeting, attacks, mana and abilities, with headless tests (spec: [`sim-spec.md`](sim-spec.md))
 2. Three.js viewer that replays a fight from two boards plus a seed
 3. Shop, bench and economy, playable alone against 7 bots
 4. Server lobbies, with bots filling empty seats
