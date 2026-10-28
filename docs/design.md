@@ -22,7 +22,7 @@ Status: early design. Numbers marked *(placeholder)* are starting points for tun
 | Board | Hex grid |
 | Unit upgrades | Merging: 3 copies of a 1★ make a 2★; 3 copies of a 2★ make a 3★ |
 | Story transformations | No (units do not evolve into other characters) |
-| Roster | Sandbox: good and evil characters can share a board |
+| Roster | Sandbox: good and evil characters can share a board; 36 units in the first set |
 | Platform | Browser |
 | Rendering | Three.js |
 | Art style | Low-poly 3D models |
@@ -54,48 +54,122 @@ Taken from TFT largely unchanged:
 
 ## 4. Traits
 
-Each unit has one origin and one or two classes. Breakpoints are *(placeholder)*.
+Each unit has one origin and one or two classes. All numbers are *(placeholder)*; where a cell lists several values, they apply at each breakpoint in turn.
 
 ### Origins
 
-| Origin | Effect idea |
-|---|---|
-| Hobbit | Enemies target other units first while a non-Hobbit ally is adjacent |
-| Elf | Attack speed; dodge chance at the top breakpoint |
-| Dwarf | Armor; bonus damage against large units (Trolls, Ents) |
-| Gondor | Front-row allies gain armor (shield wall) |
-| Rohan | When a Rohan ally falls, the others gain attack speed |
-| Istari | Mana regeneration (only 3 wizards exist) |
-| Orc | Extra Orc grunts spawn at combat start |
-| Uruk-hai | Immune to stuns early in combat |
-| Nazgûl | Fear aura that slows enemy attacks |
+| Origin | Units | Breakpoints | Effect |
+|---|---|---|---|
+| Hobbit | 6 | 2/4/6 | Enemies target other units first while a non-Hobbit ally is next to the Hobbit. Hobbits gain +150 / +350 / +600 Health |
+| Elf | 4 | 2/4 | Elves gain +20% / +45% Attack Speed, plus 20% Dodge at 4 |
+| Dwarf | 3 | 2/3 | Dwarves gain +30 / +60 Armor and deal +20% / +40% damage to Large units |
+| Gondor | 4 | 2/4 | All front-row allies gain +20 / +45 Armor and Magic Resist |
+| Rohan | 5 | 2/4 | Each time a Rohan unit falls, the other Rohan units gain +10% / +25% Attack Speed (stacks) |
+| Istari | 3 | 2/3 | Istari gain +3 / +6 mana per second |
+| Orc | 6 | 2/4/6 | 1 / 2 / 4 Orc grunts spawn at combat start; grunts get stronger each stage |
+| Nazgûl | 3 | 2/3 | Enemies within 2 hexes of a Nazgûl attack 15% / 30% slower |
+| Ent (unique) | 1 | 1 | Treebeard is Large and regenerates 2% max Health per second |
+| Dark Lord (unique) | 1 | 1 | Sauron is Large; your Orcs and Nazgûl deal +15% damage |
 
 ### Classes
 
-Classes deliberately include members from both sides.
+Every class has members from both sides.
 
-| Class | Effect idea | Example members |
-|---|---|---|
-| Rider | Charge in a line at combat start | Théoden, Éomer, Witch-king, Warg-rider |
-| Archer | Range; attack speed that ramps up | Legolas, Haldir, Lurtz |
-| Guardian | Shield at combat start | Gimli, Boromir, Shagrat |
-| Captain | Buffs adjacent allies | Aragorn, Gothmog |
-| Sorcerer | Ability power | Gandalf, Saruman, Witch-king |
-| Burglar | Leaps to the enemy backline | Gollum, Grishnákh, Bilbo |
+| Class | Units | Breakpoints | Effect |
+|---|---|---|---|
+| Guardian | 8 | 2/4/6 | Guardians start combat with a 200 / 400 / 700 shield for 8 seconds |
+| Archer | 6 | 2/4/6 | Archers gain +3% / +6% / +10% Attack Speed per attack, up to 15 stacks |
+| Rider | 6 | 2/4/6 | Riders charge their target at combat start, dealing 100 / 220 / 400 bonus physical damage on arrival |
+| Burglar | 6 | 2/4/6 | Burglars leap to the enemy backline at combat start and gain +20% / +45% / +75% Crit Damage |
+| Captain | 6 | 2/4/6 | Allies next to a Captain deal +10% / +20% / +35% damage |
+| Sorcerer | 6 | 2/4/6 | Sorcerers gain +20 / +45 / +80 Ability Power |
+
+### Large
+
+A unit tag for Treebeard, Sauron and the big PvE enemies (Cave Troll, Watcher in the Water, Mûmak, Balrog). Dwarves deal bonus damage to Large units.
 
 ---
 
-## 5. Roster sketch
+## 5. Units
 
-About 32 units across 5 cost tiers. Trait assignments and abilities are not yet defined (see section 12).
+36 units across 5 cost tiers. Ability damage is physical unless marked as magic. Ability numbers are not yet defined.
 
-| Cost | Units |
-|---|---|
-| 1 | Sam, Merry, Pippin, Háma, Grishnákh, Gorbag |
-| 2 | Frodo, Faramir, Haldir, Gamling, Lurtz, Shagrat, Gollum |
-| 3 | Legolas, Gimli, Boromir, Éomer, Uglúk, Khamûl, Bilbo |
-| 4 | Aragorn, Théoden, Éowyn, Elrond, Saruman, Gothmog |
-| 5 | Gandalf, Galadriel, Witch-king, Sauron, Treebeard |
+### 1-cost
+
+| Unit | Origin | Class | Ability |
+|---|---|---|---|
+| Sam | Hobbit | Guardian | **Loyal:** shields himself and the nearest ally |
+| Merry | Hobbit | Burglar | **Barrow-blade:** stabs the target and lowers its Armor and Magic Resist for 4s |
+| Pippin | Hobbit | Archer | **Stone toss:** a stone that bounces between 3 enemies |
+| Beregond | Gondor | Guardian | **Shield bash:** damages the target and stuns it for 1s |
+| Háma | Rohan | Guardian | **Doorward:** gains a shield and bonus Armor for 5s |
+| Grishnákh | Orc | Burglar | **Sneak:** dashes to the lowest-health enemy and stabs it |
+| Sharku | Orc | Rider | **Warg bite:** damages the target and slows its attacks |
+| Gorbag | Orc | Archer | **Volley:** 3 quick arrows at the target |
+
+### 2-cost
+
+| Unit | Origin | Class | Ability |
+|---|---|---|---|
+| Frodo | Hobbit | Burglar | **Slip away:** untargetable for 2s, then strikes with Sting |
+| Haldir | Elf | Archer | **Lórien volley:** an arrow at each of the 3 nearest enemies |
+| Faramir | Gondor | Archer | **Ranger's shot:** a heavy shot at the farthest enemy |
+| Gamling | Rohan | Rider | **Horn of the Hornburg:** nearby allies gain Attack Speed for 4s |
+| Balin | Dwarf | Captain | **Lord of Moria:** shields himself and adjacent allies |
+| Lurtz | Orc | Archer | **Piercing arrow:** hits every enemy in a line |
+| Radagast | Istari | Sorcerer | **Flock:** magic damage in an area; enemies hit attack more slowly |
+| Ringwraith | Nazgûl | Burglar | **Black Breath:** magic damage and a 1.5s stun |
+
+### 3-cost
+
+| Unit | Origin | Class | Ability |
+|---|---|---|---|
+| Bilbo | Hobbit | Burglar | **Riddles in the Dark:** stuns the target for 2s and stabs it |
+| Gollum | Hobbit | Burglar | **My precious:** 3 bites, healing for part of the damage |
+| Gimli | Dwarf | Guardian | **And my axe!:** damages all adjacent enemies and gains a shield |
+| Boromir | Gondor | Captain | **Horn of Gondor:** allies within 2 hexes gain Armor and Magic Resist; he gains a shield |
+| Éomer | Rohan | Rider | **Spear thrust:** damages every enemy in a line |
+| Éowyn | Rohan | Guardian | **Shieldmaiden:** gains a shield, then strikes; double damage against Nazgûl |
+| Uglúk | Orc | Guardian | **Bred for war:** gains a shield and can't be stunned for 4s |
+| Khamûl | Nazgûl | Rider | **Shadow ride:** charges through a line; magic damage, and enemies hit attack more slowly |
+
+### 4-cost
+
+| Unit | Origin | Class | Ability |
+|---|---|---|---|
+| Legolas | Elf | Archer | **Flurry:** 5 arrows at the target; each can crit |
+| Elrond | Elf | Sorcerer | **Healer of Rivendell:** heals the 2 lowest-health allies and gives them Magic Resist |
+| Aragorn | Gondor | Captain | **Andúril:** strikes the target; allies within 2 hexes gain Attack Damage for 4s |
+| Théoden | Rohan | Rider, Captain | **Forth Eorlingas!:** rides through a line, damaging and stunning for 1s |
+| Dáin | Dwarf | Guardian | **Iron Hills:** slams the ground, damaging and stunning adjacent enemies for 1.5s |
+| Saruman | Istari | Sorcerer | **Fire of Orthanc:** magic explosion on the farthest enemy and its neighbours |
+| Gothmog | Orc | Captain | **Unleash the Orcs:** summons 2 Orc grunts; nearby Orcs gain Attack Damage |
+
+### 5-cost
+
+| Unit | Origin | Class | Ability |
+|---|---|---|---|
+| Gandalf | Istari | Sorcerer | **You shall not pass:** large-area magic damage and a 2s stun |
+| Galadriel | Elf | Sorcerer | **Light of the Eldar:** shields all allies; magic damage to enemies within 3 hexes |
+| Witch-king | Nazgûl | Rider, Sorcerer | **Morgul mace:** leaps onto the enemy with the most health; magic damage around him, and enemies hit attack more slowly. **Passive:** takes 50% less damage from Gondor and Rohan units, except Éowyn |
+| Treebeard | Ent | Guardian | **Boulder:** hits the largest group of enemies, stunning them for 1.5s |
+| Sauron | Dark Lord | Captain | **Sweep:** mace swing in a cone, damaging and stunning enemies hit |
+
+### Stat templates
+
+Each unit uses the template of its first class. Values are for a 1★, 1-cost unit *(placeholder)*.
+
+| Role | Classes | Health | Attack Damage | Attack Speed | Range | Armor / Magic Resist | Mana (start/max) |
+|---|---|---|---|---|---|---|---|
+| Tank | Guardian | 650 | 45 | 0.60 | 1 | 40 | 30/90 |
+| Fighter | Rider, Captain | 600 | 55 | 0.70 | 1 | 30 | 0/60 |
+| Skirmisher | Burglar | 500 | 55 | 0.80 | 1 | 20 | 0/50 |
+| Archer | Archer | 450 | 50 | 0.75 | 4 | 15 | 0/60 |
+| Caster | Sorcerer | 450 | 35 | 0.65 | 4 | 15 | 20/70 |
+
+- Each cost step above 1 adds +15% Health and Attack Damage and +5 Armor and Magic Resist.
+- Each unit can be adjusted by up to ±10% for character (e.g. a tankier Gimli, a faster Legolas).
+- Star multipliers from section 7 apply on top.
 
 ---
 
@@ -164,7 +238,10 @@ All numbers are *(placeholder)*.
 - A unit gains 10 mana per basic attack.
 - When hit, a unit gains mana equal to a share of the damage taken, capped per hit.
 - At full mana, the unit casts its ability instead of its next basic attack, then mana resets to 0. No mana is gained while casting.
-- Abilities are built from shared building blocks: damage (single target, area, line), stun, slow, shield, heal, dash, summon and buff. Most abilities are data combining these; the few that don't fit get custom code.
+- Abilities are built from shared building blocks. Most abilities are data combining these; the few that don't fit get custom code.
+  - **Shapes:** single target, area, line, cone, bounce
+  - **Effects:** damage (including multi-hit), stun, slow, shield, heal, buff, debuff (lower Armor / Magic Resist), untargetable, dash, summon
+  - **Passives:** always-on effects such as the Witch-king's damage reduction
 
 ### Targeting
 
@@ -241,7 +318,7 @@ Copies of each unit in the shared pool:
 
 A 3★ needs 9 copies, so a 3★ 5-cost takes every copy in the game.
 
-With 6–7 units per cost tier (TFT has about 13), a specific unit appears in the shop about twice as often as in TFT, making 3★ units easier and contested units more common. This is accepted for the first version; the fix is a larger roster (see section 13).
+With 5–8 units per cost tier (TFT has about 13), a specific unit appears in the shop about twice as often as in TFT, making 3★ units easier and contested units more common. This is accepted for the first version; the fix is a larger roster (see section 13).
 
 ---
 
@@ -359,11 +436,12 @@ Built from day one to:
 
 ## 12. Still to define
 
-1. **Unit sheets:** origin, class(es), stats and ability for each unit
-2. **Trait numbers:** breakpoints and effect values
-3. **Items:** effects for all 21 combined items
-4. **Gifts of Lothlórien:** the list of augments
-5. **PvE enemies:** stats and loot tables
+1. **Items:** effects for all 21 combined items
+2. **Gifts of Lothlórien:** the list of augments
+3. **PvE enemies:** stats and loot tables
+4. **Ability numbers:** damage, durations and values per star level
+
+All numbers marked *(placeholder)* will be tuned during balancing.
 
 ---
 
@@ -371,7 +449,7 @@ Built from day one to:
 
 ### Larger roster
 
-Grow from about 32 units to about 45–50 (9–10 per cost tier) so that specific units appear in the shop about as often as in TFT.
+Grow from 36 units to about 45–50 (9–10 per cost tier) so that specific units appear in the shop about as often as in TFT.
 
 These are deliberately left out of the base game and will be revisited once it is well defined.
 
