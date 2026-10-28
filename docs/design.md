@@ -27,6 +27,8 @@ Status: early design. Numbers marked *(placeholder)* are starting points for tun
 | Rendering | Three.js |
 | Art style | Low-poly 3D models |
 | Lobby size | 8 players |
+| Game length | About 30 minutes |
+| Max level | 9 |
 
 ---
 
@@ -85,7 +87,7 @@ Classes deliberately include members from both sides.
 
 ## 5. Roster sketch
 
-About 32 units across 5 cost tiers. Trait assignments and abilities are not yet defined (see section 10).
+About 32 units across 5 cost tiers. Trait assignments and abilities are not yet defined (see section 12).
 
 | Cost | Units |
 |---|---|
@@ -185,7 +187,135 @@ All numbers are *(placeholder)*.
 
 ---
 
-## 8. Technical architecture
+## 8. Economy
+
+All numbers are *(placeholder)*.
+
+### Gold
+
+- **Base income:** 2 / 2 / 3 gold in rounds 1-2 to 1-4, 4 gold at 2-1, then 5 gold every round.
+- **Interest:** +1 gold for every 10 gold held, up to +5 at 50 gold.
+- **Streaks** (win or loss):
+
+  | Streak | Bonus gold |
+  |---|---|
+  | 2–3 | +1 |
+  | 4 | +2 |
+  | 5 or more | +3 |
+
+- **Winning a PvP round:** +1 gold.
+- **Selling a unit:** refunds the full cost of every copy in it.
+
+### Shop
+
+- 5 units per shop. It refreshes for free each round and can be locked to carry over to the next round.
+- A reroll costs 2 gold.
+- Buying a third copy merges it immediately, even if the bench is full.
+
+### Levels
+
+- Buy 4 XP for 4 gold. From stage 2 on, gain 2 XP every round.
+- Start at level 1; reach level 2 at round 1-2 and level 3 at round 2-1 automatically.
+- Level is the number of units allowed on the board. Maximum level is 9.
+
+| Level | XP to reach | 1-cost | 2-cost | 3-cost | 4-cost | 5-cost |
+|---|---|---|---|---|---|---|
+| 1–2 | — | 100% | | | | |
+| 3 | — | 75% | 25% | | | |
+| 4 | 6 | 55% | 30% | 15% | | |
+| 5 | 10 | 45% | 33% | 20% | 2% | |
+| 6 | 20 | 30% | 40% | 25% | 5% | |
+| 7 | 36 | 19% | 35% | 35% | 10% | 1% |
+| 8 | 48 | 18% | 25% | 32% | 22% | 3% |
+| 9 | 76 | 10% | 20% | 25% | 35% | 10% |
+
+The cost columns are the odds that a shop slot shows a unit of that cost.
+
+### Unit pool
+
+Copies of each unit in the shared pool:
+
+| Cost | 1 | 2 | 3 | 4 | 5 |
+|---|---|---|---|---|---|
+| Copies | 22 | 20 | 17 | 10 | 9 |
+
+A 3★ needs 9 copies, so a 3★ 5-cost takes every copy in the game.
+
+With 6–7 units per cost tier (TFT has about 13), a specific unit appears in the shop about twice as often as in TFT, making 3★ units easier and contested units more common. This is accepted for the first version; the fix is a larger roster (see section 13).
+
+---
+
+## 9. Round structure
+
+### Stages
+
+**Stage 1:**
+
+- 1-1: Council of Elrond
+- 1-2 to 1-4: PvE
+
+**Stage 2 onwards** (7 rounds per stage):
+
+| Round | Type |
+|---|---|
+| x-1 | PvP |
+| x-2 | PvP |
+| x-3 | PvP |
+| x-4 | Council of Elrond |
+| x-5 | PvP |
+| x-6 | PvP |
+| x-7 | PvE |
+
+### Council of Elrond
+
+- At 1-1 everyone picks at once.
+- Later Councils: players pick in pairs, lowest HP first.
+- Every Council unit carries an item component.
+
+### Gifts of Lothlórien
+
+- Offered at 2-1, 3-2 and 4-2.
+- Choose 1 of 3, with one reroll per pick.
+
+### PvE rounds
+
+| Round | Enemy |
+|---|---|
+| Stage 1 | Moria goblins |
+| 2-7 | Wargs |
+| 3-7 | Cave Troll |
+| 4-7 | Watcher in the Water |
+| 5-7 | Mûmak |
+| 6-7 onwards | The Balrog, stronger each time |
+
+PvE rounds drop item components and gold.
+
+### Player HP and damage
+
+- Every player starts with 100 HP. At 0 HP a player is eliminated; the last player standing wins.
+- Damage for losing a fight = stage damage + the winner's surviving units.
+
+  | Stage | 2 | 3 | 4 | 5 | 6 | 7+ |
+  |---|---|---|---|---|---|---|
+  | Stage damage | 2 | 5 | 8 | 10 | 12 | 17 |
+
+  Each surviving enemy unit adds 1 damage at 1★, 2 at 2★ and 3 at 3★.
+- On a timeout, both players take damage as if they had lost.
+
+### Matchmaking
+
+- A player doesn't face anyone from their last 3 fights if another opponent is available.
+- With an odd number of players alive, one player fights a ghost copy of another player's board. The ghost's owner takes no damage from that fight.
+
+### Timers
+
+- Planning phase: 30 seconds.
+- Fight: 30 seconds plus 15 seconds of overtime.
+- Target game length: about 30 minutes; most games end around stage 6.
+
+---
+
+## 10. Technical architecture
 
 ### Monorepo (TypeScript)
 
@@ -217,7 +347,7 @@ Built from day one to:
 
 ---
 
-## 9. Build order
+## 11. Build order
 
 1. `sim`: hex grid, movement, targeting, attacks, mana and abilities, with headless tests
 2. Three.js viewer that replays a fight from two boards plus a seed
@@ -227,16 +357,21 @@ Built from day one to:
 
 ---
 
-## 10. Still to define
+## 12. Still to define
 
-1. **Economy numbers:** gold income, interest cap, streak bonuses, reroll and XP costs, leveling curve, shop odds per level, copies of each unit in the pool
-2. **Round structure:** stage layout, when PvE, Council and Gifts rounds happen, player HP lost after a defeat
-3. **Unit sheets:** origin, class(es), stats and ability for each unit
-4. **Items:** effects for all 21 combined items
+1. **Unit sheets:** origin, class(es), stats and ability for each unit
+2. **Trait numbers:** breakpoints and effect values
+3. **Items:** effects for all 21 combined items
+4. **Gifts of Lothlórien:** the list of augments
+5. **PvE enemies:** stats and loot tables
 
 ---
 
-## 11. Parked for later
+## 13. Parked for later
+
+### Larger roster
+
+Grow from about 32 units to about 45–50 (9–10 per cost tier) so that specific units appear in the shop about as often as in TFT.
 
 These are deliberately left out of the base game and will be revisited once it is well defined.
 
@@ -284,6 +419,6 @@ Small bonuses for named pairs on top of traits: Frodo + Sam, Merry + Pippin, Leg
 
 ---
 
-## 12. Notes
+## 14. Notes
 
 - **IP:** fine as a free fan project. Selling it would require a licence from Middle-earth Enterprises. Keep mechanics independent of names so they could be swapped out if needed.
