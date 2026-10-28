@@ -9,7 +9,7 @@ Browser-based, 8-player auto battler in the style of Teamfight Tactics, with Lor
 
 ## Status
 
-Design is done for combat, units, traits, economy and rounds. The current milestone is `packages/sim`, the deterministic combat simulation described in `docs/sim-spec.md`. Done so far: hex maths (`hex.ts`) and the seeded generator (`rng.ts`). Next: data files, stats, then the combat loop.
+Design is done for combat, units, traits, economy and rounds. The current milestone is `packages/sim`, the deterministic combat simulation described in `docs/sim-spec.md`. Done so far: hex maths (`hex.ts`), the seeded generator (`rng.ts`), the data files (`data/`) and stat calculation (`combat/stats.ts`). Next: the combat loop (tick loop, action order, events), then targeting and movement.
 
 ## Commands
 
@@ -21,7 +21,8 @@ Design is done for combat, units, traits, economy and rounds. The current milest
 
 - `sim` is pure and deterministic: no `Math.random`, no time APIs, no DOM or Node APIs, and no trig or `Math.pow` in game logic. Use the seeded generator. See `docs/sim-spec.md` section 4. ESLint and the TypeScript settings enforce this in `packages/sim/src`; tests are exempt.
 - Functions that make a geometric choice take the acting team and work in its own perspective (`docs/sim-spec.md` section 5).
-- Game numbers live in data files, not hard-coded in logic. All numbers are placeholders until balancing.
+- Game numbers live in data files (`packages/sim/src/data/`), not hard-coded in logic. All numbers are placeholders until balancing.
+- In data, percentages and multipliers are whole-number percents (25 for 25%, 70 for 0.7 D) and durations are in seconds (`docs/sim-spec.md` section 4).
 - When a rule or number changes, update `docs/design.md` (and `docs/sim-spec.md` if it affects the sim) in the same change.
 
 ## When reviewing

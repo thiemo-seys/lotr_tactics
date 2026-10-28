@@ -60,8 +60,9 @@ packages/sim/
   src/
     hex.ts            coordinates, distance, neighbours, lines, cones, mirroring
     rng.ts            seeded random generator
-    types.ts          shared types such as Team
+    types.ts          shared types such as Team and Star
     data/
+      rules.ts        combat numbers not tied to a unit or trait (timing, mana, limits, ability scaling)
       templates.ts    stat templates
       traits.ts       trait definitions and numbers
       units.ts        unit definitions and abilities
@@ -90,6 +91,7 @@ The server runs the fight with authority, and the client replays it from the sam
 - Iterate units in the defined action order (section 6.3), never in an incidental order.
 - Round damage, healing and shields to whole numbers when they are applied.
 - Mana is always a whole number (section 10.1).
+- Data stores percentages and multipliers as whole-number percents: 25 for 25%, 180 for ×1.8, 70 for 0.7 D. Formulas multiply the whole numbers and divide once at the end. A result that should be exactly x.5 then is exactly x.5 and rounds as it would by hand; with decimals such as 1.15 it can come out as x.4999… and round down.
 
 ### Random generator
 
@@ -239,7 +241,7 @@ Every unit also has Ability Power 100, Crit Chance 25%, Crit Damage 140% and Dod
   - Compute 1.8^(star − 1) as a lookup `[1, 1.8, 3.24]`, not with `Math.pow`.
 - **Armor and Magic Resist:** template + 5 × (cost − 1).
 - **Attack Speed, Range and Mana:** taken from the template unchanged.
-- Apply stat tweaks last.
+- Apply stat tweaks last, before rounding.
 
 ### 7.4 Final stats with modifiers
 
@@ -398,7 +400,7 @@ Model abilities as data: a list of steps, each with a **selector** (who or where
 - `nearestAlly`: excludes self
 - `lowestHealthPctAllies(n)`
 - `allAllies`
-- `alliesWithin(r)`: includes self
+- `alliesWithin(r, origin?)`: includes self; with an origin, only allies of that origin (Gothmog)
 - `adjacentAllies`
 - `adjacentEnemies`
 - `enemiesWithin(r)`: around self
@@ -420,9 +422,9 @@ Model abilities as data: a list of steps, each with a **selector** (who or where
 - `untargetable(s)`
 - `stunImmune(s)`
 - `dashAdjacentTo(unit)`
-- `dashThroughLine(n)`
+- `dashThroughLine`: with a `line(n)` selector, after the step's other effects (section 10.4)
 - `summon(unitId, count)`: placed like Orc trait grunts (section 12.3), each on a free hex next to the caster on its own half, otherwise the nearest free hex on its own half. A summon with no free hex on its own half doesn't appear.
-- `delay(s, steps)`
+- `delay(s, steps)`: a step of its own that runs `steps` after `s` seconds, through the queue
 
 **Passives:** always-on rules attached to the unit (the Witch-king).
 
