@@ -9,7 +9,7 @@ Browser-based, 8-player auto battler in the style of Teamfight Tactics, with Lor
 
 ## Status
 
-Design is done for combat, units, traits, economy and rounds. The current milestone is `packages/sim`, the deterministic combat simulation described in `docs/sim-spec.md`. Done so far: hex maths (`hex.ts`), the seeded generator (`rng.ts`), the data files (`data/`) and stat calculation (`combat/stats.ts`). Next: the combat loop (tick loop, action order, events), then targeting and movement.
+Design is done for combat, units, traits, economy and rounds. The current milestone is `packages/sim`, the deterministic combat simulation described in `docs/sim-spec.md`. Done so far: hex maths (`hex.ts`), the seeded generator (`rng.ts`), the data files (`data/`), stat calculation (`combat/stats.ts`) and the combat loop (`combat/combat.ts`: tick 0, action order, events, end of combat). Next: targeting and movement, then basic attacks, damage and mana.
 
 ## Commands
 

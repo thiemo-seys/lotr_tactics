@@ -6,3 +6,5 @@ export * from './data/templates.js';
 export * from './data/traits.js';
 export * from './data/units.js';
 export * from './combat/stats.js';
+export * from './combat/combat.js';
+export type * from './combat/events.js';
