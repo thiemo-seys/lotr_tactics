@@ -40,8 +40,6 @@ These are not in `design.md` yet. They were chosen to remove ambiguity and can b
 | Mana from damage taken | 6% of post-reduction damage taken, max 15 per hit |
 | Cast time | 15 ticks; ability effects apply at the start of the cast |
 | Dashes and leaps | Instant in the sim (the renderer animates them); unit is busy for 9 ticks after |
-| Ability values | Formula from cost and star (section 10.2) |
-| Ability shields | Last 4 seconds |
 | Overtime | +10% damage per full second of overtime |
 | Attack Speed limits | Minimum 0.2, maximum 5.0 |
 | Dodge limit | Maximum 60% |
@@ -215,7 +213,7 @@ Each definition holds:
 - id, display name, cost
 - origin and classes
 - template: the role of its first class
-- `large` flag: Treebeard and Sauron
+- `large` flag: Treebeard and Sauron. Large units take up one hex like every other unit.
 - optional stat tweaks, for the per-unit ±10% from `design.md` (none are set yet)
 - ability
 
@@ -321,7 +319,7 @@ The same pipeline is used for attacks, abilities and trait damage.
 
 ```
 raw        = attack: AttackDamage × (crit ? CritDamage : 1)
-             ability: value × AbilityPower / 100 × ability-specific multiplier (e.g. Éowyn ×2 vs Nazgûl)
+             ability: value (section 10.2, already includes Ability Power) × ability-specific multiplier (e.g. Éowyn ×2 vs Nazgûl)
              trait (Rider charge): flat value
 amplified  = raw × (1 + sum of damage amps) × overtime
 reduced    = physical: amplified × 100 / (100 + Armor)
@@ -344,6 +342,12 @@ final      = Math.round(reduced × (1 − target's damage reduction)), at least 
   - Its hex is freed.
   - Emit `death` and run on-death hooks (Rohan).
 
+### 9.2 Healing
+
+- Applies to every heal: `heal`, `healFromDamage` and Ent regeneration.
+- Round to a whole number when applied (section 4), then cap at max Health. Anything above max Health is lost.
+- The `heal` event's `amount` is the Health actually restored. Emit no event if that is 0.
+
 ---
 
 ## 10. Mana and abilities
@@ -360,7 +364,7 @@ final      = Math.round(reduced × (1 − target's damage reduction)), at least 
 
 ### 10.2 Ability values
 
-Abilities use three base values, multiplied by the factor in the ability table:
+From `design.md` section 5. Each ability number in the table in section 10.5 is a multiple of one of three base values:
 
 | Token | Meaning | Base |
 |---|---|---|
@@ -368,9 +372,10 @@ Abilities use three base values, multiplied by the factor in the ability table:
 | S | Shield | 250 |
 | H | Heal | 200 |
 
-- Value = base × cost factor × star factor × AbilityPower / 100.
+- Value = multiple × base × cost factor × star factor × AbilityPower / 100.
   - Cost factor = 1 + 0.25 × (cost − 1).
   - Star factor = `[1, 1.5, 2.25]` for 1★ / 2★ / 3★.
+- Ability Power is applied here only; the damage pipeline (section 9.1) does not apply it again.
 - Durations, stun lengths and buff sizes do **not** scale with star level.
 - Ability damage can't crit unless the ability says so.
 - Ability shields last 4 seconds unless stated otherwise.
@@ -406,7 +411,7 @@ Model abilities as data: a list of steps, each with a **selector** (who or where
 - `stun(s)`
 - `slow(pct, s)`: reduces Attack Speed
 - `shield(mult, s = 4)`
-- `heal(mult)` and `healFromDamage(pct)`
+- `heal(mult)` and `healFromDamage(pct)`: capped at max Health (section 9.2)
 - `buff(stat, amount, s)`
 - `reduce(stats, pct, s)`: lowers Armor and/or Magic Resist
 - `untargetable(s)`
@@ -461,6 +466,8 @@ All of these are computed in the caster's perspective (section 5).
 **Free hex:** on the board, with no living unit on it and not claimed by a moving unit.
 
 ### 10.5 Ability parameters
+
+The same numbers as `design.md` section 5, written as selectors and effects.
 
 | Unit | Steps |
 |---|---|
@@ -672,6 +679,8 @@ Every event has a `tick`.
 - Duplicate units count once; summons don't count.
 
 **Abilities**
+- Ability values for a sample unit at each star level match section 10.2, and extra Ability Power scales them once (+80 Ability Power → ×1.8).
+- Healing stops at max Health, and the `heal` event reports only the Health restored.
 - One scripted scenario per unit, checking targets, damage and statuses.
 
 **End of combat**

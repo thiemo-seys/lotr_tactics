@@ -86,74 +86,91 @@ Every class has members from both sides.
 
 ### Large
 
-A unit tag for Treebeard, Sauron and the big PvE enemies (Cave Troll, Watcher in the Water, Mûmak, Balrog). Dwarves deal bonus damage to Large units.
+A unit tag for Treebeard, Sauron and the big PvE enemies (Cave Troll, Watcher in the Water, Mûmak, Balrog). Large units take up one hex like every other unit. Dwarves deal bonus damage to Large units.
 
 ---
 
 ## 5. Units
 
-36 units across 5 cost tiers. Ability damage is physical unless marked as magic. Ability numbers are not yet defined.
+36 units across 5 cost tiers. Ability damage is physical unless marked as magic. D, S and H in the ability text are explained under *Ability values* below. All ability numbers are *(placeholder)*.
 
 ### 1-cost
 
 | Unit | Origin | Class | Ability |
 |---|---|---|---|
-| Sam | Hobbit | Guardian | **Loyal:** shields himself and the nearest ally |
-| Merry | Hobbit | Burglar | **Barrow-blade:** stabs the target and lowers its Armor and Magic Resist for 4s |
-| Pippin | Hobbit | Archer | **Stone toss:** a stone that bounces between 3 enemies |
-| Beregond | Gondor | Guardian | **Shield bash:** damages the target and stuns it for 1s |
-| Háma | Rohan | Guardian | **Doorward:** gains a shield and bonus Armor for 5s |
-| Grishnákh | Orc | Burglar | **Sneak:** dashes to the lowest-health enemy and stabs it |
-| Sharku | Orc | Rider | **Warg bite:** damages the target and slows its attacks |
-| Gorbag | Orc | Archer | **Volley:** 3 quick arrows at the target |
+| Sam | Hobbit | Guardian | **Loyal:** shields himself and the nearest ally for 0.6 S each |
+| Merry | Hobbit | Burglar | **Barrow-blade:** stabs the target for 1.0 D and lowers its Armor and Magic Resist by 30% for 4s |
+| Pippin | Hobbit | Archer | **Stone toss:** a stone that bounces between 3 enemies up to 3 hexes apart, 0.7 D each |
+| Beregond | Gondor | Guardian | **Shield bash:** damages the target for 1.0 D and stuns it for 1s |
+| Háma | Rohan | Guardian | **Doorward:** gains +30 Armor for 5s and a 0.8 S shield |
+| Grishnákh | Orc | Burglar | **Sneak:** dashes to the lowest-health enemy and stabs it for 1.2 D |
+| Sharku | Orc | Rider | **Warg bite:** damages the target for 1.0 D; it attacks 30% slower for 3s |
+| Gorbag | Orc | Archer | **Volley:** 3 quick arrows at the target, 0.4 D each |
 
 ### 2-cost
 
 | Unit | Origin | Class | Ability |
 |---|---|---|---|
-| Frodo | Hobbit | Burglar | **Slip away:** untargetable for 2s, then strikes with Sting |
-| Haldir | Elf | Archer | **Lórien volley:** an arrow at each of the 3 nearest enemies |
-| Faramir | Gondor | Archer | **Ranger's shot:** a heavy shot at the farthest enemy |
-| Gamling | Rohan | Rider | **Horn of the Hornburg:** nearby allies gain Attack Speed for 4s |
-| Balin | Dwarf | Captain | **Lord of Moria:** shields himself and adjacent allies |
-| Lurtz | Orc | Archer | **Piercing arrow:** hits every enemy in a line |
-| Radagast | Istari | Sorcerer | **Flock:** magic damage in an area; enemies hit attack more slowly |
-| Ringwraith | Nazgûl | Burglar | **Black Breath:** magic damage and a 1.5s stun |
+| Frodo | Hobbit | Burglar | **Slip away:** untargetable for 2s, then strikes the target with Sting for 1.3 D |
+| Haldir | Elf | Archer | **Lórien volley:** an arrow at each of the 3 nearest enemies, 0.7 D each |
+| Faramir | Gondor | Archer | **Ranger's shot:** a heavy shot at the farthest enemy for 1.5 D |
+| Gamling | Rohan | Rider | **Horn of the Hornburg:** allies within 2 hexes gain +30% Attack Speed for 4s |
+| Balin | Dwarf | Captain | **Lord of Moria:** shields himself and adjacent allies for 0.6 S each |
+| Lurtz | Orc | Archer | **Piercing arrow:** 1.0 D to every enemy in a line through the target, up to the board edge |
+| Radagast | Istari | Sorcerer | **Flock:** 0.8 D magic damage to the target and enemies next to it; enemies hit attack 25% slower for 3s |
+| Ringwraith | Nazgûl | Burglar | **Black Breath:** 1.0 D magic damage to the target and a 1.5s stun |
 
 ### 3-cost
 
 | Unit | Origin | Class | Ability |
 |---|---|---|---|
-| Bilbo | Hobbit | Burglar | **Riddles in the Dark:** stuns the target for 2s and stabs it |
-| Gollum | Hobbit | Burglar | **My precious:** 3 bites, healing for part of the damage |
-| Gimli | Dwarf | Guardian | **And my axe!:** damages all adjacent enemies and gains a shield |
-| Boromir | Gondor | Captain | **Horn of Gondor:** allies within 2 hexes gain Armor and Magic Resist; he gains a shield |
-| Éomer | Rohan | Rider | **Spear thrust:** damages every enemy in a line |
-| Éowyn | Rohan | Guardian | **Shieldmaiden:** gains a shield, then strikes; double damage against Nazgûl |
-| Uglúk | Orc | Guardian | **Bred for war:** gains a shield and can't be stunned for 4s |
-| Khamûl | Nazgûl | Rider | **Shadow ride:** charges through a line; magic damage, and enemies hit attack more slowly |
+| Bilbo | Hobbit | Burglar | **Riddles in the Dark:** stuns the target for 2s and stabs it for 1.0 D |
+| Gollum | Hobbit | Burglar | **My precious:** 3 bites at the target, 0.4 D each, healing for 50% of the damage dealt |
+| Gimli | Dwarf | Guardian | **And my axe!:** 0.9 D to all adjacent enemies, and gains a 0.6 S shield |
+| Boromir | Gondor | Captain | **Horn of Gondor:** allies within 2 hexes gain +25 Armor and Magic Resist for 5s; he gains a 1.0 S shield |
+| Éomer | Rohan | Rider | **Spear thrust:** 1.0 D to every enemy in a 4-hex line through the target |
+| Éowyn | Rohan | Guardian | **Shieldmaiden:** gains a 0.6 S shield, then strikes the target for 1.2 D; double damage against Nazgûl |
+| Uglúk | Orc | Guardian | **Bred for war:** gains a 1.0 S shield and can't be stunned for 4s |
+| Khamûl | Nazgûl | Rider | **Shadow ride:** charges through a 3-hex line for 0.9 D magic damage; enemies hit attack 25% slower for 3s |
 
 ### 4-cost
 
 | Unit | Origin | Class | Ability |
 |---|---|---|---|
-| Legolas | Elf | Archer | **Flurry:** 5 arrows at the target; each can crit |
-| Elrond | Elf | Sorcerer | **Healer of Rivendell:** heals the 2 lowest-health allies and gives them Magic Resist |
-| Aragorn | Gondor | Captain | **Andúril:** strikes the target; allies within 2 hexes gain Attack Damage for 4s |
-| Théoden | Rohan | Rider, Captain | **Forth Eorlingas!:** rides through a line, damaging and stunning for 1s |
-| Dáin | Dwarf | Guardian | **Iron Hills:** slams the ground, damaging and stunning adjacent enemies for 1.5s |
-| Saruman | Istari | Sorcerer | **Fire of Orthanc:** magic explosion on the farthest enemy and its neighbours |
-| Gothmog | Orc | Captain | **Unleash the Orcs:** summons 2 Orc grunts; nearby Orcs gain Attack Damage |
+| Legolas | Elf | Archer | **Flurry:** 5 arrows at the target, 0.3 D each; each can crit |
+| Elrond | Elf | Sorcerer | **Healer of Rivendell:** heals the 2 allies with the lowest Health % for 1.0 H and gives them +30 Magic Resist for 4s |
+| Aragorn | Gondor | Captain | **Andúril:** strikes the target for 1.3 D; allies within 2 hexes gain +25% Attack Damage for 4s |
+| Théoden | Rohan | Rider, Captain | **Forth Eorlingas!:** rides through a 3-hex line; 1.0 D and a 1s stun to enemies hit |
+| Dáin | Dwarf | Guardian | **Iron Hills:** slams the ground; 0.9 D and a 1.5s stun to adjacent enemies |
+| Saruman | Istari | Sorcerer | **Fire of Orthanc:** 1.2 D magic explosion on the farthest enemy and its neighbours |
+| Gothmog | Orc | Captain | **Unleash the Orcs:** summons 2 Orc grunts; Orcs within 2 hexes gain +25% Attack Damage for 5s |
 
 ### 5-cost
 
 | Unit | Origin | Class | Ability |
 |---|---|---|---|
-| Gandalf | Istari | Sorcerer | **You shall not pass:** large-area magic damage and a 2s stun |
-| Galadriel | Elf | Sorcerer | **Light of the Eldar:** shields all allies; magic damage to enemies within 3 hexes |
-| Witch-king | Nazgûl | Rider, Sorcerer | **Morgul mace:** leaps onto the enemy with the most health; magic damage around him, and enemies hit attack more slowly. **Passive:** takes 50% less damage from Gondor and Rohan units, except Éowyn |
-| Treebeard | Ent | Guardian | **Boulder:** hits the largest group of enemies, stunning them for 1.5s |
-| Sauron | Dark Lord | Captain | **Sweep:** mace swing in a cone, damaging and stunning enemies hit |
+| Gandalf | Istari | Sorcerer | **You shall not pass:** 1.0 D magic damage to enemies within 2 hexes of the target, and a 2s stun |
+| Galadriel | Elf | Sorcerer | **Light of the Eldar:** shields all allies for 0.5 S; 0.8 D magic damage to enemies within 3 hexes |
+| Witch-king | Nazgûl | Rider, Sorcerer | **Morgul mace:** leaps next to the enemy with the most health; 1.0 D magic damage to adjacent enemies, and they attack 30% slower for 3s. **Passive:** takes 50% less damage from Gondor and Rohan units, except Éowyn |
+| Treebeard | Ent | Guardian | **Boulder:** throws a boulder at the largest group of enemies; 1.0 D and a 1.5s stun to a hex and its neighbours |
+| Sauron | Dark Lord | Captain | **Sweep:** mace swing in a 6-hex cone; 1.2 D and a 1s stun to enemies hit |
+
+### Ability values
+
+Ability numbers are multiples of three base values *(placeholder)*:
+
+| Token | Meaning | Base |
+|---|---|---|
+| D | Damage | 200 |
+| S | Shield | 250 |
+| H | Heal | 200 |
+
+- Value = multiple × base × cost factor × star factor × Ability Power / 100.
+  - Cost factor: 1 + 0.25 per cost above 1 (1.0 / 1.25 / 1.5 / 1.75 / 2.0).
+  - Star factor: 1 / 1.5 / 2.25 at 1★ / 2★ / 3★.
+- Example at 100 Ability Power: Beregond's 1.0 D at 1★ is 200 damage before resists; Gandalf's 1.0 D at 3★ is 200 × 2.0 × 2.25 = 900.
+- Durations, stun lengths and buff sizes don't scale with star level.
+- Ability shields last 4 seconds unless stated otherwise.
 
 ### Stat templates
 
@@ -213,19 +230,23 @@ All numbers are *(placeholder)*.
 | Range | In hexes; 1 = melee | 1–4 |
 | Armor | Reduces physical damage | 20–60 |
 | Magic Resist | Reduces magic damage | 20–60 |
-| Ability Power | Multiplier on ability numbers | 100 for every unit |
+| Ability Power | Multiplier on ability damage, shields and heals | 100 for every unit |
 | Mana | Starting / maximum | 0/60 to 40/120 |
 | Crit Chance | Chance for a basic attack to crit | 25% |
 | Crit Damage | Damage multiplier on a crit | 140% |
 | Dodge | Chance to avoid a basic attack | 0% |
 
-**Star levels:** a 2★ unit has 1.8× the Health and Attack Damage of a 1★; a 3★ has 1.8× those of a 2★. Ability numbers are listed separately for each star level.
+**Star levels:** a 2★ unit has 1.8× the Health and Attack Damage of a 1★; a 3★ has 1.8× those of a 2★. Ability values grow 1.5× per star level (section 5).
 
 ### Damage
 
 - **Physical** damage is reduced by Armor, **magic** damage by Magic Resist, **true** damage is not reduced.
 - Damage taken = damage × 100 / (100 + resist). 100 resist halves the damage; each extra point is worth a bit less.
-- Basic attacks deal physical damage. Each ability states its damage type; its numbers are multiplied by Ability Power / 100.
+- Basic attacks deal physical damage. Each ability states its damage type; its damage, shield and heal values scale with Ability Power (section 5).
+
+### Healing
+
+- Healing can't raise a unit's Health above its max Health; any excess is lost.
 
 ### Critical strikes and dodge
 
@@ -439,7 +460,6 @@ Built from day one to:
 1. **Items:** effects for all 21 combined items
 2. **Gifts of Lothlórien:** the list of augments
 3. **PvE enemies:** stats and loot tables
-4. **Ability numbers:** damage, durations and values per star level
 
 All numbers marked *(placeholder)* will be tuned during balancing.
 
