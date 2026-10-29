@@ -296,7 +296,7 @@ describe('casting', () => {
   });
 
   it('lets the Witch-king take half damage from Gondor and Rohan units other than Éowyn', () => {
-    const firstHit = (attacker: PlacedUnit['unitId']) => {
+    const firstHit = (attacker: UnitId) => {
       const fight = new Fight(input([placed(attacker, 3, 3)], [placed('witch-king', 3, 3)]));
       const hit = ofType(fight.step(), 'damage').find((e) => e.source === 0)!;
       const [source, target] = fight.state.units;
