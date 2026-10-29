@@ -1,5 +1,10 @@
 // How bots play (docs/game-spec.md section 11). These tune the bots, not the game.
 
+import type { ComponentId } from './items.js';
+
+/** Which of a bot's board units gets an item: its attacker, its caster or its tank. */
+export type ItemRole = 'attacker' | 'caster' | 'tank';
+
 export const BOT = {
   /** Gold a bot keeps for interest, from stage 1. The last entry holds for later stages. */
   goldFloor: [0, 10, 20, 30, 50] as readonly number[],
@@ -30,4 +35,13 @@ export const BOT = {
   focusFromStage: 2,
   /** The most a bot's seeded taste for a trait can add to the units it owns of that trait. */
   tasteWeight: 1.5,
+  /** The unit each component goes to. A combined item goes where its first component would. */
+  itemRoles: {
+    blade: 'attacker',
+    bow: 'attacker',
+    mail: 'tank',
+    cloak: 'tank',
+    lembas: 'tank',
+    staff: 'caster',
+  } as Readonly<Record<ComponentId, ItemRole>>,
 } as const;

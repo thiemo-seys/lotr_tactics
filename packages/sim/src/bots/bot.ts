@@ -1,10 +1,11 @@
 // A bot that plays one seat through the same actions as a person (docs/game-spec.md section 11).
 
-import { BOT } from '../data/bots.js';
+import { BOT, type ItemRole } from '../data/bots.js';
+import { ITEMS, type ItemId } from '../data/items.js';
 import { TRAITS, type ClassId, type TraitId } from '../data/traits.js';
 import { UNITS, type UnitId } from '../data/units.js';
 import { createGame, type Game, type RoundReport } from '../game/game.js';
-import { TEAM_ROWS, type OwnedUnit, type Place, type PlayerView } from '../game/player.js';
+import { TEAM_ROWS, addItem, type OwnedUnit, type Place, type PlayerView } from '../game/player.js';
 import { BOARD_COLS } from '../hex.js';
 import { createRng, deriveSeed } from '../rng.js';
 
@@ -42,6 +43,20 @@ function owned(p: PlayerView): { unit: OwnedUnit; place: Place }[] {
   return units;
 }
 
+/** The role of an item: its own for a component, its first component's for a combined item. */
+function itemRole(item: ItemId): ItemRole {
+  const recipe = ITEMS[item].recipe;
+  return BOT.itemRoles[recipe === null ? (item as keyof typeof BOT.itemRoles) : recipe[0]];
+}
+
+function hasClass(unit: OwnedUnit, trait: ClassId): boolean {
+  return UNITS[unit.unitId].classes.includes(trait);
+}
+
+function unitAt(p: PlayerView, place: Place): OwnedUnit | null {
+  return ('bench' in place ? p.bench[place.bench] : p.board[place.row * BOARD_COLS + place.col]) ?? null;
+}
+
 function samePlace(a: Place, b: Place): boolean {
   if ('bench' in a || 'bench' in b) return 'bench' in a && 'bench' in b && a.bench === b.bench;
   return a.col === b.col && a.row === b.row;
@@ -75,6 +90,7 @@ export class Bot {
     }
     this.tidyBench(game);
     this.arrange(game);
+    this.equip(game);
   }
 
   /** Picks a Council option if it is this bot's turn: the one it wants most, the first if tied. */
@@ -200,10 +216,9 @@ export class Bot {
   /** Puts the strongest units on the board and lines them up by class (section 11). */
   private arrange(game: Game): void {
     const me = this.me(game);
-    const strength = (unit: OwnedUnit) => this.worth(me, unit) * 10 - unit.id / 1e6;
     const chosen = owned(me)
       .map((o) => o.unit)
-      .sort((a, b) => strength(b) - strength(a))
+      .sort((a, b) => this.strength(me, b) - this.strength(me, a))
       .slice(0, me.level);
     const chosenIds = new Set(chosen.map((u) => u.id));
     const placeOf = (id: number) => owned(this.me(game)).find((o) => o.unit.id === id)!.place;
@@ -219,6 +234,39 @@ export class Bot {
       const from = placeOf(unit.id);
       const to = targets.get(unit.id)!;
       if (!samePlace(from, to)) game.act(this.seat, { type: 'move', from, to });
+    }
+  }
+
+  /** How strong a unit is, for choosing the board and item holders. Ties go to the older unit. */
+  private strength(me: PlayerView, unit: OwnedUnit): number {
+    return this.worth(me, unit) * 10 - unit.id / 1e6;
+  }
+
+  /**
+   * Gives each of its items, in order, to a board unit by the item's role (section 11): the
+   * attacker, caster or tank, or else the strongest board unit that can take it.
+   */
+  private equip(game: Game): void {
+    const me = this.me(game);
+    const board = owned(me)
+      .filter((o) => !('bench' in o.place))
+      .sort((a, b) => this.strength(me, b.unit) - this.strength(me, a.unit));
+    if (board.length === 0) return;
+    const attacker = board.find((o) => !hasClass(o.unit, 'guardian') && !hasClass(o.unit, 'sorcerer'));
+    const holders: Record<ItemRole, (typeof board)[number] | undefined> = {
+      attacker,
+      caster: board.find((o) => hasClass(o.unit, 'sorcerer')) ?? attacker,
+      tank: board.find((o) => hasClass(o.unit, 'guardian')) ?? board.find((o) => 'row' in o.place && o.place.row === TEAM_ROWS - 1),
+    };
+    for (let i = 0; i < this.me(game).items.length; ) {
+      const item = this.me(game).items[i]!;
+      const preferred = holders[itemRole(item)];
+      // Units get new items as this goes, so look at each one as it is now.
+      const holder = [...(preferred === undefined ? [] : [preferred]), ...board].find(
+        (o) => addItem(unitAt(this.me(game), o.place)!.items, item) !== null,
+      );
+      // A given item leaves the list, so the next one takes its index.
+      if (holder === undefined || !game.act(this.seat, { type: 'equip', item: i, to: holder.place }).ok) i++;
     }
   }
 }
