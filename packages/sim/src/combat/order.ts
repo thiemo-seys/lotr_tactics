@@ -1,5 +1,6 @@
 // Slots and action order (docs/sim-spec.md section 6.3).
 
+import { roll, type Rng } from '../rng.js';
 import type { Team } from '../types.js';
 
 /**
@@ -13,8 +14,16 @@ export function startingSlots(placements: readonly { readonly col: number; reado
   return slots;
 }
 
-/** Sorts units into the order they act on a tick: by slot, with team A first on even ticks and team B first on odd ticks. */
-export function actionOrder<U extends { readonly slot: number; readonly team: Team }>(units: readonly U[], tick: number): U[] {
-  const first: Team = tick % 2 === 0 ? 'A' : 'B';
+/**
+ * Picks the team that goes first within each slot this tick. A fixed alternation would favour
+ * one team in mirror matches, because units with the same attack speed always act on ticks of
+ * the same parity. Uses one number from the generator.
+ */
+export function firstTeam(rng: Rng): Team {
+  return roll(rng, 0.5) ? 'A' : 'B';
+}
+
+/** Sorts units into the order they act: by slot, with `first`'s unit before the other team's in each slot. */
+export function actionOrder<U extends { readonly slot: number; readonly team: Team }>(units: readonly U[], first: Team): U[] {
   return [...units].sort((a, b) => a.slot - b.slot || (a.team === b.team ? 0 : a.team === first ? -1 : 1));
 }

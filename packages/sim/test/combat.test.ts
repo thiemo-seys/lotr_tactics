@@ -1,21 +1,26 @@
 import { describe, expect, it } from 'vitest';
-import { createCombat, simulateCombat, type CombatInput, type PlacedUnit } from '../src/combat/combat.js';
-import { actionOrder, startingSlots } from '../src/combat/order.js';
+import { createCombat, simulateCombat, type Combat, type CombatResult } from '../src/combat/combat.js';
+import { finalDamage, manaFromDamage, overtimePct } from '../src/combat/damage.js';
+import type { CombatEvent } from '../src/combat/events.js';
+import { actionOrder, firstTeam, startingSlots } from '../src/combat/order.js';
 import { baseStats } from '../src/combat/stats.js';
 import { LAST_TICK, OVERTIME_START_TICK } from '../src/combat/time.js';
 import { UNITS, type UnitId } from '../src/data/units.js';
 import { boardIndex, distance, fromOffset } from '../src/hex.js';
+import { createRng } from '../src/rng.js';
 import type { Star } from '../src/types.js';
+import { BOARDS, input, mirrorMatch, placed } from './helpers.js';
 
-function placed(unitId: UnitId, col: number, row: number, star: Star = 1): PlacedUnit {
-  return { unitId, star, col, row, items: [] };
-}
-
-function input(A: PlacedUnit[], B: PlacedUnit[]): CombatInput {
-  return { seed: 1, stage: 2, teams: { A, B } };
+/** Runs a fight to the end, calling `check` with each tick's events. */
+function run(combat: Combat, check: (events: CombatEvent[]) => void = () => {}): CombatResult {
+  while (!combat.isOver()) check(combat.step());
+  return combat.result();
 }
 
 const FIGHT = input([placed('sam', 2, 3, 2), placed('legolas', 0, 0)], [placed('gimli', 2, 3), placed('saruman', 6, 0)]);
+
+/** Sam (A, id 0) and Gimli (B, id 1) side by side, so they only attack. */
+const DUEL = input([placed('sam', 3, 3)], [placed('gimli', 3, 3)]);
 
 describe('timing', () => {
   it('runs 30 seconds plus 15 seconds of overtime at 30 ticks per second', () => {
@@ -40,13 +45,31 @@ describe('actionOrder', () => {
     { name: 'B1', team: 'B', slot: 1 },
   ] as const;
 
-  it('goes by slot, with team A first on even ticks and team B first on odd ticks', () => {
-    expect(actionOrder(units, 2).map((u) => u.name)).toEqual(['A0', 'B0', 'A1', 'B1', 'A2']);
-    expect(actionOrder(units, 1).map((u) => u.name)).toEqual(['B0', 'A0', 'B1', 'A1', 'A2']);
+  it('goes by slot, with the first team’s unit first in each slot', () => {
+    expect(actionOrder(units, 'A').map((u) => u.name)).toEqual(['A0', 'B0', 'A1', 'B1', 'A2']);
+    expect(actionOrder(units, 'B').map((u) => u.name)).toEqual(['B0', 'A0', 'B1', 'A1', 'A2']);
   });
 
   it('does not depend on the input order', () => {
-    expect(actionOrder([...units].reverse(), 7)).toEqual(actionOrder(units, 7));
+    expect(actionOrder([...units].reverse(), 'B')).toEqual(actionOrder(units, 'B'));
+  });
+});
+
+describe('firstTeam', () => {
+  it('uses one number from the generator', () => {
+    const rng = createRng(42);
+    const reference = createRng(42);
+    // The first number for seed 42 is 0.6011..., which is not below 0.5.
+    expect(firstTeam(rng)).toBe('B');
+    reference();
+    expect(rng()).toBe(reference());
+  });
+
+  it('picks each team about half the time', () => {
+    const rng = createRng(7);
+    const picksA = Array.from({ length: 10_000 }, () => firstTeam(rng)).filter((team) => team === 'A').length;
+    expect(picksA).toBeGreaterThan(4800);
+    expect(picksA).toBeLessThan(5200);
   });
 });
 
@@ -85,28 +108,38 @@ describe('createCombat', () => {
 });
 
 describe('end of combat', () => {
-  it('is a draw when both teams are still alive after tick 1349', () => {
-    // Two melee units side by side, so nothing moves.
-    const combat = createCombat(input([placed('sam', 3, 3)], [placed('gimli', 3, 3)]));
-    expect(combat.step()).toEqual([]);
-    expect(combat.tick).toBe(1);
-    while (combat.tick < LAST_TICK - 1) expect(combat.step()).toEqual([]);
-    expect(combat.step()).toEqual([{ type: 'end', tick: 1349, outcome: 'draw' }]);
-    expect(combat.isOver()).toBe(true);
-    expect(combat.result()).toMatchObject({ outcome: 'draw', finalTick: 1349 });
+  it('ends on the tick the last enemy dies, with nothing after it', () => {
+    const combat = createCombat(DUEL);
+    const result = run(combat);
+    const [death, end] = result.events.slice(-2);
+    expect(death).toMatchObject({ type: 'death', tick: result.finalTick });
+    expect(end).toEqual({ type: 'end', tick: result.finalTick, outcome: result.outcome });
+    const loser = result.outcome === 'A' ? 'B' : 'A';
+    expect(combat.state.units.filter((u) => u.team === loser).every((u) => !u.alive)).toBe(true);
+    expect(result.finalTick).toBeLessThan(LAST_TICK);
   });
 
-  it('lists the surviving units in slot order', () => {
-    expect(simulateCombat(FIGHT).survivors).toEqual({
-      A: [
-        { unitId: 'sam', star: 2 },
-        { unitId: 'legolas', star: 1 },
-      ],
-      B: [
-        { unitId: 'gimli', star: 1 },
-        { unitId: 'saruman', star: 1 },
-      ],
-    });
+  it('is a draw when both teams are still alive after tick 1349', () => {
+    // With nine units a side, some fights reach the time limit.
+    const seed = Array.from({ length: 100 }, (_, i) => i + 1).find(
+      (s) => simulateCombat(mirrorMatch(BOARDS.full, s)).outcome === 'draw',
+    );
+    expect(seed).toBeDefined();
+    const combat = createCombat(mirrorMatch(BOARDS.full, seed!));
+    const result = run(combat);
+    expect(result).toMatchObject({ outcome: 'draw', finalTick: LAST_TICK });
+    expect(result.events.filter((e) => e.type === 'end')).toEqual([{ type: 'end', tick: LAST_TICK, outcome: 'draw' }]);
+    expect(result.survivors.A.length).toBeGreaterThan(0);
+    expect(result.survivors.B.length).toBeGreaterThan(0);
+  });
+
+  it('lists the surviving non-summon units in slot order', () => {
+    const combat = createCombat(FIGHT);
+    const result = run(combat);
+    for (const team of ['A', 'B'] as const) {
+      const alive = combat.state.units.filter((u) => u.team === team && u.alive).sort((a, b) => a.slot - b.slot);
+      expect(result.survivors[team]).toEqual(alive.map((u) => ({ unitId: u.unitId, star: u.star })));
+    }
   });
 
   it('ends at once when a team has no units', () => {
@@ -124,42 +157,44 @@ describe('end of combat', () => {
   });
 
   it('gives the same result from simulateCombat as from stepping', () => {
-    const combat = createCombat(FIGHT);
-    while (!combat.isOver()) combat.step();
-    expect(simulateCombat(FIGHT)).toEqual(combat.result());
+    expect(simulateCombat(FIGHT)).toEqual(run(createCombat(FIGHT)));
   });
 });
 
 describe('targeting and movement', () => {
-  it('moves units in action order, team B first on odd ticks', () => {
+  it('moves units in action order, with the tick’s first team first in each slot', () => {
     // Ids: sam 0, legolas 1, gimli 2, saruman 3. Nobody starts in range.
-    const fight = input([placed('sam', 3, 0), placed('legolas', 0, 0)], [placed('gimli', 3, 0), placed('saruman', 6, 0)]);
-    const tick1 = createCombat(fight).step();
-    expect(tick1.map((e) => (e.type === 'move' ? e.unit : null))).toEqual([2, 0, 3, 1]);
+    const a = [placed('sam', 3, 0), placed('legolas', 0, 0)];
+    const b = [placed('gimli', 3, 0), placed('saruman', 6, 0)];
+    // Tick 1's pick is the first number the fight takes from the generator.
+    const seeds = Array.from({ length: 50 }, (_, i) => i + 1);
+    const seedA = seeds.find((s) => firstTeam(createRng(s)) === 'A')!;
+    const seedB = seeds.find((s) => firstTeam(createRng(s)) === 'B')!;
+    const movers = (seed: number) => createCombat(input(a, b, seed)).step().map((e) => (e.type === 'move' ? e.unit : null));
+    expect(movers(seedA)).toEqual([0, 2, 1, 3]);
+    expect(movers(seedB)).toEqual([2, 0, 3, 1]);
   });
 
-  it('walks units into range one step at a time, never sharing a hex', () => {
-    const combat = createCombat(
-      input([placed('sam', 3, 0), placed('legolas', 0, 0), placed('aragorn', 6, 1)], [placed('gimli', 3, 0), placed('saruman', 6, 0), placed('eomer', 1, 1)]),
-    );
-    const arrives = new Map<number, number>();
-    let moves = 0;
-    while (!combat.isOver()) {
-      for (const e of combat.step()) {
-        if (e.type !== 'move') continue;
-        moves++;
-        expect(distance(e.from, e.to)).toBe(1);
-        expect(e.arriveTick).toBe(e.tick + 15);
-        expect(e.tick).toBeGreaterThanOrEqual(arrives.get(e.unit) ?? 1);
-        arrives.set(e.unit, e.arriveTick);
-      }
-      const hexes = combat.state.units.map((u) => boardIndex(u.hex));
-      expect(new Set(hexes).size).toBe(hexes.length);
-    }
-    expect(moves).toBeGreaterThan(0);
-    for (const u of combat.state.units) {
-      const target = combat.state.units[u.target!]!;
-      expect(distance(u.hex, target.hex)).toBeLessThanOrEqual(u.stats.range);
+  it('walks living units one step at a time, never two on a hex, and attacks only in range', () => {
+    for (const seed of [1, 2, 3]) {
+      const combat = createCombat(mirrorMatch(BOARDS.full, seed));
+      const arrives = new Map<number, number>();
+      let moves = 0;
+      run(combat, (events) => {
+        const units = combat.state.units;
+        for (const e of events) {
+          if (e.type === 'move') {
+            moves++;
+            expect(distance(e.from, e.to)).toBe(1);
+            expect(e.arriveTick).toBe(e.tick + 15);
+            expect(e.tick).toBeGreaterThanOrEqual(arrives.get(e.unit) ?? 1);
+            arrives.set(e.unit, e.arriveTick);
+          }
+        }
+        const hexes = units.filter((u) => u.alive).map((u) => boardIndex(u.hex));
+        expect(new Set(hexes).size).toBe(hexes.length);
+      });
+      expect(moves).toBeGreaterThan(0);
     }
   });
 
@@ -185,6 +220,149 @@ describe('targeting and movement', () => {
     const targetOf = (c: typeof withTrait) => c.state.units[c.state.units[0]!.target!]!.unitId;
     expect(targetOf(withTrait)).toBe('hama');
     expect(targetOf(withoutTrait)).toBe('beregond');
+  });
+});
+
+describe('basic attacks', () => {
+  function attackTicks(events: readonly CombatEvent[], unit: number): number[] {
+    return events.flatMap((e) => (e.type === 'attack' && e.unit === unit ? [e.tick] : []));
+  }
+
+  it('fires on tick 1, then every 30 / Attack Speed ticks, keeping the fraction', () => {
+    // Boromir has Attack Speed 0.7 (42.86 ticks), Gimli 0.6 (50 ticks).
+    const events = run(createCombat(input([placed('boromir', 3, 3)], [placed('gimli', 3, 3)]))).events;
+    expect(attackTicks(events, 0).slice(0, 4)).toEqual([1, 44, 87, 130]);
+    expect(attackTicks(events, 1).slice(0, 4)).toEqual([1, 51, 101, 151]);
+  });
+
+  it('deals physical damage reduced by Armor, with crits', () => {
+    // Sam has 45 Attack Damage, Gimli 59 (45 × 1.3 = 58.5); Armor 40 and 50; Crit Damage 140%.
+    const events = run(createCombat(DUEL)).events;
+    const hits = events.flatMap((e) => (e.type === 'damage' && e.tick < OVERTIME_START_TICK ? [e] : []));
+    for (const hit of hits) {
+      const expected = hit.source === 0 ? (hit.crit ? 42 : 30) : hit.crit ? 59 : 42;
+      expect(hit).toMatchObject({ amount: expected, absorbed: 0, damageType: 'physical', kind: 'attack' });
+    }
+    expect(hits.some((h) => h.crit)).toBe(true);
+    expect(hits.some((h) => !h.crit)).toBe(true);
+  });
+
+  it('gives the attacker 10 mana and the defender 6% of the damage taken', () => {
+    const combat = createCombat(DUEL);
+    const tick1 = combat.step();
+    const taken = (unit: number) => tick1.flatMap((e) => (e.type === 'damage' && e.target === unit ? [e.amount] : []));
+    const [sam, gimli] = combat.state.units;
+    expect(taken(0)).toHaveLength(1);
+    expect(sam!.mana).toBe(30 + 10 + manaFromDamage(taken(0)[0]!));
+    expect(gimli!.mana).toBe(30 + 10 + manaFromDamage(taken(1)[0]!));
+  });
+
+  it('never lets mana go above max mana', () => {
+    const combat = createCombat(DUEL);
+    let reachedMax = false;
+    run(combat, () => {
+      for (const u of combat.state.units) {
+        expect(u.mana).toBeLessThanOrEqual(u.base.maxMana);
+        if (u.mana === u.base.maxMana) reachedMax = true;
+      }
+    });
+    // Casting comes with abilities, so for now mana fills up and stays full.
+    expect(reachedMax).toBe(true);
+  });
+
+  it('fires projectiles from ranged units that land after travelling 12 hexes per second', () => {
+    // Legolas and Haldir stand 3 hexes apart, both in range, so neither moves: 3 × 30 / 12 = 7.5 ticks.
+    const { events, finalTick } = run(createCombat(input([placed('legolas', 3, 1)], [placed('haldir', 3, 3)])));
+    const attacks = events.flatMap((e) => (e.type === 'attack' ? [e] : []));
+    expect(attacks.length).toBeGreaterThan(5);
+    for (const attack of attacks) {
+      expect(attack).toMatchObject({ ranged: true, hitTick: attack.tick + 8 });
+      const landed = events.some((e) => (e.type === 'damage' || e.type === 'dodge') && e.tick === attack.hitTick && e.source === attack.unit);
+      // Once the fight is over, nothing else lands. Both archers' last shots can be due on the final tick.
+      if (attack.hitTick < finalTick) expect(landed).toBe(true);
+      if (attack.hitTick > finalTick) expect(landed).toBe(false);
+    }
+  });
+});
+
+describe('fight invariants', () => {
+  /** Several fights with melee and ranged units, long enough to reach overtime. */
+  const fights = [1, 2, 3, 4, 5, 6, 7, 8].map((seed) => {
+    const combat = createCombat(mirrorMatch(BOARDS.full, seed));
+    const result = run(combat);
+    return { units: combat.state.units, result };
+  });
+
+  it('never hits a dead unit, and never hits after the fight is over', () => {
+    for (const { result } of fights) {
+      const deaths = new Map<number, number>();
+      for (const e of result.events) {
+        if (e.type === 'damage' || e.type === 'dodge') {
+          const target = e.type === 'damage' ? e.target : e.unit;
+          expect(deaths.has(target)).toBe(false);
+          expect(e.tick).toBeLessThanOrEqual(result.finalTick);
+        }
+        if (e.type === 'death') deaths.set(e.unit, e.tick);
+      }
+    }
+  });
+
+  it('runs every hit through the damage pipeline, with overtime', () => {
+    let overtimeHits = 0;
+    for (const { units, result } of fights) {
+      for (const e of result.events) {
+        if (e.type !== 'damage') continue;
+        const source = units[e.source]!;
+        const raw = (source.stats.attackDamage * (e.crit ? source.stats.critDamagePct : 100)) / 100;
+        const expected = finalDamage(raw, 'physical', units[e.target]!.stats, {
+          ampPct: 0,
+          overtimePct: overtimePct(e.tick),
+          reductionPct: 0,
+        });
+        expect(e.amount).toBe(expected);
+        if (e.tick >= OVERTIME_START_TICK + 30) overtimeHits++;
+      }
+    }
+    expect(overtimeHits).toBeGreaterThan(0);
+  });
+
+  it('takes each unit’s Health down by exactly the damage it took', () => {
+    for (const { units, result } of fights) {
+      for (const unit of units) {
+        const taken = result.events.reduce((sum, e) => sum + (e.type === 'damage' && e.target === unit.id ? e.amount : 0), 0);
+        if (unit.alive) expect(unit.health).toBe(unit.stats.maxHealth - taken);
+        else expect(taken).toBeGreaterThanOrEqual(unit.stats.maxHealth);
+      }
+    }
+  });
+
+  it('lands projectiles whose attacker died on the way, and wastes those whose target did', () => {
+    let landedAfterDeath = 0;
+    let wasted = 0;
+    for (const { result } of fights) {
+      const deathTick = new Map<number, number>();
+      for (const e of result.events) if (e.type === 'death') deathTick.set(e.unit, e.tick);
+      for (const attack of result.events) {
+        if (attack.type !== 'attack' || !attack.ranged || attack.hitTick >= result.finalTick) continue;
+        const sourceDied = (deathTick.get(attack.unit) ?? Infinity) < attack.hitTick;
+        const targetDied = (deathTick.get(attack.target) ?? Infinity) < attack.hitTick;
+        const landed = result.events.some(
+          (e) =>
+            e.tick === attack.hitTick &&
+            ((e.type === 'damage' && e.source === attack.unit && e.target === attack.target) ||
+              (e.type === 'dodge' && e.source === attack.unit && e.unit === attack.target)),
+        );
+        if (targetDied) {
+          expect(landed).toBe(false);
+          wasted++;
+        } else if (sourceDied && (deathTick.get(attack.target) ?? Infinity) > attack.hitTick) {
+          expect(landed).toBe(true);
+          landedAfterDeath++;
+        }
+      }
+    }
+    expect(landedAfterDeath).toBeGreaterThan(0);
+    expect(wasted).toBeGreaterThan(0);
   });
 });
 

@@ -1,12 +1,15 @@
 // The combat simulation: createCombat / step / result (docs/sim-spec.md sections 6, 13 and 14).
 
+import { ATTACKS, MANA, TICKS_PER_SECOND } from '../data/rules.js';
 import type { OriginId } from '../data/traits.js';
-import { UNITS, type SummonId, type UnitId } from '../data/units.js';
+import { UNITS, type DamageType, type SummonId, type UnitId } from '../data/units.js';
 import { BOARD_COLS, BOARD_ROWS, boardIndex, distance, fromPlacement, type Hex } from '../hex.js';
+import { createRng, type Rng } from '../rng.js';
 import type { Star, Team } from '../types.js';
-import type { CombatEvent, Outcome } from './events.js';
+import { finalDamage, manaFromDamage, overtimePct, rollAttack } from './damage.js';
+import type { CombatEvent, DamageEvent, Outcome } from './events.js';
 import { MOVE_TICKS, planMove } from './movement.js';
-import { actionOrder, startingSlots } from './order.js';
+import { actionOrder, firstTeam, startingSlots } from './order.js';
 import { baseStats, finalStats, type BaseStats, type Stats } from './stats.js';
 import { chooseTarget, type TargetingRules } from './targeting.js';
 import { LAST_TICK } from './time.js';
@@ -94,17 +97,30 @@ type Unit = { -readonly [K in keyof UnitState]: UnitState[K] } & {
   busyUntil: number;
   /** A Burglar with its team's Burglar trait active, so it targets the farthest enemy. */
   targetsFarthest: boolean;
+  /** The first tick the next basic attack can fire. Can be a fraction. */
+  nextAttackTick: number;
 };
+
+/** A ranged basic attack on its way. */
+interface Projectile {
+  readonly dueTick: number;
+  readonly source: Unit;
+  readonly target: Unit;
+}
 
 class Fight implements Combat {
   tick = 0;
   readonly events: CombatEvent[] = [];
   private readonly units: Unit[] = [];
   private readonly traits: Record<Team, TraitLevels> = { A: {}, B: {} };
+  private readonly rng: Rng;
+  /** In creation order, which is also the order to resolve entries due on the same tick. */
+  private queue: Projectile[] = [];
   private outcome: Outcome | null = null;
 
   constructor(input: CombatInput) {
     validate(input);
+    this.rng = createRng(input.seed);
     this.start(input);
   }
 
@@ -116,10 +132,15 @@ class Fight implements Combat {
     if (this.outcome !== null) throw new Error('The combat is over.');
     this.tick++;
     const firstEvent = this.events.length;
-    // Section 6.4. Statuses, the queue and regeneration come in later steps.
-    for (const unit of actionOrder(this.living(), this.tick)) this.act(unit);
-    // Units can't die yet, so a fight can only end at the time limit.
-    if (this.tick === LAST_TICK) this.end('draw');
+    // Section 6.4. Statuses and regeneration come in later steps. Once a team is wiped out,
+    // nothing else is processed.
+    const first = firstTeam(this.rng);
+    this.resolveQueue();
+    for (const unit of actionOrder(this.living(), first)) {
+      if (this.outcome !== null) break;
+      this.act(unit);
+    }
+    if (this.outcome === null && this.tick === LAST_TICK) this.end('draw');
     return this.events.slice(firstEvent);
   }
 
@@ -171,32 +192,113 @@ class Fight implements Combat {
           stats: finalStats(base, {}),
           busyUntil: 0,
           targetsFarthest: burglarTrait && def.classes.includes('burglar'),
+          nextAttackTick: 1,
         });
       }
     }
     this.checkWipe();
   }
 
-  /** A unit's action for the tick (section 6.4, step 4). Casting and attacks come in later steps. */
+  /** Resolves the projectiles due this tick, in the order they were fired (section 6.4, step 2). */
+  private resolveQueue(): void {
+    const due = this.queue.filter((p) => p.dueTick === this.tick);
+    this.queue = this.queue.filter((p) => p.dueTick !== this.tick);
+    for (const projectile of due) {
+      if (this.outcome !== null) return;
+      // A projectile at a target that died or became untargetable is wasted. One whose attacker
+      // died still lands.
+      if (isTargetable(projectile.target)) this.hit(projectile.source, projectile.target);
+    }
+  }
+
+  /** A unit's action for the tick (section 6.4, step 4). Casting comes with abilities. */
   private act(unit: Unit): void {
     if (!unit.alive || this.tick < unit.busyUntil) return;
-    const target = this.ensureTarget(unit);
-    if (target === null || distance(unit.hex, target.hex) <= unit.stats.range) return;
+    let target = this.ensureTarget(unit);
+    if (target === null) return;
 
-    const occupied = new Set(this.living().map((u) => boardIndex(u.hex)));
-    const plan = planMove(
-      unit.team,
-      unit.hex,
-      unit.stats.range,
-      target,
-      this.targetableEnemies(unit),
-      this.living(enemyOf(unit.team)),
-      this.targetingRules(unit),
-      (hex) => !occupied.has(boardIndex(hex)),
-    );
-    if (plan === null) return; // No enemy is reachable, so the unit waits.
-    unit.target = plan.target.id;
-    if (plan.step !== null) this.moveTo(unit, plan.step);
+    if (distance(unit.hex, target.hex) > unit.stats.range) {
+      const occupied = new Set(this.living().map((u) => boardIndex(u.hex)));
+      const plan = planMove(
+        unit.team,
+        unit.hex,
+        unit.stats.range,
+        target,
+        this.targetableEnemies(unit),
+        this.living(enemyOf(unit.team)),
+        this.targetingRules(unit),
+        (hex) => !occupied.has(boardIndex(hex)),
+      );
+      if (plan === null) return; // No enemy is reachable, so the unit waits.
+      unit.target = plan.target.id;
+      target = plan.target;
+      if (plan.step !== null) {
+        this.moveTo(unit, plan.step);
+        return;
+      }
+    }
+
+    if (this.tick >= unit.nextAttackTick) this.attack(unit, target);
+  }
+
+  /** Fires a basic attack (section 9). */
+  private attack(unit: Unit, target: Unit): void {
+    const ranged = unit.stats.range >= 2;
+    const hitTick = ranged
+      ? this.tick + Math.ceil((distance(unit.hex, target.hex) * TICKS_PER_SECOND) / ATTACKS.projectileHexesPerSecond)
+      : this.tick;
+    unit.nextAttackTick = this.tick + TICKS_PER_SECOND / unit.stats.attackSpeed;
+    this.gainMana(unit, MANA.perAttack);
+    this.events.push({ type: 'attack', tick: this.tick, unit: unit.id, target: target.id, ranged, hitTick });
+    if (ranged) this.queue.push({ dueTick: hitTick, source: unit, target });
+    else this.hit(unit, target);
+  }
+
+  /** A basic attack lands: dodge, crit, damage (section 9). */
+  private hit(source: Unit, target: Unit): void {
+    const { dodged, crit } = rollAttack(this.rng, source.stats.critChancePct, target.stats.dodgePct);
+    if (dodged) {
+      this.events.push({ type: 'dodge', tick: this.tick, unit: target.id, source: source.id });
+      return;
+    }
+    const raw = (source.stats.attackDamage * (crit ? source.stats.critDamagePct : 100)) / 100;
+    this.dealDamage(source, target, raw, 'physical', crit, 'attack');
+  }
+
+  /** Runs the damage pipeline (section 9.1). Amps, shields and damage reduction come with traits, statuses and abilities. */
+  private dealDamage(source: Unit, target: Unit, raw: number, damageType: DamageType, crit: boolean, kind: DamageEvent['kind']): void {
+    const amount = finalDamage(raw, damageType, target.stats, {
+      ampPct: 0,
+      overtimePct: overtimePct(this.tick),
+      reductionPct: 0,
+    });
+    target.health -= amount;
+    this.events.push({
+      type: 'damage',
+      tick: this.tick,
+      source: source.id,
+      target: target.id,
+      amount,
+      absorbed: 0,
+      damageType,
+      crit,
+      kind,
+    });
+    this.gainMana(target, manaFromDamage(amount));
+    if (target.health <= 0) this.kill(target);
+  }
+
+  /** The unit dies at once and frees its hex (section 9.1). On-death traits come with traits. */
+  private kill(unit: Unit): void {
+    unit.alive = false;
+    unit.health = 0;
+    this.events.push({ type: 'death', tick: this.tick, unit: unit.id });
+    this.checkWipe();
+  }
+
+  /** Mana is capped at max mana; the rest is lost (section 10.1). */
+  private gainMana(unit: Unit, amount: number): void {
+    unit.mana = Math.min(unit.mana + amount, unit.base.maxMana);
   }
 
   /** The unit's target, choosing a new one if it has none or the old one is no longer targetable (section 8). */
