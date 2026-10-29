@@ -1,12 +1,12 @@
 // The Three.js scene: board, units, overlays and effects (docs/viewer-spec.md sections 3–5).
 
-import { BOARD_HEXES, UNITS, toOffset, type Team, type UnitState } from '@lotr-tactics/sim';
+import { BOARD_HEXES, toOffset, type Team, type UnitState } from '@lotr-tactics/sim';
 import * as THREE from 'three';
 import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
 import { CSS2DObject, CSS2DRenderer } from 'three/addons/renderers/CSS2DRenderer.js';
 import { hexToWorld } from './layout.js';
-import { unitName } from './log.js';
 import { EFFECT_TICKS, facing, type CastRing, type FloatingText, type Playback, type Projectile } from './playback.js';
+import { displayName, isLarge } from './units.js';
 
 const TEAM_COLOURS: Record<Team, number> = { A: 0x4a90d9, B: 0xd9534f };
 
@@ -170,7 +170,7 @@ export class FightScene {
   }
 
   private createUnit(unit: UnitState): UnitView {
-    const large = unit.unitId in UNITS && UNITS[unit.unitId as keyof typeof UNITS].large === true;
+    const large = isLarge(unit.unitId);
     const material = new THREE.MeshStandardMaterial({ color: TEAM_COLOURS[unit.team], flatShading: true, transparent: true });
     const body = new THREE.Mesh(geometry.body, material);
     body.position.y = 0.45;
@@ -185,7 +185,7 @@ export class FightScene {
     element.className = `unit-label team-${unit.team}`;
     const name = document.createElement('div');
     name.className = 'name';
-    name.textContent = unit.summon ? '' : `${unitName(unit).replace(/ \([AB]\)$/, '')} ${'★'.repeat(unit.star)}`;
+    name.textContent = unit.summon ? '' : `${displayName(unit.unitId)} ${'★'.repeat(unit.star)}`;
     const healthBar = bar('health');
     const shield = document.createElement('div');
     shield.className = 'shield';
