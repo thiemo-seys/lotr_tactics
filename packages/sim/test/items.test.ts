@@ -4,7 +4,7 @@ import { describe, expect, it } from 'vitest';
 import { Fight, simulateCombat, type CombatInput, type UnitState } from '../src/combat/combat.js';
 import { finalDamage } from '../src/combat/damage.js';
 import type { CombatEvent } from '../src/combat/events.js';
-import { ITEM_IDS, combine, isComponent, itemModifiers, itemStats } from '../src/combat/items.js';
+import { COMBINED_ITEM_IDS, ITEM_IDS, combine, itemModifiers, itemStats } from '../src/combat/items.js';
 import { COMPONENTS, ITEMS } from '../src/data/items.js';
 import type { UnitId } from '../src/data/units.js';
 import { distance } from '../src/hex.js';
@@ -27,8 +27,7 @@ const buffs = (events: readonly CombatEvent[], target: number, stat: string, val
 
 describe('item data', () => {
   it('has one combined item for every pair of components, in either order', () => {
-    const combined = ITEM_IDS.filter((id) => !isComponent(id));
-    expect(combined).toHaveLength(21);
+    expect(COMBINED_ITEM_IDS).toHaveLength(21);
     const made = new Set<string>();
     COMPONENTS.forEach((a, i) =>
       COMPONENTS.slice(i).forEach((b) => {
