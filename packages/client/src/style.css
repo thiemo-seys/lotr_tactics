@@ -393,3 +393,53 @@ body.play {
 .card.cost-5 {
   border-color: #f59e0b;
 }
+
+#menu,
+#lobby {
+  width: min(440px, calc(100% - 32px));
+}
+
+body.play input {
+  padding: 4px 6px;
+  user-select: text;
+}
+
+.panel .field {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+  margin-top: 8px;
+  color: var(--muted);
+}
+
+.panel .actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-top: 10px;
+}
+
+.panel .message {
+  min-height: 1.4em;
+  color: #fde68a;
+}
+
+#code {
+  width: 90px;
+  text-transform: uppercase;
+}
+
+#lobby-code {
+  color: #fde68a;
+  letter-spacing: 2px;
+}
+
+#seats {
+  margin: 8px 0;
+  padding-left: 24px;
+}
+
+#seats li.empty,
+#seats li.bot {
+  color: var(--muted);
+}

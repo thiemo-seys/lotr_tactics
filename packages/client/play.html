@@ -13,11 +13,35 @@
       <span class="spacer"></span>
       <button id="speed" hidden>1×</button>
       <button id="skip" hidden>Skip fight</button>
+      <button id="leave-game" hidden>Leave</button>
       <a href="./index.html">Fight viewer</a>
     </header>
     <main>
       <div id="view"></div>
       <aside id="players"></aside>
+      <section id="menu" class="panel" hidden>
+        <h2>LOTR Tactics</h2>
+        <p id="menu-message" class="message"></p>
+        <label class="field">Name <input id="name" maxlength="20" autocomplete="nickname" /></label>
+        <div class="actions">
+          <button id="play-bots">Play against bots</button>
+          <button id="create">Create lobby</button>
+        </div>
+        <div class="actions">
+          <input id="code" maxlength="5" placeholder="Code" autocomplete="off" />
+          <button id="join">Join lobby</button>
+        </div>
+      </section>
+      <section id="lobby" class="panel" hidden>
+        <h2>Lobby <span id="lobby-code"></span></h2>
+        <ol id="seats"></ol>
+        <p id="lobby-message" class="message"></p>
+        <div class="actions">
+          <button id="start">Start game</button>
+          <button id="copy-link">Copy link</button>
+          <button id="leave-lobby">Leave</button>
+        </div>
+      </section>
       <section id="council" class="panel" hidden>
         <h2>Council of Elrond</h2>
         <p id="council-status"></p>
