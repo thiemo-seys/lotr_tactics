@@ -1,6 +1,6 @@
 import { MAX_ITEMS, createCombat, isComponent } from '@lotr-tactics/sim';
 import { describe, expect, it } from 'vitest';
-import { BOARD_CHOICES, PRESETS, RANDOM_BOARD_SIZE, boardFor, isBoardChoice, randomBoard } from '../src/boards.js';
+import { BOARD_CHOICES, PRESETS, RANDOM_BOARD_SIZE, fightBoards, isBoardChoice, randomBoard } from '../src/boards.js';
 
 describe('boards', () => {
   it('offers every preset and a random board', () => {
@@ -9,12 +9,19 @@ describe('boards', () => {
     expect(isBoardChoice('nonsense')).toBe(false);
   });
 
-  it('gives boards the sim accepts', () => {
+  it('gives boards the sim accepts, whichever two are chosen', () => {
     for (const a of BOARD_CHOICES) {
-      for (const seed of [1, 2, 3]) {
-        expect(() => createCombat({ seed, stage: 2, teams: { A: boardFor(a, seed, 'A'), B: boardFor('full', seed, 'B') } })).not.toThrow();
+      for (const b of BOARD_CHOICES) {
+        expect(() => createCombat({ seed: 1, stage: 2, teams: fightBoards(a, b, 1) })).not.toThrow();
       }
     }
+  });
+
+  it('lets only team A bear the One Ring when both boards have it', () => {
+    const { A, B } = fightBoards('ring', 'ring', 1);
+    expect(A.filter((p) => p.ring !== undefined)).toHaveLength(1);
+    expect(B.some((p) => p.ring !== undefined)).toBe(false);
+    expect(fightBoards('full', 'ring', 1).B.filter((p) => p.ring !== undefined)).toHaveLength(1);
   });
 
   it('makes random boards of distinct units on distinct hexes of the team’s half', () => {
