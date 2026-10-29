@@ -2,7 +2,7 @@
 
 import { simulateCombat, type CombatInput, type CombatResult, type PlacedUnit } from '../combat/combat.js';
 import { XP } from '../data/economy.js';
-import { ITEM_IDS, isComponent } from '../combat/items.js';
+import { COMBINED_ITEM_IDS } from '../combat/items.js';
 import { GIFT_ROUNDS } from '../data/gifts.js';
 import { RING } from '../data/ring.js';
 import { COMPONENTS, type ComponentId } from '../data/items.js';
@@ -108,9 +108,6 @@ export interface Game {
 }
 
 const OK: ActionResult = { ok: true };
-
-/** Combined items, for Mount Doom's reward. */
-const COMBINED_ITEMS = ITEM_IDS.filter((id) => !isComponent(id));
 
 function fail(reason: string): ActionResult {
   return { ok: false, reason };
@@ -375,7 +372,7 @@ class GameImpl implements Game, GameState {
     ring.holder = null;
     ring.bearer = null;
     player.gold += RING.destroy.gold;
-    for (let i = 0; i < RING.destroy.combinedItems; i++) player.items.push(COMBINED_ITEMS[randomInt(this.rng, COMBINED_ITEMS.length)]!);
+    for (let i = 0; i < RING.destroy.combinedItems; i++) player.items.push(COMBINED_ITEM_IDS[randomInt(this.rng, COMBINED_ITEM_IDS.length)]!);
     return OK;
   }
 
