@@ -41,6 +41,8 @@ export const BOT = {
    * offer whose best Gift scores below `rerollBelow`.
    */
   gifts: { focusCrest: 40, otherCrest: 5, combat: 20, economy: 15, greedHp: 70, greedBonus: 10, rerollBelow: 20 },
+  /** A bot takes the One Ring's Council option at or below this HP, and never above it. */
+  ringTakeBelowHp: 60,
   /** The unit each component goes to. A combined item goes where its first component would. */
   itemRoles: {
     blade: 'attacker',
