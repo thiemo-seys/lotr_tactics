@@ -2,15 +2,18 @@
 
 import { simulateCombat, type CombatInput, type CombatResult, type PlacedUnit } from '../combat/combat.js';
 import { XP } from '../data/economy.js';
+import { ITEM_IDS, isComponent } from '../combat/items.js';
 import { GIFT_ROUNDS } from '../data/gifts.js';
+import { RING } from '../data/ring.js';
 import { COMPONENTS, type ComponentId } from '../data/items.js';
 import { MATCHMAKING, type RoundType } from '../data/rounds.js';
 import { UNITS, type Cost, type UnitId } from '../data/units.js';
 import { createRng, deriveSeed, randomInt, randomSeed, shuffle, type Rng } from '../rng.js';
 import { pickGroups, rollCouncilOptions, type CouncilOption } from './council.js';
 import { pairPlayers } from './matchmaking.js';
-import { Player, baseIncome, type ActionResult, type Place, type PlayerView } from './player.js';
+import { Player, baseIncome, isPlace, type ActionResult, type Place, type PlayerView } from './player.js';
 import { Pool } from './pool.js';
+import { Ring, type RingView } from './ring.js';
 import { nextRound, playerDamage, pveRound, roundType } from './schedule.js';
 
 export interface GameConfig {
@@ -32,13 +35,18 @@ export type Action =
   /** Takes the Gift at this index of the player's offer. */
   | { readonly type: 'gift'; readonly option: number }
   | { readonly type: 'rerollGifts' }
+  /** The One Ring's holder gives it to the unit at `to`. */
+  | { readonly type: 'ring'; readonly to: Place }
+  | { readonly type: 'destroyRing' }
   | { readonly type: 'pick'; readonly option: number };
 
 export type Phase = 'council' | 'planning' | 'over';
 
 export interface CouncilOptionView {
   readonly unitId: UnitId;
-  readonly component: ComponentId;
+  /** Null for the option that brings the One Ring. */
+  readonly component: ComponentId | null;
+  readonly ring: boolean;
   readonly pickedBy: number | null;
 }
 
@@ -64,6 +72,8 @@ export interface GameState {
   readonly players: readonly PlayerView[];
   /** Set during a Council. */
   readonly council: CouncilState | null;
+  /** The One Ring, which everyone can see (section 9.11). */
+  readonly ring: RingView;
   readonly pool: PoolView;
 }
 
@@ -99,6 +109,9 @@ export interface Game {
 
 const OK: ActionResult = { ok: true };
 
+/** Combined items, for Mount Doom's reward. */
+const COMBINED_ITEMS = ITEM_IDS.filter((id) => !isComponent(id));
+
 function fail(reason: string): ActionResult {
   return { ok: false, reason };
 }
@@ -115,6 +128,7 @@ class GameImpl implements Game, GameState {
   phase: Phase = 'council';
   council: { options: CouncilOption[]; groups: number[][]; group: number } | null = null;
   readonly pool = new Pool();
+  readonly ring = new Ring();
   readonly players: Player[];
   private readonly rng: Rng;
   private nextUnitId = 0;
@@ -122,7 +136,7 @@ class GameImpl implements Game, GameState {
   constructor(config: GameConfig) {
     validate(config);
     this.rng = createRng(deriveSeed(config.seed, GAME_STREAM));
-    const context = { pool: this.pool, nextUnitId: () => this.nextUnitId++ };
+    const context = { pool: this.pool, ring: this.ring, nextUnitId: () => this.nextUnitId++ };
     this.players = Array.from(
       { length: config.players },
       (_, seat) =>
@@ -165,6 +179,10 @@ class GameImpl implements Game, GameState {
         return player.pickGift(action.option);
       case 'rerollGifts':
         return player.rerollGifts();
+      case 'ring':
+        return this.giveRing(player, action.to);
+      case 'destroyRing':
+        return this.destroyRing(player);
       default:
         return fail('Unknown action.');
     }
@@ -177,7 +195,8 @@ class GameImpl implements Game, GameState {
       const council = this.council!;
       for (const seat of council.groups[council.group]!) {
         if (council.options.some((o) => o.pickedBy === seat)) continue;
-        const left = council.options.filter((o) => o.pickedBy === null);
+        // Nobody is forced to take the One Ring.
+        const left = council.options.filter((o) => o.pickedBy === null && !o.ring);
         if (left.length > 0) this.give(this.players[seat]!, left[randomInt(this.rng, left.length)]!);
       }
       this.nextCouncilGroup();
@@ -202,13 +221,14 @@ class GameImpl implements Game, GameState {
     if (this.type === 'council') {
       this.phase = 'council';
       this.council = {
-        options: rollCouncilOptions(this.pool, this.stage, this.rng),
+        options: this.offerRing(rollCouncilOptions(this.pool, this.stage, this.rng)),
         groups: pickGroups(this.living(), this.stage === 1 && this.round === 1, this.rng),
         group: 0,
       };
       return;
     }
     this.phase = 'planning';
+    this.corruptRing();
     for (const player of this.living()) {
       for (const auto of XP.automatic) if (auto.stage === this.stage && auto.round === this.round) player.reachLevel(auto.level);
       player.collectIncome(baseIncome(this.stage, this.round));
@@ -245,10 +265,16 @@ class GameImpl implements Game, GameState {
   /** Gives a player a Council option. A unit with no room is sold at once (section 7.2). */
   private give(player: Player, option: CouncilOption): void {
     option.pickedBy = player.seat;
-    player.items.push(option.component);
+    if (option.component !== null) player.items.push(option.component);
     if (!player.gain(option.unitId)) {
       player.gold += UNITS[option.unitId].cost;
       this.pool.put(option.unitId);
+    }
+    if (option.ring) {
+      // Bilbo brings the Ring: he bears it if the player now owns him.
+      this.ring.state = 'held';
+      this.ring.holder = player.seat;
+      this.ring.bearer = player.firstOwned('bilbo')?.id ?? null;
     }
   }
 
@@ -256,9 +282,101 @@ class GameImpl implements Game, GameState {
     const council = this.council!;
     council.group++;
     if (council.group < council.groups.length) return;
-    for (const option of council.options) if (option.pickedBy === null) this.pool.put(option.unitId);
+    for (const option of council.options) {
+      if (option.pickedBy !== null) continue;
+      this.pool.put(option.unitId);
+      if (option.ring) this.ring.release(false);
+    }
     this.council = null;
     this.goToNextRound();
+  }
+
+  // The One Ring (section 9.11)
+
+  /** Makes the last option bring the Ring, with Bilbo if a copy is left, when the Ring is waiting. */
+  private offerRing(options: CouncilOption[]): CouncilOption[] {
+    const last = options.at(-1);
+    if (this.ring.state !== 'waiting' || this.stage < RING.firstStage || last === undefined) return options;
+    if (this.pool.count('bilbo') > 0) {
+      this.pool.put(last.unitId);
+      this.pool.take('bilbo');
+      last.unitId = 'bilbo';
+    }
+    last.component = null;
+    last.ring = true;
+    this.ring.state = 'offered';
+    return options;
+  }
+
+  /** Corruption at the start of a round with a bearer; every other round for a Hobbit. At 10 the bearer is lost. */
+  private corruptRing(): void {
+    const { ring } = this;
+    if (ring.state !== 'held' || ring.bearer === null) return;
+    const holder = this.players[ring.holder!]!;
+    const place = holder.placeOf(ring.bearer);
+    const bearer = place === null ? null : holder.unitAt(place);
+    if (bearer === null) return;
+    if (UNITS[bearer.unitId].origin === 'hobbit') {
+      ring.hobbitRounds++;
+      if (ring.hobbitRounds % RING.hobbitRoundsPerCorruption === 0) ring.corruption++;
+    } else {
+      ring.corruption++;
+    }
+    if (ring.corruption < RING.consumedAt) return;
+    holder.remove(bearer.id);
+    ring.release(true);
+  }
+
+  /** A held Ring with no bearer goes to a random unit on its holder's board. */
+  private equipRing(): void {
+    const { ring } = this;
+    if (ring.state !== 'held' || ring.bearer !== null) return;
+    const board = this.players[ring.holder!]!.board.filter((u) => u !== null);
+    if (board.length > 0) ring.bearer = board[randomInt(this.rng, board.length)]!.id;
+  }
+
+  /** After the fights: Hobbit bearers' fights, then a surviving Gollum stealing the Ring. */
+  private afterRingFights(fights: readonly FightReport[]): void {
+    const { ring } = this;
+    if (ring.state !== 'held') return;
+    const holder = ring.holder!;
+    for (const fight of fights) {
+      const side = fight.home === holder ? 'A' : fight.kind === 'pvp' && fight.away === holder ? 'B' : null;
+      if (side === null) continue;
+      const bearer = fight.input.teams[side].find((p) => p.ring !== undefined);
+      if (bearer !== undefined && UNITS[bearer.unitId as UnitId].origin === 'hobbit') ring.hobbitFights++;
+      if (fight.kind !== 'pvp') continue;
+      const thief = side === 'A' ? fight.away! : fight.home;
+      if (!fight.result.survivors[side === 'A' ? 'B' : 'A'].some((s) => s.unitId === 'gollum')) continue;
+      ring.holder = thief;
+      ring.bearer = this.players[thief]!.firstOnBoard('gollum')?.id ?? null;
+      return;
+    }
+  }
+
+  private giveRing(player: Player, to: Place): ActionResult {
+    if (this.ring.state !== 'held' || this.ring.holder !== player.seat) return fail("You don't hold the One Ring.");
+    if (!isPlace(to)) return fail('There is no such place.');
+    const unit = player.unitAt(to);
+    if (unit === null) return fail('There is no unit there.');
+    this.ring.bearer = unit.id;
+    return OK;
+  }
+
+  /** Mount Doom: the holder's Hobbit bearer throws the Ring in, for a reward (section 9.11). */
+  private destroyRing(player: Player): ActionResult {
+    const { ring } = this;
+    if (ring.state !== 'held' || ring.holder !== player.seat) return fail("You don't hold the One Ring.");
+    const place = ring.bearer === null ? null : player.placeOf(ring.bearer);
+    const bearer = place === null ? null : player.unitAt(place);
+    if (bearer === null || UNITS[bearer.unitId].origin !== 'hobbit') return fail('Only a Hobbit can carry the Ring to Mount Doom.');
+    if (ring.hobbitFights < RING.destroy.hobbitFights) return fail(`Hobbits must carry the Ring through ${RING.destroy.hobbitFights} fights first.`);
+    ring.state = 'destroyed';
+    ring.holder = null;
+    ring.bearer = null;
+    player.gold += RING.destroy.gold;
+    for (let i = 0; i < RING.destroy.combinedItems; i++) player.items.push(COMBINED_ITEMS[randomInt(this.rng, COMBINED_ITEMS.length)]!);
+    return OK;
   }
 
   // Fights and results (sections 9.4 and 9.9)
@@ -266,6 +384,7 @@ class GameImpl implements Game, GameState {
   private fight(): RoundReport {
     const living = this.living();
     for (const player of living) player.fillBoard();
+    this.equipRing();
     const fights: FightReport[] = [];
     const run = (kind: FightReport['kind'], home: Player, away: Player | null, B: readonly PlacedUnit[]) => {
       const input: CombatInput = {
@@ -309,6 +428,7 @@ class GameImpl implements Game, GameState {
         player.gold += loot.gold;
       }
     }
+    this.afterRingFights(fights);
     for (const { kind, home, away } of fights) {
       if (kind !== 'pve') remember(this.players[home]!, away!);
       if (kind === 'pvp') remember(this.players[away!]!, home);
@@ -335,6 +455,7 @@ class GameImpl implements Game, GameState {
     out.forEach((player, i) => {
       player.placement = left + 1 + i;
       player.returnEverything();
+      if (this.ring.state === 'held' && this.ring.holder === player.seat) this.ring.release(false);
     });
     if (left <= 1) {
       for (const player of this.living()) player.placement = 1;
