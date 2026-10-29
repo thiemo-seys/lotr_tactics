@@ -12,6 +12,7 @@ import {
   UNITS,
   XP,
   createCombat,
+  isRingOfPower,
   roundType,
   xpForNextLevel,
   type Action,
@@ -24,6 +25,7 @@ import { TIMERS, type FightRecord, type LobbyView, type MatchView, type RoundRec
 import { LocalConnection, SocketConnection, savedSeat, socketUrl, type Connection } from './connection.js';
 import { yourFight, yourTeam } from './fights.js';
 import { TIER_NAMES, giftEffect, giftText } from './gifts.js';
+import { itemText } from './items.js';
 import { placeAtPoint } from './layout.js';
 import { Playback } from './playback.js';
 import { ringText, ringTier } from './ring.js';
@@ -560,7 +562,7 @@ function renderCouncil(): void {
   const c = state!.council;
   if (c === null) return;
   const picking = yourPick();
-  text('council-status', picking ? 'Your turn: pick a unit and its item component.' : 'Waiting for the others to pick…');
+  text('council-status', picking ? 'Your turn: pick a unit and what it brings.' : 'Waiting for the others to pick…');
   rebuild(element('options'), JSON.stringify([c.options, picking]), () =>
     c.options.map((option, i) => {
       const card = unitCard(
@@ -571,6 +573,9 @@ function renderCouncil(): void {
       if (option.ring) {
         card.classList.add('ring');
         card.title = `${ringText(state!.ring.corruption)}\nNobody is made to take it.`;
+      } else if (option.item !== null && isRingOfPower(option.item)) {
+        card.classList.add('ring-of-power');
+        card.title = itemText(option.item);
       }
       return card;
     }),
