@@ -28,8 +28,10 @@ describe('determinism', () => {
 });
 
 describe('fairness', () => {
-  // Over 1,000 seeds, the standard deviation of a 50% win share is about 1.6%.
-  it.each(Object.entries(BOARDS))('gives a %s board about even odds against its own mirror', (_, board) => {
+  // Over 1,000 seeds, the standard deviation of a 50% win share is about 1.6%. A thousand 9 v 9
+  // fights take a few seconds, more with other test files running alongside, so these tests get
+  // more time than the default 5 s; the performance test below checks speed.
+  it.each(Object.entries(BOARDS))('gives a %s board about even odds against its own mirror', { timeout: 30_000 }, (_, board) => {
     let winsA = 0;
     let winsB = 0;
     for (let seed = 1; seed <= 1000; seed++) {

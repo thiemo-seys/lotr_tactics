@@ -1,8 +1,9 @@
 // Combat events (docs/sim-spec.md section 14). The renderer animates the fight from these.
 
-import type { DamageType, SummonId, UnitId } from '../data/units.js';
+import type { BuffStat, DamageType, SummonId, UnitId } from '../data/units.js';
 import type { Hex } from '../hex.js';
 import type { Star, Team } from '../types.js';
+import type { StatusKind } from './statuses.js';
 
 export type Outcome = Team | 'draw';
 
@@ -59,6 +60,31 @@ export interface DamageEvent {
   readonly kind: 'attack' | 'ability' | 'trait';
 }
 
+export interface ShieldEvent {
+  readonly type: 'shield';
+  readonly tick: number;
+  readonly source: number;
+  readonly target: number;
+  readonly amount: number;
+  /** The shield is gone from the start of this tick, if damage hasn't used it up first. */
+  readonly expiresTick: number;
+}
+
+/** A status starts, or a stun, stun immunity or untargetable is extended. */
+export interface StatusEvent {
+  readonly type: 'status';
+  readonly tick: number;
+  readonly source: number;
+  readonly target: number;
+  readonly status: StatusKind;
+  /** The stat a buff or reduction changes; null for the other statuses. */
+  readonly stat: BuffStat | null;
+  /** A slow's or reduction's percent, or a buff's amount; null for the other statuses. */
+  readonly value: number | null;
+  /** The status is gone from the start of this tick. */
+  readonly expiresTick: number;
+}
+
 export interface DeathEvent {
   readonly type: 'death';
   readonly tick: number;
@@ -71,4 +97,13 @@ export interface EndEvent {
   readonly outcome: Outcome;
 }
 
-export type CombatEvent = SpawnEvent | MoveEvent | AttackEvent | DodgeEvent | DamageEvent | DeathEvent | EndEvent;
+export type CombatEvent =
+  | SpawnEvent
+  | MoveEvent
+  | AttackEvent
+  | DodgeEvent
+  | DamageEvent
+  | ShieldEvent
+  | StatusEvent
+  | DeathEvent
+  | EndEvent;
