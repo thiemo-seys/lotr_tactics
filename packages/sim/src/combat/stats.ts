@@ -68,6 +68,21 @@ const NO_MODIFIERS: StatModifiers = {
   dodgePct: 0,
 };
 
+/** Modifiers where only the strongest counts (section 12.1); every other modifier adds up. */
+const STRONGEST_ONLY: ReadonlySet<keyof StatModifiers> = new Set(['slowPct', 'armorReductionPct', 'magicResistReductionPct']);
+
+/** Combines modifiers from several sources, such as traits and statuses. */
+export function combineModifiers(...parts: readonly Partial<StatModifiers>[]): StatModifiers {
+  const combined: { -readonly [K in keyof StatModifiers]: number } = { ...NO_MODIFIERS };
+  for (const part of parts) {
+    for (const key of Object.keys(part) as (keyof StatModifiers)[]) {
+      const value = part[key] ?? 0;
+      combined[key] = STRONGEST_ONLY.has(key) ? Math.max(combined[key], value) : combined[key] + value;
+    }
+  }
+  return combined;
+}
+
 /** Stats for a unit at a star level, before traits, buffs and statuses (section 7.3). */
 export function baseStats(unit: UnitDef, star: Star): BaseStats {
   const template = TEMPLATES[CLASS_TEMPLATE[unit.classes[0]]];
