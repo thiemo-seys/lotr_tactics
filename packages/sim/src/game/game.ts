@@ -26,6 +26,8 @@ export type Action =
   | { readonly type: 'reroll' }
   | { readonly type: 'buyXp' }
   | { readonly type: 'lock'; readonly locked: boolean }
+  /** Gives the player's item at this index to the unit at `to`. */
+  | { readonly type: 'equip'; readonly item: number; readonly to: Place }
   | { readonly type: 'pick'; readonly option: number };
 
 export type Phase = 'council' | 'planning' | 'over';
@@ -151,6 +153,8 @@ class GameImpl implements Game, GameState {
         return player.buyXp();
       case 'lock':
         return player.setLock(action.locked);
+      case 'equip':
+        return player.equip(action.item, action.to);
       default:
         return fail('Unknown action.');
     }
