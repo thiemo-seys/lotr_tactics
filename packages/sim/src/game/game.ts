@@ -2,11 +2,11 @@
 
 import { simulateCombat, type CombatInput, type CombatResult, type PlacedUnit } from '../combat/combat.js';
 import { XP } from '../data/economy.js';
-import { COMBINED_ITEM_IDS } from '../combat/items.js';
+import { COMBINED_ITEM_IDS, RING_OF_POWER_IDS, isRingOfPower } from '../combat/items.js';
 import { GIFT_ROUNDS } from '../data/gifts.js';
 import { RING } from '../data/ring.js';
-import { COMPONENTS, type ComponentId } from '../data/items.js';
-import { MATCHMAKING, type RoundType } from '../data/rounds.js';
+import { COMPONENTS, ITEMS, type ItemId, type RingOfPowerId } from '../data/items.js';
+import { COUNCIL, MATCHMAKING, type RoundType } from '../data/rounds.js';
 import { UNITS, type Cost, type UnitId } from '../data/units.js';
 import { createRng, deriveSeed, randomInt, randomSeed, shuffle, type Rng } from '../rng.js';
 import { pickGroups, rollCouncilOptions, type CouncilOption } from './council.js';
@@ -44,8 +44,8 @@ export type Phase = 'council' | 'planning' | 'over';
 
 export interface CouncilOptionView {
   readonly unitId: UnitId;
-  /** Null for the option that brings the One Ring. */
-  readonly component: ComponentId | null;
+  /** An item component or a Ring of Power; null for the option that brings the One Ring. */
+  readonly item: ItemId | null;
   readonly ring: boolean;
   readonly pickedBy: number | null;
 }
@@ -74,6 +74,8 @@ export interface GameState {
   readonly council: CouncilState | null;
   /** The One Ring, which everyone can see (section 9.11). */
   readonly ring: RingView;
+  /** The copies of each Ring of Power left in the supply (section 9.12). */
+  readonly ringSupply: Readonly<Record<RingOfPowerId, number>>;
   readonly pool: PoolView;
 }
 
@@ -126,6 +128,7 @@ class GameImpl implements Game, GameState {
   council: { options: CouncilOption[]; groups: number[][]; group: number } | null = null;
   readonly pool = new Pool();
   readonly ring = new Ring();
+  readonly ringSupply = Object.fromEntries(RING_OF_POWER_IDS.map((id) => [id, ITEMS[id].ringOfPower!.copies])) as Record<RingOfPowerId, number>;
   readonly players: Player[];
   private readonly rng: Rng;
   private nextUnitId = 0;
@@ -218,7 +221,7 @@ class GameImpl implements Game, GameState {
     if (this.type === 'council') {
       this.phase = 'council';
       this.council = {
-        options: this.offerRing(rollCouncilOptions(this.pool, this.stage, this.rng)),
+        options: this.offerRingsOfPower(this.offerRing(rollCouncilOptions(this.pool, this.stage, this.rng))),
         groups: pickGroups(this.living(), this.stage === 1 && this.round === 1, this.rng),
         group: 0,
       };
@@ -262,7 +265,7 @@ class GameImpl implements Game, GameState {
   /** Gives a player a Council option. A unit with no room is sold at once (section 7.2). */
   private give(player: Player, option: CouncilOption): void {
     option.pickedBy = player.seat;
-    if (option.component !== null) player.items.push(option.component);
+    if (option.item !== null) player.items.push(option.item);
     if (!player.gain(option.unitId)) {
       player.gold += UNITS[option.unitId].cost;
       this.pool.put(option.unitId);
@@ -283,6 +286,7 @@ class GameImpl implements Game, GameState {
       if (option.pickedBy !== null) continue;
       this.pool.put(option.unitId);
       if (option.ring) this.ring.release(false);
+      if (option.item !== null && isRingOfPower(option.item)) this.ringSupply[option.item]++;
     }
     this.council = null;
     this.goToNextRound();
@@ -299,7 +303,7 @@ class GameImpl implements Game, GameState {
       this.pool.take('bilbo');
       last.unitId = 'bilbo';
     }
-    last.component = null;
+    last.item = null;
     last.ring = true;
     this.ring.state = 'offered';
     return options;
@@ -371,9 +375,33 @@ class GameImpl implements Game, GameState {
     ring.state = 'destroyed';
     ring.holder = null;
     ring.bearer = null;
+    // The Three fade and the Nine are undone, everywhere and for good.
+    const bound = (item: ItemId) => isRingOfPower(item) && ITEMS[item].ringOfPower!.family !== 'seven';
+    for (const p of this.living()) p.dropItems(bound);
+    for (const id of RING_OF_POWER_IDS) if (bound(id)) this.ringSupply[id] = 0;
     player.gold += RING.destroy.gold;
     for (let i = 0; i < RING.destroy.combinedItems; i++) player.items.push(COMBINED_ITEM_IDS[randomInt(this.rng, COMBINED_ITEM_IDS.length)]!);
     return OK;
+  }
+
+  // Rings of Power (section 9.12)
+
+  /**
+   * Gives the last options that don't bring the One Ring a Ring of Power instead of their
+   * component, from the 2-4 Council on, while the supply has any. Each is drawn weighted by copies.
+   */
+  private offerRingsOfPower(options: CouncilOption[]): CouncilOption[] {
+    const { fromStage, options: count } = COUNCIL.ringsOfPower;
+    if (this.stage < fromStage) return options;
+    for (const option of options.filter((o) => !o.ring).slice(-count)) {
+      const total = RING_OF_POWER_IDS.reduce((sum, id) => sum + this.ringSupply[id], 0);
+      if (total === 0) break;
+      let roll = randomInt(this.rng, total);
+      const drawn = RING_OF_POWER_IDS.find((id) => (roll -= this.ringSupply[id]) < 0)!;
+      this.ringSupply[drawn]--;
+      option.item = drawn;
+    }
+    return options;
   }
 
   // Fights and results (sections 9.4 and 9.9)
@@ -389,6 +417,8 @@ class GameImpl implements Game, GameState {
         stage: this.stage,
         teams: { A: home.placements(), B },
         gifts: { A: [...home.gifts], B: away === null ? [] : [...away.gifts] },
+        // The Nine grow with the One Ring's Corruption while it is held.
+        ...(this.ring.state === 'held' ? { oneRingCorruption: this.ring.corruption } : {}),
       };
       fights.push({ kind, home: home.seat, away: away?.seat ?? null, input, result: simulateCombat(input) });
     };
@@ -425,6 +455,7 @@ class GameImpl implements Game, GameState {
         player.gold += loot.gold;
       }
     }
+    for (const player of living.filter((p) => !p.eliminated)) player.gold += player.ringGold();
     this.afterRingFights(fights);
     for (const { kind, home, away } of fights) {
       if (kind !== 'pve') remember(this.players[home]!, away!);
@@ -451,6 +482,8 @@ class GameImpl implements Game, GameState {
     const left = living.length - out.length;
     out.forEach((player, i) => {
       player.placement = left + 1 + i;
+      // Rings of Power go back to the supply; the other items are lost.
+      for (const id of player.ringsOfPower()) this.ringSupply[id as RingOfPowerId]++;
       player.returnEverything();
       if (this.ring.state === 'held' && this.ring.holder === player.seat) this.ring.release(false);
     });
