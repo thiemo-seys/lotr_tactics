@@ -353,6 +353,58 @@ body.play {
   margin: 4px 0;
 }
 
+#gift-offer {
+  top: 56px;
+  transform: translateX(-50%);
+}
+
+#gift-options {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 8px;
+  margin-bottom: 8px;
+}
+
+#gift-tier {
+  color: var(--muted);
+  font-weight: 400;
+}
+
+.gift.silver {
+  --tier: #cbd5e1;
+}
+
+.gift.gold {
+  --tier: #eab308;
+}
+
+.gift.mithril {
+  --tier: #67e8f9;
+}
+
+.card.gift {
+  min-height: 72px;
+  border-color: var(--tier);
+}
+
+.your-gifts {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  margin-top: 8px;
+}
+
+.your-gifts .gift {
+  padding: 2px 6px;
+  font-size: 11px;
+  background: #000a;
+  border: 1px solid var(--border);
+  border-left: 3px solid var(--tier);
+  border-radius: 4px;
+  pointer-events: auto;
+  cursor: help;
+}
+
 #options {
   display: grid;
   grid-template-columns: repeat(auto-fill, minmax(150px, 1fr));
