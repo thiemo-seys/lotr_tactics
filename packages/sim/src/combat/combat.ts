@@ -2,7 +2,7 @@
 
 import { ABILITIES, ATTACKS, MANA, MOVEMENT, TICKS_PER_SECOND } from '../data/rules.js';
 import { GIFTS, type GiftCombat, type GiftId } from '../data/gifts.js';
-import { MAX_ITEMS, type ItemEffect, type ItemId } from '../data/items.js';
+import { ITEMS, MAX_ITEMS, type ItemEffect, type ItemId } from '../data/items.js';
 import { RING } from '../data/ring.js';
 import { MONSTERS, type FighterId, type MonsterId } from '../data/monsters.js';
 import type { ClassId, OriginId } from '../data/traits.js';
@@ -26,7 +26,7 @@ import type { Star, Team } from '../types.js';
 import { dashHex, lineDashHex, select, summonHex, type Selection } from './abilities.js';
 import { finalDamage, manaFromDamage, overtimePct, rollAttack } from './damage.js';
 import type { CombatEvent, DamageEvent, Outcome } from './events.js';
-import { isItemId, itemEffects, itemModifiers } from './items.js';
+import { isItemId, isRingOfPower, itemEffects, itemModifiers } from './items.js';
 import { MOVE_TICKS, planMove } from './movement.js';
 import { actionOrder, firstTeam, startingSlots } from './order.js';
 import {
@@ -68,6 +68,8 @@ export interface CombatInput {
   readonly teams: { readonly [T in Team]: readonly PlacedUnit[] };
   /** Each team's Gifts of Lothlórien (section 12.5). None if left out. */
   readonly gifts?: { readonly [T in Team]: readonly GiftId[] };
+  /** The One Ring's Corruption, 0–9, while a player holds it. It strengthens the Nine (section 12.7). */
+  readonly oneRingCorruption?: number;
 }
 
 export interface Survivor {
@@ -146,9 +148,13 @@ const DASH_TICKS = toTicks(MOVEMENT.dashBusySeconds);
 /** The holder and its adjacent allies, for items at combat start (section 12.4). */
 const NEARBY_ALLIES: Selector = { kind: 'alliesWithin', radius: 1 };
 
-/** An item's effect on one unit, and how often it has acted: low-Health triggers and stacks are limited. */
+/**
+ * An item's effect on one unit, and how often it has acted: low-Health triggers and stacks are
+ * limited. `pct` is the percent of its listed numbers it has, more for a Ring of Power on its kin.
+ */
 interface ItemEffectState {
   readonly effect: ItemEffect;
+  readonly pct: number;
   uses: number;
 }
 
@@ -178,6 +184,10 @@ type Unit = { -readonly [K in Exclude<keyof UnitState, 'statuses'>]: UnitState[K
   auraSlowPct: number;
   /** The Phial of Galadriel's Magic Resist reduction on this unit, updated with the Nazgûl slow. */
   auraShredPct: number;
+  /** Narya's Attack Speed on this unit, updated with the Nazgûl slow. */
+  auraHastePct: number;
+  /** Wears a Ring of the Nine, so it is a Nazgûl as well as its own origin (section 12.7). */
+  readonly wraith: boolean;
   /** Attack Speed stacks from the Archer trait. */
   archerStacks: number;
   /** The level the Ring's drawbacks use on its bearer: its Corruption, less Sam's relief (section 12.6). */
@@ -208,6 +218,8 @@ export class Fight implements Combat {
   private readonly gifts: Record<Team, readonly GiftCombat[]> = { A: [], B: [] };
   /** Each team's damage amp from its Gifts, set at tick 0. */
   private readonly giftAmpPct: Record<Team, number> = { A: 0, B: 0 };
+  /** The One Ring's Corruption while a player holds it, for the Nine; 0 otherwise. */
+  private readonly oneRingCorruption: number;
   private readonly rng: Rng;
   /** In creation order, which is also the order to resolve entries due on the same tick. */
   private queue: QueueEntry[] = [];
@@ -219,6 +231,7 @@ export class Fight implements Combat {
     validate(input);
     this.rng = createRng(input.seed);
     this.stage = input.stage;
+    this.oneRingCorruption = input.oneRingCorruption ?? 0;
     this.start(input);
   }
 
@@ -273,7 +286,9 @@ export class Fight implements Combat {
       this.gifts[team] = gifts;
       // Monsters have no traits.
       const crests = gifts.flatMap((g) => g.crest ?? []);
-      const levels = traitLevels(placements.map((p) => p.unitId).filter(isUnitId), crests);
+      const unitIds = placements.map((p) => p.unitId).filter(isUnitId);
+      const nine = placements.flatMap((p) => (isUnitId(p.unitId) && wearsNine(p.items) ? [{ unitId: p.unitId, trait: 'nazgul' as const }] : []));
+      const levels = traitLevels(unitIds, crests, nine);
       this.traits[team] = levels;
       const giftMana = gifts.reduce((mana, g) => mana + (g.startMana ?? 0), 0);
       const slots = startingSlots(placements);
@@ -319,9 +334,11 @@ export class Fight implements Combat {
           large: fighter.large,
           staticBonus,
           items: [...p.items],
-          effects: itemEffects(p.items).map((effect) => ({ effect, uses: 0 })),
+          effects: itemEffects(p.items, fighter.origin).map(({ effect, pct }) => ({ effect, pct, uses: 0 })),
           auraSlowPct: 0,
           auraShredPct: 0,
+          auraHastePct: 0,
+          wraith: wearsNine(p.items),
           archerStacks: 0,
           ring,
           drawback,
@@ -329,7 +346,7 @@ export class Fight implements Combat {
           hunts: null,
         });
       }
-      const origins = new Set(this.units.filter((u) => u.team === team && u.origin !== null).map((u) => u.origin)).size;
+      const origins = new Set(this.units.filter((u) => u.team === team).flatMap(originsOf)).size;
       this.giftAmpPct[team] = gifts.reduce((pct, g) => pct + (g.damageAmpPct ?? 0) + (g.damageAmpPctPerOrigin ?? 0) * origins, 0);
     }
 
@@ -346,9 +363,12 @@ export class Fight implements Combat {
       for (const { startShield } of this.gifts[unit.team]) {
         if (startShield !== undefined) this.addShield(unit.id, unit.id, startShield.amount, startShield.seconds);
       }
-      for (const { effect } of unit.effects) {
+      for (const state of unit.effects) {
+        const { effect } = state;
         if (effect.kind === 'startShield') {
           for (const ally of this.selectFor(unit, NEARBY_ALLIES).units) this.addShield(unit.id, ally.id, effect.amount, effect.seconds);
+        } else if (effect.kind === 'shieldPulse') {
+          this.pulseShield(unit, effect, state.pct);
         } else if (effect.kind === 'startBuff') {
           for (const ally of this.selectFor(unit, NEARBY_ALLIES).units) this.addPermanentBuff(unit, ally, effect.stat, effect.amount);
         } else if (effect.kind === 'startStunImmune') {
@@ -406,7 +426,7 @@ export class Fight implements Combat {
       }
     }
 
-    // 10. The Nazgûl slow and the Phial of Galadriel.
+    // 10. The Nazgûl slow, the Phial of Galadriel and Narya.
     this.updateAuras();
     this.checkWipe();
   }
@@ -432,8 +452,8 @@ export class Fight implements Combat {
   }
 
   /**
-   * Istari mana, Ent healing, the Elven Cloak and Dragon-helm, and Hands of the King, on ticks 30,
-   * 60, 90, … in action order (section 6.4, step 3).
+   * Istari mana, Ent healing, the Elven Cloak, Dragon-helm, Nenya and Vilya, and Hands of the King,
+   * on ticks 30, 60, 90, … in action order (section 6.4, step 3).
    */
   private regenerate(first: Team): void {
     for (const unit of actionOrder(this.living(), first)) {
@@ -444,8 +464,13 @@ export class Fight implements Combat {
       if (istari !== undefined && unit.origin === 'istari') this.gainMana(unit, istari.manaPerSecond);
       const ent = activeTrait(this.traits[unit.team], 'ent');
       if (ent !== undefined && unit.origin === 'ent') this.heal(unit, unit, (unit.stats.maxHealth * ent.regenPctPerSecond) / 100);
-      for (const { effect } of unit.effects) {
+      for (const { effect, pct } of unit.effects) {
         if (effect.kind === 'regen') this.heal(unit, unit, (unit.stats.maxHealth * effect.maxHealthPct) / 100);
+        if (effect.kind === 'shieldPulse' && this.tick % toTicks(effect.everySeconds) === 0) this.pulseShield(unit, effect, pct);
+        if (effect.kind === 'healPulse' && this.tick % toTicks(effect.everySeconds) === 0) {
+          const ally = this.selectFor(unit, { kind: 'lowestHealthPctAllies', count: 1 }).units[0];
+          if (ally !== undefined) this.heal(unit, ally, (effect.amount * pct) / 100);
+        }
         if (effect.kind !== 'burn') continue;
         for (const enemy of this.selectFor(unit, { kind: 'adjacentEnemies' }).units) {
           if (this.outcome !== null) return;
@@ -461,28 +486,48 @@ export class Fight implements Combat {
 
   /**
    * The Nazgûl slow and the Phial of Galadriel's Magic Resist reduction on enemies within reach of
-   * a living Nazgûl or Phial holder (sections 12.3 and 12.4).
+   * a living Nazgûl or Phial holder, and Narya's Attack Speed on allies within reach of a living
+   * bearer (sections 12.3, 12.4 and 12.7).
    */
   private updateAuras(): void {
     for (const team of TEAMS) {
       const nazgul = activeTrait(this.traits[team], 'nazgul');
-      const wraiths = nazgul === undefined ? [] : this.living(team).filter((u) => u.origin === 'nazgul');
-      const phials = this.living(team).flatMap((u) =>
-        u.effects.flatMap(({ effect }) => (effect.kind === 'magicResistAura' ? [{ hex: u.hex, effect }] : [])),
-      );
+      const wraiths = nazgul === undefined ? [] : this.living(team).filter((u) => isNazgul(u));
+      const auras = (kind: 'magicResistAura' | 'attackSpeedAura') =>
+        this.living(team).flatMap((u) =>
+          u.effects.flatMap(({ effect, pct }) =>
+            (effect.kind === 'magicResistAura' || effect.kind === 'attackSpeedAura') && effect.kind === kind
+              ? [{ hex: u.hex, radius: effect.radius, pct: (effect.pct * pct) / 100 }]
+              : [],
+          ),
+        );
+      const strongest = (list: readonly { hex: Hex; radius: number; pct: number }[], unit: Unit) =>
+        list.reduce((max, a) => (distance(a.hex, unit.hex) <= a.radius ? Math.max(max, a.pct) : max), 0);
+      const phials = auras('magicResistAura');
+      const naryas = auras('attackSpeedAura');
       for (const unit of this.living(enemyOf(team))) {
         const slowPct = nazgul !== undefined && wraiths.some((w) => distance(w.hex, unit.hex) <= nazgul.radius) ? nazgul.slowPct : 0;
-        const shredPct = phials.reduce((max, p) => (distance(p.hex, unit.hex) <= p.effect.radius ? Math.max(max, p.effect.pct) : max), 0);
-        this.setAuras(unit, slowPct, shredPct);
+        this.setAuras(unit, { slowPct, shredPct: strongest(phials, unit) });
       }
+      for (const unit of this.living(team)) this.setAuras(unit, { hastePct: strongest(naryas, unit) });
     }
   }
 
-  private setAuras(unit: Unit, slowPct: number, shredPct: number): void {
-    if (slowPct === unit.auraSlowPct && shredPct === unit.auraShredPct) return;
+  /** Sets the auras on a unit that are given, and refreshes its stats if any changed. */
+  private setAuras(unit: Unit, auras: { slowPct?: number; shredPct?: number; hastePct?: number }): void {
+    const { slowPct = unit.auraSlowPct, shredPct = unit.auraShredPct, hastePct = unit.auraHastePct } = auras;
+    if (slowPct === unit.auraSlowPct && shredPct === unit.auraShredPct && hastePct === unit.auraHastePct) return;
     unit.auraSlowPct = slowPct;
     unit.auraShredPct = shredPct;
+    unit.auraHastePct = hastePct;
     this.refreshStats(unit);
+  }
+
+  /** Nenya: a shield for the holder and its allies within reach (section 12.7). */
+  private pulseShield(unit: Unit, effect: Extract<ItemEffect, { kind: 'shieldPulse' }>, pct: number): void {
+    for (const ally of this.selectFor(unit, { kind: 'alliesWithin', radius: effect.radius }).units) {
+      this.addShield(unit.id, ally.id, (effect.amount * pct) / 100, effect.seconds);
+    }
   }
 
   /** A buff for the rest of the fight, from the Rohan and Archer traits (section 12.3) or an item (section 12.4). */
@@ -516,13 +561,19 @@ export class Fight implements Combat {
       (pct, { effect }) => pct + (effect.kind === 'ampVsHealthier' && target.stats.maxHealth > source.stats.maxHealth ? effect.pct : 0),
       0,
     );
+    // The Nine grow with the One Ring's Corruption.
+    const ninePct = source.effects.reduce(
+      (pct, { effect }) => pct + (effect.kind === 'nazgul' ? effect.damagePctPerCorruption * this.oneRingCorruption : 0),
+      0,
+    );
     return (
       (nextToCaptain ? captain.damageAmpPct : 0) +
-      (darkLord !== undefined && (source.origin === 'orc' || source.origin === 'nazgul') ? darkLord.damageAmpPct : 0) +
+      (darkLord !== undefined && (source.origin === 'orc' || isNazgul(source)) ? darkLord.damageAmpPct : 0) +
       (dwarf !== undefined && source.origin === 'dwarf' && target.large ? dwarf.damageVsLargePct : 0) +
       blackArrows +
       this.giftAmpPct[source.team] +
-      (source.ring ?? 0) * RING.damagePctPerCorruption
+      (source.ring ?? 0) * RING.damagePctPerCorruption +
+      ninePct
     );
   }
 
@@ -582,11 +633,15 @@ export class Fight implements Combat {
     }
   }
 
-  /** Recomputes a unit's stats after its statuses, the Nazgûl slow or the Phial's reduction on it change (section 7.4). */
+  /** Recomputes a unit's stats after its statuses, the Nazgûl slow, the Phial's reduction or Narya on it change (section 7.4). */
   private refreshStats(unit: Unit): void {
     unit.stats = finalStats(
       unit.base,
-      combineModifiers(unit.staticBonus, unit.statuses.modifiers(), { slowPct: unit.auraSlowPct, magicResistReductionPct: unit.auraShredPct }),
+      combineModifiers(unit.staticBonus, unit.statuses.modifiers(), {
+        slowPct: unit.auraSlowPct,
+        magicResistReductionPct: unit.auraShredPct,
+        attackSpeedPct: unit.auraHastePct,
+      }),
     );
   }
 
@@ -748,7 +803,7 @@ export class Fight implements Combat {
    */
   private abilityDamage(caster: Unit, target: Unit, effect: Extract<Effect, { kind: 'damage' }>): number {
     const value = abilityValue('D', effect.pct, caster.cost, caster.star, caster.stats.abilityPower);
-    const bonusPct = effect.bonusVs !== undefined && target.origin === effect.bonusVs.origin ? effect.bonusVs.multiplierPct : 100;
+    const bonusPct = effect.bonusVs !== undefined && hasOrigin(target, effect.bonusVs.origin) ? effect.bonusVs.multiplierPct : 100;
     const canCrit = effect.canCrit === true || hasEffect(caster, 'abilityCrit');
     let dealt = 0;
     for (let hit = 0; hit < (effect.hits ?? 1); hit++) {
@@ -815,6 +870,8 @@ export class Fight implements Combat {
       effects: [],
       auraSlowPct: 0,
       auraShredPct: 0,
+      auraHastePct: 0,
+      wraith: false,
       archerStacks: 0,
       ring: null,
       drawback: 0,
@@ -1126,6 +1183,24 @@ function hasEffect(unit: Unit, kind: ItemEffect['kind']): boolean {
   return unit.effects.some(({ effect }) => effect.kind === kind);
 }
 
+/** A unit's origins: its own, and Nazgûl from a Ring of the Nine (section 12.7). Monsters have none. */
+function originsOf(unit: Unit): OriginId[] {
+  return [...(unit.origin === null ? [] : [unit.origin]), ...(unit.wraith ? (['nazgul'] as const) : [])];
+}
+
+function hasOrigin(unit: Unit, origin: OriginId): boolean {
+  return originsOf(unit).includes(origin);
+}
+
+function isNazgul(unit: Unit): boolean {
+  return hasOrigin(unit, 'nazgul');
+}
+
+/** Whether a unit's items include a Ring of the Nine. */
+function wearsNine(items: readonly ItemId[]): boolean {
+  return items.some((id) => ITEMS[id].effect?.kind === 'nazgul');
+}
+
 /** Whether a unit is placed next to Sam on its own team. */
 function samNextTo(placements: readonly PlacedUnit[], p: PlacedUnit): boolean {
   return placements.some((q) => q.unitId === 'sam' && q !== p && distance(fromPlacement('A', q), fromPlacement('A', p)) === 1);
@@ -1140,20 +1215,25 @@ function isTargetable(unit: Unit): boolean {
   return unit.alive && !unit.statuses.has('untargetable');
 }
 
+function isCorruption(value: number): boolean {
+  return Number.isInteger(value) && value >= 0 && value < RING.consumedAt;
+}
+
 /** Throws on input the server should never send. */
 function validate(input: CombatInput): void {
   if (!Number.isInteger(input.seed)) throw new Error(`The seed must be an integer, not ${input.seed}.`);
   if (!Number.isInteger(input.stage) || input.stage < 1) {
     throw new Error(`The stage must be a whole number from 1, not ${input.stage}.`);
   }
+  const { oneRingCorruption } = input;
+  if (oneRingCorruption !== undefined && !isCorruption(oneRingCorruption)) {
+    throw new Error(`The One Ring's Corruption must be 0 to ${RING.consumedAt - 1}, not ${oneRingCorruption}.`);
+  }
   const bearers = TEAMS.flatMap((team) => input.teams[team]).filter((p) => p.ring !== undefined);
   if (bearers.length > 1) throw new Error('Only one unit can bear the One Ring.');
   for (const p of bearers) {
     if (Object.hasOwn(MONSTERS, p.unitId)) throw new Error('A monster cannot bear the One Ring.');
-    const corruption = p.ring!;
-    if (!Number.isInteger(corruption) || corruption < 0 || corruption >= RING.consumedAt) {
-      throw new Error(`The One Ring's Corruption must be 0 to ${RING.consumedAt - 1}, not ${corruption}.`);
-    }
+    if (!isCorruption(p.ring!)) throw new Error(`The One Ring's Corruption must be 0 to ${RING.consumedAt - 1}, not ${p.ring}.`);
   }
   for (const team of TEAMS) {
     const unknownGift = (input.gifts?.[team] ?? []).find((id) => !Object.hasOwn(GIFTS, id));
@@ -1170,6 +1250,7 @@ function validate(input: CombatInput): void {
       if (p.items.length > MAX_ITEMS) throw new Error(`${where}: at most ${MAX_ITEMS} items.`);
       const unknown = p.items.find((item) => !isItemId(item));
       if (unknown !== undefined) throw new Error(`${where}: unknown item "${unknown}".`);
+      if (p.items.filter(isRingOfPower).length > 1) throw new Error(`${where}: at most one Ring of Power.`);
       if (p.star !== 1 && p.star !== 2 && p.star !== 3) throw new Error(`${where}: star must be 1, 2 or 3.`);
       const onHalf =
         Number.isInteger(p.col) && Number.isInteger(p.row) && p.col >= 0 && p.col < BOARD_COLS && p.row >= 0 && p.row < HALF_ROWS;
