@@ -1,6 +1,7 @@
 // Combat events (docs/sim-spec.md section 14). The renderer animates the fight from these.
 
-import type { BuffStat, DamageType, SummonId, UnitId } from '../data/units.js';
+import type { FighterId } from '../data/monsters.js';
+import type { BuffStat, DamageType, SummonId } from '../data/units.js';
 import type { Hex } from '../hex.js';
 import type { Star, Team } from '../types.js';
 import type { StatusKind } from './statuses.js';
@@ -11,7 +12,7 @@ export interface SpawnEvent {
   readonly type: 'spawn';
   readonly tick: number;
   readonly unit: number;
-  readonly unitId: UnitId | SummonId;
+  readonly unitId: FighterId | SummonId;
   readonly team: Team;
   /** Board coordinates. */
   readonly hex: Hex;
