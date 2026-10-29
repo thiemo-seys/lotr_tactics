@@ -149,6 +149,7 @@ interface MatchView {
   me: PlayerView;              // the receiver's own player, in full
   players: PublicPlayer[];     // everyone, in seat order, including the receiver
   council: CouncilState | null;
+  ring: RingView;              // the One Ring, which everyone sees (game-spec.md section 9.11)
   ready: number[];             // seats that are Ready in this step
 }
 
