@@ -1,7 +1,7 @@
 // One player's bench, board, shop, gold and XP (docs/game-spec.md sections 5–8).
 
 import type { PlacedUnit } from '../combat/combat.js';
-import { ITEM_IDS, combine, isComponent } from '../combat/items.js';
+import { COMBINED_ITEM_IDS, combine, isComponent } from '../combat/items.js';
 import { INCOME, PLAYER, SHOP, STREAK_GOLD, XP } from '../data/economy.js';
 import { GIFTS, type GiftId, type GiftTier } from '../data/gifts.js';
 import { COMPONENTS, MAX_ITEMS, type ComponentId, type ItemId } from '../data/items.js';
@@ -70,9 +70,6 @@ export interface PlayerView {
 }
 
 const OK: ActionResult = { ok: true };
-
-/** Combined items, which some Gifts give at random. */
-const COMBINED_ITEMS = ITEM_IDS.filter((id) => !isComponent(id));
 
 function fail(reason: string): ActionResult {
   return { ok: false, reason };
@@ -418,7 +415,7 @@ export class Player implements PlayerView {
     if (economy === undefined) return;
     this.gold += economy.gold ?? 0;
     for (let i = 0; i < (economy.components ?? 0); i++) this.items.push(COMPONENTS[randomInt(this.giftRng, COMPONENTS.length)]!);
-    for (let i = 0; i < (economy.combinedItems ?? 0); i++) this.items.push(COMBINED_ITEMS[randomInt(this.giftRng, COMBINED_ITEMS.length)]!);
+    for (let i = 0; i < (economy.combinedItems ?? 0); i++) this.items.push(COMBINED_ITEM_IDS[randomInt(this.giftRng, COMBINED_ITEM_IDS.length)]!);
     for (let i = 0; i < (economy.units?.count ?? 0); i++) this.gainFromPool(economy.units!.cost);
   }
 
