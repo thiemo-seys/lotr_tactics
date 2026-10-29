@@ -21,7 +21,7 @@ A browser tool that runs one fight with `packages/sim` and plays it back in 3D. 
 
 ## 2. Package
 
-- `packages/client`: Vite, Three.js and TypeScript, using `@lotr-tactics/sim` from the workspace.
+- `packages/client`: Vite, Three.js and TypeScript, using `@lotr-tactics/sim` from the workspace, and the browser-safe part of `@lotr-tactics/server` for the play page.
 - `pnpm dev` serves it; `pnpm build` writes a static build to `packages/client/dist`. CI builds it too.
 - The client may use the DOM, time APIs and all of `Math`. The sim's determinism rules don't apply, because the client only displays the fight.
 - Layout:
@@ -32,8 +32,9 @@ packages/client/
   play.html        the play page (game-spec.md section 12)
   src/
     main.ts        viewer page setup, controls, URL state
-    play.ts        play page setup, shop, Council, timers, drag and drop
-    session.ts     a game against bots for one person (no Three.js, no DOM)
+    play.ts        play page setup: menu, lobby, shop, Council, fights, drag and drop
+    connection.ts  offline and WebSocket connections to a game (server-spec.md section 10)
+    fights.ts      which fight in a round is the person's
     boards.ts      preset and random boards
     layout.ts      hex and bench positions, and finding the place under a point
     playback.ts    stepping the fight and what to draw at a moment (no Three.js, no DOM)
