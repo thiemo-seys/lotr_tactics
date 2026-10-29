@@ -73,7 +73,7 @@ jobs:
             Read files with the Read, Grep and Glob tools. Bash is only for the gh and git commands named here, run from the working directory: commands with `cd` or that write output to a file are refused.
 
             1. Read the pull request with `gh pr view` and `gh pr diff`, and the comments already on it with `gh pr view --comments`. This may be a re-review: don't repeat a finding that is already there unless the latest commits still have the problem.
-            2. Launch four general-purpose subagents (not Explore agents) in one message, one for each area of "When reviewing": determinism, rules against the docs, bugs, and tests. Give each the pull request's title and description, and ask for findings with the file, the line and what goes wrong. Each can run `gh pr diff <PR NUMBER>` itself, and use git log, show, diff and blame; pass on the rule above about reading files. Wait for all four reports before going on.
+            2. Launch four general-purpose subagents (not Explore agents) in one message, one for each area of "When reviewing": determinism, rules against the docs, bugs, and tests. Give each the pull request's title and description, and ask for findings with the file, the line and what goes wrong. Each can run `gh pr diff <PR NUMBER>` itself, and use git log, show, diff, blame and grep; pass on the rule above about reading files. Wait for all four reports before going on.
             3. Check every finding yourself against the code before keeping it. Keep only problems you have confirmed, in code this pull request changes.
             4. Post each finding as an inline comment with mcp__github_inline_comment__create_inline_comment and confirmed: true, saying what goes wrong, why, and how to fix it. Add a suggestion block only when it fixes the problem completely.
             5. Write one summary to review-summary.md with the Write tool, headed "Claude review" and the head commit's short SHA: one line per finding, or "No issues found" and the areas checked. Post it with `gh pr comment <PR NUMBER> --body-file review-summary.md`. Don't pass the text with $(...), a heredoc or a pipe: those commands are refused. Post nothing else, and don't write "@claude" in any comment.
@@ -84,7 +84,7 @@ jobs:
           claude_args: |
             --model claude-opus-5-5
             --max-turns 60
-            --allowedTools "mcp__github_inline_comment__create_inline_comment,Write,Bash(gh pr view:*),Bash(gh pr diff:*),Bash(gh pr comment:*),Bash(git log:*),Bash(git show:*),Bash(git diff:*),Bash(git blame:*)"
+            --allowedTools "mcp__github_inline_comment__create_inline_comment,Write,Bash(gh pr view:*),Bash(gh pr diff:*),Bash(gh pr comment:*),Bash(git log:*),Bash(git show:*),Bash(git diff:*),Bash(git blame:*),Bash(git grep:*)"
 
       # The action's log only counts refused tool calls. This prints which
       # calls were refused and Claude's last message, so a review that posts
