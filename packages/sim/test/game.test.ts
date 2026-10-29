@@ -184,6 +184,8 @@ describe('PvP rounds', () => {
   it('pair every player, record opponents and streaks, and pay win gold', () => {
     const game = createGame({ seed: 7, players: 8 });
     skipTo(game, 2, 1);
+    // 2-1 offers Gifts: everyone takes one that gives no gold.
+    for (const p of game.state.players) game.act(p.seat, { type: 'gift', option: p.giftOffer!.findIndex((g) => g !== 'bilbos-purse') });
     const gold = game.state.players.map((p) => p.gold);
     const report = game.advance()!;
     expect(report.fights).toHaveLength(4);
