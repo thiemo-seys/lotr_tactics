@@ -1,7 +1,8 @@
 import { describe, expect, it } from 'vitest';
 import { POOL_COPIES, SHOP } from '../src/data/economy.js';
+import type { ItemId } from '../src/data/items.js';
 import { UNITS, type UnitId } from '../src/data/units.js';
-import { Player, baseIncome, streakGold, xpForNextLevel, type Place } from '../src/game/player.js';
+import { Player, addItem, baseIncome, streakGold, xpForNextLevel, type Place } from '../src/game/player.js';
 import { Pool, UNIT_IDS, copiesIn } from '../src/game/pool.js';
 import { createRng, randomInt } from '../src/rng.js';
 import type { Star } from '../src/types.js';
@@ -22,10 +23,10 @@ function stock(player: Player, pool: Pool, slot: number, unitId: UnitId): void {
 }
 
 /** Gives the player a unit at a place, taking its copies from the pool. */
-function give(player: Player, pool: Pool, place: Place, unitId: UnitId, star: Star = 1, id = 100): void {
+function give(player: Player, pool: Pool, place: Place, unitId: UnitId, star: Star = 1, id = 100, items: readonly ItemId[] = []): void {
   pool.take(unitId, copiesIn(star));
-  if ('bench' in place) player.bench[place.bench] = { id, unitId, star };
-  else player.board[place.row * 7 + place.col] = { id, unitId, star };
+  if ('bench' in place) player.bench[place.bench] = { id, unitId, star, items };
+  else player.board[place.row * 7 + place.col] = { id, unitId, star, items };
 }
 
 /** Copies of each unit in the pool, the shop and owned units. */
@@ -75,7 +76,7 @@ describe('buying', () => {
     stock(player, pool, 0, 'sam');
     expect(player.buy(0).ok).toBe(true);
     expect(player.gold).toBe(9);
-    expect(player.unitAt({ col: 2, row: 3 })).toEqual({ id: 8, unitId: 'sam', star: 2 });
+    expect(player.unitAt({ col: 2, row: 3 })).toEqual({ id: 8, unitId: 'sam', star: 2, items: [] });
     expect(player.bench[4]).toBeNull();
   });
 
@@ -85,7 +86,7 @@ describe('buying', () => {
     give(player, pool, { bench: 3 }, 'pippin', 1, 2);
     stock(player, pool, 0, 'pippin');
     player.buy(0);
-    expect(player.bench[3]).toEqual({ id: 2, unitId: 'pippin', star: 2 });
+    expect(player.bench[3]).toEqual({ id: 2, unitId: 'pippin', star: 2, items: [] });
     expect(player.bench[6]).toBeNull();
   });
 
@@ -95,7 +96,7 @@ describe('buying', () => {
     give(player, pool, { col: 5, row: 0 }, 'pippin', 1, 2);
     stock(player, pool, 0, 'pippin');
     player.buy(0);
-    expect(player.unitAt({ col: 5, row: 0 })).toEqual({ id: 2, unitId: 'pippin', star: 2 });
+    expect(player.unitAt({ col: 5, row: 0 })).toEqual({ id: 2, unitId: 'pippin', star: 2, items: [] });
     expect(player.unitAt({ col: 1, row: 2 })).toBeNull();
   });
 
@@ -107,7 +108,7 @@ describe('buying', () => {
     give(player, pool, { bench: 2 }, 'beregond', 1, 4);
     stock(player, pool, 0, 'beregond');
     player.buy(0);
-    expect(player.unitAt({ col: 3, row: 3 })).toEqual({ id: 2, unitId: 'beregond', star: 3 });
+    expect(player.unitAt({ col: 3, row: 3 })).toEqual({ id: 2, unitId: 'beregond', star: 3, items: [] });
     expect(player.bench.every((u) => u === null)).toBe(true);
     expect(copies(pool, [player])).toEqual(STARTING_COPIES);
   });
@@ -233,6 +234,79 @@ describe('filling the board', () => {
       { unitId: 'legolas', star: 2, col: 6, row: 0, items: [] },
       { unitId: 'gimli', star: 1, col: 3, row: 3, items: [] },
     ]);
+  });
+});
+
+describe('items', () => {
+  it('combine a component with a lone component, or go at the end, up to 3', () => {
+    expect(addItem([], 'blade')).toEqual(['blade']);
+    expect(addItem(['blade'], 'cloak')).toEqual(['sting']);
+    expect(addItem(['anduril', 'staff'], 'blade')).toEqual(['anduril', 'glamdring']);
+    expect(addItem(['anduril'], 'phial')).toEqual(['anduril', 'phial']);
+    expect(addItem(['sting'], 'blade')).toEqual(['sting', 'blade']);
+    // A full unit still takes a component that completes its lone one.
+    expect(addItem(['anduril', 'phial', 'bow'], 'bow')).toEqual(['anduril', 'phial', 'galadhrim-bow']);
+    expect(addItem(['anduril', 'phial', 'sting'], 'bow')).toBeNull();
+    expect(addItem(['anduril', 'phial', 'bow'], 'grond')).toBeNull();
+  });
+
+  it('are given to units on the bench or the board', () => {
+    const { player, pool } = setup();
+    give(player, pool, { bench: 0 }, 'gimli');
+    give(player, pool, { col: 3, row: 3 }, 'sam', 1, 101);
+    player.items.push('mail', 'blade', 'mail');
+    expect(player.equip(1, { bench: 0 })).toEqual({ ok: true });
+    expect(player.items).toEqual(['mail', 'mail']);
+    expect(player.equip(0, { col: 3, row: 3 })).toEqual({ ok: true });
+    expect(player.equip(0, { col: 3, row: 3 })).toEqual({ ok: true });
+    expect(player.items).toEqual([]);
+    expect(player.bench[0]!.items).toEqual(['blade']);
+    expect(player.unitAt({ col: 3, row: 3 })).toEqual({ id: 101, unitId: 'sam', star: 1, items: ['oakenshield'] });
+  });
+
+  it('refuse a missing item, an empty or invalid place, and a full unit', () => {
+    const { player, pool } = setup();
+    give(player, pool, { bench: 0 }, 'gimli', 1, 100, ['anduril', 'sting', 'phial']);
+    player.items.push('blade');
+    expect(player.equip(1, { bench: 0 }).ok).toBe(false);
+    expect(player.equip(-1, { bench: 0 }).ok).toBe(false);
+    expect(player.equip(0, { bench: 1 })).toEqual({ ok: false, reason: 'There is no unit there.' });
+    expect(player.equip(0, { bench: 9 }).ok).toBe(false);
+    expect(player.equip(0, { bench: 0 })).toEqual({ ok: false, reason: 'A unit can hold at most 3 items.' });
+    expect(player.items).toEqual(['blade']);
+    expect(player.bench[0]!.items).toEqual(['anduril', 'sting', 'phial']);
+  });
+
+  it('move with their unit and go back to the player when it is sold', () => {
+    const { player, pool } = setup();
+    give(player, pool, { bench: 0 }, 'gimli', 1, 100, ['sting', 'bow']);
+    expect(player.move({ bench: 0 }, { col: 3, row: 3 }).ok).toBe(true);
+    expect(player.unitAt({ col: 3, row: 3 })!.items).toEqual(['sting', 'bow']);
+    player.items.push('staff');
+    expect(player.sell({ col: 3, row: 3 }).ok).toBe(true);
+    expect(player.items).toEqual(['staff', 'sting', 'bow']);
+  });
+
+  it('gather on the merged unit, and any beyond 3 go back to the player', () => {
+    const { player, pool } = setup();
+    give(player, pool, { col: 3, row: 3 }, 'sam', 1, 100, ['anduril', 'blade']);
+    give(player, pool, { bench: 2 }, 'sam', 1, 101, ['cloak', 'phial', 'grond']);
+    stock(player, pool, 0, 'sam');
+    expect(player.buy(0).ok).toBe(true);
+    // The Cloak completes the Blade; the Phial fills the third place, and the Grond goes back.
+    expect(player.unitAt({ col: 3, row: 3 })).toEqual({ id: 100, unitId: 'sam', star: 2, items: ['anduril', 'sting', 'phial'] });
+    expect(player.bench[2]).toBeNull();
+    expect(player.items).toEqual(['grond']);
+  });
+
+  it('go into the fight with their units, and are lost when the player is out', () => {
+    const { player, pool } = setup();
+    give(player, pool, { col: 3, row: 3 }, 'gimli', 1, 100, ['mithril-shirt', 'lembas']);
+    give(player, pool, { bench: 0 }, 'sam', 1, 101, ['staff']);
+    expect(player.placements()).toEqual([{ unitId: 'gimli', star: 1, col: 3, row: 3, items: ['mithril-shirt', 'lembas'] }]);
+    player.items.push('bow');
+    player.returnEverything();
+    expect(player.items).toEqual([]);
   });
 });
 
