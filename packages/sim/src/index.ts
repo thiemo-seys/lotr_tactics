@@ -8,6 +8,7 @@ export * from './data/units.js';
 export * from './data/monsters.js';
 export * from './data/economy.js';
 export * from './data/items.js';
+export * from './data/gifts.js';
 export * from './data/rounds.js';
 export * from './data/pve.js';
 export * from './combat/stats.js';
