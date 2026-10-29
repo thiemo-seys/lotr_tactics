@@ -2,6 +2,7 @@
 
 import { simulateCombat, type CombatInput, type CombatResult, type PlacedUnit } from '../combat/combat.js';
 import { XP } from '../data/economy.js';
+import { GIFT_ROUNDS } from '../data/gifts.js';
 import { COMPONENTS, type ComponentId } from '../data/items.js';
 import { MATCHMAKING, type RoundType } from '../data/rounds.js';
 import { UNITS, type Cost, type UnitId } from '../data/units.js';
@@ -28,6 +29,9 @@ export type Action =
   | { readonly type: 'lock'; readonly locked: boolean }
   /** Gives the player's item at this index to the unit at `to`. */
   | { readonly type: 'equip'; readonly item: number; readonly to: Place }
+  /** Takes the Gift at this index of the player's offer. */
+  | { readonly type: 'gift'; readonly option: number }
+  | { readonly type: 'rerollGifts' }
   | { readonly type: 'pick'; readonly option: number };
 
 export type Phase = 'council' | 'planning' | 'over';
@@ -99,9 +103,10 @@ function fail(reason: string): ActionResult {
   return { ok: false, reason };
 }
 
-/** Random stream numbers (section 4): the game's own, then one per player's shop. */
+/** Random stream numbers (section 4): the game's own, then one per player's shop and one per player's Gifts. */
 const GAME_STREAM = 0;
 const SHOP_STREAM = 1;
+const GIFT_STREAM = 20;
 
 class GameImpl implements Game, GameState {
   stage = 1;
@@ -120,7 +125,8 @@ class GameImpl implements Game, GameState {
     const context = { pool: this.pool, nextUnitId: () => this.nextUnitId++ };
     this.players = Array.from(
       { length: config.players },
-      (_, seat) => new Player(seat, context, createRng(deriveSeed(config.seed, SHOP_STREAM + seat))),
+      (_, seat) =>
+        new Player(seat, context, createRng(deriveSeed(config.seed, SHOP_STREAM + seat)), createRng(deriveSeed(config.seed, GIFT_STREAM + seat))),
     );
     this.startRound();
   }
@@ -155,6 +161,10 @@ class GameImpl implements Game, GameState {
         return player.setLock(action.locked);
       case 'equip':
         return player.equip(action.item, action.to);
+      case 'gift':
+        return player.pickGift(action.option);
+      case 'rerollGifts':
+        return player.rerollGifts();
       default:
         return fail('Unknown action.');
     }
@@ -173,6 +183,8 @@ class GameImpl implements Game, GameState {
       this.nextCouncilGroup();
       return null;
     }
+    // Offers left unpicked are picked at random before the fights.
+    for (const player of this.living()) player.autoPickGift();
     const report = this.fight();
     if (!this.isOver()) this.goToNextRound();
     return report;
@@ -200,11 +212,14 @@ class GameImpl implements Game, GameState {
     for (const player of this.living()) {
       for (const auto of XP.automatic) if (auto.stage === this.stage && auto.round === this.round) player.reachLevel(auto.level);
       player.collectIncome(baseIncome(this.stage, this.round));
-      if (this.stage >= XP.perRoundFromStage) player.addXp(XP.perRound);
+      if (this.stage >= XP.perRoundFromStage) player.addXp(XP.perRound + player.giftXp());
+      player.startRound();
     }
     const refreshing = this.living().filter((p) => !p.shopLocked);
     for (const player of refreshing) player.returnShop();
     for (const player of refreshing) player.rollShop();
+    const tier = GIFT_ROUNDS[`${this.stage}-${this.round}`];
+    if (tier !== undefined) for (const player of this.living()) player.offerGifts(tier);
   }
 
   private goToNextRound(): void {
@@ -253,7 +268,12 @@ class GameImpl implements Game, GameState {
     for (const player of living) player.fillBoard();
     const fights: FightReport[] = [];
     const run = (kind: FightReport['kind'], home: Player, away: Player | null, B: readonly PlacedUnit[]) => {
-      const input: CombatInput = { seed: randomSeed(this.rng), stage: this.stage, teams: { A: home.placements(), B } };
+      const input: CombatInput = {
+        seed: randomSeed(this.rng),
+        stage: this.stage,
+        teams: { A: home.placements(), B },
+        gifts: { A: [...home.gifts], B: away === null ? [] : [...away.gifts] },
+      };
       fights.push({ kind, home: home.seat, away: away?.seat ?? null, input, result: simulateCombat(input) });
     };
     if (this.type === 'pve') {
