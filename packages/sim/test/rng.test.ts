@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { createRng, roll } from '../src/rng.js';
+import { createRng, deriveSeed, pickWeighted, randomInt, randomSeed, roll, shuffle } from '../src/rng.js';
 
 function take(seed: number, count: number): number[] {
   const rng = createRng(seed);
@@ -57,5 +57,69 @@ describe('roll', () => {
     roll(rolled, 0.5);
     plain();
     expect(rolled()).toBe(plain());
+  });
+});
+
+describe('deriveSeed', () => {
+  it('gives an unsigned 32-bit integer that depends on both the seed and the stream', () => {
+    const seeds = new Set<number>();
+    for (const seed of [0, 1, 2, -1]) {
+      for (let stream = 0; stream < 10; stream++) {
+        const derived = deriveSeed(seed, stream);
+        expect(Number.isInteger(derived) && derived >= 0 && derived < 2 ** 32).toBe(true);
+        seeds.add(derived);
+      }
+    }
+    expect(seeds.size).toBe(40);
+    expect(deriveSeed(-1, 3)).toBe(deriveSeed(0xffffffff, 3));
+    expect(deriveSeed(123, 4)).toBe(deriveSeed(123, 4));
+  });
+});
+
+describe('randomInt and randomSeed', () => {
+  it('cover their range evenly', () => {
+    const rng = createRng(8);
+    const counts = [0, 0, 0, 0];
+    for (let i = 0; i < 8000; i++) counts[randomInt(rng, 4)]!++;
+    for (const count of counts) expect(Math.abs(count - 2000)).toBeLessThan(150);
+    for (let i = 0; i < 100; i++) {
+      const seed = randomSeed(rng);
+      expect(Number.isInteger(seed) && seed >= 0 && seed < 2 ** 32).toBe(true);
+    }
+  });
+});
+
+describe('pickWeighted', () => {
+  it('picks by weight and never picks a weight of 0', () => {
+    const rng = createRng(6);
+    const counts = [0, 0, 0];
+    for (let i = 0; i < 10_000; i++) counts[pickWeighted(rng, [1, 0, 3])]!++;
+    expect(counts[1]).toBe(0);
+    expect(Math.abs(counts[0]! - 2500)).toBeLessThan(200);
+  });
+
+  it('returns -1 without using a number when every weight is 0', () => {
+    const rng = createRng(2);
+    const plain = createRng(2);
+    expect(pickWeighted(rng, [0, 0])).toBe(-1);
+    expect(rng()).toBe(plain());
+  });
+});
+
+describe('shuffle', () => {
+  it('returns a reordered copy with the same items', () => {
+    const items = [1, 2, 3, 4, 5, 6, 7, 8];
+    const shuffled = shuffle(createRng(1), items);
+    expect([...shuffled].sort()).toEqual(items);
+    expect(shuffled).not.toEqual(items);
+    expect(items).toEqual([1, 2, 3, 4, 5, 6, 7, 8]);
+    expect(shuffle(createRng(1), items)).toEqual(shuffled);
+  });
+
+  it('puts each item in each position about equally often', () => {
+    const rng = createRng(3);
+    const firsts = [0, 0, 0, 0];
+    for (let i = 0; i < 8000; i++) firsts[shuffle(rng, [0, 1, 2, 3])[0]!]!++;
+    for (const count of firsts) expect(Math.abs(count - 2000)).toBeLessThan(150);
   });
 });
