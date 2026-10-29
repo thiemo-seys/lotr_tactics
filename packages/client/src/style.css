@@ -1,0 +1,212 @@
+:root {
+  color-scheme: dark;
+  --panel: #1b2029;
+  --border: #2c3442;
+  --text: #e5e7eb;
+  --muted: #9ca3af;
+  font: 13px/1.4 system-ui, sans-serif;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+html,
+body {
+  height: 100%;
+  margin: 0;
+  background: #12161c;
+  color: var(--text);
+}
+
+body {
+  display: flex;
+  flex-direction: column;
+}
+
+#controls {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px 24px;
+  align-items: center;
+  padding: 8px 12px;
+  background: var(--panel);
+  border-bottom: 1px solid var(--border);
+}
+
+#controls .group {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  align-items: center;
+}
+
+#controls label {
+  display: flex;
+  gap: 4px;
+  align-items: center;
+  color: var(--muted);
+}
+
+#controls input {
+  width: 72px;
+}
+
+#clock {
+  min-width: 190px;
+  color: var(--muted);
+  font-variant-numeric: tabular-nums;
+}
+
+main {
+  position: relative;
+  flex: 1;
+  min-height: 0;
+}
+
+#view {
+  position: absolute;
+  inset: 0;
+  overflow: hidden;
+}
+
+#view canvas,
+#view .labels {
+  position: absolute;
+  inset: 0;
+}
+
+.unit-label,
+.float {
+  pointer-events: none;
+  user-select: none;
+}
+
+.unit-label {
+  width: 64px;
+  text-align: center;
+  text-shadow: 0 1px 2px #000;
+}
+
+.unit-label .name {
+  font-size: 11px;
+  white-space: nowrap;
+}
+
+.bar {
+  position: relative;
+  display: flex;
+  height: 5px;
+  margin-top: 2px;
+  overflow: hidden;
+  background: #0b0e13cc;
+  border-radius: 2px;
+}
+
+.bar .fill,
+.bar .shield {
+  height: 100%;
+}
+
+.health .fill {
+  background: #4ade80;
+}
+
+.team-B .health .fill {
+  background: #f87171;
+}
+
+.health .shield {
+  background: #e5e7eb;
+}
+
+.mana {
+  height: 3px;
+}
+
+.mana .fill {
+  background: #60a5fa;
+}
+
+.unit-label .tags {
+  font-size: 9px;
+  font-weight: 600;
+  color: #fde68a;
+  text-transform: uppercase;
+  white-space: nowrap;
+}
+
+.float {
+  font-weight: 700;
+  text-shadow: 0 1px 2px #000;
+  white-space: nowrap;
+}
+
+.float.big {
+  font-size: 17px;
+}
+
+.float.physical {
+  color: #f59e0b;
+}
+
+.float.magic {
+  color: #60a5fa;
+}
+
+.float.true {
+  color: #f3f4f6;
+}
+
+.float.heal {
+  color: #4ade80;
+}
+
+.float.absorbed {
+  color: #9ca3af;
+}
+
+.float.cast {
+  font-style: italic;
+  font-weight: 600;
+  color: #fde68a;
+}
+
+#banner {
+  position: absolute;
+  top: 16px;
+  left: 50%;
+  padding: 8px 20px;
+  transform: translateX(-50%);
+  font-size: 20px;
+  font-weight: 700;
+  background: #000a;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+}
+
+#log {
+  position: absolute;
+  top: 0;
+  right: 0;
+  bottom: 0;
+  width: min(420px, 100%);
+  padding: 8px;
+  overflow-y: auto;
+  font: 12px/1.5 ui-monospace, monospace;
+  background: #12161ce6;
+  border-left: 1px solid var(--border);
+}
+
+#log .line.cast,
+#log .line.end {
+  color: #fde68a;
+}
+
+#log .line.death {
+  color: #f87171;
+}
+
+[hidden] {
+  display: none !important;
+}
