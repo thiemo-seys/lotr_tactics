@@ -1,7 +1,7 @@
 // One player's bench, board, shop, gold and XP (docs/game-spec.md sections 5–8).
 
 import type { PlacedUnit } from '../combat/combat.js';
-import { COMBINED_ITEM_IDS, combine, isComponent } from '../combat/items.js';
+import { COMBINED_ITEM_IDS, combine, isComponent, isRingOfPower, itemEffects } from '../combat/items.js';
 import { INCOME, PLAYER, SHOP, STREAK_GOLD, XP } from '../data/economy.js';
 import { GIFTS, type GiftId, type GiftTier } from '../data/gifts.js';
 import { COMPONENTS, MAX_ITEMS, type ComponentId, type ItemId } from '../data/items.js';
@@ -93,9 +93,10 @@ export function baseIncome(stage: number, round: number): number {
 /**
  * A unit's items after it is given one (section 7.7): a component combines with a lone component
  * the unit holds, taking its place; otherwise the item goes at the end, if the unit holds fewer
- * than 3. Null if the unit can't take it.
+ * than 3. Null if the unit can't take it, which includes a second Ring of Power (section 9.12).
  */
 export function addItem(held: readonly ItemId[], item: ItemId): ItemId[] | null {
+  if (isRingOfPower(item) && held.some(isRingOfPower)) return null;
   const lone = held.findIndex(isComponent);
   if (isComponent(item) && lone >= 0) {
     const items = [...held];
@@ -217,6 +218,7 @@ export class Player implements PlayerView {
     if (!isPlace(to)) return fail('There is no such place.');
     const unit = this.unitAt(to);
     if (unit === null) return fail('There is no unit there.');
+    if (isRingOfPower(this.items[item]!) && unit.items.some(isRingOfPower)) return fail('A unit can wear only one Ring of Power.');
     const items = addItem(unit.items, this.items[item]!);
     if (items === null) return fail(`A unit can hold at most ${MAX_ITEMS} items.`);
     this.items.splice(item, 1);
@@ -380,6 +382,35 @@ export class Player implements PlayerView {
       if (unit?.unitId === unitId) return unit;
     }
     return null;
+  }
+
+  /** The Rings of Power the player has, in their items and on their units (section 9.12). */
+  ringsOfPower(): ItemId[] {
+    const units = [...this.board, ...this.bench].filter((u) => u !== null);
+    return [...this.items, ...units.flatMap((u) => u.items)].filter(isRingOfPower);
+  }
+
+  /** Takes items out of the game: from the player's items and from every owned unit. */
+  dropItems(drop: (item: ItemId) => boolean): void {
+    const kept = this.items.filter((item) => !drop(item));
+    this.items.splice(0, this.items.length, ...kept);
+    for (const units of [this.bench, this.board]) {
+      units.forEach((unit, i) => {
+        if (unit !== null && unit.items.some(drop)) units[i] = { ...unit, items: unit.items.filter((item) => !drop(item)) };
+      });
+    }
+  }
+
+  /** The Seven's gold: for each Ring of the Seven on a board unit, more on its kin (section 9.12). */
+  ringGold(): number {
+    let gold = 0;
+    for (const unit of this.board) {
+      if (unit === null) continue;
+      for (const { effect, pct } of itemEffects(unit.items, UNITS[unit.unitId].origin)) {
+        if (effect.kind === 'goldPerRound') gold += Math.floor((effect.gold * pct) / 100);
+      }
+    }
+    return gold;
   }
 
   /** Removes an owned unit for good: its copies go back to the pool and its items to the player. */
