@@ -8,8 +8,11 @@ import type { Pool } from './pool.js';
 import { councilCosts } from './schedule.js';
 
 export interface CouncilOption {
-  readonly unitId: UnitId;
-  readonly component: ComponentId;
+  unitId: UnitId;
+  /** Null for the option that brings the One Ring instead. */
+  component: ComponentId | null;
+  /** Whether this option brings the One Ring (section 9.11). */
+  ring: boolean;
   /** The seat that picked it, or null while it is still there. */
   pickedBy: number | null;
 }
@@ -24,7 +27,7 @@ export function rollCouncilOptions(pool: Pool, stage: number, rng: Rng): Council
     const costs = councilCosts(stage).filter((cost) => pool.countOfCost(cost) > 0);
     if (costs.length === 0) break;
     const unitId = pool.takeOfCost(costs[randomInt(rng, costs.length)]!, rng);
-    options.push({ unitId, component: COMPONENTS[randomInt(rng, COMPONENTS.length)]!, pickedBy: null });
+    options.push({ unitId, component: COMPONENTS[randomInt(rng, COMPONENTS.length)]!, ring: false, pickedBy: null });
   }
   return options;
 }
