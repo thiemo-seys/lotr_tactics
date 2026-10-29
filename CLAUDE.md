@@ -6,20 +6,25 @@ Browser-based, 8-player auto battler in the style of Teamfight Tactics, with Lor
 
 - `docs/design.md`: game design, the source of truth for rules and content.
 - `docs/sim-spec.md`: implementation spec for the combat simulation, including defaults not yet in the design doc.
+- `docs/viewer-spec.md`: spec for the fight viewer in `packages/client`.
 
 ## Status
 
 Design is done for combat, units, traits, economy and rounds. The current milestone is `packages/sim`, the deterministic combat simulation described in `docs/sim-spec.md`. Done so far: hex maths (`hex.ts`), the seeded generator (`rng.ts`), the data files (`data/`), stat calculation (`combat/stats.ts`), the combat loop (`combat/combat.ts`: tick 0, action order, events, end of combat), targeting and movement (`combat/targeting.ts`, `combat/movement.ts`), basic attacks, damage and mana (`combat/damage.ts`), statuses (`combat/statuses.ts`: stuns, slows, buffs, reductions, shields, untargetable), abilities (`combat/abilities.ts` for selectors and placement, `combat/combat.ts` for casting and effects), and traits (`combat/traits.ts` for counting and static bonuses, `combat/combat.ts` for the rest). That covers everything in scope in `docs/sim-spec.md` section 1 apart from the on-hit hook for items, which aren't designed yet.
 
+`packages/client` is the fight viewer (`docs/viewer-spec.md`): Vite and Three.js, running a fight with the sim and playing it back.
+
 ## Commands
 
 - `pnpm install`
-- `pnpm check`: lint, typecheck and tests, the same checks CI runs
-- `pnpm lint`, `pnpm typecheck`, `pnpm test`: one at a time
+- `pnpm dev`: serve the fight viewer
+- `pnpm check`: lint, typecheck, tests and build, the same checks CI runs
+- `pnpm lint`, `pnpm typecheck`, `pnpm test`, `pnpm build`: one at a time
 
 ## Conventions
 
 - `sim` is pure and deterministic: no `Math.random`, no time APIs, no DOM or Node APIs, and no trig or `Math.pow` in game logic. Use the seeded generator. See `docs/sim-spec.md` section 4. ESLint and the TypeScript settings enforce this in `packages/sim/src`; tests are exempt.
+- `client` only displays what the sim decides; it never changes a fight. Keep logic without Three.js or the DOM in its own modules, such as `playback.ts`, so it can be tested.
 - Functions that make a geometric choice take the acting team and work in its own perspective (`docs/sim-spec.md` section 5).
 - Game numbers live in data files (`packages/sim/src/data/`), not hard-coded in logic. All numbers are placeholders until balancing.
 - In data, percentages and multipliers are whole-number percents (25 for 25%, 70 for 0.7 D) and durations are in seconds (`docs/sim-spec.md` section 4).
