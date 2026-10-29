@@ -58,3 +58,20 @@ The automated review (`.github/workflows/claude-code-review.yml`) follows this s
 4. **Tests.** A new rule or behaviour has a test that would fail if it broke.
 
 Not worth a comment: style and naming, anything lint, the typecheck or the tests already catch, numbers (they are placeholders until balancing), and problems the pull request doesn't touch.
+
+## Agents
+
+Subagents in `.claude/agents/`, each with its own area. They start without this conversation's context and work from the docs, so the docs are how they stay in step.
+
+- `game-designer`: new rules and content, written into `docs/design.md` and the specs.
+- `design-keeper`: keeps the docs consistent with each other and with the code; edits docs only.
+- `spec-test-writer`: tests from a spec, without reading the implementation.
+- `sim-implementer`: the combat and the game layer in `packages/sim`.
+- `bot-strategist`: how bots play (`bots/`, `data/bots.ts`).
+- `balance-analyst`: balance runs, and the numbers in `data/` with the docs to match.
+- `client-engineer`: `packages/client`.
+- `server-engineer`: `packages/server`.
+- `determinism-auditor`: reviews sim and browser-safe server changes for anything that breaks determinism; read-only.
+- `playtester`: plays the game in a browser and reports bugs; changes no code.
+
+A new feature usually goes: game-designer, then design-keeper to check the docs, then spec-test-writer and the engineers for each package, then determinism-auditor and playtester, then balance-analyst.
