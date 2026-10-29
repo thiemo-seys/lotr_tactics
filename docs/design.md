@@ -277,12 +277,12 @@ All numbers are *(placeholder)*.
 - If its target is out of range, a unit moves one hex at a time along the shortest free path to the nearest hex within range.
 - Only one unit can stand on a hex. A unit claims the next hex when it starts moving into it.
 - All units move at one hex per 0.5 seconds. The Rider charge is the exception.
-- Units act in a fixed order each tick, which keeps the simulation deterministic.
+- Units act one at a time each tick, in an order set by their starting position and the fight's seeded random generator. This keeps the simulation deterministic, and fair to both sides when their units act on the same tick.
 
 ### Attacks
 
 - Attacks fire on a timer set by Attack Speed.
-- Melee hits land instantly. Ranged attacks fire a projectile and the damage lands when it arrives; a projectile whose target has died is wasted.
+- Melee hits land instantly. Ranged attacks fire a projectile and the damage lands when it arrives; a projectile whose target has died is wasted. A projectile still lands if its attacker has died.
 - Resolution order for a basic attack: dodge roll → crit roll → resist reduction → damage → mana gain.
 
 ---
