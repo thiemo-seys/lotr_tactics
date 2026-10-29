@@ -1,6 +1,6 @@
 # Combat Simulation Spec
 
-Implementation spec for the `sim` package's combat simulation. It turns the rules in [`design.md`](design.md) (sections 4, 5 and 7) into exact behaviour.
+Implementation spec for the `sim` package's combat simulation. It turns the rules in [`design.md`](design.md) (sections 4 to 7) into exact behaviour.
 
 - `design.md` is the source of truth for game rules and content. This spec adds the implementation detail and the defaults needed to build it.
 - Every number here is a *placeholder* to be tuned during balancing. Keep numbers in data files, not in logic.
@@ -14,6 +14,7 @@ Implementation spec for the `sim` package's combat simulation. It turns the rule
 - Simulating one fight between two boards, from placement to result.
 - Hex board, movement, targeting, basic attacks, crit and dodge, damage, mana, abilities, statuses.
 - All 16 traits and all 36 unit abilities.
+- The six item components and all 21 combined items (section 12.4).
 - Star levels.
 - Determinism and a per-tick event log for rendering.
 - Headless tests.
@@ -21,7 +22,6 @@ Implementation spec for the `sim` package's combat simulation. It turns the rule
 **Out of scope (later milestones)**
 
 - Shop, economy, levels and rounds (`design.md` sections 8–9). These also live in `sim`; see [`game-spec.md`](game-spec.md).
-- Items: not designed yet. Keep an empty `items` field on placed units and an on-hit hook, but implement no items.
 - PvE enemies: not designed yet. A PvE round is a board of monsters (section 7.6), with placeholder stats from [`game-spec.md`](game-spec.md) section 9.8.
 - Rendering (`client`) and networking (`server`).
 
@@ -66,6 +66,7 @@ packages/sim/
       templates.ts    stat templates
       traits.ts       trait definitions and numbers
       units.ts        unit definitions and abilities
+      items.ts        item components, combined items and their numbers
     combat/
       combat.ts       createCombat / step / result
       stats.ts        stat derivation and modifiers
@@ -75,6 +76,7 @@ packages/sim/
       statuses.ts     stuns, slows, buffs, reductions and shields on one unit
       abilities.ts    ability executor (selectors and effects)
       traits.ts       trait hooks
+      items.ts        item stats and the items a unit holds
       events.ts       event types
     index.ts
   test/
@@ -111,7 +113,7 @@ function mulberry32(seed: number) {
 }
 ```
 
-A roll succeeds when `rng() < chance`. Currently only dodge and crit use the generator.
+A roll succeeds when `rng() < chance`. Only dodge and crit rolls use the generator, besides picking the first team each tick (section 6.3).
 
 ---
 
@@ -174,15 +176,17 @@ When candidates tie, prefer in this order:
 
 Tick 0 only sets up the fight; units start acting at tick 1.
 
-1. Create units with derived stats (section 7), including static trait bonuses.
+1. Create units with derived stats (section 7), including static trait and item bonuses.
 2. **Gondor:** front-row bonus for allies in their team's row 3.
 3. **Guardian:** shields.
-4. **Orc:** spawn grunts, team A's first.
-5. **Burglar:** leaps, in action order.
-6. **Rider:** charges, in action order.
-7. **Nazgûl:** set the slow on enemies in reach (section 12.3).
+4. **Items at combat start:** Star of Elendil shields, King's Banner buffs and Miruvor stun immunity, unit by unit in slot order, team A's first (section 12.4).
+5. **Orc:** spawn grunts, team A's first.
+6. **Burglar:** leaps, in action order.
+7. **Rider:** charges, in action order.
+8. **Elven Rope:** stuns, in action order.
+9. **Nazgûl and the Phial of Galadriel:** set the slow and the Magic Resist reduction on enemies in reach (sections 12.3 and 12.4).
 
-Tick 0 takes one number from the generator to pick the first team for the leaps and charges (section 6.3), whether or not anyone leaps or charges.
+Tick 0 takes one number from the generator to pick the first team for the leaps, charges and Elven Rope stuns (section 6.3), whether or not anyone leaps or charges.
 
 ### 6.3 Action order
 
@@ -197,9 +201,9 @@ Tick 0 takes one number from the generator to pick the first team for the leaps 
 
 First, pick the team that goes first this tick (section 6.3). Then:
 
-1. **Expire** statuses and shields whose `expiresTick` is the current tick, then update the Nazgûl slow from the units' current hexes (section 12.3).
+1. **Expire** statuses and shields whose `expiresTick` is the current tick, then update the Nazgûl slow and the Phial of Galadriel reduction from the units' current hexes (sections 12.3 and 12.4).
 2. **Resolve the queue:** projectiles and delayed effects due this tick, ordered by due tick, then by creation order.
-3. **Regeneration**, on ticks 30, 60, 90, …: Istari mana and Ent health (section 12).
+3. **Every second**, on ticks 30, 60, 90, …: Istari mana, Ent and Elven Cloak healing, and Dragon-helm damage (sections 12.3 and 12.4).
 4. **Act:** each living unit in action order. A unit that is stunned or busy (moving, casting, recovering from a dash) does nothing. Otherwise:
    1. If mana ≥ max mana: cast its ability (section 10).
    2. Else make sure it has a target (section 8).
@@ -254,7 +258,7 @@ Every unit also has Ability Power 100, Crit Chance 25%, Crit Damage 140% and Dod
 
 | Stat | Formula |
 |---|---|
-| Max Health | base + flat bonuses (e.g. Hobbit) |
+| Max Health | base + flat bonuses (e.g. Hobbit, Lembas) |
 | Attack Damage | base × (1 + sum of % bonuses) |
 | Attack Speed | base × (1 + sum of % bonuses) × (1 − strongest slow), clamped to 0.2–5.0 |
 | Armor / Magic Resist | (base + flat bonuses) × (1 − strongest reduction) |
@@ -263,7 +267,7 @@ Every unit also has Ability Power 100, Crit Chance 25%, Crit Damage 140% and Dod
 | Crit Damage | 140% + bonuses |
 | Dodge | 0% + bonuses, max 60% |
 
-Units start each fight at full health.
+Bonuses come from traits (section 12.3), items (section 12.4) and statuses (section 12.1). Units start each fight at full health, including any bonus Health.
 
 ### 7.5 Orc grunt
 
@@ -321,8 +325,9 @@ Abilities that dash to a specific enemy (Grishnákh, the Witch-king) make that e
   - After each attack, the next one is ready at `now + 30 / AttackSpeed` ticks.
   - Keep this as a fraction and compare with `≥`.
 - **When an attack fires:**
-  - The attacker gains 10 mana.
-  - Archers gain a stack (section 12). The cooldown after that attack already counts it.
+  - The attacker gains 10 mana, plus 5 for each Palantír it holds.
+  - Archers gain a stack (section 12), and so does a Grond holder (section 12.4). The cooldown after that attack already counts them.
+  - A holder of the Bow of the Galadhrim fires extra attacks at other enemies (section 12.4).
 - **Melee (Range 1):** resolves immediately.
 - **Ranged (Range ≥ 2):**
   - Fires a projectile that resolves at `now + ceil(distance × 30 / 12)`.
@@ -332,42 +337,48 @@ Abilities that dash to a specific enemy (Grishnákh, the Witch-king) make that e
 ### Resolving a hit
 
 1. **Dodge:** if the target's Dodge > 0, roll. On success, emit `dodge` and stop. The attack deals no damage and triggers no on-hit effects.
-2. **Crit:** roll against Crit Chance. On success, multiply the damage by Crit Damage.
+2. **Crit:** roll against Crit Chance. On success, multiply the damage by Crit Damage, unless the target holds a Mithril Shirt: then the roll is made but the attack doesn't crit.
 3. **Damage:** run the damage pipeline (section 9.1) with the attacker's Attack Damage as physical damage.
 4. **Defender mana:** the defender gains mana from the damage it took.
+5. **On hit:** the Oakenshield deals damage back (section 12.4).
 
 ### 9.1 Damage pipeline
 
-The same pipeline is used for attacks, abilities and trait damage.
+The same pipeline is used for attacks, abilities, and trait and item damage.
 
 ```
 raw        = attack: AttackDamage × (crit ? CritDamage : 1)
              ability: value (section 10.2, already includes Ability Power) × ability-specific multiplier (e.g. Éowyn ×2 vs Nazgûl)
              trait (Rider charge): flat value
+             item: the item's value (section 12.4)
 amplified  = raw × (1 + sum of damage amps) × overtime
 reduced    = physical: amplified × 100 / (100 + Armor)
              magic:    amplified × 100 / (100 + MagicResist)
              true:     amplified
-final      = Math.round(reduced × (1 − target's damage reduction)), at least 0
+final      = Math.round(reduced × (1 − target's damage reductions)), at least 0
 ```
 
 - **Damage amps** add together:
   - Captain adjacency
   - Dark Lord
   - Dwarf against a Large target
+  - Black Arrow, against a target with more max Health than the source
 - **Overtime** = 1 + 0.1 × floor((tick − 900) / 30) during overtime, otherwise 1.
-- **Target's damage reduction:** the Witch-king's passive (50% against Gondor and Rohan sources other than Éowyn).
+- **Target's damage reductions** add together, up to 100%: the Witch-king's passive (50% against Gondor and Rohan sources other than Éowyn) and the Mithril Shirt.
 - **Shields** absorb `final` first, earliest-expiring shield first, then the oldest. The rest comes off Health.
 - **Defender mana gain:**
   - `Math.floor(final × 6 / 100)`, where `final` is absorbed plus health damage, capped at 15 per hit.
   - Nobody gains mana from any source while casting.
 - **Death:** at Health ≤ 0 the unit dies immediately.
   - Its hex is freed.
-  - Emit `death` and run on-death hooks (Rohan).
+  - Emit `death` and run on-death hooks: Rohan, then Andúril for the source (section 12.4).
+- **After the damage**, if the fight isn't over:
+  - a target that is still alive checks its Orcrist and Herugrim (section 12.4);
+  - a source holding Glamdring heals (section 12.4).
 
 ### 9.2 Healing
 
-- Applies to every heal: `heal`, `healFromDamage` and Ent regeneration.
+- Applies to every heal: `heal`, `healFromDamage`, Ent regeneration and item heals.
 - Round to a whole number when applied (section 4), then cap at max Health. Anything above max Health is lost.
 - The `heal` event's `amount` is the Health actually restored. Emit no event if that is 0.
 
@@ -381,7 +392,7 @@ final      = Math.round(reduced × (1 − target's damage reduction)), at least 
 - Mana is capped at max mana; anything beyond is lost.
 - **When mana ≥ max:** at its action step, a unit that isn't stunned or busy casts, even if its target is out of range.
   - Mana resets to 0 and a `cast` event is emitted.
-  - The ability's effects resolve immediately.
+  - The ability's effects resolve immediately, then Athelas heals (section 12.4).
   - The unit is then busy for 15 ticks, and gains no mana until they are over: a unit casting on tick `t` gains none on ticks `t` to `t + 14`.
   - The attack cooldown is unchanged.
 - **Missing target:** if the ability uses the current target and the unit has none, it first picks one (section 8). If no enemy can be targeted, those steps select nothing; the cast still happens and the mana is spent.
@@ -402,7 +413,7 @@ From `design.md` section 5. Each ability number in the table in section 10.5 is 
   - Star factor = `[1, 1.5, 2.25]` for 1★ / 2★ / 3★.
 - Ability Power is applied here only; the damage pipeline (section 9.1) does not apply it again.
 - Durations, stun lengths and buff sizes do **not** scale with star level.
-- Ability damage can't crit unless the ability says so.
+- Ability damage can't crit unless the ability says so, or the caster holds Sting (section 12.4).
 - Ability shields last 4 seconds unless stated otherwise.
 
 ### 10.3 Building blocks
@@ -444,7 +455,7 @@ How selectors pick:
 
 A step applies each effect in turn to every selected unit before the next effect, skipping units that have died.
 
-- `damage(mult, type, hits = 1, canCrit = false)`: each hit runs the damage pipeline (section 9.1) and emits its own `damage` event, and with `canCrit` rolls its own crit. The hits stop if the target dies.
+- `damage(mult, type, hits = 1, canCrit = false)`: each hit runs the damage pipeline (section 9.1) and emits its own `damage` event, and with `canCrit` rolls its own crit. A crit against a Mithril Shirt holder deals normal damage. The hits stop if the target dies.
 - `stun(s)`
 - `slow(pct, s)`: reduces Attack Speed
 - `shield(mult, s = 4)`
@@ -566,7 +577,7 @@ The same numbers as `design.md` section 5, written as selectors and effects.
 
 ---
 
-## 12. Statuses and traits
+## 12. Statuses, traits and items
 
 ### 12.1 Statuses
 
@@ -613,6 +624,44 @@ Numbers are from `design.md` section 4. Where a trait lists several values, they
 | Captain | Damage | A unit, summons included, that deals damage while standing next to a living allied Captain (not itself) gets the damage amp. It is checked when the damage is dealt, from the unit's hex at that moment. Several Captains don't stack. |
 | Sorcerer | Static | Sorcerers gain flat Ability Power. |
 
+### 12.4 Items
+
+Numbers are from `design.md` section 6, in `data/items.ts`.
+
+- **Holding items:** a placed unit's `items` lists up to 3 item ids, components or combined items. Monsters carry none, and summons have none. The sim doesn't combine anything: two components on a unit are just two components.
+- **Stats:** each item adds its stats to the unit's bonuses for the whole fight, like static trait bonuses (section 7.4). A combined item's stats are both its components' stats plus any of its own.
+- **Copies:** every copy of an item on a unit works on its own. Two Black Arrows are a 60% amp, two Gronds give two stacks per attack, two Herugrims trigger twice.
+- **Values** don't scale with Ability Power or star level.
+- **Item damage** (Oakenshield, Dragon-helm) runs the damage pipeline (section 9.1) with kind `item`. It can't crit or be dodged.
+- **Fight-long buffs** from items (Andúril, Orcrist, Herugrim, Grond, King's Banner) are buffs that last the rest of the fight. Each emits a `status` event with `expiresTick` null.
+
+| Item | When | Behaviour |
+|---|---|---|
+| Andúril | On a kill | When the holder deals the damage that kills a unit, it gains +15% Attack Damage for the rest of the fight. |
+| Black Arrow | Damage | A 30% damage amp when the target's max Health is higher than the holder's. |
+| Orcrist | After damage | The first time the holder is alive with Health below 50% of its max Health after taking damage, it becomes untargetable for 1s and gains +40% Attack Speed for the rest of the fight. |
+| Sting | Static; casting | Its stats include +25% Crit Chance. Each hit of the holder's ability damage rolls a crit, as if it had `canCrit`. |
+| Herugrim | After damage | The first time the holder is alive with Health below 50% of its max Health after taking damage, it gains a shield of 30% of its max Health for 5s and +30% Attack Damage for the rest of the fight. |
+| Glamdring | After damage | After each damage the holder deals, it heals 20% of it, including any part shields absorbed. |
+| Bow of the Galadhrim | On attack | Each basic attack the holder fires also fires one at the nearest other targetable enemy within its Range, with the section 5 tie-break; with two bows, at the two nearest. Each extra attack emits its own `attack` event and lands like a basic attack (melee at once, ranged as a projectile) for 50% damage, with its own dodge and crit rolls. It gives the holder no mana and no Archer, Grond or Palantír stacks. |
+| Grond | On attack | Each basic attack the holder fires gives it +5% Attack Speed for the rest of the fight, up to 20 stacks. |
+| Miruvor | Tick 0 | The holder gains stun immunity for 15s. |
+| King's Banner | Tick 0 | The holder and its adjacent allies gain +20% Attack Speed for the rest of the fight. |
+| Palantír | On attack | Each basic attack the holder fires gives it 5 more mana. |
+| Oakenshield | On hit | After a basic attack hits the holder and deals damage, the attacker takes 30% of that damage as magic item damage, if it is alive. |
+| Mithril Shirt | Damage | A 15% damage reduction on the holder. Crits against the holder deal normal damage (sections 9 and 10.3). |
+| Dragon-helm | Every 30 ticks | Each adjacent targetable enemy takes magic item damage of 2% of the holder's max Health, in slot order. |
+| Star of Elendil | Tick 0 | The holder and its adjacent allies gain a 300 shield that lasts 8 seconds. |
+| Elven Cloak | Every 30 ticks | The holder heals 2% of its max Health. |
+| Elven Rope | Tick 0 | The farthest targetable enemy from the holder, with the section 5 tie-break, is stunned for 3s. |
+| Phial of Galadriel | Continuous | Enemies within 2 hexes of any living holder have their Magic Resist reduced by 30%. It is a reduction, so only the strongest one counts (section 12.1). It is updated with the Nazgûl slow, emits no events, and shows in the unit's stats. |
+| Ent-draught | Static | Its stats include +300 Health. |
+| Athelas | After a cast | Once the holder's ability has resolved, the ally with the lowest Health %, the holder included, heals 200. The tie-break is `lowestHealthPctAllies`'s (section 10.3). |
+| Wizard's Staff | Static | Its stats include +40 Ability Power. |
+
+- **Order:** where several items act at once, they act in the order the unit holds them. Every second, a unit does its Istari mana, then its Ent healing, then its items, before the next unit.
+- **Low Health:** Orcrist and Herugrim check after every damage the holder takes, not after a heal or a shield expiring.
+
 ---
 
 ## 13. End of combat and result
@@ -638,7 +687,7 @@ interface PlacedUnit {
   star: 1 | 2 | 3;    // always 1 for monsters
   col: number;        // 0–6, own perspective
   row: number;        // 0 = back, 3 = front, own perspective
-  items: string[];    // empty for now
+  items: ItemId[];    // up to 3 components or combined items (section 12.4); none for a monster
 }
 
 interface CombatInput {
@@ -669,7 +718,7 @@ function simulateCombat(input: CombatInput): CombatResult;   // runs to the end
 
 The client creates the same combat, plays tick 0's events from `events`, then calls `step()` once per tick, reading `state` for health and mana bars and using events for animations.
 
-Invalid input throws: an unknown unit id, a star level other than 1–3 (other than 1 for a monster), a placement outside the team's half, two units of one team on the same hex, a seed that isn't an integer, or a stage below 1.
+Invalid input throws: an unknown unit id, a star level other than 1–3 (other than 1 for a monster), an unknown item id, more than 3 items, items on a monster, a placement outside the team's half, two units of one team on the same hex, a seed that isn't an integer, or a stage below 1.
 
 ### Events
 
@@ -682,11 +731,11 @@ Every event has a `tick`.
 | `dash` | unit, from, to |
 | `attack` | unit, target, ranged, hitTick |
 | `dodge` | unit (defender), source |
-| `damage` | source, target, amount (the final damage, including any absorbed part), absorbed, damageType, crit, kind (`attack`, `ability` or `trait`) |
+| `damage` | source, target, amount (the final damage, including any absorbed part), absorbed, damageType, crit, kind (`attack`, `ability`, `trait` or `item`) |
 | `heal` | source, target, amount |
 | `shield` | source, target, amount, expiresTick |
 | `cast` | unit, ability (its name) |
-| `status` | source, target, status (`stun`, `stunImmune`, `untargetable`, `slow`, `reduce` or `buff`), stat (for `reduce` and `buff`, otherwise null), value (the slow or reduction percent, or the buff amount, otherwise null), expiresTick (null for the Rohan and Archer buffs, which last the rest of the fight). A reduction of both Armor and Magic Resist emits one event per stat. A stun, stun immunity or untargetable that doesn't outlast the current one emits nothing. |
+| `status` | source, target, status (`stun`, `stunImmune`, `untargetable`, `slow`, `reduce` or `buff`), stat (for `reduce` and `buff`, otherwise null), value (the slow or reduction percent, or the buff amount, otherwise null), expiresTick (null for the Rohan, Archer and item buffs that last the rest of the fight). A reduction of both Armor and Magic Resist emits one event per stat. A stun, stun immunity or untargetable that doesn't outlast the current one emits nothing. |
 | `death` | unit |
 | `end` | outcome |
 
@@ -749,6 +798,12 @@ Every event has a `tick`.
 - No traits for monsters, while the units next to them keep theirs.
 - Only 1★; the Balrog's growth per stage; Dwarf bonus damage against Large monsters.
 - Each monster ability; monsters count as survivors.
+
+**Items**
+- Component and combined item stats, and copies of one item adding up.
+- Each combined item's effect, including its trigger timing: tick 0 order, once-only low-Health triggers, every-second effects, and the extra attacks of the Bow of the Galadhrim.
+- Crits against a Mithril Shirt holder, abilities critting with Sting, and damage reductions adding up.
+- Invalid items, too many items and items on monsters throw.
 
 **End of combat**
 - A team wipe ends the fight immediately.
