@@ -1,0 +1,43 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>LOTR Tactics</title>
+  </head>
+  <body class="play">
+    <header id="hud">
+      <span id="round"></span>
+      <span id="timer"></span>
+      <span id="stats"></span>
+      <span class="spacer"></span>
+      <button id="speed" hidden>1×</button>
+      <button id="skip" hidden>Skip fight</button>
+      <a href="./index.html">Fight viewer</a>
+    </header>
+    <main>
+      <div id="view"></div>
+      <aside id="players"></aside>
+      <section id="council" class="panel" hidden>
+        <h2>Council of Elrond</h2>
+        <p id="council-status"></p>
+        <div id="options"></div>
+      </section>
+      <section id="result" class="panel" hidden></section>
+      <div id="banner" hidden></div>
+    </main>
+    <footer id="shop-bar" hidden>
+      <div class="buttons">
+        <button id="buy-xp" title="Buy 4 XP (F)">Buy XP · 4</button>
+        <button id="reroll" title="Reroll the shop (D)">Reroll · 2</button>
+        <button id="lock">Lock</button>
+      </div>
+      <div id="shop"></div>
+      <div class="buttons">
+        <div id="items"></div>
+        <button id="ready" title="End planning (Space)">Ready</button>
+      </div>
+    </footer>
+    <script type="module" src="/src/play.ts"></script>
+  </body>
+</html>
