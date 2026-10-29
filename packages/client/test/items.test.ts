@@ -1,11 +1,11 @@
-import { COMPONENTS, ITEM_IDS, isComponent } from '@lotr-tactics/sim';
+import { COMBINED_ITEM_IDS, COMPONENTS, ITEM_IDS } from '@lotr-tactics/sim';
 import { describe, expect, it } from 'vitest';
 import { COMPONENT_COLOURS, itemColours, itemTag, itemText } from '../src/items.js';
 
 describe('item display', () => {
   it('gives components and combined items distinct two-letter tags', () => {
     const components = COMPONENTS.map(itemTag);
-    const combined = ITEM_IDS.filter((id) => !isComponent(id)).map(itemTag);
+    const combined = COMBINED_ITEM_IDS.map(itemTag);
     for (const tags of [components, combined]) {
       expect(new Set(tags).size).toBe(tags.length);
       for (const tag of tags) expect(tag).toHaveLength(2);
