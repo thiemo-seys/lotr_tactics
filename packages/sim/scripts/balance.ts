@@ -5,6 +5,7 @@
 import { playBotGame } from '../src/bots/bot.js';
 import { traitLevels } from '../src/combat/traits.js';
 import type { PlacedUnit } from '../src/combat/combat.js';
+import { ITEMS } from '../src/data/items.js';
 import { TRAITS, type TraitId } from '../src/data/traits.js';
 import { UNITS, type UnitId } from '../src/data/units.js';
 
@@ -37,6 +38,7 @@ class Placements {
 
 const units = new Placements();
 const traits = new Placements();
+const items = new Placements();
 const focus = new Placements();
 const endStages = new Map<number, number>();
 const pve = new Map<string, { won: number; fought: number }>();
@@ -71,6 +73,7 @@ for (let seed = firstSeed; seed < firstSeed + games; seed++) {
     const board = boards.get(player.seat) ?? [];
     const ids = board.map((u) => u.unitId as UnitId);
     for (const id of new Set(ids)) units.add(UNITS[id].name, placement);
+    for (const id of new Set(board.flatMap((u) => u.items))) items.add(ITEMS[id].name, placement);
     for (const [trait, level] of Object.entries(traitLevels(ids))) {
       const def = TRAITS[trait as TraitId];
       traits.add(`${def.name} ${def.breakpoints[level]}`, placement);
@@ -85,4 +88,5 @@ console.log(`Games ending in stage: ${[...endStages].sort(([a], [b]) => a - b).m
 console.log(`PvE win rate: ${[...pve].map(([k, p]) => `${k} ${Math.round((100 * p.won) / p.fought)}%`).join(', ')}`);
 units.print('Units on final boards, by average placement');
 traits.print('Active traits on final boards, by average placement');
+items.print('Items on final boards, by average placement');
 focus.print('Bot focus traits, by average placement', 3);
