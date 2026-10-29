@@ -1,6 +1,6 @@
 import { BOARD_HEXES, distance, fromOffset, mirror, neighbours } from '@lotr-tactics/sim';
 import { describe, expect, it } from 'vitest';
-import { hexToWorld, lerpPoint, pointDistance } from '../src/layout.js';
+import { BENCH_SPACING, benchToWorld, hexToWorld, lerpPoint, placeAtPoint, pointDistance } from '../src/layout.js';
 
 describe('hexToWorld', () => {
   it('puts neighbouring hexes √3 apart, so the tiles meet', () => {
@@ -42,5 +42,31 @@ describe('lerpPoint', () => {
     expect(lerpPoint(a, b, 0)).toEqual(a);
     expect(lerpPoint(a, b, 0.5)).toEqual({ x: 1, z: -2 });
     expect(lerpPoint(a, b, 1)).toEqual(b);
+  });
+});
+
+describe('placeAtPoint', () => {
+  it('finds every hex on the near half and every bench slot from its centre', () => {
+    for (let row = 0; row < 4; row++) {
+      for (let col = 0; col < 7; col++) expect(placeAtPoint(hexToWorld(fromOffset({ col, row })))).toEqual({ col, row });
+    }
+    for (let slot = 0; slot < 9; slot++) expect(placeAtPoint(benchToWorld(slot))).toEqual({ bench: slot });
+  });
+
+  it('finds a hex a little off its centre', () => {
+    const { x, z } = hexToWorld(fromOffset({ col: 2, row: 1 }));
+    expect(placeAtPoint({ x: x + 0.4, z: z - 0.3 })).toEqual({ col: 2, row: 1 });
+  });
+
+  it('finds nothing on the far half, behind the bench or past its ends', () => {
+    expect(placeAtPoint(hexToWorld(fromOffset({ col: 3, row: 5 })))).toBeNull();
+    const first = benchToWorld(0);
+    expect(placeAtPoint({ x: first.x - BENCH_SPACING, z: first.z })).toBeNull();
+    expect(placeAtPoint({ x: 0, z: first.z + BENCH_SPACING })).toBeNull();
+  });
+
+  it('puts the bench in front of the back row, centred', () => {
+    expect(benchToWorld(4).x).toBeCloseTo(0, 10);
+    expect(benchToWorld(0).z).toBeGreaterThan(hexToWorld(fromOffset({ col: 0, row: 0 })).z + 1);
   });
 });
