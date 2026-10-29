@@ -11,6 +11,7 @@ import { randomInt, type Rng } from '../rng.js';
 import type { Star } from '../types.js';
 import { giftBonus, rollGiftOffer } from './gifts.js';
 import { copiesIn, type Pool } from './pool.js';
+import type { Ring } from './ring.js';
 
 /** Rows on one player's half of the board. */
 export const TEAM_ROWS = BOARD_ROWS / 2;
@@ -33,6 +34,8 @@ export type ActionResult = { readonly ok: true } | { readonly ok: false; readonl
 export interface PlayerContext {
   readonly pool: Pool;
   nextUnitId(): number;
+  /** The game's One Ring, if the game has one. */
+  readonly ring?: Ring;
 }
 
 /** A read-only view of a player. */
@@ -174,6 +177,9 @@ export class Player implements PlayerView {
     this.release(unit);
     this.gold += UNITS[unit.unitId].cost * copiesIn(unit.star);
     this.items.push(...unit.items);
+    // Selling the bearer leaves the Ring with the player, unworn.
+    const ring = this.context.ring;
+    if (ring?.isBorneBy(this.seat, unit.id) === true) ring.bearer = null;
     return OK;
   }
 
@@ -345,15 +351,48 @@ export class Player implements PlayerView {
     if (this.level >= PLAYER.maxLevel) this.xp = 0;
   }
 
-  /** The board as fight input. */
+  /** The board as fight input. The Ring's bearer carries its Corruption. */
   placements(): PlacedUnit[] {
     const placed: PlacedUnit[] = [];
+    const ring = this.context.ring;
     this.board.forEach((unit, i) => {
-      if (unit !== null) {
-        placed.push({ unitId: unit.unitId, star: unit.star, col: i % BOARD_COLS, row: Math.floor(i / BOARD_COLS), items: [...unit.items] });
-      }
+      if (unit === null) return;
+      const place = { unitId: unit.unitId, star: unit.star, col: i % BOARD_COLS, row: Math.floor(i / BOARD_COLS), items: [...unit.items] };
+      placed.push(ring?.isBorneBy(this.seat, unit.id) === true ? { ...place, ring: ring.corruption } : place);
     });
     return placed;
+  }
+
+  /** The place of an owned unit by its id, or null. */
+  placeOf(id: number): Place | null {
+    const board = this.board.findIndex((u) => u?.id === id);
+    if (board >= 0) return { col: board % BOARD_COLS, row: Math.floor(board / BOARD_COLS) };
+    const bench = this.bench.findIndex((u) => u?.id === id);
+    return bench >= 0 ? { bench } : null;
+  }
+
+  /** The first owned unit with a unit id, at any star level: board places in order, then the bench. */
+  firstOwned(unitId: UnitId): OwnedUnit | null {
+    return [...this.board, ...this.bench].find((u) => u?.unitId === unitId) ?? null;
+  }
+
+  /** The first unit on the board with a unit id, in the order the board fills (section 7.6). */
+  firstOnBoard(unitId: UnitId): OwnedUnit | null {
+    for (const place of FILL_ORDER) {
+      const unit = this.unitAt(place);
+      if (unit?.unitId === unitId) return unit;
+    }
+    return null;
+  }
+
+  /** Removes an owned unit for good: its copies go back to the pool and its items to the player. */
+  remove(id: number): void {
+    const place = this.placeOf(id);
+    if (place === null) return;
+    const unit = this.unitAt(place)!;
+    this.setAt(place, null);
+    this.release(unit);
+    this.items.push(...unit.items);
   }
 
   /** Puts every owned unit and the shop back in the pool, for an eliminated player. Their items are lost. */
@@ -431,7 +470,10 @@ export class Player implements PlayerView {
     const [keep, ...others] = places;
     const kept = this.unitAt(keep!)!;
     let items: readonly ItemId[] = kept.items;
+    const ring = this.context.ring;
     for (const place of others) {
+      // The merged unit bears the Ring if one of the copies did.
+      if (ring?.isBorneBy(this.seat, this.unitAt(place)!.id) === true) ring.bearer = kept.id;
       for (const item of this.unitAt(place)!.items) {
         const next = addItem(items, item);
         if (next === null) this.items.push(item);
@@ -446,7 +488,7 @@ export class Player implements PlayerView {
   }
 }
 
-function isPlace(place: unknown): place is Place {
+export function isPlace(place: unknown): place is Place {
   if (typeof place !== 'object' || place === null) return false;
   if ('bench' in place) return isIndex(place.bench, PLAYER.benchSize);
   return 'col' in place && 'row' in place && isIndex(place.col, BOARD_COLS) && isIndex(place.row, TEAM_ROWS);
