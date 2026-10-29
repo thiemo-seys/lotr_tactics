@@ -19,6 +19,7 @@ import * as THREE from 'three';
 import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
 import { CSS2DObject, CSS2DRenderer } from 'three/addons/renderers/CSS2DRenderer.js';
 import { itemColours, itemTag, itemText } from './items.js';
+import { ringText } from './ring.js';
 import { benchToWorld, hexToWorld, type Point } from './layout.js';
 import { EFFECT_TICKS, facing, type CastRing, type FloatingText, type Playback, type Projectile } from './playback.js';
 import { displayName, isLarge } from './units.js';
@@ -132,9 +133,12 @@ export class FightScene {
     this.aim(side);
   }
 
-  /** Shows a player's board and bench for planning, in their own perspective. */
-  showPlanning(player: PlayerView, force = false): void {
-    const key = JSON.stringify([player.board, player.bench]);
+  /**
+   * Shows a player's board and bench for planning, in their own perspective. `ring` marks the One
+   * Ring's bearer among them, if the player holds it.
+   */
+  showPlanning(player: PlayerView, force = false, ring: PlanningRing | null = null): void {
+    const key = JSON.stringify([player.board, player.bench, ring]);
     if (!force && this.playback === null && key === this.planningKey) return;
     const entering = this.playback !== null || this.planningKey === '';
     this.clear();
@@ -143,7 +147,8 @@ export class FightScene {
     this.bench.visible = true;
     if (entering) this.aim('planning');
     const add = (unit: OwnedUnit, at: Point) => {
-      const pawn = this.createPawn(unit.unitId, unit.star, 'A', 'A', false, unit.items).group;
+      const corruption = ring !== null && ring.bearer === unit.id ? ring.corruption : null;
+      const pawn = this.createPawn(unit.unitId, unit.star, 'A', 'A', false, unit.items, corruption).group;
       pawn.userData.unitId = unit.id;
       pawn.position.set(at.x, 0, at.z);
       this.fightLayer.add(pawn);
@@ -302,7 +307,7 @@ export class FightScene {
 
   private createUnit(unit: UnitState): UnitView {
     const look = unit.team === this.side ? 'A' : 'B';
-    const { group, material, label } = this.createPawn(unit.unitId, unit.star, unit.team, look, unit.summon, unit.items);
+    const { group, material, label } = this.createPawn(unit.unitId, unit.star, unit.team, look, unit.summon, unit.items, unit.ring);
     const element = label.element;
     const healthBar = bar('health');
     const shield = document.createElement('div');
@@ -317,10 +322,19 @@ export class FightScene {
   }
 
   /**
-   * A pawn with its name, stars and items above it, facing the other team, coloured as the near
-   * (`look` A) or far team. Summons are smaller and unnamed.
+   * A pawn with its name, stars, items and the One Ring above it, facing the other team, coloured
+   * as the near (`look` A) or far team. Summons are smaller and unnamed, apart from the Eye's Nazgûl.
    */
-  private createPawn(unitId: FighterId | UnitState['unitId'], star: Star, team: Team, look: Team, summon: boolean, items: readonly ItemId[]) {
+  private createPawn(
+    unitId: FighterId | UnitState['unitId'],
+    star: Star,
+    team: Team,
+    look: Team,
+    summon: boolean,
+    items: readonly ItemId[],
+    ring: number | null,
+  ) {
+    const minor = summon && unitId !== 'eye-nazgul';
     const material = new THREE.MeshStandardMaterial({ color: TEAM_COLOURS[look], flatShading: true, transparent: true });
     const body = new THREE.Mesh(geometry.body, material);
     body.position.y = 0.45;
@@ -335,12 +349,12 @@ export class FightScene {
     element.className = `unit-label team-${look}`;
     const name = document.createElement('div');
     name.className = 'name';
-    name.textContent = summon ? '' : `${displayName(unitId)} ${'★'.repeat(star)}`;
+    name.textContent = minor ? '' : summon ? displayName(unitId) : `${displayName(unitId)} ${'★'.repeat(star)}`;
     element.append(name);
-    if (items.length > 0) {
+    if (items.length > 0 || ring !== null) {
       const row = document.createElement('div');
       row.className = 'items';
-      row.append(...items.map(itemChip));
+      row.append(...(ring === null ? [] : [ringChip(ring)]), ...items.map(itemChip));
       element.append(row);
     }
     const label = new CSS2DObject(element);
@@ -348,7 +362,7 @@ export class FightScene {
 
     const group = new THREE.Group();
     group.add(body, head, nose, label);
-    group.scale.setScalar(isLarge(unitId) ? 1.35 : summon ? 0.75 : 1);
+    group.scale.setScalar(isLarge(unitId) ? 1.35 : minor ? 0.75 : 1);
     // Team A's half is at +z, so it faces −z.
     group.rotation.y = team === 'A' ? Math.PI : 0;
     return { group, material, label };
@@ -416,6 +430,21 @@ export class FightScene {
       (ring.material as THREE.MeshBasicMaterial).opacity = 1 - progress;
     }
   }
+}
+
+/** Where the One Ring is among a planning board's units. */
+export interface PlanningRing {
+  readonly bearer: number | null;
+  readonly corruption: number;
+}
+
+/** The One Ring with its Corruption, naming what it does when hovered. */
+export function ringChip(corruption: number): HTMLElement {
+  const chip = document.createElement('span');
+  chip.className = 'item ring';
+  chip.textContent = `R${corruption}`;
+  chip.title = ringText(corruption);
+  return chip;
 }
 
 /** An item's tag in its components' colours, naming the item and its effect when hovered. */

@@ -5,6 +5,7 @@
 import {
   COMPONENT_NAMES,
   GIFTS,
+  RING,
   SHOP,
   TICKS_PER_SECOND,
   TRAITS,
@@ -25,7 +26,8 @@ import { yourFight, yourTeam } from './fights.js';
 import { TIER_NAMES, giftEffect, giftText } from './gifts.js';
 import { placeAtPoint } from './layout.js';
 import { Playback } from './playback.js';
-import { FightScene, itemChip } from './scene.js';
+import { ringText, ringTier } from './ring.js';
+import { FightScene, itemChip, ringChip, type PlanningRing } from './scene.js';
 import './style.css';
 
 /** How long a finished fight stays on screen, in ticks of fight time, before the results. */
@@ -75,8 +77,8 @@ let show: Show = { kind: 'menu' };
 let menuMessage = '';
 let lobbyMessage = '';
 let dragging: { unit: OwnedUnit; from: Place } | null = null;
-/** One of the person's items being dragged onto a unit, with the chip that follows the mouse. */
-let draggingItem: { index: number; ghost: HTMLElement } | null = null;
+/** One of the person's items, or the One Ring, being dragged onto a unit, with the chip that follows the mouse. */
+let draggingItem: { index: number | 'ring'; ghost: HTMLElement } | null = null;
 
 // Menu and lobby
 
@@ -112,6 +114,7 @@ element('copy-link').addEventListener('click', () => {
 
 element('reroll').addEventListener('click', () => act({ type: 'reroll' }));
 element('reroll-gifts').addEventListener('click', () => act({ type: 'rerollGifts' }));
+element('mount-doom').addEventListener('click', () => act({ type: 'destroyRing' }));
 element('buy-xp').addEventListener('click', () => act({ type: 'buyXp' }));
 element('lock').addEventListener('click', () => act({ type: 'lock', locked: !me().shopLocked }));
 readyButton.addEventListener('click', ready);
@@ -161,7 +164,7 @@ window.addEventListener('pointerup', (event) => {
     ghost.remove();
     scene.cameraControls = true;
     const to = view.contains(document.elementFromPoint(event.clientX, event.clientY)) ? unitPlaceAt(event.clientX, event.clientY) : null;
-    if (to !== null) act({ type: 'equip', item: index, to });
+    if (to !== null) act(index === 'ring' ? { type: 'ring', to } : { type: 'equip', item: index, to });
   }
   if (dragging === null) return;
   const { from } = dragging;
@@ -175,7 +178,7 @@ window.addEventListener('pointerup', (event) => {
     if (to !== null) act({ type: 'move', from, to });
   }
   // Back where it was until the game says where it is now.
-  scene.showPlanning(me(), true);
+  scene.showPlanning(me(), true, planningRing());
 });
 
 startPage();
@@ -313,11 +316,25 @@ function unitPlaceAt(clientX: number, clientY: number): Place | null {
   return place !== null && unitAt(p, place) !== null ? place : null;
 }
 
-/** Starts dragging one of the person's items; dropping it on a unit gives it to that unit. */
-function dragItem(index: number, event: PointerEvent): void {
+/** The One Ring, if the person holds it: its bearer among their units and its Corruption. */
+function planningRing(): PlanningRing | null {
+  const ring = state?.ring;
+  return ring !== undefined && ring.state === 'held' && ring.holder === you ? { bearer: ring.bearer, corruption: ring.corruption } : null;
+}
+
+/** Whether the person can throw the Ring into Mount Doom now: a Hobbit bears it after enough Hobbit fights. */
+function canDestroyRing(): boolean {
+  const ring = planningRing();
+  if (ring === null || ring.bearer === null || state!.ring.hobbitFights < RING.destroy.hobbitFights) return false;
+  const bearer = [...me().board, ...me().bench].find((u) => u?.id === ring.bearer);
+  return bearer !== undefined && bearer !== null && UNITS[bearer.unitId].origin === 'hobbit';
+}
+
+/** Starts dragging one of the person's items or the Ring; dropping it on a unit gives it to that unit. */
+function dragItem(index: number | 'ring', event: PointerEvent): void {
   if (show.kind !== 'planning' || event.button !== 0) return;
   event.preventDefault();
-  const ghost = itemChip(me().items[index]!);
+  const ghost = index === 'ring' ? ringChip(state!.ring.corruption) : itemChip(me().items[index]!);
   ghost.classList.add('ghost');
   document.body.append(ghost);
   moveGhost(ghost, event);
@@ -393,11 +410,11 @@ function render(now: number): void {
 
   const p = me();
   if (show.kind === 'planning') {
-    scene.showPlanning(p);
+    scene.showPlanning(p, false, planningRing());
     renderShop(p);
     renderGiftOffer(p);
   } else if (show.kind === 'council') {
-    scene.showPlanning(p);
+    scene.showPlanning(p, false, planningRing());
     renderCouncil();
   } else if (show.kind === 'fight' && show.playback.combat.isOver()) {
     const outcome = show.playback.combat.result().outcome;
@@ -429,6 +446,14 @@ function renderHud(now: number, inGame: boolean): void {
   const xp = p.level < XP.buyFromLevel ? '' : need === null ? ' · max level' : ` · XP ${p.xp}/${need}`;
   const fielded = p.board.filter((u) => u !== null).length;
   text('stats', `${p.hp} HP · ${p.gold} gold · Level ${p.level}${xp} · Board ${fielded}/${p.level}`);
+  const ring = planningRing();
+  const status = element('ring-status');
+  status.hidden = ring === null;
+  if (ring !== null) {
+    text('ring-status', `The One Ring · ${ring.corruption} (${ringTier(ring.corruption)})${ring.bearer === null ? ' · unworn' : ''}`);
+    status.title = ringText(ring.corruption);
+  }
+  element('mount-doom').hidden = show.kind !== 'planning' || !canDestroyRing();
 }
 
 function text(id: string, value: string): void {
@@ -504,14 +529,16 @@ function renderShop(p: PlayerView): void {
   text('reroll', p.freeRerolls > 0 ? `Reroll · free${p.freeRerolls > 1 ? ` ×${p.freeRerolls}` : ''}` : `Reroll · ${SHOP.rerollCost}`);
   element<HTMLButtonElement>('buy-xp').disabled = p.gold < XP.buyCost || p.level < XP.buyFromLevel || xpForNextLevel(p.level) === null;
   text('lock', p.shopLocked ? 'Unlock' : 'Lock');
-  rebuild(element('items'), JSON.stringify(p.items), () =>
-    p.items.map((id, index) => {
+  const ring = planningRing();
+  rebuild(element('items'), JSON.stringify([p.items, ring]), () => [
+    ...(ring === null ? [] : [ringItem(ring)]),
+    ...p.items.map((id, index) => {
       const chip = itemChip(id);
       chip.title += '\nDrag onto a unit to give it this item.';
       chip.addEventListener('pointerdown', (event) => dragItem(index, event));
       return chip;
     }),
-  );
+  ]);
   const isReady = state!.ready.includes(you);
   readyButton.disabled = isReady;
   const others = planners().filter((seat) => seat !== you && !state!.ready.includes(seat)).length;
@@ -535,14 +562,27 @@ function renderCouncil(): void {
   const picking = yourPick();
   text('council-status', picking ? 'Your turn: pick a unit and its item component.' : 'Waiting for the others to pick…');
   rebuild(element('options'), JSON.stringify([c.options, picking]), () =>
-    c.options.map((option, i) =>
-      unitCard(
+    c.options.map((option, i) => {
+      const card = unitCard(
         option.unitId,
         `${option.component === null ? 'The One Ring' : COMPONENT_NAMES[option.component]}${option.pickedBy === null ? '' : ` · ${seatName(option.pickedBy)}`}`,
         picking && option.pickedBy === null ? () => act({ type: 'pick', option: i }) : null,
-      ),
-    ),
+      );
+      if (option.ring) {
+        card.classList.add('ring');
+        card.title = `${ringText(state!.ring.corruption)}\nNobody is made to take it.`;
+      }
+      return card;
+    }),
   );
+}
+
+/** The Ring in the person's items, to drag onto the unit that should bear it. */
+function ringItem(ring: PlanningRing): HTMLElement {
+  const chip = ringChip(ring.corruption);
+  chip.title += `\nDrag onto a unit to ${ring.bearer === null ? 'give it' : 'move'} the Ring.`;
+  chip.addEventListener('pointerdown', (event) => dragItem('ring', event));
+  return chip;
 }
 
 function renderGiftOffer(p: PlayerView): void {
@@ -611,7 +651,7 @@ function renderOver(): void {
 
 function renderPlayers(): void {
   const s = state!;
-  const key = JSON.stringify([s.players.map((p) => [p.hp, p.level, p.placement, p.gifts]), lobby?.seats]);
+  const key = JSON.stringify([s.players.map((p) => [p.hp, p.level, p.placement, p.gifts]), lobby?.seats, s.ring]);
   rebuild(element('players'), key, () => [
     ...[...s.players]
       .sort((a, b) => (a.placement ?? 0) - (b.placement ?? 0) || b.hp - a.hp)
@@ -619,7 +659,13 @@ function renderPlayers(): void {
         const seat = lobby?.seats[p.seat];
         const row = document.createElement('div');
         row.className = `player${p.seat === you ? ' you' : ''}${p.placement !== null ? ' out' : ''}`;
-        if (p.gifts.length > 0) row.title = `Gifts: ${p.gifts.map((g) => GIFTS[g].name).join(', ')}`;
+        const holds = s.ring.state === 'held' && s.ring.holder === p.seat;
+        if (holds) row.classList.add('ring-holder');
+        const notes = [
+          ...(holds ? [`Holds the One Ring (Corruption ${s.ring.corruption})`] : []),
+          ...(p.gifts.length > 0 ? [`Gifts: ${p.gifts.map((g) => GIFTS[g].name).join(', ')}`] : []),
+        ];
+        if (notes.length > 0) row.title = notes.join('\n');
         const name = document.createElement('span');
         const away = seat?.kind === 'person' && !seat.connected ? ' (away)' : '';
         name.textContent = `${seatName(p.seat)}${away} · ${p.level}`;
