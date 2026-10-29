@@ -1,8 +1,9 @@
 // One player's bench, board, shop, gold and XP (docs/game-spec.md sections 5–8).
 
 import type { PlacedUnit } from '../combat/combat.js';
+import { combine, isComponent } from '../combat/items.js';
 import { INCOME, PLAYER, SHOP, STREAK_GOLD, XP } from '../data/economy.js';
-import type { ComponentId } from '../data/items.js';
+import { MAX_ITEMS, type ComponentId, type ItemId } from '../data/items.js';
 import { UNITS, type UnitId } from '../data/units.js';
 import { BOARD_COLS, BOARD_ROWS } from '../hex.js';
 import type { Rng } from '../rng.js';
@@ -20,6 +21,8 @@ export interface OwnedUnit {
   readonly id: number;
   readonly unitId: UnitId;
   readonly star: Star;
+  /** The items it holds, in order (section 7.7). */
+  readonly items: readonly ItemId[];
 }
 
 export type ActionResult = { readonly ok: true } | { readonly ok: false; readonly reason: string };
@@ -45,7 +48,8 @@ export interface PlayerView {
   readonly board: readonly (OwnedUnit | null)[];
   readonly shop: readonly (UnitId | null)[];
   readonly shopLocked: boolean;
-  readonly items: readonly ComponentId[];
+  /** Items not on a unit, in the order the player got them. */
+  readonly items: readonly ItemId[];
   /** The last players fought, oldest first. */
   readonly recentOpponents: readonly number[];
   /** Set when the player is eliminated or wins. */
@@ -73,6 +77,21 @@ export function baseIncome(stage: number, round: number): number {
   return INCOME.base[`${stage}-${round}`] ?? INCOME.standard;
 }
 
+/**
+ * A unit's items after it is given one (section 7.7): a component combines with a lone component
+ * the unit holds, taking its place; otherwise the item goes at the end, if the unit holds fewer
+ * than 3. Null if the unit can't take it.
+ */
+export function addItem(held: readonly ItemId[], item: ItemId): ItemId[] | null {
+  const lone = held.findIndex(isComponent);
+  if (isComponent(item) && lone >= 0) {
+    const items = [...held];
+    items[lone] = combine(held[lone] as ComponentId, item);
+    return items;
+  }
+  return held.length < MAX_ITEMS ? [...held, item] : null;
+}
+
 /** Bonus gold for a streak of this many results. */
 export function streakGold(length: number): number {
   let gold = 0;
@@ -90,7 +109,7 @@ export class Player implements PlayerView {
   readonly board: (OwnedUnit | null)[] = new Array<OwnedUnit | null>(BOARD_COLS * TEAM_ROWS).fill(null);
   readonly shop: (UnitId | null)[] = new Array<UnitId | null>(SHOP.size).fill(null);
   shopLocked = false;
-  readonly items: ComponentId[] = [];
+  readonly items: ItemId[] = [];
   readonly recentOpponents: number[] = [];
   placement: number | null = null;
 
@@ -134,6 +153,7 @@ export class Player implements PlayerView {
     this.setAt(from, null);
     this.release(unit);
     this.gold += UNITS[unit.unitId].cost * copiesIn(unit.star);
+    this.items.push(...unit.items);
     return OK;
   }
 
@@ -167,6 +187,19 @@ export class Player implements PlayerView {
     return OK;
   }
 
+  /** Gives one of the player's items to a unit on the bench or the board (section 7.7). */
+  equip(item: number, to: Place): ActionResult {
+    if (!isIndex(item, this.items.length)) return fail('There is no such item.');
+    if (!isPlace(to)) return fail('There is no such place.');
+    const unit = this.unitAt(to);
+    if (unit === null) return fail('There is no unit there.');
+    const items = addItem(unit.items, this.items[item]!);
+    if (items === null) return fail(`A unit can hold at most ${MAX_ITEMS} items.`);
+    this.items.splice(item, 1);
+    this.setAt(to, { ...unit, items });
+    return OK;
+  }
+
   setLock(locked: boolean): ActionResult {
     if (typeof locked !== 'boolean') return fail('The lock must be on or off.');
     this.shopLocked = locked;
@@ -188,7 +221,7 @@ export class Player implements PlayerView {
     }
     const free = this.bench.indexOf(null);
     if (free < 0) return false;
-    this.bench[free] = { id: this.context.nextUnitId(), unitId, star: 1 };
+    this.bench[free] = { id: this.context.nextUnitId(), unitId, star: 1, items: [] };
     return true;
   }
 
@@ -249,12 +282,14 @@ export class Player implements PlayerView {
   placements(): PlacedUnit[] {
     const placed: PlacedUnit[] = [];
     this.board.forEach((unit, i) => {
-      if (unit !== null) placed.push({ unitId: unit.unitId, star: unit.star, col: i % BOARD_COLS, row: Math.floor(i / BOARD_COLS), items: [] });
+      if (unit !== null) {
+        placed.push({ unitId: unit.unitId, star: unit.star, col: i % BOARD_COLS, row: Math.floor(i / BOARD_COLS), items: [...unit.items] });
+      }
     });
     return placed;
   }
 
-  /** Puts every owned unit and the shop back in the pool, for an eliminated player. */
+  /** Puts every owned unit and the shop back in the pool, for an eliminated player. Their items are lost. */
   returnEverything(): void {
     for (const units of [this.bench, this.board]) {
       units.forEach((unit, i) => {
@@ -263,6 +298,7 @@ export class Player implements PlayerView {
       });
     }
     this.returnShop();
+    this.items.length = 0;
   }
 
   // Internals
@@ -291,14 +327,23 @@ export class Player implements PlayerView {
   /**
    * Merges copies at `star` into one a star higher (section 7.3). `places` are the owned copies
    * taking part; a merge from a new 1★ copy passes the two it already owns. The merged unit
-   * stays in the first place, which `find` lists board first, and keeps that copy's id.
+   * stays in the first place, which `find` lists board first, and keeps that copy's id and items.
+   * The other copies' items are given to it in turn, and any it can't take go to the player.
    */
   private merge(unitId: UnitId, star: Star, places: readonly Place[]): void {
     const [keep, ...others] = places;
     const kept = this.unitAt(keep!)!;
-    for (const place of others) this.setAt(place, null);
+    let items: readonly ItemId[] = kept.items;
+    for (const place of others) {
+      for (const item of this.unitAt(place)!.items) {
+        const next = addItem(items, item);
+        if (next === null) this.items.push(item);
+        else items = next;
+      }
+      this.setAt(place, null);
+    }
     const merged = (star + 1) as Star;
-    this.setAt(keep!, { id: kept.id, unitId, star: merged });
+    this.setAt(keep!, { id: kept.id, unitId, star: merged, items });
     const same = this.find(unitId, merged);
     if (merged < 3 && same.length >= 3) this.merge(unitId, merged, same);
   }

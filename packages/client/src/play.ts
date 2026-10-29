@@ -4,6 +4,7 @@
 
 import {
   COMPONENT_NAMES,
+  ITEMS,
   SHOP,
   TICKS_PER_SECOND,
   TRAITS,
@@ -456,7 +457,7 @@ function renderShop(p: PlayerView): void {
   element<HTMLButtonElement>('buy-xp').disabled = p.gold < XP.buyCost || p.level < XP.buyFromLevel || xpForNextLevel(p.level) === null;
   text('lock', p.shopLocked ? 'Unlock' : 'Lock');
   const counts = new Map<string, number>();
-  for (const item of p.items) counts.set(COMPONENT_NAMES[item], (counts.get(COMPONENT_NAMES[item]) ?? 0) + 1);
+  for (const item of p.items) counts.set(ITEMS[item].name, (counts.get(ITEMS[item].name) ?? 0) + 1);
   text('items', [...counts].map(([name, n]) => `${name}${n > 1 ? ` ×${n}` : ''}`).join(' · '));
   const isReady = state!.ready.includes(you);
   readyButton.disabled = isReady;
