@@ -49,6 +49,7 @@ Taken from TFT largely unchanged:
 | PvE rounds | — | Wargs, Moria goblins, Cave Troll; the Balrog as a late boss. Drop item components. |
 | Shared draft carousel | Council of Elrond | Lowest-HP player picks first. |
 | Augment picks | Gifts of Lothlórien | Offered at set stages. |
+| Special items | Rings of Power | The Three, the Seven and the Nine, from the Council of Elrond, with the One Ring above them. |
 
 ---
 
@@ -244,6 +245,7 @@ A combined item gives the stats of both its components, plus its effect.
 - Two copies of an item on one unit both work.
 - Item numbers don't scale with Ability Power or star level.
 - An eliminated player's items are lost.
+- Rings of Power (section 9) are items too, with a few rules of their own.
 
 ---
 
@@ -409,7 +411,7 @@ With 5–8 units per cost tier (TFT has about 13), a specific unit appears in th
 
 - At 1-1 everyone picks at once.
 - Later Councils: players pick in pairs, lowest HP first.
-- Every Council unit carries an item component, except Bilbo when he brings the One Ring.
+- Every Council unit carries an item component, except two from 2-4 on, which carry a Ring of Power, and Bilbo when he brings the One Ring.
 
 ### Gifts of Lothlórien
 
@@ -498,10 +500,29 @@ One per lobby. Its power grows the longer it is worn, but so do its drawbacks. A
 - **Corruption belongs to the Ring,** not the unit. Moving the Ring or selling the bearer doesn't reset it; selling the bearer leaves the Ring with the player, unworn.
 - **The Eye:** in a fight against the holder's board, ghost fights included, the other side gets the Eye's Nazgûl. It is a summon that appears next to the bearer, sees through the invisibility and attacks the bearer first. It has 500 Health and 40 Attack Damage, plus 100 and 10 per point of Corruption.
 - **Exits:**
-  - *Destroyed:* once Hobbits have carried it through 3 fights, a Hobbit bearer can throw it into Mount Doom during planning. The holder gains 30 gold and a random combined item, and the Ring is gone for the rest of the game.
+  - *Destroyed:* once Hobbits have carried it through 3 fights, a Hobbit bearer can throw it into Mount Doom during planning. The holder gains 30 gold and a random combined item, and the Ring is gone for the rest of the game, taking the Three and the Nine with it (see Rings of Power).
   - *Stolen:* if an opponent's Gollum survives a fight against the holder, he takes the Ring, Corruption kept. Ghost fights don't count, since the ghost's owner isn't there.
   - *Consumed:* at 10 Corruption the bearer is lost (its items go back to the player), and the Ring returns to the next Council with no Corruption.
   - If the holder is eliminated, the Ring returns to the next Council with its Corruption.
+
+### Rings of Power
+
+An item family with the One Ring at the top. All numbers are *(placeholder)*.
+
+- **Arrival:** from the 2-4 Council of Elrond on, two options at each Council carry a Ring of Power instead of an item component. Each is drawn at random from the rings left, so a ring with more copies left comes up more often.
+- **Copies:** each of the Three once, 7 Rings of the Seven and 9 Rings of the Nine. A ring nobody picks at a Council, or that an eliminated player had, can come up again.
+- **Wearing:** a Ring of Power is an item. The player gives it to a unit, where it takes one of the 3 item slots and stays like any other item (section 6). It never combines. A unit can wear only one Ring of Power; the One Ring doesn't count, as it takes no slot.
+- **Kin:** the Three are 50% stronger on an Elf or an Istari, and the Seven give double on a Dwarf.
+
+| Ring | Family | Effect |
+|---|---|---|
+| Narya, the Ring of Fire | The Three | The bearer and allies within 2 hexes gain +20% Attack Speed (+30% on an Elf or Istari) |
+| Nenya, the Ring of Adamant | The Three | At combat start and every 6 seconds, the bearer and allies within 2 hexes gain a 120 shield for 6 seconds (180 on an Elf or Istari) |
+| Vilya, the Ring of Air | The Three | Every 2 seconds, the ally with the lowest Health % heals 80 (120 on an Elf or Istari) |
+| Ring of the Seven | The Seven | After each PvP or PvE round, gain 1 gold if the bearer is on your board (2 on a Dwarf) |
+| Ring of the Nine | The Nine | The bearer is a Nazgûl as well as its own origin: it counts towards the Nazgûl trait and gets everything Nazgûl get, from the trait's slow to Sauron's bonus and Éowyn's double damage. While a player holds the One Ring, the bearer also deals 5% more damage per point of the One Ring's Corruption |
+
+- **The One and the rest:** when the One Ring is destroyed in Mount Doom, the Three fade and the Nine are undone. Every one of them leaves the game, from units and players alike, and no Council offers them again. The Seven are untouched. Destroying the Ring is a blow to everyone who wears the Three or the Nine, the destroyer included.
 
 ### PvE rounds
 
@@ -593,20 +614,11 @@ All numbers marked *(placeholder)* will be tuned during balancing.
 
 ## 13. Parked for later
 
+These are deliberately left out of the base game and will be revisited once it is well defined.
+
 ### Larger roster
 
 Grow from 36 units to about 45–50 (9–10 per cost tier) so that specific units appear in the shop about as often as in TFT.
-
-These are deliberately left out of the base game and will be revisited once it is well defined.
-
-### Rings of Power
-
-An item family with the One Ring at the top:
-
-- **The Three** (Narya, Nenya, Vilya): support rings (attack-speed aura, shield, healing); stronger on Elves and Istari.
-- **The Seven:** economy rings; the bearer generates gold each round.
-- **The Nine:** the bearer gains the Nazgûl trait (an emblem).
-- **Tie-in:** while the One exists, bearers of the Nine get stronger; when it is destroyed, the Three fade and bearers of the Nine lose the Nazgûl trait.
 
 ### Bonds
 
