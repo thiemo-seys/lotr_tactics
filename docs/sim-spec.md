@@ -20,7 +20,7 @@ Implementation spec for the `sim` package's combat simulation. It turns the rule
 
 **Out of scope (later milestones)**
 
-- Shop, economy, levels and rounds (`design.md` sections 8–9). These will also live in `sim`, but not yet.
+- Shop, economy, levels and rounds (`design.md` sections 8–9). These also live in `sim`; see [`game-spec.md`](game-spec.md).
 - Items: not designed yet. Keep an empty `items` field on placed units and an on-hit hook, but implement no items.
 - PvE enemies: not designed yet. A PvE round is just a board of monster units, so the sim needs nothing special beyond the Large tag.
 - Rendering (`client`) and networking (`server`).
