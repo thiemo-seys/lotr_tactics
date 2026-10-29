@@ -21,6 +21,21 @@ describe('views', () => {
     expect(last(t.inbox[2]!, 'state')!.state.you).toBe(2);
   });
 
+  it("hide other players' Gift offers", () => {
+    const t = testMatch(24, [0]);
+    while (!(t.match.game.state.stage === 2 && t.match.stepKind === 'planning')) timeOut(t);
+    const view = t.match.view(0);
+    expect(view.me.giftOffer).toHaveLength(3);
+    expect(view.me.giftRerolled).toBe(false);
+    for (const p of view.players) {
+      expect(p).not.toHaveProperty('giftOffer');
+      expect(p).not.toHaveProperty('giftRerolled');
+      expect(p).toHaveProperty('gifts');
+    }
+    // The bots have already picked theirs.
+    expect(view.players.filter((p) => p.seat !== 0).every((p) => p.gifts.length === 1)).toBe(true);
+  });
+
   it("are copies that don't change as the game goes on", () => {
     const t = testMatch(22, [0]);
     const council = t.match.view(0);
