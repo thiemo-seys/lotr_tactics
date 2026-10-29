@@ -18,6 +18,8 @@ Design is done for combat, units, traits, economy and rounds. The combat simulat
 
 The current milestone is the game around the fights (`docs/game-spec.md`): the shop, economy, rounds and bots in `packages/sim`, and a client screen to play against 7 bots. Done so far: the pool and shop rolls (`game/pool.ts`), and each player's bench, board, merging, gold and XP (`game/player.ts`), with the numbers in `data/economy.ts`; PvE monsters in the combat (`data/monsters.ts`, `sim-spec.md` section 7.6); and the rounds (`game/game.ts`: `createGame`, actions, fights, damage, eliminations; `game/matchmaking.ts`, `game/council.ts`, `game/schedule.ts`; data in `data/rounds.ts` and `data/pve.ts`); bots (`bots/bot.ts`, tuned in `data/bots.ts`) with a balance runner (`scripts/balance.ts`); and the client's play page. That covers the milestone apart from items, Gifts of Lothlórien and tuning.
 
+The next milestone is online play (`docs/server-spec.md`): lobbies, with bots in the empty seats, in `packages/server`. Done so far: the match runner (`match.ts`: steps, timers, Ready votes, bots in empty and disconnected seats) and per-seat views (`view.ts`), with timers in `config.ts`. Everything in `packages/server/src` apart from `main.ts` also runs in the browser, so it takes time and randomness from a `Host` and uses no Node APIs; ESLint enforces this.
+
 ## Commands
 
 - `pnpm install`
