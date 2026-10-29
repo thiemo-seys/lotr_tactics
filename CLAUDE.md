@@ -8,6 +8,7 @@ Browser-based, 8-player auto battler in the style of Teamfight Tactics, with Lor
 - `docs/sim-spec.md`: implementation spec for the combat simulation, including defaults not yet in the design doc.
 - `docs/viewer-spec.md`: spec for the fight viewer in `packages/client`.
 - `docs/game-spec.md`: implementation spec for the game around the fights: shop, economy, rounds and bots.
+- `docs/server-spec.md`: spec for online play: lobbies, the match runner, the protocol and the Node server in `packages/server`.
 
 ## Status
 
