@@ -1,14 +1,22 @@
 // The Three.js scene: board, units, overlays and effects (docs/viewer-spec.md sections 3–5).
 
-import { BOARD_HEXES, toOffset, type Team, type UnitState } from '@lotr-tactics/sim';
+import { BOARD_COLS, BOARD_HEXES, PLAYER, fromPlacement, toOffset, type FighterId, type OwnedUnit, type PlayerView, type Star, type Team, type UnitState } from '@lotr-tactics/sim';
 import * as THREE from 'three';
 import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
 import { CSS2DObject, CSS2DRenderer } from 'three/addons/renderers/CSS2DRenderer.js';
-import { hexToWorld } from './layout.js';
+import { benchToWorld, hexToWorld, type Point } from './layout.js';
 import { EFFECT_TICKS, facing, type CastRing, type FloatingText, type Playback, type Projectile } from './playback.js';
 import { displayName, isLarge } from './units.js';
 
+/** Units on the side the camera looks from are drawn as team A: blue, with green health. */
 const TEAM_COLOURS: Record<Team, number> = { A: 0x4a90d9, B: 0xd9534f };
+
+/** Where the camera sits and looks, behind a team's back row or over the planning board and bench. */
+const CAMERA = {
+  A: { position: [0, 12.5, 12.5], target: [0, 0, -0.4] },
+  B: { position: [0, 12.5, -12.5], target: [0, 0, 0.4] },
+  planning: { position: [0, 14, 13], target: [0, 0, 2.4] },
+} as const;
 
 /** Each half of the board in two shades, alternating by column. */
 const BOARD_COLOURS: Record<Team, readonly [number, number]> = { A: [0x2b3d55, 0x31465f], B: [0x553230, 0x5f3936] };
@@ -38,6 +46,9 @@ const geometry = {
   ring: new THREE.RingGeometry(0.5, 0.62, 24),
 };
 
+/** The size of a bench tile. */
+const BENCH_TILE = 1.4;
+
 const projectileMaterial = new THREE.MeshBasicMaterial({ color: 0xfde68a });
 const noseMaterial = new THREE.MeshStandardMaterial({ color: 0xf5f5f5, flatShading: true });
 
@@ -54,19 +65,26 @@ export class FightScene {
   private readonly projectiles = new Map<Projectile, THREE.Mesh>();
   private readonly texts = new Map<FloatingText, { object: CSS2DObject; stack: number }>();
   private readonly rings = new Map<CastRing, THREE.Mesh>();
+  /** The team drawn as the near side. */
+  private side: Team = 'A';
+  /** Bench tiles, shown while planning. */
+  private readonly bench = new THREE.Group();
+  /** Planning pawns by owned unit id. */
+  private planning = new Map<number, THREE.Group>();
+  private planningKey = '';
+  private readonly ground = new THREE.Plane(new THREE.Vector3(0, 1, 0), 0);
+  private readonly raycaster = new THREE.Raycaster();
 
   constructor(private readonly container: HTMLElement) {
     this.renderer.setPixelRatio(window.devicePixelRatio);
     this.labels.domElement.className = 'labels';
     container.append(this.renderer.domElement, this.labels.domElement);
 
-    // Behind team A's back row, looking across the board.
-    this.camera.position.set(0, 12.5, 12.5);
     // The label layer sits on top of the canvas, so it takes the mouse.
     this.controls = new OrbitControls(this.camera, this.labels.domElement);
-    this.controls.target.set(0, 0, -0.4);
     this.controls.maxPolarAngle = Math.PI * 0.45;
-    this.controls.update();
+    // Behind team A's back row, looking across the board.
+    this.aim('A');
 
     this.scene.background = new THREE.Color(0x12161c);
     this.scene.add(new THREE.HemisphereLight(0xffffff, 0x334455, 1.6));
@@ -74,12 +92,78 @@ export class FightScene {
     sun.position.set(5, 12, 8);
     this.scene.add(sun);
     this.buildBoard();
+    this.buildBench();
     this.scene.add(this.fightLayer);
     this.resize();
+    // Panels such as the shop bar change the container's size without resizing the window.
+    new ResizeObserver(() => this.resize()).observe(container);
   }
 
-  /** Shows a new fight, replacing the current one. */
-  show(playback: Playback): void {
+  /** The element that takes the mouse, for dragging units. */
+  get pointerTarget(): HTMLElement {
+    return this.labels.domElement;
+  }
+
+  /** Turns the mouse controls on or off, so dragging a unit doesn't also turn the camera. */
+  set cameraControls(enabled: boolean) {
+    this.controls.enabled = enabled;
+  }
+
+  /** Shows a new fight, replacing what was shown. `side` is drawn as the near team, in blue. */
+  show(playback: Playback, side: Team = 'A'): void {
+    this.clear();
+    this.playback = playback;
+    this.side = side;
+    this.aim(side);
+  }
+
+  /** Shows a player's board and bench for planning, in their own perspective. */
+  showPlanning(player: PlayerView, force = false): void {
+    const key = JSON.stringify([player.board, player.bench]);
+    if (!force && this.playback === null && key === this.planningKey) return;
+    const entering = this.playback !== null || this.planningKey === '';
+    this.clear();
+    this.planningKey = key;
+    this.side = 'A';
+    this.bench.visible = true;
+    if (entering) this.aim('planning');
+    const add = (unit: OwnedUnit, at: Point) => {
+      const pawn = this.createPawn(unit.unitId, unit.star, 'A', 'A', false).group;
+      pawn.position.set(at.x, 0, at.z);
+      this.fightLayer.add(pawn);
+      this.planning.set(unit.id, pawn);
+    };
+    player.board.forEach((unit, i) => {
+      if (unit !== null) add(unit, hexToWorld(fromPlacement('A', { col: i % BOARD_COLS, row: Math.floor(i / BOARD_COLS) })));
+    });
+    player.bench.forEach((unit, slot) => {
+      if (unit !== null) add(unit, benchToWorld(slot));
+    });
+  }
+
+  /** Moves a planning pawn to a point, lifted, while it is dragged. */
+  drag(unitId: number, point: Point): void {
+    this.planning.get(unitId)?.position.set(point.x, 0.4, point.z);
+  }
+
+  /** The point on the ground under a screen position, or null if the ray misses it. */
+  groundPoint(clientX: number, clientY: number): Point | null {
+    const rect = this.renderer.domElement.getBoundingClientRect();
+    const ndc = new THREE.Vector2(((clientX - rect.left) / rect.width) * 2 - 1, -((clientY - rect.top) / rect.height) * 2 + 1);
+    this.raycaster.setFromCamera(ndc, this.camera);
+    const hit = this.raycaster.ray.intersectPlane(this.ground, new THREE.Vector3());
+    return hit === null ? null : { x: hit.x, z: hit.z };
+  }
+
+  private aim(view: keyof typeof CAMERA): void {
+    const { position, target } = CAMERA[view];
+    this.camera.position.set(position[0], position[1], position[2]);
+    this.controls.target.set(target[0], target[1], target[2]);
+    this.controls.update();
+  }
+
+  /** Removes the fight or planning units. */
+  private clear(): void {
     // Removing the layer doesn't take its labels out of the page, so remove them here.
     this.fightLayer.traverse((object) => {
       if (object instanceof CSS2DObject) object.element.remove();
@@ -88,11 +172,14 @@ export class FightScene {
     for (const { material } of this.units) material.dispose();
     this.fightLayer = new THREE.Group();
     this.scene.add(this.fightLayer);
-    this.playback = playback;
+    this.playback = null;
     this.units = [];
     this.projectiles.clear();
     this.texts.clear();
     this.rings.clear();
+    this.planning = new Map();
+    this.planningKey = '';
+    this.bench.visible = false;
   }
 
   resize(): void {
@@ -126,6 +213,19 @@ export class FightScene {
       tile.position.set(x, -0.06, z);
       this.scene.add(tile);
     }
+  }
+
+  private buildBench(): void {
+    const material = new THREE.MeshStandardMaterial({ color: 0x2a313d, flatShading: true });
+    const tile = new THREE.BoxGeometry(BENCH_TILE, 0.1, BENCH_TILE);
+    for (let slot = 0; slot < PLAYER.benchSize; slot++) {
+      const mesh = new THREE.Mesh(tile, material);
+      const { x, z } = benchToWorld(slot);
+      mesh.position.set(x, -0.05, z);
+      this.bench.add(mesh);
+    }
+    this.bench.visible = false;
+    this.scene.add(this.bench);
   }
 
   private updateUnits(playback: Playback): void {
@@ -170,8 +270,27 @@ export class FightScene {
   }
 
   private createUnit(unit: UnitState): UnitView {
-    const large = isLarge(unit.unitId);
-    const material = new THREE.MeshStandardMaterial({ color: TEAM_COLOURS[unit.team], flatShading: true, transparent: true });
+    const look = unit.team === this.side ? 'A' : 'B';
+    const { group, material, label } = this.createPawn(unit.unitId, unit.star, unit.team, look, unit.summon);
+    const element = label.element;
+    const healthBar = bar('health');
+    const shield = document.createElement('div');
+    shield.className = 'shield';
+    healthBar.bar.append(shield);
+    const manaBar = unit.base.maxMana > 0 ? bar('mana') : null;
+    const tags = document.createElement('div');
+    tags.className = 'tags';
+    element.append(healthBar.bar, ...(manaBar === null ? [] : [manaBar.bar]), tags);
+    this.fightLayer.add(group);
+    return { group, material, label, health: healthBar.fill, shield, mana: manaBar?.fill ?? null, tags };
+  }
+
+  /**
+   * A pawn with its name and stars above it, facing the other team, coloured as the near (`look`
+   * A) or far team. Summons are smaller and unnamed.
+   */
+  private createPawn(unitId: FighterId | UnitState['unitId'], star: Star, team: Team, look: Team, summon: boolean) {
+    const material = new THREE.MeshStandardMaterial({ color: TEAM_COLOURS[look], flatShading: true, transparent: true });
     const body = new THREE.Mesh(geometry.body, material);
     body.position.y = 0.45;
     const head = new THREE.Mesh(geometry.head, material);
@@ -182,26 +301,20 @@ export class FightScene {
     nose.position.set(0, 1.1, 0.3);
 
     const element = document.createElement('div');
-    element.className = `unit-label team-${unit.team}`;
+    element.className = `unit-label team-${look}`;
     const name = document.createElement('div');
     name.className = 'name';
-    name.textContent = unit.summon ? '' : `${displayName(unit.unitId)} ${'★'.repeat(unit.star)}`;
-    const healthBar = bar('health');
-    const shield = document.createElement('div');
-    shield.className = 'shield';
-    healthBar.bar.append(shield);
-    const manaBar = unit.base.maxMana > 0 ? bar('mana') : null;
-    const tags = document.createElement('div');
-    tags.className = 'tags';
-    element.append(name, healthBar.bar, ...(manaBar === null ? [] : [manaBar.bar]), tags);
-
+    name.textContent = summon ? '' : `${displayName(unitId)} ${'★'.repeat(star)}`;
+    element.append(name);
     const label = new CSS2DObject(element);
     label.position.set(0, 1.8, 0);
+
     const group = new THREE.Group();
     group.add(body, head, nose, label);
-    group.scale.setScalar(large ? 1.35 : unit.summon ? 0.75 : 1);
-    this.fightLayer.add(group);
-    return { group, material, label, health: healthBar.fill, shield, mana: manaBar?.fill ?? null, tags };
+    group.scale.setScalar(isLarge(unitId) ? 1.35 : summon ? 0.75 : 1);
+    // Team A's half is at +z, so it faces −z.
+    group.rotation.y = team === 'A' ? Math.PI : 0;
+    return { group, material, label };
   }
 
   private updateProjectiles(playback: Playback): void {
@@ -246,7 +359,8 @@ export class FightScene {
       playback.casts,
       (cast) => {
         const team = playback.combat.state.units[cast.unit]!.team;
-        const material = new THREE.MeshBasicMaterial({ color: TEAM_COLOURS[team], transparent: true, side: THREE.DoubleSide });
+        const look = team === this.side ? 'A' : 'B';
+        const material = new THREE.MeshBasicMaterial({ color: TEAM_COLOURS[look], transparent: true, side: THREE.DoubleSide });
         const ring = new THREE.Mesh(geometry.ring, material);
         ring.rotation.x = -Math.PI / 2;
         this.fightLayer.add(ring);
