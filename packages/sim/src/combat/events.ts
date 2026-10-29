@@ -1,6 +1,6 @@
 // Combat events (docs/sim-spec.md section 14). The renderer animates the fight from these.
 
-import type { SummonId, UnitId } from '../data/units.js';
+import type { DamageType, SummonId, UnitId } from '../data/units.js';
 import type { Hex } from '../hex.js';
 import type { Star, Team } from '../types.js';
 
@@ -28,10 +28,47 @@ export interface MoveEvent {
   readonly arriveTick: number;
 }
 
+/** A basic attack fires. Melee attacks hit now; ranged ones hit at `hitTick` unless the target is gone. */
+export interface AttackEvent {
+  readonly type: 'attack';
+  readonly tick: number;
+  readonly unit: number;
+  readonly target: number;
+  readonly ranged: boolean;
+  readonly hitTick: number;
+}
+
+export interface DodgeEvent {
+  readonly type: 'dodge';
+  readonly tick: number;
+  /** The defender. */
+  readonly unit: number;
+  readonly source: number;
+}
+
+export interface DamageEvent {
+  readonly type: 'damage';
+  readonly tick: number;
+  readonly source: number;
+  readonly target: number;
+  /** The final damage, including any part a shield absorbed. */
+  readonly amount: number;
+  readonly absorbed: number;
+  readonly damageType: DamageType;
+  readonly crit: boolean;
+  readonly kind: 'attack' | 'ability' | 'trait';
+}
+
+export interface DeathEvent {
+  readonly type: 'death';
+  readonly tick: number;
+  readonly unit: number;
+}
+
 export interface EndEvent {
   readonly type: 'end';
   readonly tick: number;
   readonly outcome: Outcome;
 }
 
-export type CombatEvent = SpawnEvent | MoveEvent | EndEvent;
+export type CombatEvent = SpawnEvent | MoveEvent | AttackEvent | DodgeEvent | DamageEvent | DeathEvent | EndEvent;
