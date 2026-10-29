@@ -1,6 +1,7 @@
 // The combat simulation: createCombat / step / result (docs/sim-spec.md sections 6, 13 and 14).
 
 import { ABILITIES, ATTACKS, MANA, MOVEMENT, TICKS_PER_SECOND } from '../data/rules.js';
+import { MAX_ITEMS, type ItemEffect, type ItemId } from '../data/items.js';
 import { MONSTERS, type FighterId, type MonsterId } from '../data/monsters.js';
 import type { ClassId, OriginId } from '../data/traits.js';
 import {
@@ -20,9 +21,10 @@ import {
 import { BOARD_COLS, BOARD_ROWS, boardIndex, distance, fromPlacement, hexEquals, type Hex } from '../hex.js';
 import { createRng, type Rng } from '../rng.js';
 import type { Star, Team } from '../types.js';
-import { dashHex, lineDashHex, select, summonHex } from './abilities.js';
+import { dashHex, lineDashHex, select, summonHex, type Selection } from './abilities.js';
 import { finalDamage, manaFromDamage, overtimePct, rollAttack } from './damage.js';
 import type { CombatEvent, DamageEvent, Outcome } from './events.js';
+import { isItemId, itemEffects, itemModifiers } from './items.js';
 import { MOVE_TICKS, planMove } from './movement.js';
 import { actionOrder, firstTeam, startingSlots } from './order.js';
 import {
@@ -49,8 +51,8 @@ export interface PlacedUnit {
   readonly col: number;
   /** 0 is the back row and 3 the front row, in the team's own perspective. */
   readonly row: number;
-  /** Not designed yet; ignored. */
-  readonly items: readonly string[];
+  /** Up to 3 components or combined items (section 12.4). Monsters carry none. */
+  readonly items: readonly ItemId[];
 }
 
 export interface CombatInput {
@@ -95,6 +97,8 @@ export interface UnitState {
   /** Current stats. */
   readonly stats: Stats;
   readonly statuses: StatusState;
+  /** Empty for summons and monsters. */
+  readonly items: readonly ItemId[];
 }
 
 /** An ability effect that puts a status on a unit (section 12.1). */
@@ -130,6 +134,15 @@ const CAST_TICKS = toTicks(ABILITIES.castSeconds);
 /** How long a dash keeps the unit busy (section 2). */
 const DASH_TICKS = toTicks(MOVEMENT.dashBusySeconds);
 
+/** The holder and its adjacent allies, for items at combat start (section 12.4). */
+const NEARBY_ALLIES: Selector = { kind: 'alliesWithin', radius: 1 };
+
+/** An item's effect on one unit, and how often it has acted: low-Health triggers and stacks are limited. */
+interface ItemEffectState {
+  readonly effect: ItemEffect;
+  uses: number;
+}
+
 type Unit = { -readonly [K in Exclude<keyof UnitState, 'statuses'>]: UnitState[K] } & {
   readonly statuses: Statuses;
   /** The unit can't act before this tick. */
@@ -148,10 +161,14 @@ type Unit = { -readonly [K in Exclude<keyof UnitState, 'statuses'>]: UnitState[K
   readonly classes: readonly ClassId[];
   /** Treebeard, Sauron and the big monsters (design.md section 4). */
   readonly large: boolean;
-  /** Bonuses from traits that hold for the whole fight (section 12.3). */
-  readonly traitBonus: Partial<StatModifiers>;
+  /** Bonuses from traits and items that hold for the whole fight (sections 12.3 and 12.4). */
+  readonly staticBonus: Partial<StatModifiers>;
+  /** The effects of the unit's items, in the order it holds them. */
+  readonly effects: readonly ItemEffectState[];
   /** The Nazgûl slow on this unit, updated at the start of each tick. */
   auraSlowPct: number;
+  /** The Phial of Galadriel's Magic Resist reduction on this unit, updated with the Nazgûl slow. */
+  auraShredPct: number;
   /** Attack Speed stacks from the Archer trait. */
   archerStacks: number;
 };
@@ -159,7 +176,7 @@ type Unit = { -readonly [K in Exclude<keyof UnitState, 'statuses'>]: UnitState[K
 /** Something due on a later tick (section 6.4, step 2). */
 type QueueEntry =
   /** A ranged basic attack on its way. */
-  | { readonly kind: 'projectile'; readonly dueTick: number; readonly source: Unit; readonly target: Unit }
+  | { readonly kind: 'projectile'; readonly dueTick: number; readonly source: Unit; readonly target: Unit; readonly damagePct: number }
   /** Ability steps after a delay. */
   | { readonly kind: 'delayed'; readonly dueTick: number; readonly caster: Unit; readonly steps: readonly AbilityStep[] };
 
@@ -240,10 +257,10 @@ export class Fight implements Combat {
       const bySlot = placements.map((p, i) => ({ p, slot: slots[i]! })).sort((a, b) => a.slot - b.slot);
       for (const { p, slot } of bySlot) {
         const fighter = isUnitId(p.unitId)
-          ? unitFighter(UNITS[p.unitId], p.star, levels, p.row === HALF_ROWS - 1)
+          ? unitFighter(UNITS[p.unitId], p.star, levels, p.row === HALF_ROWS - 1, p.items)
           : monsterFighter(p.unitId, input.stage);
-        const { base, traitBonus } = fighter;
-        const stats = finalStats(base, traitBonus);
+        const { base, staticBonus } = fighter;
+        const stats = finalStats(base, staticBonus);
         this.addUnit({
           id: this.units.length,
           unitId: p.unitId,
@@ -268,8 +285,11 @@ export class Fight implements Combat {
           castingUntil: 0,
           classes: fighter.classes,
           large: fighter.large,
-          traitBonus,
+          staticBonus,
+          items: [...p.items],
+          effects: itemEffects(p.items).map((effect) => ({ effect, uses: 0 })),
           auraSlowPct: 0,
+          auraShredPct: 0,
           archerStacks: 0,
         });
       }
@@ -283,14 +303,27 @@ export class Fight implements Combat {
       }
     }
 
-    // 4. Orc grunts, spread round-robin over the team's Orcs in slot order.
+    // 4. Items at combat start, unit by unit in slot order, team A's first.
+    for (const unit of this.units) {
+      for (const { effect } of unit.effects) {
+        if (effect.kind === 'startShield') {
+          for (const ally of this.selectFor(unit, NEARBY_ALLIES).units) this.addShield(unit.id, ally.id, effect.amount, effect.seconds);
+        } else if (effect.kind === 'startBuff') {
+          for (const ally of this.selectFor(unit, NEARBY_ALLIES).units) this.addPermanentBuff(unit, ally, effect.stat, effect.amount);
+        } else if (effect.kind === 'startStunImmune') {
+          this.applyStatus(unit.id, unit.id, { kind: 'stunImmune', seconds: effect.seconds });
+        }
+      }
+    }
+
+    // 5. Orc grunts, spread round-robin over the team's Orcs in slot order.
     for (const team of TEAMS) {
       const orc = activeTrait(this.traits[team], 'orc');
       const orcs = this.living(team).filter((u) => u.origin === 'orc');
       for (let i = 0; orc !== undefined && i < orc.grunts; i++) this.summon(orcs[i % orcs.length]!, 'orc-grunt');
     }
 
-    // 5–6. Burglar leaps, then Rider charges, each in action order.
+    // 6–7. Burglar leaps, then Rider charges, each in action order.
     const first = firstTeam(this.rng);
     const withClass = (trait: 'burglar' | 'rider') =>
       this.units.filter((u) => u.classes.includes(trait) && activeTrait(this.traits[u.team], trait) !== undefined);
@@ -300,6 +333,17 @@ export class Fight implements Combat {
       if (unit.alive) this.charge(unit, activeTrait(this.traits[unit.team], 'rider')!.chargeDamage);
     }
     if (this.outcome !== null) return;
+
+    // 8. Elven Rope stuns, in action order.
+    for (const unit of actionOrder(this.units.filter((u) => u.alive && hasEffect(u, 'startStun')), first)) {
+      for (const { effect } of unit.effects) {
+        if (effect.kind !== 'startStun') continue;
+        const enemy = this.selectFor(unit, { kind: 'farthestEnemy' }).units[0];
+        if (enemy !== undefined) this.applyStatus(unit.id, enemy.id, { kind: 'stun', seconds: effect.seconds });
+      }
+    }
+
+    // 9. The Nazgûl slow and the Phial of Galadriel.
     this.updateAuras();
     this.checkWipe();
   }
@@ -324,33 +368,57 @@ export class Fight implements Combat {
     if (distance(unit.hex, target.hex) === 1) this.dealDamage(unit, target, damage, 'physical', false, 'trait');
   }
 
-  /** Istari mana and Ent healing, on ticks 30, 60, 90, … in action order (section 6.4, step 3). */
+  /**
+   * Istari mana, Ent healing, and the Elven Cloak and Dragon-helm, on ticks 30, 60, 90, … in
+   * action order (section 6.4, step 3).
+   */
   private regenerate(first: Team): void {
     for (const unit of actionOrder(this.living(), first)) {
+      if (this.outcome !== null) return;
+      // A Dragon-helm can kill a unit before its turn.
+      if (!unit.alive) continue;
       const istari = activeTrait(this.traits[unit.team], 'istari');
       if (istari !== undefined && unit.origin === 'istari') this.gainMana(unit, istari.manaPerSecond);
       const ent = activeTrait(this.traits[unit.team], 'ent');
       if (ent !== undefined && unit.origin === 'ent') this.heal(unit, unit, (unit.stats.maxHealth * ent.regenPctPerSecond) / 100);
-    }
-  }
-
-  /** The Nazgûl slow: enemies within reach of any living Nazgûl are slowed (section 12.3). */
-  private updateAuras(): void {
-    for (const team of TEAMS) {
-      const nazgul = activeTrait(this.traits[team], 'nazgul');
-      if (nazgul === undefined) continue;
-      const wraiths = this.living(team).filter((u) => u.origin === 'nazgul');
-      for (const unit of this.living(enemyOf(team))) {
-        const slowPct = wraiths.some((w) => distance(w.hex, unit.hex) <= nazgul.radius) ? nazgul.slowPct : 0;
-        if (slowPct !== unit.auraSlowPct) {
-          unit.auraSlowPct = slowPct;
-          this.refreshStats(unit);
+      for (const { effect } of unit.effects) {
+        if (effect.kind === 'regen') this.heal(unit, unit, (unit.stats.maxHealth * effect.maxHealthPct) / 100);
+        if (effect.kind !== 'burn') continue;
+        for (const enemy of this.selectFor(unit, { kind: 'adjacentEnemies' }).units) {
+          if (this.outcome !== null) return;
+          if (enemy.alive) this.dealDamage(unit, enemy, (unit.stats.maxHealth * effect.maxHealthPct) / 100, 'magic', false, 'item');
         }
       }
     }
   }
 
-  /** A buff for the rest of the fight, from the Rohan and Archer traits (section 12.3). */
+  /**
+   * The Nazgûl slow and the Phial of Galadriel's Magic Resist reduction on enemies within reach of
+   * a living Nazgûl or Phial holder (sections 12.3 and 12.4).
+   */
+  private updateAuras(): void {
+    for (const team of TEAMS) {
+      const nazgul = activeTrait(this.traits[team], 'nazgul');
+      const wraiths = nazgul === undefined ? [] : this.living(team).filter((u) => u.origin === 'nazgul');
+      const phials = this.living(team).flatMap((u) =>
+        u.effects.flatMap(({ effect }) => (effect.kind === 'magicResistAura' ? [{ hex: u.hex, effect }] : [])),
+      );
+      for (const unit of this.living(enemyOf(team))) {
+        const slowPct = nazgul !== undefined && wraiths.some((w) => distance(w.hex, unit.hex) <= nazgul.radius) ? nazgul.slowPct : 0;
+        const shredPct = phials.reduce((max, p) => (distance(p.hex, unit.hex) <= p.effect.radius ? Math.max(max, p.effect.pct) : max), 0);
+        this.setAuras(unit, slowPct, shredPct);
+      }
+    }
+  }
+
+  private setAuras(unit: Unit, slowPct: number, shredPct: number): void {
+    if (slowPct === unit.auraSlowPct && shredPct === unit.auraShredPct) return;
+    unit.auraSlowPct = slowPct;
+    unit.auraShredPct = shredPct;
+    this.refreshStats(unit);
+  }
+
+  /** A buff for the rest of the fight, from the Rohan and Archer traits (section 12.3) or an item (section 12.4). */
   private addPermanentBuff(source: Unit, target: Unit, stat: BuffStat, amount: number): void {
     target.statuses.addBuff(stat, amount, Infinity);
     this.events.push({
@@ -377,10 +445,15 @@ export class Fight implements Combat {
       this.units.some(
         (u) => u.alive && u.team === source.team && u !== source && u.classes.includes('captain') && distance(u.hex, source.hex) === 1,
       );
+    const blackArrows = source.effects.reduce(
+      (pct, { effect }) => pct + (effect.kind === 'ampVsHealthier' && target.stats.maxHealth > source.stats.maxHealth ? effect.pct : 0),
+      0,
+    );
     return (
       (nextToCaptain ? captain.damageAmpPct : 0) +
       (darkLord !== undefined && (source.origin === 'orc' || source.origin === 'nazgul') ? darkLord.damageAmpPct : 0) +
-      (dwarf !== undefined && source.origin === 'dwarf' && target.large ? dwarf.damageVsLargePct : 0)
+      (dwarf !== undefined && source.origin === 'dwarf' && target.large ? dwarf.damageVsLargePct : 0) +
+      blackArrows
     );
   }
 
@@ -439,9 +512,12 @@ export class Fight implements Combat {
     }
   }
 
-  /** Recomputes a unit's stats after its statuses or the Nazgûl slow on it change (section 7.4). */
+  /** Recomputes a unit's stats after its statuses, the Nazgûl slow or the Phial's reduction on it change (section 7.4). */
   private refreshStats(unit: Unit): void {
-    unit.stats = finalStats(unit.base, combineModifiers(unit.traitBonus, unit.statuses.modifiers(), { slowPct: unit.auraSlowPct }));
+    unit.stats = finalStats(
+      unit.base,
+      combineModifiers(unit.staticBonus, unit.statuses.modifiers(), { slowPct: unit.auraSlowPct, magicResistReductionPct: unit.auraShredPct }),
+    );
   }
 
   /** Resolves the projectiles and delayed steps due this tick, in creation order (section 6.4, step 2). */
@@ -453,7 +529,7 @@ export class Fight implements Combat {
       if (entry.kind === 'projectile') {
         // A projectile at a target that died or became untargetable is wasted. One whose attacker
         // died still lands.
-        if (isTargetable(entry.target)) this.hit(entry.source, entry.target);
+        if (isTargetable(entry.target)) this.hit(entry.source, entry.target, entry.damagePct);
       } else if (entry.caster.alive) {
         // Delayed steps belong to the caster's ability, so they don't happen once it has died.
         this.runSteps(entry.caster, entry.steps);
@@ -506,6 +582,12 @@ export class Fight implements Combat {
     unit.castingUntil = unit.busyUntil;
     this.events.push({ type: 'cast', tick: this.tick, unit: unit.id, ability: ability.name });
     this.runSteps(unit, ability.steps);
+    // Athelas, once the ability has resolved.
+    for (const { effect } of unit.effects) {
+      if (effect.kind !== 'healOnCast' || this.outcome !== null) continue;
+      const ally = this.selectFor(unit, { kind: 'lowestHealthPctAllies', count: 1 }).units[0];
+      if (ally !== undefined) this.heal(unit, ally, effect.amount);
+    }
   }
 
   private runSteps(caster: Unit, steps: readonly AbilityStep[]): void {
@@ -524,12 +606,7 @@ export class Fight implements Combat {
    * selected unit that is still alive.
    */
   private runStep(caster: Unit, selector: Selector, effects: readonly Effect[]): void {
-    const { units, hexes } = select(selector, {
-      caster,
-      allies: this.living(caster.team),
-      enemies: this.targetableEnemies(caster),
-      target: () => this.ensureTarget(caster),
-    });
+    const { units, hexes } = this.selectFor(caster, selector);
     /** Damage this step has dealt so far, for `healFromDamage`. */
     let dealt = 0;
     for (const effect of effects) {
@@ -571,14 +648,28 @@ export class Fight implements Combat {
     }
   }
 
-  /** Ability damage (sections 9.1 and 10.2): it can't be dodged, and crits only if the ability says so. Returns the damage dealt. */
+  /** The units a selector picks for a unit, as for its ability (section 10.3). */
+  private selectFor(unit: Unit, selector: Selector): Selection<Unit> {
+    return select(selector, {
+      caster: unit,
+      allies: this.living(unit.team),
+      enemies: this.targetableEnemies(unit),
+      target: () => this.ensureTarget(unit),
+    });
+  }
+
+  /**
+   * Ability damage (sections 9.1 and 10.2): it can't be dodged, and crits only if the ability says
+   * so or the caster holds Sting (section 12.4). Returns the damage dealt.
+   */
   private abilityDamage(caster: Unit, target: Unit, effect: Extract<Effect, { kind: 'damage' }>): number {
     const value = abilityValue('D', effect.pct, caster.cost, caster.star, caster.stats.abilityPower);
     const bonusPct = effect.bonusVs !== undefined && target.origin === effect.bonusVs.origin ? effect.bonusVs.multiplierPct : 100;
+    const canCrit = effect.canCrit === true || hasEffect(caster, 'abilityCrit');
     let dealt = 0;
     for (let hit = 0; hit < (effect.hits ?? 1); hit++) {
       if (!target.alive || this.outcome !== null) break;
-      const crit = effect.canCrit === true && rollAttack(this.rng, caster.stats.critChancePct, 0).crit;
+      const crit = canCrit && rollAttack(this.rng, caster.stats.critChancePct, 0).crit && !isCritImmune(target);
       const raw = (value * bonusPct * (crit ? caster.stats.critDamagePct : 100)) / 10_000;
       dealt += this.dealDamage(caster, target, raw, effect.type, crit, 'ability');
     }
@@ -634,8 +725,11 @@ export class Fight implements Combat {
       castingUntil: 0,
       classes: [],
       large: false,
-      traitBonus: {},
+      staticBonus: {},
+      items: [],
+      effects: [],
       auraSlowPct: 0,
+      auraShredPct: 0,
       archerStacks: 0,
     });
   }
@@ -646,34 +740,74 @@ export class Fight implements Combat {
     return (hex) => !occupied.has(boardIndex(hex));
   }
 
-  /** Fires a basic attack (section 9). */
+  /** Fires a basic attack (section 9), and the extra ones from Bows of the Galadhrim (section 12.4). */
   private attack(unit: Unit, target: Unit): void {
-    const ranged = unit.stats.range >= 2;
-    const hitTick = ranged
-      ? this.tick + Math.ceil((distance(unit.hex, target.hex) * TICKS_PER_SECOND) / ATTACKS.projectileHexesPerSecond)
-      : this.tick;
-    this.events.push({ type: 'attack', tick: this.tick, unit: unit.id, target: target.id, ranged, hitTick });
-    this.gainMana(unit, MANA.perAttack);
-    // The cooldown after this attack already counts its Archer stack.
+    const hitTick = this.announceAttack(unit, target);
+    const manaPerAttack = unit.effects.reduce((mana, { effect }) => mana + (effect.kind === 'manaOnAttack' ? effect.amount : 0), 0);
+    this.gainMana(unit, MANA.perAttack + manaPerAttack);
+    // The cooldown after this attack already counts its Archer and Grond stacks.
     const archer = activeTrait(this.traits[unit.team], 'archer');
     if (archer !== undefined && unit.classes.includes('archer') && unit.archerStacks < archer.maxStacks) {
       unit.archerStacks++;
       this.addPermanentBuff(unit, unit, 'attackSpeedPct', archer.attackSpeedPctPerStack);
     }
+    for (const state of unit.effects) {
+      const { effect } = state;
+      if (effect.kind !== 'stackOnAttack' || state.uses >= effect.maxStacks) continue;
+      state.uses++;
+      this.addPermanentBuff(unit, unit, effect.stat, effect.amount);
+    }
     unit.nextAttackTick = this.tick + TICKS_PER_SECOND / unit.stats.attackSpeed;
-    if (ranged) this.queue.push({ kind: 'projectile', dueTick: hitTick, source: unit, target });
-    else this.hit(unit, target);
+    // Extra attacks go at the nearest other enemies in range, chosen as the attack fires.
+    const bows = unit.effects.flatMap(({ effect }) => (effect.kind === 'extraAttack' ? [effect.damagePct] : []));
+    const others =
+      bows.length === 0
+        ? []
+        : this.selectFor(unit, { kind: 'nearestEnemies', count: Infinity }).units.filter(
+            (u) => u !== target && distance(u.hex, unit.hex) <= unit.stats.range,
+          );
+    this.land(unit, target, hitTick, 100);
+    // A melee holder can die to an Oakenshield on its first hit, and then fires no more.
+    bows.forEach((damagePct, i) => {
+      const other = others[i];
+      if (other === undefined || this.outcome !== null || !unit.alive || !isTargetable(other)) return;
+      this.land(unit, other, this.announceAttack(unit, other), damagePct);
+    });
   }
 
-  /** A basic attack lands: dodge, crit, damage (section 9). */
-  private hit(source: Unit, target: Unit): void {
-    const { dodged, crit } = rollAttack(this.rng, source.stats.critChancePct, target.stats.dodgePct);
+  /** Emits an `attack` event and returns the tick it hits: now for melee, later for a projectile. */
+  private announceAttack(unit: Unit, target: Unit): number {
+    const ranged = unit.stats.range >= 2;
+    const hitTick = ranged
+      ? this.tick + Math.ceil((distance(unit.hex, target.hex) * TICKS_PER_SECOND) / ATTACKS.projectileHexesPerSecond)
+      : this.tick;
+    this.events.push({ type: 'attack', tick: this.tick, unit: unit.id, target: target.id, ranged, hitTick });
+    return hitTick;
+  }
+
+  /** A melee attack hits now; a ranged one goes into the queue as a projectile. */
+  private land(unit: Unit, target: Unit, hitTick: number, damagePct: number): void {
+    if (hitTick > this.tick) this.queue.push({ kind: 'projectile', dueTick: hitTick, source: unit, target, damagePct });
+    else this.hit(unit, target, damagePct);
+  }
+
+  /**
+   * A basic attack lands (section 9): dodge, crit, damage, then the target's Oakenshields deal
+   * damage back. `damagePct` is 50 for the extra attacks of a Bow of the Galadhrim.
+   */
+  private hit(source: Unit, target: Unit, damagePct: number): void {
+    const { dodged, crit: rolled } = rollAttack(this.rng, source.stats.critChancePct, target.stats.dodgePct);
     if (dodged) {
       this.events.push({ type: 'dodge', tick: this.tick, unit: target.id, source: source.id });
       return;
     }
-    const raw = (source.stats.attackDamage * (crit ? source.stats.critDamagePct : 100)) / 100;
-    this.dealDamage(source, target, raw, 'physical', crit, 'attack');
+    const crit = rolled && !isCritImmune(target);
+    const raw = (source.stats.attackDamage * (crit ? source.stats.critDamagePct : 100) * damagePct) / 10_000;
+    const dealt = this.dealDamage(source, target, raw, 'physical', crit, 'attack');
+    for (const { effect } of target.effects) {
+      if (effect.kind !== 'reflect' || dealt <= 0 || !source.alive || this.outcome !== null) continue;
+      this.dealDamage(target, source, (dealt * effect.pct) / 100, 'magic', false, 'item');
+    }
   }
 
   /** Runs the damage pipeline (section 9.1) and returns the final damage. */
@@ -698,12 +832,33 @@ export class Fight implements Combat {
       kind,
     });
     this.gainMana(target, manaFromDamage(amount));
-    if (target.health <= 0) this.kill(target);
+    if (target.health <= 0) this.kill(target, source);
+    else if (this.outcome === null) this.checkLowHealth(target);
+    // Glamdring.
+    for (const { effect } of source.effects) {
+      if (effect.kind === 'healOnDamage' && this.outcome === null) this.heal(source, source, (amount * effect.pct) / 100);
+    }
     return amount;
   }
 
-  /** The unit dies at once and frees its hex (section 9.1), then on-death traits run. */
-  private kill(unit: Unit): void {
+  /** Orcrist and Herugrim: once each, after damage leaves the holder below a share of its max Health (section 12.4). */
+  private checkLowHealth(unit: Unit): void {
+    for (const state of unit.effects) {
+      const { effect } = state;
+      if (effect.kind !== 'lowHealth' || state.uses > 0 || unit.health * 100 >= unit.stats.maxHealth * effect.belowPct) continue;
+      state.uses = 1;
+      if (effect.untargetableSeconds !== undefined) {
+        this.applyStatus(unit.id, unit.id, { kind: 'untargetable', seconds: effect.untargetableSeconds });
+      }
+      if (effect.shield !== undefined) {
+        this.addShield(unit.id, unit.id, (unit.stats.maxHealth * effect.shield.maxHealthPct) / 100, effect.shield.seconds);
+      }
+      this.addPermanentBuff(unit, unit, effect.buff.stat, effect.buff.amount);
+    }
+  }
+
+  /** The unit dies at once and frees its hex (section 9.1), then on-death traits and items run. */
+  private kill(unit: Unit, killer: Unit): void {
     unit.alive = false;
     unit.health = 0;
     this.events.push({ type: 'death', tick: this.tick, unit: unit.id });
@@ -713,6 +868,10 @@ export class Fight implements Combat {
       for (const ally of this.living(unit.team)) {
         if (ally.origin === 'rohan') this.addPermanentBuff(unit, ally, 'attackSpeedPct', rohan.attackSpeedPctPerDeath);
       }
+    }
+    // Andúril.
+    for (const { effect } of killer.effects) {
+      if (effect.kind === 'buffOnKill' && killer.alive) this.addPermanentBuff(killer, killer, effect.stat, effect.amount);
     }
     this.checkWipe();
   }
@@ -807,7 +966,7 @@ function isSummonId(id: FighterId | SummonId): id is SummonId {
 /** What a starting unit or monster brings to the fight, before statuses. */
 interface Fighter {
   readonly base: BaseStats;
-  readonly traitBonus: Partial<StatModifiers>;
+  readonly staticBonus: Partial<StatModifiers>;
   readonly origin: OriginId | null;
   readonly classes: readonly ClassId[];
   readonly ability: AbilityDef | null;
@@ -815,10 +974,10 @@ interface Fighter {
   readonly large: boolean;
 }
 
-function unitFighter(def: UnitDef, star: Star, levels: TraitLevels, inFrontRow: boolean): Fighter {
+function unitFighter(def: UnitDef, star: Star, levels: TraitLevels, inFrontRow: boolean, items: readonly ItemId[]): Fighter {
   return {
     base: baseStats(def, star),
-    traitBonus: traitModifiers(def, levels, inFrontRow),
+    staticBonus: combineModifiers(traitModifiers(def, levels, inFrontRow), itemModifiers(items)),
     origin: def.origin,
     classes: def.classes,
     ability: def.ability,
@@ -832,7 +991,7 @@ function monsterFighter(id: MonsterId, stage: number): Fighter {
   const def = MONSTERS[id];
   return {
     base: monsterStats(def, stage),
-    traitBonus: {},
+    staticBonus: {},
     origin: null,
     classes: [],
     ability: def.ability ?? null,
@@ -845,12 +1004,22 @@ function enemyOf(team: Team): Team {
   return team === 'A' ? 'B' : 'A';
 }
 
-/** The target's passive damage reduction against this source, such as the Witch-king's (section 9.1). */
+/** The target's damage reductions against this source, which add up (section 9.1): the Witch-king's passive and Mithril Shirts. */
 function damageReductionPct(source: Unit, target: Unit): number {
   const passive = target.ability?.passive;
-  if (passive === undefined) return 0;
-  const exempt = (passive.exceptUnits as readonly string[]).includes(source.unitId);
-  return source.origin !== null && passive.fromOrigins.includes(source.origin) && !exempt ? passive.pct : 0;
+  const exempt = passive !== undefined && (passive.exceptUnits as readonly string[]).includes(source.unitId);
+  const fromPassive = passive !== undefined && source.origin !== null && passive.fromOrigins.includes(source.origin) && !exempt ? passive.pct : 0;
+  const fromItems = target.effects.reduce((pct, { effect }) => pct + (effect.kind === 'damageReduction' ? effect.pct : 0), 0);
+  return Math.min(100, fromPassive + fromItems);
+}
+
+/** Crits against a Mithril Shirt holder deal normal damage. */
+function isCritImmune(unit: Unit): boolean {
+  return unit.effects.some(({ effect }) => effect.kind === 'damageReduction' && effect.critImmune);
+}
+
+function hasEffect(unit: Unit, kind: ItemEffect['kind']): boolean {
+  return unit.effects.some(({ effect }) => effect.kind === kind);
 }
 
 function isTargetable(unit: Unit): boolean {
@@ -869,9 +1038,13 @@ function validate(input: CombatInput): void {
       const where = `Team ${team} (${p.col}, ${p.row})`;
       if (Object.hasOwn(MONSTERS, p.unitId)) {
         if (p.star !== 1) throw new Error(`${where}: monsters are always 1★.`);
+        if (p.items.length > 0) throw new Error(`${where}: monsters carry no items.`);
       } else if (!Object.hasOwn(UNITS, p.unitId)) {
         throw new Error(`${where}: unknown unit "${p.unitId}".`);
       }
+      if (p.items.length > MAX_ITEMS) throw new Error(`${where}: at most ${MAX_ITEMS} items.`);
+      const unknown = p.items.find((item) => !isItemId(item));
+      if (unknown !== undefined) throw new Error(`${where}: unknown item "${unknown}".`);
       if (p.star !== 1 && p.star !== 2 && p.star !== 3) throw new Error(`${where}: star must be 1, 2 or 3.`);
       const onHalf =
         Number.isInteger(p.col) && Number.isInteger(p.row) && p.col >= 0 && p.col < BOARD_COLS && p.row >= 0 && p.row < HALF_ROWS;
