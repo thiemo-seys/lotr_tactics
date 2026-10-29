@@ -1,4 +1,5 @@
 import { describe, expect, it } from 'vitest';
+import { SHOP, XP } from '../src/data/economy.js';
 import { MAX_STAT_TWEAK_PCT } from '../src/data/templates.js';
 import { TRAITS, type TraitId } from '../src/data/traits.js';
 import { SUMMONS, UNITS, type AbilityStep, type Effect } from '../src/data/units.js';
@@ -107,5 +108,16 @@ describe('traits', () => {
       });
       expect(trait.breakpoints.at(-1)!, id).toBeLessThanOrEqual(members);
     }
+  });
+});
+
+describe('economy', () => {
+  it('has shop odds for levels 1 to 9 that add up to 100%', () => {
+    expect(SHOP.odds).toHaveLength(9);
+    for (const odds of SHOP.odds) expect(odds.reduce((a, b) => a + b, 0)).toBe(100);
+  });
+
+  it('needs XP for every level from the first one that can be bought to 9', () => {
+    for (let level = XP.buyFromLevel + 1; level <= 9; level++) expect(XP.toLevel[level]).toBeGreaterThan(0);
   });
 });
