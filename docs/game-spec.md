@@ -50,7 +50,7 @@ These are not in `design.md` yet. They were chosen to remove ambiguity and can b
 | Council with a full bench | A picked unit that can't go on the bench or merge is sold at once |
 | Stage 1 damage | No stage damage. Surviving monsters still deal their damage |
 | PvE loot | Given in full whether the player wins or loses |
-| Matchmaking | The best of 20 seeded shuffles |
+| Matchmaking | The pairing with the fewest repeats of recent opponents, searched in a seeded order |
 | Several eliminations in one round | Higher HP after the damage places higher, then higher HP before it, then a seeded draw |
 | Eliminated players | Their units go back to the pool |
 
@@ -236,9 +236,9 @@ During planning, living players act in any order: buy, sell, reroll, buy XP, loc
 - With an odd number of living players, one of them fights a **ghost**: a copy of another living player's board. The ghost is team B, and its owner is not affected by the fight.
 - **Pairing:**
   1. Shuffle the living players with the game generator (Fisher–Yates).
-  2. Pair them in order: first with second, third with fourth, and so on. With an odd count, the last player fights the ghost of a player drawn from the others.
-  3. Count the pairs where either player is in the other's recent opponents.
-  4. Do this up to 20 times and keep the first pairing with no repeats, or the one with the fewest (the earliest if tied).
+  2. A **repeat** is a pair where either player is among the other's recent opponents, or a ghost fight against the board of a recent opponent.
+  3. Go through the possible pairings in the shuffled order and keep the first with the fewest repeats, stopping at the first with none. The first player in the order is paired with each later one in turn, then the next unpaired player, and so on; the first of each pair is team A. With an odd count, every choice of who fights a ghost is tried, starting from the last in the order, and for each, every choice of whose ghost, in order.
+  4. Eight players have only 105 pairings, so the search is cheap, and it always finds a pairing with no repeats when there is one.
 - After the fights, each player adds the opponent they fought to their recent opponents, ghost owners included, keeping the last 3.
 
 ### 9.6 Council of Elrond
