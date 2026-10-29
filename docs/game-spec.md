@@ -14,6 +14,7 @@ Implementation spec for the game around the fights: the shop, the economy, the r
 - A whole game for 2 to 8 players, from round 1-1 to the last player standing.
 - The shared unit pool, the shop, the bench, board placement, merging and selling.
 - Items: components from the Council and PvE rounds, given to units, where two combine into an item (section 7.7).
+- Gifts of Lothlórien: offers, rerolls, picks and every Gift's effect outside the fight (section 9.10). The sim runs the ones that act in the fight (`sim-spec.md` section 12.5).
 - Gold, interest, streaks, XP and levels.
 - The round schedule, the Council of Elrond, PvE rounds, matchmaking, ghost fights, player damage, elimination and placement.
 - Placeholder PvE monsters and loot (`design.md` section 12 leaves them open).
@@ -22,7 +23,6 @@ Implementation spec for the game around the fights: the shop, the economy, the r
 
 **Out of scope (later)**
 
-- **Gifts of Lothlórien:** skipped until the augments are designed. The rounds that offer them play as normal.
 - **Server, lobbies and networking** (build order step 4, [`server-spec.md`](server-spec.md)). The game layer is turn-based and knows nothing about time; the client or server that drives it runs the timers.
 - The parked features (`design.md` section 13).
 
@@ -57,6 +57,9 @@ These are not in `design.md` yet. They were chosen to remove ambiguity and can b
 | Items held | No limit on the items a player holds off their units |
 | Giving items | During planning, to units on the bench or the board |
 | A merge with more than 3 items | The kept copy's items first, then the others' in the order the copies are found; the rest go back to the player |
+| Gift offers | Rolled from each player's own Gift generator, so one player's rerolls don't change another's offer |
+| A Gift offer left unpicked | When planning ends, the player gets one of the three at random |
+| Gift units with no room | Sold at once, like a Council unit |
 
 ---
 
@@ -93,8 +96,9 @@ packages/sim/scripts/
 - The game is a function of its config and the ordered list of calls made on it. Replaying the same calls gives the same game, so a server can be authoritative and a client can follow along.
 - Randomness comes from seeded generators, each with its own stream so that one choice can't shift another:
   - each player's **shop generator**, used only for that player's shop rolls, so one player's rerolls don't change what another player's shop rolls;
-  - the **game generator**, for matchmaking, fight seeds, Council options and pick order, loot, automatic Council picks and placement ties.
-- Each stream's seed is `deriveSeed(seed, stream)`, a fixed integer hash of the game seed and the stream number: 0 for the game generator, 1 + seat for shop generators. Bots use streams from 100 upwards for their own choices.
+  - the **game generator**, for matchmaking, fight seeds, Council options and pick order, loot, automatic Council picks and placement ties;
+  - each player's **Gift generator**, for that player's Gift offers, rerolls, automatic picks and the random rewards of their Gifts.
+- Each stream's seed is `deriveSeed(seed, stream)`, a fixed integer hash of the game seed and the stream number: 0 for the game generator, 1 + seat for shop generators, 20 + seat for Gift generators. Bots use streams from 100 upwards for their own choices.
 - A fight's seed is a 32-bit integer drawn from the game generator.
 
 ---
@@ -110,6 +114,7 @@ Each player has:
 - **Board:** the player's half, in their own perspective (`sim-spec.md` section 5): columns 0–6, rows 0–3, row 3 at the front. At most `level` units.
 - **Shop:** 5 slots and a lock.
 - **Items:** the items they hold that aren't on a unit, in the order they got them: components, and combined items from units they sold.
+- **Gifts:** the Gifts they have picked, in order; their current Gift offer, if any, and whether they have rerolled it; and the free rerolls left this round (section 9.10).
 - **Recent opponents:** the last 3 players they fought, for matchmaking.
 - **Placement:** set when they are eliminated or win.
 
@@ -134,7 +139,8 @@ A shop roll fills 5 slots in order. For each slot, using the player's shop gener
 ### 6.3 Refreshing
 
 - **At the start of every PvP and PvE round,** each player's shop is refreshed for free unless it is locked. First every refreshing player's unbought units go back to the pool, then the shops are rolled in seat order.
-- **Reroll:** costs 2 gold. The unbought units go back to the pool and the shop is rolled again.
+- **Reroll:** costs 2 gold, or uses one of the player's free rerolls for the round if they have one (Second Breakfast). The unbought units go back to the pool and the shop is rolled again.
+- **Shop odds:** a shop rolls with the odds of the player's level, or of one level higher per Mirror of Galadriel, up to level 9.
 - **Lock:** a locked shop skips the free refresh. The lock stays on until the player turns it off.
 
 ---
@@ -195,7 +201,7 @@ Items are in `design.md` section 6 and `data/items.ts`.
 
 At the start of every PvP and PvE round, in this order:
 
-1. **Interest:** 1 gold per 10 gold held, up to 5.
+1. **Interest:** 1 gold per 10 gold held, up to 5, or 3 more with Treasure of Erebor.
 2. **Base income:** 2 at 1-2, 2 at 1-3, 3 at 1-4, 4 at 2-1, then 5.
 
 ### 8.2 Fight gold
@@ -231,22 +237,23 @@ At the start of a PvP or PvE round, for every living player in seat order:
 
 1. the automatic level (8.3)
 2. income (8.1)
-3. passive XP (8.3)
+3. passive XP (8.3), plus 2 for The Road Goes Ever On
+4. free rerolls for the round, from Second Breakfast (9.10)
 
-Then the shops refresh (6.3) and planning begins.
+Then the shops refresh (6.3). In a Gift round, every living player then gets a Gift offer, in seat order (9.10). Then planning begins.
 
 A Council round sets up the Council instead (9.6).
 
 ### 9.3 Planning
 
-During planning, living players act in any order: buy, sell, reroll, buy XP, lock, move. When the driver ends planning (the timer runs out, or every person is ready), the fights run.
+During planning, living players act in any order: buy, sell, reroll, buy XP, lock, move, give items, and pick or reroll a Gift offer. When the driver ends planning (the timer runs out, or every person is ready), unpicked Gift offers are picked at random (9.10) and the fights run.
 
 ### 9.4 Fights
 
 1. Every living player's board is filled from the bench (7.6).
 2. **PvE round:** each living player fights the round's monsters. The player is team A.
 3. **PvP round:** players are paired (9.5). In each pair the first player is team A.
-4. Fights run in pairing order with `simulateCombat`. Each gets a new seed from the game generator, and the current stage as its stage. Units carry their items; a ghost carries a copy of its owner's.
+4. Fights run in pairing order with `simulateCombat`. Each gets a new seed from the game generator, and the current stage as its stage. Units carry their items, and each team its Gifts; a ghost carries copies of its owner's.
 
 ### 9.5 Matchmaking
 
@@ -329,6 +336,20 @@ After all the round's fights:
 5. **Eliminations:** every player at 0 HP or below is eliminated. Their bench, board and shop go back to the pool, and their items are lost. They take the lowest places still free, ordered by higher HP after the damage, then higher HP before it, then a seeded draw.
 6. **Game over:** if one player is left, they place first. If none are left, the places from step 5 cover everyone. Otherwise the next round starts.
 
+### 9.10 Gifts of Lothlórien
+
+Gifts are in `design.md` section 9 and `data/gifts.ts`.
+
+- **Offers:** in a Gift round (2-1 Silver, 3-2 Gold, 4-2 Mithril), each living player gets 3 Gifts of the round's tier, drawn with their Gift generator from the tier's Gifts they don't have. Each draw is even among those left; once a crest is drawn, the other crests are left out of that offer.
+- **Reroll:** once per offer, during planning, the player can replace all three with three new ones, drawn the same way from the tier's Gifts other than the three shown. If too few are left, the draw takes what there is.
+- **Picking:** during planning, the player takes one of the three. The offer is gone, and the Gift is added to their Gifts. A Gift that gives something right away gives it now:
+  - **gold, components, combined items or XP**, as the Gift says. Components and combined items are drawn evenly with the Gift generator.
+  - **units:** each is drawn like a Council unit (section 9.6) of the Gift's cost, and gained (7.2). If no copies of that cost are left, the next lower cost with copies is used. A unit with no room is sold at once.
+- **Automatic pick:** when planning ends, before the fights, a player who still has an offer gets one of the three at random, drawn with their Gift generator.
+- **Lasting Gifts** change the rules above: free rerolls (6.3), shop odds (6.3), interest (8.1) and XP each round (9.2).
+- **In the fight:** every fight's input lists each team's Gifts (`sim-spec.md` section 12.5). A ghost has its owner's Gifts; monsters have none.
+- An eliminated player's Gifts and offer are gone.
+
 ---
 
 ## 10. API
@@ -349,6 +370,8 @@ type Action =
   | { type: 'buyXp' }
   | { type: 'lock'; locked: boolean }
   | { type: 'equip'; item: number; to: Place }   // index into the player's items
+  | { type: 'gift'; option: number }       // Gift offer option 0–2
+  | { type: 'rerollGifts' }
   | { type: 'pick'; option: number };      // Council option 0–8
 
 type ActionResult = { ok: true } | { ok: false; reason: string };
@@ -404,6 +427,7 @@ function createGame(config: GameConfig): Game;   // throws on an invalid config
   - A combined item has the role of its first component, in the order Blade, Bow, Mail, Cloak, Lembas, Staff.
   - If that unit can't take the item, the next strongest board unit that can; if none can, the bot keeps it.
 - **Council:** the option that completes a pair or merge, then one of its focus traits, then the highest cost.
+- **Gifts:** at the start of planning, a bot with an offer scores each Gift: a crest of one of its focus traits highest, then combat Gifts, then economy Gifts, which it values more while its HP is high. It rerolls once if no option scores well enough, then takes the best, the first if tied. The scores are in `data/bots.ts`.
 - **Balance runner:** `pnpm balance [games] [first seed]` (`scripts/balance.ts`) plays many 8-bot games and prints the game length, the average placement, top-4 rate and win rate of each unit, active trait and item on players' final boards, the same for each pair of focus traits, and PvE win rates by round.
 - The numbers bots play by are in `data/bots.ts`. They tune the bots, not the game.
 
@@ -420,10 +444,11 @@ The play page, `play.html` in `packages/client`, next to the fight viewer (`view
 - **Keys:** D rerolls, F buys XP, Space is Ready.
 - **Players list:** every player's HP, level and place.
 - **Council:** the options as cards with their components and who took them; the person picks one when it's their group's turn.
+- **Gifts:** during planning with an offer, a panel shows the three Gifts with their tier and effect, and a Reroll button until it is used. The person's Gifts are listed by the players list, each naming its effect when hovered.
 - **Fights:** the person's fight plays back with the viewer's playback, at 1×, 2× or 4×, and can be skipped; the others run headless. When the person is team B, the camera starts on their side. The person's units are always blue.
 - **Results:** for a few seconds after each fight, the damage everyone took and who was knocked out.
 - **End:** the person's place and the final standings, with a New game button.
-- **Timers:** 30 seconds of planning (`design.md` section 9), ended early by Ready; 15 seconds for the person's Council pick, after which they get a random option. The match runner keeps them, offline as online.
+- **Timers:** 30 seconds of planning (`design.md` section 9), or 45 with a Gift offer, ended early by Ready; 15 seconds for the person's Council pick, after which they get a random option. The match runner keeps them, offline as online.
 - **Seed:** from the URL (`play.html#seed=7`), which starts an offline game straight away, or random from the menu's Play against bots.
 
 ---
@@ -445,6 +470,11 @@ The play page, `play.html` in `packages/client`, next to the fight viewer (`view
 - Giving components and items, combining, the 3-item limit, and giving to bench units.
 - Items going back to the player on selling, and moving to the merged unit on merging, with the extras going back.
 - Fights get the board units' items; eliminated players' items are gone.
+
+**Gifts**
+- Offers in the Gift rounds only, of the right tier, never repeating a held Gift, with at most one crest.
+- One reroll, picking, the automatic pick, and each Gift's reward: gold, components, combined items, units (and their fallback cost), XP, free rerolls, shop odds, interest and XP per round.
+- Fights get both teams' Gifts.
 
 **Economy**
 - Income by round, interest steps and the cap, win and streak gold.
