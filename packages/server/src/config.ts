@@ -6,6 +6,8 @@ export const TIMERS = {
   councilPick: 15,
   /** docs/design.md section 9. */
   planning: 30,
+  /** Extra planning time when someone has a Gift offer to choose from. */
+  giftOffer: 15,
   /** How long a finished fight stays on screen before the results. */
   fightHold: 1,
   /** How long the results stay on screen. */
