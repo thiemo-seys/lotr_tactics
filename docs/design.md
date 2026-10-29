@@ -192,20 +192,58 @@ Each unit uses the template of its first class. Values are for a 1★, 1-cost un
 
 ## 6. Items
 
-Six components instead of TFT's nine, giving 21 combined items.
+Six components instead of TFT's nine, giving 21 combined items. All numbers are *(placeholder)*.
 
-**Components:** Blade, Bow, Mail, Cloak, Lembas, Staff
+### Components
 
-**Example combinations:**
-
-| Recipe | Item |
+| Component | Stat |
 |---|---|
-| Blade + Blade | Andúril |
-| Blade + Cloak | Sting |
-| Mail + Cloak | Mithril Shirt |
-| Staff + Cloak | Phial of Galadriel |
+| Blade | +15% Attack Damage |
+| Bow | +15% Attack Speed |
+| Mail | +20 Armor |
+| Cloak | +20 Magic Resist |
+| Lembas | +150 Health |
+| Staff | +15 Ability Power |
 
-The remaining 17 combinations and all item effects are not yet defined.
+### Combined items
+
+A combined item gives the stats of both its components, plus its effect.
+
+| Recipe | Item | Effect |
+|---|---|---|
+| Blade + Blade | Andúril | Each kill gives +15% Attack Damage for the rest of the fight |
+| Blade + Bow | Black Arrow | Deals 30% more damage to enemies with more max Health than the holder |
+| Blade + Mail | Orcrist | The first time Health falls below 50%: untargetable for 1s and +40% Attack Speed for the rest of the fight |
+| Blade + Cloak | Sting | +25% Crit Chance; the holder's abilities can crit |
+| Blade + Lembas | Herugrim | The first time Health falls below 50%: a shield of 30% of max Health for 5s and +30% Attack Damage for the rest of the fight |
+| Blade + Staff | Glamdring | Heals for 20% of all damage the holder deals |
+| Bow + Bow | Bow of the Galadhrim | Each basic attack also fires at another enemy in range, for 50% damage |
+| Bow + Mail | Grond | Each basic attack gives +5% Attack Speed for the rest of the fight, up to 20 times |
+| Bow + Cloak | Miruvor | Can't be stunned for the first 15 seconds |
+| Bow + Lembas | King's Banner | At combat start, the holder and adjacent allies gain +20% Attack Speed for the rest of the fight |
+| Bow + Staff | Palantír | Each basic attack gives 5 more mana |
+| Mail + Mail | Oakenshield | A basic attack that hits the holder deals 30% of its damage back to the attacker as magic damage |
+| Mail + Cloak | Mithril Shirt | Takes 15% less damage; crits against the holder deal normal damage |
+| Mail + Lembas | Dragon-helm | Every second, deals magic damage equal to 2% of the holder's max Health to adjacent enemies |
+| Mail + Staff | Star of Elendil | At combat start, the holder and adjacent allies gain a 300 shield for 8 seconds |
+| Cloak + Cloak | Elven Cloak | Regenerates 2% of max Health every second |
+| Cloak + Lembas | Elven Rope | At combat start, stuns the enemy farthest from the holder for 3s |
+| Cloak + Staff | Phial of Galadriel | Enemies within 2 hexes of the holder have 30% less Magic Resist |
+| Lembas + Lembas | Ent-draught | +300 Health |
+| Lembas + Staff | Athelas | After each cast, heals the ally with the lowest Health % for 200 |
+| Staff + Staff | Wizard's Staff | +40 Ability Power |
+
+### Rules
+
+- PvE rounds and the Council of Elrond give components (section 9). A player keeps them until they give them to a unit.
+- A unit holds up to 3 items. Giving a component to a unit that already holds a lone component combines the two into the recipe's item, so a unit never holds more than one lone component.
+- Items can't be taken off a unit. Selling the unit gives its items back to the player.
+- When copies merge, the merged unit gets their items. Any beyond 3 go back to the player.
+- Units on the bench keep their items; only units on the board fight with them.
+- Summons and PvE monsters carry no items.
+- Two copies of an item on one unit both work.
+- Item numbers don't scale with Ability Power or star level.
+- An eliminated player's items are lost.
 
 ---
 
@@ -460,9 +498,8 @@ Built from day one to:
 
 ## 12. Still to define
 
-1. **Items:** effects for all 21 combined items
-2. **Gifts of Lothlórien:** the list of augments
-3. **PvE enemies:** stats and loot tables (placeholders in [`game-spec.md`](game-spec.md) section 9)
+1. **Gifts of Lothlórien:** the list of augments
+2. **PvE enemies:** stats and loot tables (placeholders in [`game-spec.md`](game-spec.md) section 9)
 
 All numbers marked *(placeholder)* will be tuned during balancing.
 
