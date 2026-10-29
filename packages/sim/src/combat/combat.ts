@@ -3,6 +3,7 @@
 import { ABILITIES, ATTACKS, MANA, MOVEMENT, TICKS_PER_SECOND } from '../data/rules.js';
 import { GIFTS, type GiftCombat, type GiftId } from '../data/gifts.js';
 import { MAX_ITEMS, type ItemEffect, type ItemId } from '../data/items.js';
+import { RING } from '../data/ring.js';
 import { MONSTERS, type FighterId, type MonsterId } from '../data/monsters.js';
 import type { ClassId, OriginId } from '../data/traits.js';
 import {
@@ -32,6 +33,7 @@ import {
   abilityValue,
   baseStats,
   combineModifiers,
+  eyeStats,
   finalStats,
   gruntStats,
   monsterStats,
@@ -54,6 +56,8 @@ export interface PlacedUnit {
   readonly row: number;
   /** Up to 3 components or combined items (section 12.4). Monsters carry none. */
   readonly items: readonly ItemId[];
+  /** Set on the One Ring's bearer: the Ring's Corruption, 0–9 (section 12.6). */
+  readonly ring?: number;
 }
 
 export interface CombatInput {
@@ -102,6 +106,8 @@ export interface UnitState {
   readonly statuses: StatusState;
   /** Empty for summons and monsters. */
   readonly items: readonly ItemId[];
+  /** The One Ring's Corruption on its bearer; null for every other unit. */
+  readonly ring: number | null;
 }
 
 /** An ability effect that puts a status on a unit (section 12.1). */
@@ -174,6 +180,12 @@ type Unit = { -readonly [K in Exclude<keyof UnitState, 'statuses'>]: UnitState[K
   auraShredPct: number;
   /** Attack Speed stacks from the Archer trait. */
   archerStacks: number;
+  /** The level the Ring's drawbacks use on its bearer: its Corruption, less Sam's relief (section 12.6). */
+  readonly drawback: number;
+  /** Betrayal: the bearer attacks its own team before this tick. */
+  readonly betrayUntil: number;
+  /** The Eye's Nazgûl targets the Ring's bearer while it lives, even while untargetable. */
+  hunts: Unit | null;
 };
 
 /** Something due on a later tick (section 6.4, step 2). */
@@ -271,7 +283,15 @@ export class Fight implements Combat {
           ? unitFighter(UNITS[p.unitId], p.star, levels, p.row === HALF_ROWS - 1, p.items)
           : monsterFighter(p.unitId, input.stage);
         const { base } = fighter;
-        const staticBonus = combineModifiers(fighter.staticBonus, giftModifiers(gifts, p.row));
+        const ring = p.ring ?? null;
+        const drawback = ring === null ? 0 : ring - (samNextTo(placements, p) ? RING.samRelief : 0);
+        let staticBonus = combineModifiers(fighter.staticBonus, giftModifiers(gifts, p.row));
+        // Burden: the bearer loses a share of its max Health, after every other bonus.
+        if (ring !== null && drawback >= RING.burden.from) {
+          const pct = RING.burden.healthPctPerPoint * (drawback - RING.burden.from + 1);
+          const lost = Math.round((finalStats(base, staticBonus).maxHealth * pct) / 100);
+          staticBonus = combineModifiers(staticBonus, { health: -lost });
+        }
         const stats = finalStats(base, staticBonus);
         this.addUnit({
           id: this.units.length,
@@ -303,6 +323,10 @@ export class Fight implements Combat {
           auraSlowPct: 0,
           auraShredPct: 0,
           archerStacks: 0,
+          ring,
+          drawback,
+          betrayUntil: ring !== null && drawback >= RING.betrayal.at ? 1 + toTicks(RING.betrayal.seconds) : 0,
+          hunts: null,
         });
       }
       const origins = new Set(this.units.filter((u) => u.team === team && u.origin !== null).map((u) => u.origin)).size;
@@ -331,13 +355,25 @@ export class Fight implements Combat {
           this.applyStatus(unit.id, unit.id, { kind: 'stunImmune', seconds: effect.seconds });
         }
       }
+      if (unit.ring !== null) this.applyStatus(unit.id, unit.id, { kind: 'untargetable', seconds: RING.untargetableSeconds });
     }
 
     // 5. Orc grunts, spread round-robin over the team's Orcs in slot order.
     for (const team of TEAMS) {
       const orc = activeTrait(this.traits[team], 'orc');
       const orcs = this.living(team).filter((u) => u.origin === 'orc');
-      for (let i = 0; orc !== undefined && i < orc.grunts; i++) this.summon(orcs[i % orcs.length]!, 'orc-grunt');
+      for (let i = 0; orc !== undefined && i < orc.grunts; i++) {
+        const owner = orcs[i % orcs.length]!;
+        this.summon(team, owner.hex, 'orc-grunt', gruntStats(this.stage));
+      }
+    }
+
+    // The Eye's Nazgûl, next to the other team's Ring bearer, unless this team is only monsters.
+    for (const team of TEAMS) {
+      const bearer = this.living(enemyOf(team)).find((u) => u.ring !== null);
+      if (bearer === undefined || !input.teams[team].some((p) => isUnitId(p.unitId))) continue;
+      const eye = this.summon(team, bearer.hex, 'eye-nazgul', eyeStats(bearer.ring!));
+      if (eye !== null) eye.hunts = bearer;
     }
 
     // 6–7. Burglar leaps, then Rider charges, each in action order.
@@ -485,7 +521,8 @@ export class Fight implements Combat {
       (darkLord !== undefined && (source.origin === 'orc' || source.origin === 'nazgul') ? darkLord.damageAmpPct : 0) +
       (dwarf !== undefined && source.origin === 'dwarf' && target.large ? dwarf.damageVsLargePct : 0) +
       blackArrows +
-      this.giftAmpPct[source.team]
+      this.giftAmpPct[source.team] +
+      (source.ring ?? 0) * RING.damagePctPerCorruption
     );
   }
 
@@ -531,7 +568,8 @@ export class Fight implements Combat {
   addShield(sourceId: number, targetId: number, amount: number, seconds: number): void {
     const target = this.units[targetId]!;
     const rounded = Math.round(amount);
-    if (!target.alive || rounded <= 0) return;
+    // "Mine!": the Ring's bearer takes no shields from others (section 12.6).
+    if (!target.alive || rounded <= 0 || (isGripped(target) && sourceId !== targetId)) return;
     const expiresTick = this.tick + toTicks(seconds);
     target.statuses.addShield(rounded, expiresTick);
     this.events.push({ type: 'shield', tick: this.tick, source: sourceId, target: targetId, amount: rounded, expiresTick });
@@ -573,6 +611,10 @@ export class Fight implements Combat {
   private act(unit: Unit): void {
     // A stun doesn't stop a step already under way: the unit has claimed its new hex.
     if (!unit.alive || this.tick < unit.busyUntil || unit.statuses.has('stun')) return;
+    if (this.tick < unit.betrayUntil) {
+      this.betray(unit);
+      return;
+    }
     if (unit.ability !== null && unit.mana >= unit.base.maxMana) {
       this.cast(unit, unit.ability);
       return;
@@ -602,6 +644,16 @@ export class Fight implements Combat {
     }
 
     if (this.tick >= unit.nextAttackTick) this.attack(unit, target);
+  }
+
+  /**
+   * Betrayal (section 12.6): the Ring's bearer attacks the nearest ally in range when its attack is
+   * ready, and otherwise waits. It doesn't cast, move or choose an enemy target.
+   */
+  private betray(unit: Unit): void {
+    const ally = this.selectFor(unit, { kind: 'nearestAlly' }).units[0];
+    if (ally === undefined || distance(unit.hex, ally.hex) > unit.stats.range || this.tick < unit.nextAttackTick) return;
+    this.attack(unit, ally);
   }
 
   /**
@@ -672,7 +724,7 @@ export class Fight implements Combat {
           this.dash(caster, lineDashHex(hexes, this.isFreeFor(caster)));
           break;
         case 'summon':
-          for (let i = 0; i < effect.count; i++) this.summon(caster, effect.unit);
+          for (let i = 0; i < effect.count; i++) this.summon(caster.team, caster.hex, effect.unit, gruntStats(this.stage));
           break;
         default:
           for (const target of units) this.applyStatus(caster.id, target.id, effect);
@@ -710,7 +762,7 @@ export class Fight implements Combat {
 
   /** Heals a unit, rounded and capped at max Health (section 9.2). Emits nothing if no Health is restored. */
   private heal(source: Unit, target: Unit, amount: number): void {
-    if (!target.alive) return;
+    if (!target.alive || (isGripped(target) && source !== target)) return;
     const restored = Math.min(Math.round(amount), target.stats.maxHealth - target.health);
     if (restored <= 0) return;
     target.health += restored;
@@ -726,21 +778,22 @@ export class Fight implements Combat {
     this.events.push({ type: 'dash', tick: this.tick, unit: unit.id, from, to });
   }
 
-  /** Spawns a summon next to its owner (section 10.3). It doesn't appear if its owner's half is full. */
-  private summon(owner: Unit, unitId: SummonId): void {
-    const hex = summonHex(owner.team, owner.hex, this.isFreeFor(null));
-    if (hex === null) return;
-    // Orc grunts are the only summon.
-    const base = gruntStats(this.stage);
-    this.addUnit({
+  /**
+   * Spawns a summon for a team next to a hex, on the team's own half (section 10.3). Returns it, or
+   * null if the team's half is full.
+   */
+  private summon(team: Team, near: Hex, unitId: SummonId, base: BaseStats): Unit | null {
+    const hex = summonHex(team, near, this.isFreeFor(null));
+    if (hex === null) return null;
+    const unit: Unit = {
       id: this.units.length,
       unitId,
-      team: owner.team,
+      team,
       origin: SUMMONS[unitId].origin,
       star: 1,
       summon: true,
       // The next free slot: slots run from 0 with no gaps, dead units keeping theirs.
-      slot: this.units.filter((u) => u.team === owner.team).length,
+      slot: this.units.filter((u) => u.team === team).length,
       hex,
       target: null,
       alive: true,
@@ -763,7 +816,13 @@ export class Fight implements Combat {
       auraSlowPct: 0,
       auraShredPct: 0,
       archerStacks: 0,
-    });
+      ring: null,
+      drawback: 0,
+      betrayUntil: 0,
+      hunts: null,
+    };
+    this.addUnit(unit);
+    return unit;
   }
 
   /** A hex is free if it is on the board with no living unit on it. With `mover`, its own hex counts as free. */
@@ -914,8 +973,15 @@ export class Fight implements Combat {
     unit.mana = Math.min(unit.mana + amount, unit.base.maxMana);
   }
 
-  /** The unit's target, choosing a new one if it has none or the old one is no longer targetable (section 8). */
+  /**
+   * The unit's target, choosing a new one if it has none or the old one is no longer targetable
+   * (section 8). The Eye's Nazgûl keeps to the Ring's bearer while it lives (section 12.6).
+   */
   private ensureTarget(unit: Unit): Unit | null {
+    if (unit.hunts?.alive === true) {
+      unit.target = unit.hunts.id;
+      return unit.hunts;
+    }
     const current = unit.target === null ? null : this.units[unit.target]!;
     if (current !== null && isTargetable(current)) return current;
     const chosen = chooseTarget(
@@ -1060,6 +1126,16 @@ function hasEffect(unit: Unit, kind: ItemEffect['kind']): boolean {
   return unit.effects.some(({ effect }) => effect.kind === kind);
 }
 
+/** Whether a unit is placed next to Sam on its own team. */
+function samNextTo(placements: readonly PlacedUnit[], p: PlacedUnit): boolean {
+  return placements.some((q) => q.unitId === 'sam' && q !== p && distance(fromPlacement('A', q), fromPlacement('A', p)) === 1);
+}
+
+/** "Mine!": the Ring's bearer at the Grip level (section 12.6). */
+function isGripped(unit: Unit): boolean {
+  return unit.ring !== null && unit.drawback >= RING.gripFrom;
+}
+
 function isTargetable(unit: Unit): boolean {
   return unit.alive && !unit.statuses.has('untargetable');
 }
@@ -1069,6 +1145,15 @@ function validate(input: CombatInput): void {
   if (!Number.isInteger(input.seed)) throw new Error(`The seed must be an integer, not ${input.seed}.`);
   if (!Number.isInteger(input.stage) || input.stage < 1) {
     throw new Error(`The stage must be a whole number from 1, not ${input.stage}.`);
+  }
+  const bearers = TEAMS.flatMap((team) => input.teams[team]).filter((p) => p.ring !== undefined);
+  if (bearers.length > 1) throw new Error('Only one unit can bear the One Ring.');
+  for (const p of bearers) {
+    if (Object.hasOwn(MONSTERS, p.unitId)) throw new Error('A monster cannot bear the One Ring.');
+    const corruption = p.ring!;
+    if (!Number.isInteger(corruption) || corruption < 0 || corruption >= RING.consumedAt) {
+      throw new Error(`The One Ring's Corruption must be 0 to ${RING.consumedAt - 1}, not ${corruption}.`);
+    }
   }
   for (const team of TEAMS) {
     const unknownGift = (input.gifts?.[team] ?? []).find((id) => !Object.hasOwn(GIFTS, id));
