@@ -67,7 +67,7 @@ export interface DamageEvent {
   readonly absorbed: number;
   readonly damageType: DamageType;
   readonly crit: boolean;
-  readonly kind: 'attack' | 'ability' | 'trait';
+  readonly kind: 'attack' | 'ability' | 'trait' | 'item';
 }
 
 /** Health actually restored, never 0 (section 9.2). */
