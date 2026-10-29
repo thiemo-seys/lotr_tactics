@@ -1,6 +1,6 @@
-import { COMBINED_ITEM_IDS, COMPONENTS, ITEM_IDS } from '@lotr-tactics/sim';
+import { COMBINED_ITEM_IDS, COMPONENTS, ITEM_IDS, RING_OF_POWER_IDS } from '@lotr-tactics/sim';
 import { describe, expect, it } from 'vitest';
-import { COMPONENT_COLOURS, itemColours, itemTag, itemText } from '../src/items.js';
+import { COMPONENT_COLOURS, RING_COLOURS, itemColours, itemTag, itemText } from '../src/items.js';
 
 describe('item display', () => {
   it('gives components and combined items distinct two-letter tags', () => {
@@ -13,6 +13,11 @@ describe('item display', () => {
     expect(itemTag('black-arrow')).toBe('BA');
     expect(itemTag('galadhrim-bow')).toBe('BG');
     expect(itemTag('anduril')).toBe('An');
+  });
+
+  it('gives Rings of Power their own tags, in gold and their stone', () => {
+    expect(RING_OF_POWER_IDS.map(itemTag)).toEqual(['Na', 'Ne', 'Vi', 'RS', 'RN']);
+    for (const id of RING_OF_POWER_IDS) expect(itemColours(id)).toEqual(RING_COLOURS[id]);
   });
 
   it("colours an item by its components", () => {
