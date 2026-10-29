@@ -15,6 +15,7 @@ Implementation spec for the `sim` package's combat simulation. It turns the rule
 - Hex board, movement, targeting, basic attacks, crit and dodge, damage, mana, abilities, statuses.
 - All 16 traits and all 36 unit abilities.
 - The six item components and all 21 combined items (section 12.4).
+- The Gifts of Lothlórien that act in the fight (section 12.5).
 - Star levels.
 - Determinism and a per-tick event log for rendering.
 - Headless tests.
@@ -67,6 +68,7 @@ packages/sim/
       traits.ts       trait definitions and numbers
       units.ts        unit definitions and abilities
       items.ts        item components, combined items and their numbers
+      gifts.ts        Gifts of Lothlórien and their numbers
     combat/
       combat.ts       createCombat / step / result
       stats.ts        stat derivation and modifiers
@@ -176,15 +178,16 @@ When candidates tie, prefer in this order:
 
 Tick 0 only sets up the fight; units start acting at tick 1.
 
-1. Create units with derived stats (section 7), including static trait and item bonuses.
+1. Create units with derived stats (section 7), including static trait, item and Gift bonuses, and Gift mana.
 2. **Gondor:** front-row bonus for allies in their team's row 3.
 3. **Guardian:** shields.
-4. **Items at combat start:** Star of Elendil shields, King's Banner buffs and Miruvor stun immunity, unit by unit in slot order, team A's first (section 12.4).
+4. **Gifts and items at combat start**, unit by unit in slot order, team A's first: the team's Light of Valinor shield, then the unit's Star of Elendil shields, King's Banner buffs and Miruvor stun immunity (sections 12.4 and 12.5).
 5. **Orc:** spawn grunts, team A's first.
 6. **Burglar:** leaps, in action order.
 7. **Rider:** charges, in action order.
 8. **Elven Rope:** stuns, in action order.
-9. **Nazgûl and the Phial of Galadriel:** set the slow and the Magic Resist reduction on enemies in reach (sections 12.3 and 12.4).
+9. **Horn of Helm Hammerhand:** stuns every enemy, team A's Horn first (section 12.5).
+10. **Nazgûl and the Phial of Galadriel:** set the slow and the Magic Resist reduction on enemies in reach (sections 12.3 and 12.4).
 
 Tick 0 takes one number from the generator to pick the first team for the leaps, charges and Elven Rope stuns (section 6.3), whether or not anyone leaps or charges.
 
@@ -203,7 +206,7 @@ First, pick the team that goes first this tick (section 6.3). Then:
 
 1. **Expire** statuses and shields whose `expiresTick` is the current tick, then update the Nazgûl slow and the Phial of Galadriel reduction from the units' current hexes (sections 12.3 and 12.4).
 2. **Resolve the queue:** projectiles and delayed effects due this tick, ordered by due tick, then by creation order.
-3. **Every second**, on ticks 30, 60, 90, …: Istari mana, Ent and Elven Cloak healing, and Dragon-helm damage (sections 12.3 and 12.4).
+3. **Every second**, on ticks 30, 60, 90, …: Istari mana, Ent, Elven Cloak and Hands of the King healing, and Dragon-helm damage (sections 12.3 to 12.5).
 4. **Act:** each living unit in action order. A unit that is stunned or busy (moving, casting, recovering from a dash) does nothing. Otherwise:
    1. If mana ≥ max mana: cast its ability (section 10).
    2. Else make sure it has a target (section 8).
@@ -267,7 +270,7 @@ Every unit also has Ability Power 100, Crit Chance 25%, Crit Damage 140% and Dod
 | Crit Damage | 140% + bonuses |
 | Dodge | 0% + bonuses, max 60% |
 
-Bonuses come from traits (section 12.3), items (section 12.4) and statuses (section 12.1). Units start each fight at full health, including any bonus Health.
+Bonuses come from traits (section 12.3), items (section 12.4), Gifts (section 12.5) and statuses (section 12.1). Units start each fight at full health, including any bonus Health.
 
 ### 7.5 Orc grunt
 
@@ -363,6 +366,7 @@ final      = Math.round(reduced × (1 − target's damage reductions)), at least
   - Dark Lord
   - Dwarf against a Large target
   - Black Arrow, against a target with more max Health than the source
+  - The Last Alliance and The Fellowship, for the source's team
 - **Overtime** = 1 + 0.1 × floor((tick − 900) / 30) during overtime, otherwise 1.
 - **Target's damage reductions** add together, up to 100%: the Witch-king's passive (50% against Gondor and Rohan sources other than Éowyn) and the Mithril Shirt.
 - **Shields** absorb `final` first, earliest-expiring shield first, then the oldest. The rest comes off Health.
@@ -577,7 +581,7 @@ The same numbers as `design.md` section 5, written as selectors and effects.
 
 ---
 
-## 12. Statuses, traits and items
+## 12. Statuses, traits, items and Gifts
 
 ### 12.1 Statuses
 
@@ -598,6 +602,7 @@ The same numbers as `design.md` section 5, written as selectors and effects.
 ### 12.2 Trait counting
 
 - At tick 0, count **distinct unit ids** per trait among non-summon units. Each unit counts once per trait however many copies are on the board.
+- Each crest Gift adds one to its trait's count, if the count is at least 1 (section 12.5).
 - The highest breakpoint reached is active.
 - Trait values do not scale with Ability Power.
 
@@ -659,8 +664,29 @@ Numbers are from `design.md` section 6, in `data/items.ts`.
 | Athelas | After a cast | Once the holder's ability has resolved, the ally with the lowest Health %, the holder included, heals 200. The tie-break is `lowestHealthPctAllies`'s (section 10.3). |
 | Wizard's Staff | Static | Its stats include +40 Ability Power. |
 
-- **Order:** where several items act at once, they act in the order the unit holds them. Every second, a unit does its Istari mana, then its Ent healing, then its items, before the next unit.
+- **Order:** where several items act at once, they act in the order the unit holds them. Every second, a unit does its Istari mana, then its Ent healing, then its items, then its team's Hands of the King, before the next unit.
 - **Low Health:** Orcrist and Herugrim check after every damage the holder takes, not after a heal or a shield expiring.
+
+### 12.5 Gifts of Lothlórien
+
+Gifts are in `data/gifts.ts`, from `design.md` section 9. `CombatInput.gifts` lists each team's Gifts. The sim acts on the ones below and ignores the rest, which act outside the fight (`game-spec.md` section 9.10).
+
+- **The team's units** are its non-summon units, placed at the start. The front row is the team's row 3 and the back row its row 0, where the units are placed.
+- A team has each Gift at most once in a game, but the sim stacks copies like items.
+- Values don't scale with Ability Power or star level. Stats are added to the units' static bonuses, like items.
+
+| Gift | When | Behaviour |
+|---|---|---|
+| Beorn's Honey, Swift as the Wind, Lore of the Wise, March of the Ents | Static | Stats for every one of the team's units. |
+| Shield Wall | Static | Armor and Magic Resist for the team's units in the front row. |
+| High Ground | Static | Attack Damage for the team's units in the back row. |
+| Gandalf's Fireworks, Wisdom of the Istari | Tick 0 | The team's units start with more mana, capped at their max mana. Wisdom also gives Ability Power. |
+| Light of Valinor | Tick 0 | Each of the team's units gains a 200 shield that lasts 8 seconds (section 6.2, step 4). |
+| Horn of Helm Hammerhand | Tick 0 | Every living enemy unit, summons included, is stunned for 1.5 seconds (section 6.2, step 9). Stun immunity blocks it. |
+| Hands of the King | Every 30 ticks | Each of the team's units heals 1% of its max Health. |
+| The Last Alliance | Damage | A damage amp of 8% for every unit of the team, summons included. |
+| The Fellowship | Damage | A damage amp of 4% for each distinct origin among the team's units at tick 0, for every unit of the team, summons included. Monsters have no origin. |
+| Crests | Trait counting | One more unit towards the crest's trait, if the team counts at least one (section 12.2). |
 
 ---
 
@@ -694,6 +720,7 @@ interface CombatInput {
   seed: number;       // 32-bit integer
   stage: number;      // affects Orc grunt stats
   teams: { A: PlacedUnit[]; B: PlacedUnit[] };
+  gifts?: { A: GiftId[]; B: GiftId[] };   // each team's Gifts of Lothlórien (section 12.5); none if left out
 }
 
 interface CombatResult {
@@ -718,7 +745,7 @@ function simulateCombat(input: CombatInput): CombatResult;   // runs to the end
 
 The client creates the same combat, plays tick 0's events from `events`, then calls `step()` once per tick, reading `state` for health and mana bars and using events for animations.
 
-Invalid input throws: an unknown unit id, a star level other than 1–3 (other than 1 for a monster), an unknown item id, more than 3 items, items on a monster, a placement outside the team's half, two units of one team on the same hex, a seed that isn't an integer, or a stage below 1.
+Invalid input throws: an unknown unit id, a star level other than 1–3 (other than 1 for a monster), an unknown item id, more than 3 items, items on a monster, an unknown Gift id, a placement outside the team's half, two units of one team on the same hex, a seed that isn't an integer, or a stage below 1.
 
 ### Events
 
@@ -804,6 +831,11 @@ Every event has a `tick`.
 - Each combined item's effect, including its trigger timing: tick 0 order, once-only low-Health triggers, every-second effects, and the extra attacks of the Bow of the Galadhrim.
 - Crits against a Mithril Shirt holder, abilities critting with Sting, and damage reductions adding up.
 - Invalid items, too many items and items on monsters throw.
+
+**Gifts**
+- Each combat Gift's effect, for the right units: all, front row or back row; starting mana capped at max mana; the Horn's stuns and stun immunity; damage amps, including The Fellowship's origin count.
+- Crests raise a trait's level only when the team has the trait.
+- Gifts that act outside the fight change nothing in it.
 
 **End of combat**
 - A team wipe ends the fight immediately.
