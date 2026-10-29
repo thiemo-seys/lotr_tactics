@@ -3,8 +3,8 @@
 // person's actions back.
 
 import {
-  COMPONENT_NAMES,
   GIFTS,
+  ITEMS,
   RING,
   SHOP,
   TICKS_PER_SECOND,
@@ -565,7 +565,7 @@ function renderCouncil(): void {
     c.options.map((option, i) => {
       const card = unitCard(
         option.unitId,
-        `${option.component === null ? 'The One Ring' : COMPONENT_NAMES[option.component]}${option.pickedBy === null ? '' : ` · ${seatName(option.pickedBy)}`}`,
+        `${option.item === null ? 'The One Ring' : ITEMS[option.item].name}${option.pickedBy === null ? '' : ` · ${seatName(option.pickedBy)}`}`,
         picking && option.pickedBy === null ? () => act({ type: 'pick', option: i }) : null,
       );
       if (option.ring) {
