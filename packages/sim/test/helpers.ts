@@ -1,10 +1,11 @@
 import type { Combat, CombatInput, PlacedUnit } from '../src/combat/combat.js';
 import type { CombatEvent } from '../src/combat/events.js';
+import type { ItemId } from '../src/data/items.js';
 import type { UnitId } from '../src/data/units.js';
 import type { Star } from '../src/types.js';
 
-export function placed(unitId: UnitId, col: number, row: number, star: Star = 1): PlacedUnit {
-  return { unitId, star, col, row, items: [] };
+export function placed(unitId: UnitId, col: number, row: number, star: Star = 1, items: readonly ItemId[] = []): PlacedUnit {
+  return { unitId, star, col, row, items };
 }
 
 export function input(A: readonly PlacedUnit[], B: readonly PlacedUnit[], seed = 1): CombatInput {
@@ -32,6 +33,18 @@ export const BOARDS = {
     placed('legolas', 0, 0),
     placed('gandalf', 3, 0),
     placed('haldir', 6, 0),
+  ],
+  /** All 21 combined items. */
+  items: [
+    placed('gimli', 2, 3, 1, ['oakenshield', 'dragon-helm', 'mithril-shirt']),
+    placed('dain', 3, 3, 1, ['star-of-elendil', 'elven-cloak', 'ent-draught']),
+    placed('beregond', 4, 3, 1, ['miruvor', 'kings-banner', 'herugrim']),
+    placed('aragorn', 1, 2, 1, ['anduril', 'black-arrow', 'orcrist']),
+    placed('theoden', 3, 2, 1, ['glamdring', 'grond']),
+    placed('boromir', 5, 2, 1, ['elven-rope', 'phial']),
+    placed('legolas', 0, 0, 1, ['galadhrim-bow', 'palantir']),
+    placed('gandalf', 3, 0, 1, ['wizards-staff', 'athelas', 'sting']),
+    placed('haldir', 6, 0, 1, ['blade', 'staff']),
   ],
   /** Riders charge, Burglars leap, Nazgûl slow, an Orc grunt spawns and the Istari gain mana. */
   traits: [
