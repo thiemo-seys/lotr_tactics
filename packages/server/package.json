@@ -7,13 +7,19 @@
     ".": "./src/index.ts"
   },
   "scripts": {
+    "dev": "tsx watch src/main.ts",
+    "start": "tsx src/main.ts",
     "typecheck": "tsc",
     "test": "vitest run"
   },
   "dependencies": {
-    "@lotr-tactics/sim": "workspace:*"
+    "@lotr-tactics/sim": "workspace:*",
+    "ws": "^8.22.0"
   },
   "devDependencies": {
+    "@types/node": "^22.20.5",
+    "@types/ws": "^8.18.2",
+    "tsx": "^4.23.15",
     "typescript": "~6.0.3",
     "vitest": "^5.0.5"
   }

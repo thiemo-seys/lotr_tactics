@@ -99,13 +99,18 @@ export class Match {
     if (!this.people[seat] || this.connected[seat] === connected) return;
     this.connected[seat] = connected;
     if (connected) {
-      if (this.step.kind === 'fight') this.options.send(seat, { type: 'round', round: this.record! });
-      this.options.send(seat, { type: 'state', state: this.view(seat) });
+      this.resend(seat);
       return;
     }
     this.takeOver(seat);
     this.endEarly();
     this.broadcast();
+  }
+
+  /** Sends a seat what it needs to catch up: the round during a fight step, then the state. */
+  resend(seat: number): void {
+    if (this.step.kind === 'fight') this.options.send(seat, { type: 'round', round: this.record! });
+    this.options.send(seat, { type: 'state', state: this.view(seat) });
   }
 
   /** A person leaves for good, and the seat's bot plays the rest of the game. */
