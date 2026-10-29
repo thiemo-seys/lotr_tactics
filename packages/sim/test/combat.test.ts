@@ -164,10 +164,15 @@ describe('targeting and movement', () => {
     // Ids: sam 0, legolas 1, gimli 2, saruman 3. Nobody starts in range.
     const a = [placed('sam', 3, 0), placed('legolas', 0, 0)];
     const b = [placed('gimli', 3, 0), placed('saruman', 6, 0)];
-    // Tick 1's pick is the first number the fight takes from the generator.
+    // Tick 0 takes the first number from the generator for its leaps and charges; tick 1 the second.
+    const tick1First = (seed: number) => {
+      const rng = createRng(seed);
+      firstTeam(rng);
+      return firstTeam(rng);
+    };
     const seeds = Array.from({ length: 50 }, (_, i) => i + 1);
-    const seedA = seeds.find((s) => firstTeam(createRng(s)) === 'A')!;
-    const seedB = seeds.find((s) => firstTeam(createRng(s)) === 'B')!;
+    const seedA = seeds.find((s) => tick1First(s) === 'A')!;
+    const seedB = seeds.find((s) => tick1First(s) === 'B')!;
     const movers = (seed: number) => createCombat(input(a, b, seed)).step().map((e) => (e.type === 'move' ? e.unit : null));
     expect(movers(seedA)).toEqual([0, 2, 1, 3]);
     expect(movers(seedB)).toEqual([2, 0, 3, 1]);
@@ -285,13 +290,14 @@ describe('basic attacks', () => {
 
 /**
  * A unit's stats when event `index` happened, rebuilt from the status events before it: buffs add
- * up, and only the strongest slow and reduction of each stat counts (section 12.1).
+ * up, and only the strongest slow and reduction of each stat counts (section 12.1). It leaves out
+ * static trait bonuses, so use it on boards without them.
  */
 function statsAt(events: readonly CombatEvent[], index: number, unit: UnitState): Stats {
   const tick = events[index]!.tick;
   const active = events
     .slice(0, index)
-    .flatMap((e) => (e.type === 'status' && e.target === unit.id && e.expiresTick > tick ? [e] : []));
+    .flatMap((e) => (e.type === 'status' && e.target === unit.id && (e.expiresTick === null || e.expiresTick > tick) ? [e] : []));
   const total = (stat: string) => active.reduce((sum, e) => sum + (e.status === 'buff' && e.stat === stat ? e.value! : 0), 0);
   const strongest = (status: string, stat: string | null) =>
     active.reduce((max, e) => (e.status === status && e.stat === stat ? Math.max(max, e.value!) : max), 0);
@@ -331,9 +337,17 @@ describe('fight invariants', () => {
   });
 
   it('runs every basic attack through the damage pipeline, with the stats of the moment and overtime', () => {
+    // Boards with no trait that changes stats or damage: the tanks only get Guardian shields, and
+    // the mixed board activates no trait, but Boromir buffs Armor and Magic Resist.
+    const plainFights = [BOARDS.mixed, BOARDS.tanks].flatMap((board) =>
+      [1, 2, 3, 4].map((seed) => {
+        const combat = createCombat(mirrorMatch(board, seed));
+        return { units: combat.state.units, result: run(combat) };
+      }),
+    );
     let overtimeHits = 0;
     let buffedHits = 0;
-    for (const { units, result } of fights) {
+    for (const { units, result } of plainFights) {
       result.events.forEach((e, i) => {
         if (e.type !== 'damage' || e.kind !== 'attack') return;
         const source = statsAt(result.events, i, units[e.source]!);
@@ -342,7 +356,7 @@ describe('fight invariants', () => {
         const expected = finalDamage(raw, 'physical', target, { ampPct: 0, overtimePct: overtimePct(e.tick), reductionPct: 0 });
         expect(e.amount).toBe(expected);
         if (e.tick >= OVERTIME_START_TICK + 30) overtimeHits++;
-        if (source.attackDamage !== units[e.source]!.base.attackDamage) buffedHits++;
+        if (source.attackDamage !== units[e.source]!.base.attackDamage || target.armor !== units[e.target]!.base.armor) buffedHits++;
       });
     }
     expect(overtimeHits).toBeGreaterThan(0);

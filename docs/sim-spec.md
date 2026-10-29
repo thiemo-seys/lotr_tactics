@@ -177,9 +177,12 @@ Tick 0 only sets up the fight; units start acting at tick 1.
 1. Create units with derived stats (section 7), including static trait bonuses.
 2. **Gondor:** front-row bonus for allies in their team's row 3.
 3. **Guardian:** shields.
-4. **Orc:** spawn grunts.
+4. **Orc:** spawn grunts, team A's first.
 5. **Burglar:** leaps, in action order.
 6. **Rider:** charges, in action order.
+7. **Nazgûl:** set the slow on enemies in reach (section 12.3).
+
+Tick 0 takes one number from the generator to pick the first team for the leaps and charges (section 6.3), whether or not anyone leaps or charges.
 
 ### 6.3 Action order
 
@@ -194,7 +197,7 @@ Tick 0 only sets up the fight; units start acting at tick 1.
 
 First, pick the team that goes first this tick (section 6.3). Then:
 
-1. **Expire** statuses and shields whose `expiresTick` is the current tick.
+1. **Expire** statuses and shields whose `expiresTick` is the current tick, then update the Nazgûl slow from the units' current hexes (section 12.3).
 2. **Resolve the queue:** projectiles and delayed effects due this tick, ordered by due tick, then by creation order.
 3. **Regeneration**, on ticks 30, 60, 90, …: Istari mana and Ent health (section 12).
 4. **Act:** each living unit in action order. A unit that is stunned or busy (moving, casting, recovering from a dash) does nothing. Otherwise:
@@ -309,7 +312,7 @@ Abilities that dash to a specific enemy (Grishnákh, the Witch-king) make that e
   - Keep this as a fraction and compare with `≥`.
 - **When an attack fires:**
   - The attacker gains 10 mana.
-  - Archers gain a stack (section 12).
+  - Archers gain a stack (section 12). The cooldown after that attack already counts it.
 - **Melee (Range 1):** resolves immediately.
 - **Ranged (Range ≥ 2):**
   - Fires a projectile that resolves at `now + ceil(distance × 30 / 12)`.
@@ -583,21 +586,21 @@ Numbers are from `design.md` section 4. Where a trait lists several values, they
 
 | Trait | When | Behaviour |
 |---|---|---|
-| Hobbit | Tick 0; targeting | Hobbits gain flat max Health. The targeting rule is in section 8. |
+| Hobbit | Tick 0; targeting | Hobbits gain flat max Health and start at full Health. The targeting rule is in section 8. |
 | Elf | Static | Elves gain Attack Speed %; at 4, also +20% Dodge. |
 | Dwarf | Static; damage | Dwarves gain flat Armor and a damage amp against Large targets. |
-| Gondor | Tick 0 | All allies standing in their team's row 3 gain flat Armor and Magic Resist for the whole fight. |
-| Rohan | On death | When a non-summon Rohan unit dies, every other living Rohan ally gains a permanent Attack Speed % buff (stacks). |
-| Istari | Every 30 ticks | Istari gain the trait's mana per second in one go, on ticks 30, 60, 90, … A unit that is casting on that tick gets none. |
+| Gondor | Tick 0 | All allies placed in their team's row 3, Gondor or not, gain flat Armor and Magic Resist for the whole fight. Summons don't. |
+| Rohan | On death | When a non-summon Rohan unit dies, every other living Rohan ally gains a permanent Attack Speed % buff (stacks). Right after the `death` event, each buff emits a `status` event with `expiresTick` null. |
+| Istari | Every 30 ticks | Istari gain the trait's mana per second in one go, on ticks 30, 60, 90, …, in action order. A unit that is casting on that tick gets none. |
 | Orc | Tick 0 | Spawn 1 / 2 / 4 grunts. Spread them round-robin across Orc units in slot order, each on a free hex next to that Orc on its own half. Otherwise use the nearest free hex on its own half. |
-| Nazgûl | Continuous | Enemies within 2 hexes of any living Nazgûl are slowed. It doesn't stack with itself; the strongest-slow rule applies. |
-| Ent | Every 30 ticks | Treebeard heals 2% of max Health. He is Large. |
+| Nazgûl | Continuous | Enemies within 2 hexes of any living Nazgûl are slowed. It doesn't stack with itself; the strongest-slow rule applies. It is updated at the start of each tick (section 6.4, step 1) and at the end of tick 0, emits no events, and shows in the unit's stats. |
+| Ent | Every 30 ticks | Treebeard heals 2% of max Health, in action order with the Istari. He is Large. |
 | Dark Lord | Damage | Allies with Orc or Nazgûl origin, including grunts, get a +15% damage amp. Sauron is Large. |
 | Guardian | Tick 0 | Guardians gain a shield that lasts 8 seconds. |
-| Archer | On attack | Each basic attack an Archer fires gives it an Attack Speed % stack for the rest of the fight, up to 15 stacks. |
-| Rider | Tick 0 | Each Rider picks its target (nearest enemy), dashes next to it and deals the bonus physical damage. This trait damage can't crit or be dodged. The Rider is then busy for 9 ticks. |
-| Burglar | Tick 0; targeting | Each Burglar dashes next to the farthest enemy and is busy for 9 ticks. Burglars gain Crit Damage and use farthest-enemy targeting. |
-| Captain | Damage | A unit that deals damage while standing next to an allied Captain (not itself) gets the damage amp. Several Captains don't stack. |
+| Archer | On attack | Each basic attack an Archer fires gives it an Attack Speed % stack for the rest of the fight, up to 15 stacks. Each stack emits a `status` event with `expiresTick` null. |
+| Rider | Tick 0 | Each Rider picks its target (section 8, so the nearest enemy), dashes next to it (section 10.4) and deals the bonus physical damage if it ends next to it. This trait damage can't crit or be dodged. The Rider is then busy for 9 ticks, even if it couldn't move. |
+| Burglar | Tick 0; targeting | Each Burglar picks its target (section 8, so the farthest enemy), dashes next to it (section 10.4) and is busy for 9 ticks, even if it couldn't move. Burglars gain Crit Damage and use farthest-enemy targeting. |
+| Captain | Damage | A unit, summons included, that deals damage while standing next to a living allied Captain (not itself) gets the damage amp. It is checked when the damage is dealt, from the unit's hex at that moment. Several Captains don't stack. |
 | Sorcerer | Static | Sorcerers gain flat Ability Power. |
 
 ---
@@ -673,7 +676,7 @@ Every event has a `tick`.
 | `heal` | source, target, amount |
 | `shield` | source, target, amount, expiresTick |
 | `cast` | unit, ability (its name) |
-| `status` | source, target, status (`stun`, `stunImmune`, `untargetable`, `slow`, `reduce` or `buff`), stat (for `reduce` and `buff`, otherwise null), value (the slow or reduction percent, or the buff amount, otherwise null), expiresTick. A reduction of both Armor and Magic Resist emits one event per stat. A stun, stun immunity or untargetable that doesn't outlast the current one emits nothing. |
+| `status` | source, target, status (`stun`, `stunImmune`, `untargetable`, `slow`, `reduce` or `buff`), stat (for `reduce` and `buff`, otherwise null), value (the slow or reduction percent, or the buff amount, otherwise null), expiresTick (null for the Rohan and Archer buffs, which last the rest of the fight). A reduction of both Armor and Magic Resist emits one event per stat. A stun, stun immunity or untargetable that doesn't outlast the current one emits nothing. |
 | `death` | unit |
 | `end` | outcome |
 
