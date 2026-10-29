@@ -53,6 +53,16 @@ export const PRESETS = {
     placed('legolas', 1, 0),
     placed('gandalf', 4, 0),
   ],
+  /** The Three on their own bearers, a Ring of the Seven, and two Rings of the Nine making a third Nazgûl. */
+  rings: [
+    placed('gimli', 2, 3, 1, ['ring-of-the-seven']),
+    placed('boromir', 3, 3, 1, ['ring-of-the-nine']),
+    placed('theoden', 4, 3, 1, ['ring-of-the-nine']),
+    placed('ringwraith', 3, 2),
+    placed('galadriel', 2, 0, 1, ['nenya']),
+    placed('gandalf', 3, 0, 1, ['narya']),
+    placed('elrond', 4, 0, 1, ['vilya']),
+  ],
   traits: [
     placed('khamul', 2, 3),
     placed('eomer', 3, 3),
