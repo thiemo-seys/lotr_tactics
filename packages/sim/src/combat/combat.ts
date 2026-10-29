@@ -1,6 +1,7 @@
 // The combat simulation: createCombat / step / result (docs/sim-spec.md sections 6, 13 and 14).
 
 import { ABILITIES, ATTACKS, MANA, MOVEMENT, TICKS_PER_SECOND } from '../data/rules.js';
+import { MONSTERS, type FighterId, type MonsterId } from '../data/monsters.js';
 import type { ClassId, OriginId } from '../data/traits.js';
 import {
   SUMMONS,
@@ -13,6 +14,7 @@ import {
   type Effect,
   type Selector,
   type SummonId,
+  type UnitDef,
   type UnitId,
 } from '../data/units.js';
 import { BOARD_COLS, BOARD_ROWS, boardIndex, distance, fromPlacement, hexEquals, type Hex } from '../hex.js';
@@ -29,6 +31,7 @@ import {
   combineModifiers,
   finalStats,
   gruntStats,
+  monsterStats,
   type BaseStats,
   type StatModifiers,
   type Stats,
@@ -39,7 +42,8 @@ import { LAST_TICK, toTicks } from './time.js';
 import { activeTrait, traitLevels, traitModifiers, type TraitLevels } from './traits.js';
 
 export interface PlacedUnit {
-  readonly unitId: UnitId;
+  /** A unit, or a PvE monster (always 1★). */
+  readonly unitId: FighterId;
   readonly star: Star;
   /** 0–6 from left to right, in the team's own perspective. */
   readonly col: number;
@@ -58,7 +62,7 @@ export interface CombatInput {
 }
 
 export interface Survivor {
-  readonly unitId: UnitId;
+  readonly unitId: FighterId;
   readonly star: Star;
 }
 
@@ -72,9 +76,10 @@ export interface CombatResult {
 
 export interface UnitState {
   readonly id: number;
-  readonly unitId: UnitId | SummonId;
+  readonly unitId: FighterId | SummonId;
   readonly team: Team;
-  readonly origin: OriginId;
+  /** Null for monsters. */
+  readonly origin: OriginId | null;
   readonly star: Star;
   readonly summon: boolean;
   readonly slot: number;
@@ -139,9 +144,9 @@ type Unit = { -readonly [K in Exclude<keyof UnitState, 'statuses'>]: UnitState[K
   readonly cost: Cost;
   /** The unit gains no mana before this tick (section 9.1). */
   castingUntil: number;
-  /** Empty for summons. */
+  /** Empty for summons and monsters. */
   readonly classes: readonly ClassId[];
-  /** Treebeard and Sauron (design.md section 4). */
+  /** Treebeard, Sauron and the big monsters (design.md section 4). */
   readonly large: boolean;
   /** Bonuses from traits that hold for the whole fight (section 12.3). */
   readonly traitBonus: Partial<StatModifiers>;
@@ -214,7 +219,7 @@ export class Fight implements Combat {
         .filter((u) => u.alive && u.team === team)
         .sort((a, b) => a.slot - b.slot)
         // Summons have a SummonId, so this also leaves them out.
-        .flatMap(({ unitId, star }) => (isUnitId(unitId) ? [{ unitId, star }] : []));
+        .flatMap(({ unitId, star }) => (isSummonId(unitId) ? [] : [{ unitId, star }]));
     return {
       outcome: this.outcome,
       survivors: { A: survivors('A'), B: survivors('B') },
@@ -228,20 +233,22 @@ export class Fight implements Combat {
     // 1–2. Units, with their static trait bonuses and the Gondor front-row bonus.
     for (const team of TEAMS) {
       const placements = input.teams[team];
-      const levels = traitLevels(placements.map((p) => p.unitId));
+      // Monsters have no traits.
+      const levels = traitLevels(placements.map((p) => p.unitId).filter(isUnitId));
       this.traits[team] = levels;
       const slots = startingSlots(placements);
       const bySlot = placements.map((p, i) => ({ p, slot: slots[i]! })).sort((a, b) => a.slot - b.slot);
       for (const { p, slot } of bySlot) {
-        const def = UNITS[p.unitId];
-        const base = baseStats(def, p.star);
-        const traitBonus = traitModifiers(def, levels, p.row === HALF_ROWS - 1);
+        const fighter = isUnitId(p.unitId)
+          ? unitFighter(UNITS[p.unitId], p.star, levels, p.row === HALF_ROWS - 1)
+          : monsterFighter(p.unitId, input.stage);
+        const { base, traitBonus } = fighter;
         const stats = finalStats(base, traitBonus);
         this.addUnit({
           id: this.units.length,
           unitId: p.unitId,
           team,
-          origin: def.origin,
+          origin: fighter.origin,
           star: p.star,
           summon: false,
           slot,
@@ -254,13 +261,13 @@ export class Fight implements Combat {
           stats,
           statuses: new Statuses(),
           busyUntil: 0,
-          targetsFarthest: levels.burglar !== undefined && def.classes.includes('burglar'),
+          targetsFarthest: levels.burglar !== undefined && fighter.classes.includes('burglar'),
           nextAttackTick: 1,
-          ability: def.ability,
-          cost: def.cost,
+          ability: fighter.ability,
+          cost: fighter.cost,
           castingUntil: 0,
-          classes: def.classes,
-          large: def.large === true,
+          classes: fighter.classes,
+          large: fighter.large,
           traitBonus,
           auraSlowPct: 0,
           archerStacks: 0,
@@ -789,8 +796,49 @@ export function simulateCombat(input: CombatInput): CombatResult {
   return combat.result();
 }
 
-function isUnitId(id: UnitId | SummonId): id is UnitId {
+function isUnitId(id: FighterId | SummonId): id is UnitId {
   return Object.hasOwn(UNITS, id);
+}
+
+function isSummonId(id: FighterId | SummonId): id is SummonId {
+  return Object.hasOwn(SUMMONS, id);
+}
+
+/** What a starting unit or monster brings to the fight, before statuses. */
+interface Fighter {
+  readonly base: BaseStats;
+  readonly traitBonus: Partial<StatModifiers>;
+  readonly origin: OriginId | null;
+  readonly classes: readonly ClassId[];
+  readonly ability: AbilityDef | null;
+  readonly cost: Cost;
+  readonly large: boolean;
+}
+
+function unitFighter(def: UnitDef, star: Star, levels: TraitLevels, inFrontRow: boolean): Fighter {
+  return {
+    base: baseStats(def, star),
+    traitBonus: traitModifiers(def, levels, inFrontRow),
+    origin: def.origin,
+    classes: def.classes,
+    ability: def.ability,
+    cost: def.cost,
+    large: def.large === true,
+  };
+}
+
+/** Monsters have no traits (game-spec.md section 9.8). */
+function monsterFighter(id: MonsterId, stage: number): Fighter {
+  const def = MONSTERS[id];
+  return {
+    base: monsterStats(def, stage),
+    traitBonus: {},
+    origin: null,
+    classes: [],
+    ability: def.ability ?? null,
+    cost: def.cost,
+    large: def.large === true,
+  };
 }
 
 function enemyOf(team: Team): Team {
@@ -802,7 +850,7 @@ function damageReductionPct(source: Unit, target: Unit): number {
   const passive = target.ability?.passive;
   if (passive === undefined) return 0;
   const exempt = (passive.exceptUnits as readonly string[]).includes(source.unitId);
-  return passive.fromOrigins.includes(source.origin) && !exempt ? passive.pct : 0;
+  return source.origin !== null && passive.fromOrigins.includes(source.origin) && !exempt ? passive.pct : 0;
 }
 
 function isTargetable(unit: Unit): boolean {
@@ -819,7 +867,11 @@ function validate(input: CombatInput): void {
     const taken = new Set<string>();
     for (const p of input.teams[team]) {
       const where = `Team ${team} (${p.col}, ${p.row})`;
-      if (!Object.hasOwn(UNITS, p.unitId)) throw new Error(`${where}: unknown unit "${p.unitId}".`);
+      if (Object.hasOwn(MONSTERS, p.unitId)) {
+        if (p.star !== 1) throw new Error(`${where}: monsters are always 1★.`);
+      } else if (!Object.hasOwn(UNITS, p.unitId)) {
+        throw new Error(`${where}: unknown unit "${p.unitId}".`);
+      }
       if (p.star !== 1 && p.star !== 2 && p.star !== 3) throw new Error(`${where}: star must be 1, 2 or 3.`);
       const onHalf =
         Number.isInteger(p.col) && Number.isInteger(p.row) && p.col >= 0 && p.col < BOARD_COLS && p.row >= 0 && p.row < HALF_ROWS;
