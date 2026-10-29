@@ -1,6 +1,6 @@
 // The Council of Elrond: options and pick order (docs/game-spec.md section 9.6).
 
-import { COMPONENTS, type ComponentId } from '../data/items.js';
+import { COMPONENTS, type ItemId } from '../data/items.js';
 import { COUNCIL } from '../data/rounds.js';
 import type { UnitId } from '../data/units.js';
 import { randomInt, shuffle, type Rng } from '../rng.js';
@@ -9,8 +9,8 @@ import { councilCosts } from './schedule.js';
 
 export interface CouncilOption {
   unitId: UnitId;
-  /** Null for the option that brings the One Ring instead. */
-  component: ComponentId | null;
+  /** An item component or a Ring of Power (section 9.12); null for the option that brings the One Ring instead. */
+  item: ItemId | null;
   /** Whether this option brings the One Ring (section 9.11). */
   ring: boolean;
   /** The seat that picked it, or null while it is still there. */
@@ -27,7 +27,7 @@ export function rollCouncilOptions(pool: Pool, stage: number, rng: Rng): Council
     const costs = councilCosts(stage).filter((cost) => pool.countOfCost(cost) > 0);
     if (costs.length === 0) break;
     const unitId = pool.takeOfCost(costs[randomInt(rng, costs.length)]!, rng);
-    options.push({ unitId, component: COMPONENTS[randomInt(rng, COMPONENTS.length)]!, ring: false, pickedBy: null });
+    options.push({ unitId, item: COMPONENTS[randomInt(rng, COMPONENTS.length)]!, ring: false, pickedBy: null });
   }
   return options;
 }
