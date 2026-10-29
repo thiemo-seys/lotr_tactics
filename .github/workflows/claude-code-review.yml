@@ -24,7 +24,7 @@ jobs:
     runs-on: ubuntu-latest
     permissions:
       contents: read
-      pull-requests: read
+      pull-requests: write
       issues: read
       id-token: write
     steps:
@@ -38,6 +38,12 @@ jobs:
           plugin_marketplaces: "https://github.com/anthropics/claude-plugins-official.git"
           plugins: "code-review@claude-plugins-official"
           prompt: "/code-review:code-review --comment ${{ github.repository }}/pull/${{ github.event.pull_request.number }}"
-          # The action only starts the inline-comment MCP server when it is
-          # named here, so keep this line.
-          claude_args: '--allowedTools "mcp__github_inline_comment__create_inline_comment"'
+          # Puts Claude's report in the job summary, so a run that posts
+          # nothing still says why. Only collaborators can open pull requests
+          # here, so the input is trusted.
+          display_report: true
+          # The plugin's review agents read the pull request and post the
+          # summary with gh; without these they are refused and the review
+          # stops before it starts. The action only starts the inline-comment
+          # MCP server when it is named here, so keep it in the list.
+          claude_args: '--allowedTools "mcp__github_inline_comment__create_inline_comment,Bash(gh pr view:*),Bash(gh pr diff:*),Bash(gh pr comment:*),Bash(gh pr list:*),Bash(gh issue view:*),Bash(gh issue list:*),Bash(gh search:*)"'

@@ -1,0 +1,78 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>LOTR Tactics</title>
+    <script type="module" crossorigin src="./assets/play-CVU_5xRo.js"></script>
+    <link rel="modulepreload" crossorigin href="./assets/style-DL-HSA5b.js">
+    <link rel="stylesheet" crossorigin href="./assets/style-CHGSnhbN.css">
+  </head>
+  <body class="play">
+    <header id="hud">
+      <span id="round"></span>
+      <span id="timer"></span>
+      <span id="stats"></span>
+      <span id="ring-status" hidden></span>
+      <button id="mount-doom" title="Throw the One Ring into Mount Doom. Every ring of the Three and the Nine goes with it, yours included." hidden>Mount Doom</button>
+      <span class="spacer"></span>
+      <button id="speed" hidden>1×</button>
+      <button id="skip" hidden>Skip fight</button>
+      <button id="leave-game" hidden>Leave</button>
+      <a href="./index.html">Fight viewer</a>
+    </header>
+    <main>
+      <div id="view"></div>
+      <aside id="players"></aside>
+      <section id="menu" class="panel" hidden>
+        <h2>LOTR Tactics</h2>
+        <p id="menu-message" class="message"></p>
+        <label class="field">Name <input id="name" maxlength="20" autocomplete="nickname" /></label>
+        <div class="actions">
+          <button id="play-bots">Play against bots</button>
+          <button id="create">Create lobby</button>
+        </div>
+        <div class="actions">
+          <input id="code" maxlength="5" placeholder="Code" autocomplete="off" />
+          <button id="join">Join lobby</button>
+        </div>
+      </section>
+      <section id="lobby" class="panel" hidden>
+        <h2>Lobby <span id="lobby-code"></span></h2>
+        <ol id="seats"></ol>
+        <p id="lobby-message" class="message"></p>
+        <div class="actions">
+          <button id="start">Start game</button>
+          <button id="copy-link">Copy link</button>
+          <button id="leave-lobby">Leave</button>
+        </div>
+      </section>
+      <section id="council" class="panel" hidden>
+        <h2>Council of Elrond</h2>
+        <p id="council-status"></p>
+        <div id="options"></div>
+      </section>
+      <section id="gift-offer" class="panel" hidden>
+        <h2>Gifts of Lothlórien <span id="gift-tier"></span></h2>
+        <div id="gift-options"></div>
+        <div class="actions">
+          <button id="reroll-gifts">Reroll the Gifts</button>
+        </div>
+      </section>
+      <section id="result" class="panel" hidden></section>
+      <div id="banner" hidden></div>
+    </main>
+    <footer id="shop-bar" hidden>
+      <div class="buttons">
+        <button id="buy-xp" title="Buy 4 XP (F)">Buy XP · 4</button>
+        <button id="reroll" title="Reroll the shop (D)">Reroll · 2</button>
+        <button id="lock">Lock</button>
+      </div>
+      <div id="shop"></div>
+      <div class="buttons">
+        <div id="items"></div>
+        <button id="ready" title="End planning (Space)">Ready</button>
+      </div>
+    </footer>
+  </body>
+</html>
