@@ -63,7 +63,7 @@ packages/client/
 - **Body:** a low-poly pawn in its team's colour. Large units are drawn bigger. Summons are smaller and have no name.
 - **Overlay** above each unit:
   - name and star level
-  - its items, if any, each naming its effect when hovered
+  - its items, if any, each naming its effect when hovered, and the One Ring and its Corruption on the Ring's bearer
   - a health bar with the shield drawn after it
   - a mana bar
   - tags for stun, stun immunity and untargetable
