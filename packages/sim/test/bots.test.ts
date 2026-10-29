@@ -61,7 +61,7 @@ describe('bots', () => {
     me.level = 4;
     for (const [slot, id] of (['legolas', 'gimli', 'saruman', 'aragorn'] as const).entries()) {
       pool.take(id, copiesIn(1));
-      me.bench[slot] = { id: 500 + slot, unitId: id, star: 1 };
+      me.bench[slot] = { id: 500 + slot, unitId: id, star: 1, items: [] };
     }
     bots[0]!.plan(game);
     const rowOf = (id: string) => boardRows(game, 0).find((b) => b.unit.unitId === id)?.row;
@@ -69,6 +69,37 @@ describe('bots', () => {
     expect(rowOf('aragorn')).toBe(2);
     expect(rowOf('legolas')).toBe(0);
     expect(rowOf('saruman')).toBe(0);
+  });
+
+  it('give items to their attacker, caster and tank by role', () => {
+    const { game, bots } = botsUntil(6, 2, 1, 2);
+    const me = game.state.players[0] as Player;
+    const pool = game.state.pool as Pool;
+    me.returnEverything();
+    me.level = 4;
+    for (const [slot, id] of (['legolas', 'gimli', 'saruman', 'aragorn'] as const).entries()) {
+      pool.take(id, copiesIn(1));
+      me.bench[slot] = { id: 500 + slot, unitId: id, star: 1, items: [] };
+    }
+    me.items.push('blade', 'staff', 'mail', 'bow', 'cloak', 'phial', 'ent-draught', 'mail');
+    bots[0]!.plan(game);
+    const itemsOf = (id: string) => boardRows(game, 0).find((b) => b.unit.unitId === id)!.unit.items;
+    // With Captain as a focus trait, Aragorn is the strongest attacker.
+    expect(bots[0]!.focus).toContain('captain');
+    expect(itemsOf('aragorn')).toEqual(['black-arrow']);
+    // A combined item goes by its first component: the Phial (Cloak + Staff) to the tank.
+    expect(itemsOf('gimli')).toEqual(['mithril-shirt', 'phial', 'ent-draught']);
+    // The tank is full, so the last Mail goes to the strongest unit that can take it: Saruman,
+    // where it completes his Staff.
+    expect(itemsOf('saruman')).toEqual(['star-of-elendil']);
+    expect(itemsOf('legolas')).toEqual([]);
+    expect(me.items).toEqual([]);
+  });
+
+  it('use items in whole games', () => {
+    const { reports } = playBotGame(2);
+    const last = reports.at(-1)!;
+    expect(last.fights.some((f) => f.input.teams.A.some((u) => u.items.length > 0))).toBe(true);
   });
 
   it('keep bench slots free', () => {
@@ -86,7 +117,7 @@ describe('bots', () => {
     const pool = game.state.pool as Pool;
     for (const slot of [0, 1]) {
       pool.take(option.unitId);
-      me.bench[slot] = { id: 600 + slot, unitId: option.unitId, star: 1 };
+      me.bench[slot] = { id: 600 + slot, unitId: option.unitId, star: 1, items: [] };
     }
     // Make sure no earlier option is the same unit, so the choice is clear.
     const firstSame = game.state.council!.options.findIndex((o) => o.unitId === option.unitId);
