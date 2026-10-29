@@ -560,7 +560,7 @@ describe('abilities', () => {
 
   it('Elrond heals the two allies with the lowest Health % and gives them Magic Resist', () => {
     const c = castBy(
-      [placed('elrond', 3, 0), placed('gimli', 3, 3), placed('eomer', 2, 3), placed('radagast', 1, 3)],
+      [placed('elrond', 3, 0), placed('gimli', 3, 3), placed('eomer', 2, 3), placed('merry', 1, 3)],
       [placed('boromir', 0, 0)],
       {
         prepare: (_, find) => {
