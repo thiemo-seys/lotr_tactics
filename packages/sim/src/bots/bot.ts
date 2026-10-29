@@ -1,5 +1,6 @@
 // A bot that plays one seat through the same actions as a person (docs/game-spec.md section 11).
 
+import { isRingOfPower } from '../combat/items.js';
 import { BOT, type ItemRole } from '../data/bots.js';
 import { GIFTS, type GiftId } from '../data/gifts.js';
 import { ITEMS, type ItemId } from '../data/items.js';
@@ -44,10 +45,15 @@ function owned(p: PlayerView): { unit: OwnedUnit; place: Place }[] {
   return units;
 }
 
-/** The role of an item: its own for a component, its first component's for a combined item. */
+/** The role of an item: its own for a component or a Ring of Power, its first component's for a combined item. */
 function itemRole(item: ItemId): ItemRole {
   const recipe = ITEMS[item].recipe;
   return BOT.itemRoles[recipe === null ? (item as keyof typeof BOT.itemRoles) : recipe[0]];
+}
+
+/** Whether a unit is of an item's kin: a Ring of Power is stronger on it (section 9.12). */
+function isKin(item: ItemId, unit: OwnedUnit): boolean {
+  return ITEMS[item].ringOfPower?.kin?.origins.includes(UNITS[unit.unitId].origin) === true;
 }
 
 function hasClass(unit: OwnedUnit, trait: ClassId): boolean {
@@ -106,7 +112,8 @@ export class Bot {
     let bestScore = -Infinity;
     council.options.forEach((option, i) => {
       const ring = me.hp <= BOT.ringTakeBelowHp ? BOT.want.merge + 1 : -Infinity;
-      const score = option.pickedBy !== null ? -Infinity : option.ring ? ring : this.want(me, option.unitId);
+      const ringOfPower = option.item !== null && isRingOfPower(option.item) ? BOT.ringOfPowerWant : 0;
+      const score = option.pickedBy !== null ? -Infinity : option.ring ? ring : this.want(me, option.unitId) + ringOfPower;
       if (score > bestScore) {
         best = i;
         bestScore = score;
@@ -263,14 +270,19 @@ export class Bot {
   }
 
   /**
-   * Destroys the One Ring as soon as it can, and otherwise keeps it on a board unit: a Hobbit if it
-   * has one, else its attacker (section 11).
+   * Destroys the One Ring as soon as it can, unless that would cost it a ring of the Three or the
+   * Nine, and otherwise keeps it on a board unit: a Hobbit if it has one, else its attacker
+   * (section 11).
    */
   private bearRing(game: Game): void {
     const { ring } = game.state;
     if (ring.state !== 'held' || ring.holder !== this.seat) return;
-    if (game.act(this.seat, { type: 'destroyRing' }).ok) return;
     const me = this.me(game);
+    const bound = owned(me)
+      .flatMap((o) => o.unit.items)
+      .concat(me.items)
+      .some((item) => ITEMS[item].ringOfPower !== undefined && ITEMS[item].ringOfPower.family !== 'seven');
+    if (!bound && game.act(this.seat, { type: 'destroyRing' }).ok) return;
     const board = owned(me)
       .filter((o) => !('bench' in o.place))
       .sort((a, b) => this.strength(me, b.unit) - this.strength(me, a.unit));
@@ -305,9 +317,10 @@ export class Bot {
     };
     for (let i = 0; i < this.me(game).items.length; ) {
       const item = this.me(game).items[i]!;
+      const kin = board.filter((o) => isKin(item, o.unit));
       const preferred = holders[itemRole(item)];
       // Units get new items as this goes, so look at each one as it is now.
-      const holder = [...(preferred === undefined ? [] : [preferred]), ...board].find(
+      const holder = [...kin, ...(preferred === undefined ? [] : [preferred]), ...board].find(
         (o) => addItem(unitAt(this.me(game), o.place)!.items, item) !== null,
       );
       // A given item leaves the list, so the next one takes its index.
