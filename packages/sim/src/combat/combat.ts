@@ -1,12 +1,16 @@
 // The combat simulation: createCombat / step / result (docs/sim-spec.md sections 6, 13 and 14).
 
+import type { OriginId } from '../data/traits.js';
 import { UNITS, type SummonId, type UnitId } from '../data/units.js';
-import { BOARD_COLS, BOARD_ROWS, fromPlacement, type Hex } from '../hex.js';
+import { BOARD_COLS, BOARD_ROWS, boardIndex, distance, fromPlacement, type Hex } from '../hex.js';
 import type { Star, Team } from '../types.js';
 import type { CombatEvent, Outcome } from './events.js';
-import { startingSlots } from './order.js';
+import { MOVE_TICKS, planMove } from './movement.js';
+import { actionOrder, startingSlots } from './order.js';
 import { baseStats, finalStats, type BaseStats, type Stats } from './stats.js';
+import { chooseTarget, type TargetingRules } from './targeting.js';
 import { LAST_TICK } from './time.js';
+import { traitLevels, type TraitLevels } from './traits.js';
 
 export interface PlacedUnit {
   readonly unitId: UnitId;
@@ -44,11 +48,14 @@ export interface UnitState {
   readonly id: number;
   readonly unitId: UnitId | SummonId;
   readonly team: Team;
+  readonly origin: OriginId;
   readonly star: Star;
   readonly summon: boolean;
   readonly slot: number;
-  /** Board coordinates. */
+  /** Board coordinates. Set to the destination as soon as a step starts. */
   readonly hex: Hex;
+  /** The id of the unit's target, if it has one. */
+  readonly target: number | null;
   readonly alive: boolean;
   readonly health: number;
   readonly mana: number;
@@ -82,12 +89,18 @@ const TEAMS: readonly Team[] = ['A', 'B'];
 /** Each team's half of the board is this many rows deep. */
 const HALF_ROWS = BOARD_ROWS / 2;
 
-type Unit = { -readonly [K in keyof UnitState]: UnitState[K] };
+type Unit = { -readonly [K in keyof UnitState]: UnitState[K] } & {
+  /** The unit can't act before this tick. */
+  busyUntil: number;
+  /** A Burglar with its team's Burglar trait active, so it targets the farthest enemy. */
+  targetsFarthest: boolean;
+};
 
 class Fight implements Combat {
   tick = 0;
   readonly events: CombatEvent[] = [];
   private readonly units: Unit[] = [];
+  private readonly traits: Record<Team, TraitLevels> = { A: {}, B: {} };
   private outcome: Outcome | null = null;
 
   constructor(input: CombatInput) {
@@ -103,8 +116,9 @@ class Fight implements Combat {
     if (this.outcome !== null) throw new Error('The combat is over.');
     this.tick++;
     const firstEvent = this.events.length;
-    // Section 6.4. Units can't act or die yet; statuses, the queue, regeneration and actions are
-    // added in later steps. So far a fight can only end at the time limit.
+    // Section 6.4. Statuses, the queue and regeneration come in later steps.
+    for (const unit of actionOrder(this.living(), this.tick)) this.act(unit);
+    // Units can't die yet, so a fight can only end at the time limit.
     if (this.tick === LAST_TICK) this.end('draw');
     return this.events.slice(firstEvent);
   }
@@ -129,31 +143,95 @@ class Fight implements Combat {
     };
   }
 
-  /** Tick 0 (section 6.2). Traits at combat start are added in a later step. */
+  /** Tick 0 (section 6.2). Trait effects at combat start are added in a later step. */
   private start(input: CombatInput): void {
     for (const team of TEAMS) {
       const placements = input.teams[team];
+      this.traits[team] = traitLevels(placements.map((p) => p.unitId));
+      const burglarTrait = this.traits[team].burglar !== undefined;
       const slots = startingSlots(placements);
       const bySlot = placements.map((p, i) => ({ p, slot: slots[i]! })).sort((a, b) => a.slot - b.slot);
       for (const { p, slot } of bySlot) {
-        const base = baseStats(UNITS[p.unitId], p.star);
+        const def = UNITS[p.unitId];
+        const base = baseStats(def, p.star);
         this.addUnit({
           id: this.units.length,
           unitId: p.unitId,
           team,
+          origin: def.origin,
           star: p.star,
           summon: false,
           slot,
           hex: fromPlacement(team, p),
+          target: null,
           alive: true,
           health: base.maxHealth,
           mana: base.startMana,
           base,
           stats: finalStats(base, {}),
+          busyUntil: 0,
+          targetsFarthest: burglarTrait && def.classes.includes('burglar'),
         });
       }
     }
     this.checkWipe();
+  }
+
+  /** A unit's action for the tick (section 6.4, step 4). Casting and attacks come in later steps. */
+  private act(unit: Unit): void {
+    if (!unit.alive || this.tick < unit.busyUntil) return;
+    const target = this.ensureTarget(unit);
+    if (target === null || distance(unit.hex, target.hex) <= unit.stats.range) return;
+
+    const occupied = new Set(this.living().map((u) => boardIndex(u.hex)));
+    const plan = planMove(
+      unit.team,
+      unit.hex,
+      unit.stats.range,
+      target,
+      this.targetableEnemies(unit),
+      this.living(enemyOf(unit.team)),
+      this.targetingRules(unit),
+      (hex) => !occupied.has(boardIndex(hex)),
+    );
+    if (plan === null) return; // No enemy is reachable, so the unit waits.
+    unit.target = plan.target.id;
+    if (plan.step !== null) this.moveTo(unit, plan.step);
+  }
+
+  /** The unit's target, choosing a new one if it has none or the old one is no longer targetable (section 8). */
+  private ensureTarget(unit: Unit): Unit | null {
+    const current = unit.target === null ? null : this.units[unit.target]!;
+    if (current !== null && isTargetable(current)) return current;
+    const chosen = chooseTarget(
+      unit.team,
+      unit.hex,
+      this.targetableEnemies(unit),
+      this.living(enemyOf(unit.team)),
+      this.targetingRules(unit),
+    );
+    unit.target = chosen?.id ?? null;
+    return chosen;
+  }
+
+  private targetingRules(unit: Unit): TargetingRules {
+    return { farthest: unit.targetsFarthest, hobbitRule: this.traits[enemyOf(unit.team)].hobbit !== undefined };
+  }
+
+  /** Starts a step (section 11): the unit occupies the new hex at once and is busy until it arrives. */
+  private moveTo(unit: Unit, to: Hex): void {
+    const from = unit.hex;
+    unit.hex = to;
+    unit.busyUntil = this.tick + MOVE_TICKS;
+    this.events.push({ type: 'move', tick: this.tick, unit: unit.id, from, to, arriveTick: unit.busyUntil });
+  }
+
+  private living(team?: Team): Unit[] {
+    return this.units.filter((u) => u.alive && (team === undefined || u.team === team));
+  }
+
+  private targetableEnemies(unit: Unit): Unit[] {
+    return this.living(enemyOf(unit.team)).filter(isTargetable);
   }
 
   private addUnit(unit: Unit): void {
@@ -196,6 +274,15 @@ export function simulateCombat(input: CombatInput): CombatResult {
 
 function isUnitId(id: UnitId | SummonId): id is UnitId {
   return Object.hasOwn(UNITS, id);
+}
+
+function enemyOf(team: Team): Team {
+  return team === 'A' ? 'B' : 'A';
+}
+
+/** Untargetable units come with statuses (section 12.1). */
+function isTargetable(unit: Unit): boolean {
+  return unit.alive;
 }
 
 /** Throws on input the server should never send. */

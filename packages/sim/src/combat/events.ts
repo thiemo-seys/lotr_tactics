@@ -18,10 +18,20 @@ export interface SpawnEvent {
   readonly summon: boolean;
 }
 
+/** A unit starts a step. It already occupies `to`; the renderer animates it until `arriveTick`. */
+export interface MoveEvent {
+  readonly type: 'move';
+  readonly tick: number;
+  readonly unit: number;
+  readonly from: Hex;
+  readonly to: Hex;
+  readonly arriveTick: number;
+}
+
 export interface EndEvent {
   readonly type: 'end';
   readonly tick: number;
   readonly outcome: Outcome;
 }
 
-export type CombatEvent = SpawnEvent | EndEvent;
+export type CombatEvent = SpawnEvent | MoveEvent | EndEvent;

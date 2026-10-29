@@ -40,6 +40,12 @@ export function isOnBoard(hex: Hex): boolean {
   return col >= 0 && col < BOARD_COLS && row >= 0 && row < BOARD_ROWS;
 }
 
+/** A hex's position in `BOARD_HEXES`, for indexing arrays and sets. Only for hexes on the board. */
+export function boardIndex(hex: Hex): number {
+  const { col, row } = toOffset(hex);
+  return row * BOARD_COLS + col;
+}
+
 /** Neighbour directions in perspective order. */
 export const DIRECTIONS: readonly Hex[] = [
   { q: 1, r: 0 },
