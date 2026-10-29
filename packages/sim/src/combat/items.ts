@@ -1,7 +1,17 @@
-// The items a unit holds (docs/sim-spec.md section 12.4): their stats, their effects, and which
-// combined item two components make.
+// The items a unit holds (docs/sim-spec.md sections 12.4 and 12.7): their stats, their effects,
+// which combined item two components make, and the Rings of Power.
 
-import { COMPONENTS, ITEMS, type CombinedItemId, type ComponentId, type ItemEffect, type ItemId, type ItemStats } from '../data/items.js';
+import {
+  COMPONENTS,
+  ITEMS,
+  type CombinedItemId,
+  type ComponentId,
+  type ItemEffect,
+  type ItemId,
+  type ItemStats,
+  type RingOfPowerId,
+} from '../data/items.js';
+import type { OriginId } from '../data/traits.js';
 import { combineModifiers, type StatModifiers } from './stats.js';
 
 export const ITEM_IDS = Object.keys(ITEMS) as ItemId[];
@@ -11,8 +21,21 @@ export function isItemId(id: unknown): id is ItemId {
 }
 
 export function isComponent(id: ItemId): id is ComponentId {
-  return ITEMS[id].recipe === null;
+  return (COMPONENTS as readonly ItemId[]).includes(id);
 }
+
+export function isCombined(id: ItemId): id is CombinedItemId {
+  return ITEMS[id].recipe !== null;
+}
+
+export function isRingOfPower(id: ItemId): id is RingOfPowerId {
+  return ITEMS[id].ringOfPower !== undefined;
+}
+
+/** The 21 combined items, which some rewards give at random. */
+export const COMBINED_ITEM_IDS = ITEM_IDS.filter(isCombined);
+
+export const RING_OF_POWER_IDS = ITEM_IDS.filter(isRingOfPower);
 
 const RECIPES = new Map<string, CombinedItemId>(
   ITEM_IDS.flatMap((id) => {
@@ -42,7 +65,15 @@ export function itemModifiers(items: readonly ItemId[]): Partial<StatModifiers> 
   return combineModifiers(...items.map(itemStats));
 }
 
-/** The effects of the items a unit holds, in the order it holds them. */
-export function itemEffects(items: readonly ItemId[]): ItemEffect[] {
-  return items.flatMap((id) => (ITEMS[id].effect === null ? [] : [ITEMS[id].effect]));
+/**
+ * The effects of the items a unit of an origin holds, in the order it holds them. Each comes with
+ * the percent of its listed numbers it has: 100, or more for a Ring of Power on its kin.
+ */
+export function itemEffects(items: readonly ItemId[], origin: OriginId | null): { effect: ItemEffect; pct: number }[] {
+  return items.flatMap((id) => {
+    const { effect, ringOfPower } = ITEMS[id];
+    if (effect === null) return [];
+    const kin = ringOfPower?.kin;
+    return [{ effect, pct: kin !== undefined && origin !== null && kin.origins.includes(origin) ? kin.pct : 100 }];
+  });
 }
