@@ -185,7 +185,8 @@ main {
   border-radius: 7px;
 }
 
-.card.ring-of-power {
+/* A Council option with a Ring of Power, scoped like #options .card.ring. */
+#options .card.ring-of-power {
   border-color: #eab308;
   border-style: dashed;
 }
