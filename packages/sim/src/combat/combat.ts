@@ -1,16 +1,28 @@
 // The combat simulation: createCombat / step / result (docs/sim-spec.md sections 6, 13 and 14).
 
-import { ATTACKS, MANA, TICKS_PER_SECOND } from '../data/rules.js';
+import { ABILITIES, ATTACKS, MANA, MOVEMENT, TICKS_PER_SECOND } from '../data/rules.js';
 import type { OriginId } from '../data/traits.js';
-import { UNITS, type DamageType, type Effect, type SummonId, type UnitId } from '../data/units.js';
-import { BOARD_COLS, BOARD_ROWS, boardIndex, distance, fromPlacement, type Hex } from '../hex.js';
+import {
+  SUMMONS,
+  UNITS,
+  type AbilityDef,
+  type AbilityStep,
+  type Cost,
+  type DamageType,
+  type Effect,
+  type Selector,
+  type SummonId,
+  type UnitId,
+} from '../data/units.js';
+import { BOARD_COLS, BOARD_ROWS, boardIndex, distance, fromPlacement, hexEquals, type Hex } from '../hex.js';
 import { createRng, type Rng } from '../rng.js';
 import type { Star, Team } from '../types.js';
+import { dashHex, lineDashHex, select, summonHex } from './abilities.js';
 import { finalDamage, manaFromDamage, overtimePct, rollAttack } from './damage.js';
 import type { CombatEvent, DamageEvent, Outcome } from './events.js';
 import { MOVE_TICKS, planMove } from './movement.js';
 import { actionOrder, firstTeam, startingSlots } from './order.js';
-import { baseStats, finalStats, type BaseStats, type Stats } from './stats.js';
+import { abilityValue, baseStats, finalStats, gruntStats, type BaseStats, type Stats } from './stats.js';
 import { Statuses, type StatusKind, type StatusState } from './statuses.js';
 import { chooseTarget, type TargetingRules } from './targeting.js';
 import { LAST_TICK, toTicks } from './time.js';
@@ -97,6 +109,12 @@ const TEAMS: readonly Team[] = ['A', 'B'];
 /** Each team's half of the board is this many rows deep. */
 const HALF_ROWS = BOARD_ROWS / 2;
 
+/** How long a cast keeps the caster busy (section 10.1). */
+const CAST_TICKS = toTicks(ABILITIES.castSeconds);
+
+/** How long a dash keeps the unit busy (section 2). */
+const DASH_TICKS = toTicks(MOVEMENT.dashBusySeconds);
+
 type Unit = { -readonly [K in Exclude<keyof UnitState, 'statuses'>]: UnitState[K] } & {
   readonly statuses: Statuses;
   /** The unit can't act before this tick. */
@@ -105,14 +123,20 @@ type Unit = { -readonly [K in Exclude<keyof UnitState, 'statuses'>]: UnitState[K
   targetsFarthest: boolean;
   /** The first tick the next basic attack can fire. Can be a fraction. */
   nextAttackTick: number;
+  /** Null for summons, which have no ability. */
+  readonly ability: AbilityDef | null;
+  /** Ability values scale with it (section 10.2). */
+  readonly cost: Cost;
+  /** The unit gains no mana before this tick (section 9.1). */
+  castingUntil: number;
 };
 
-/** A ranged basic attack on its way. */
-interface Projectile {
-  readonly dueTick: number;
-  readonly source: Unit;
-  readonly target: Unit;
-}
+/** Something due on a later tick (section 6.4, step 2). */
+type QueueEntry =
+  /** A ranged basic attack on its way. */
+  | { readonly kind: 'projectile'; readonly dueTick: number; readonly source: Unit; readonly target: Unit }
+  /** Ability steps after a delay. */
+  | { readonly kind: 'delayed'; readonly dueTick: number; readonly caster: Unit; readonly steps: readonly AbilityStep[] };
 
 /**
  * The fight itself. Code outside the package uses it through `createCombat`; abilities and traits
@@ -125,12 +149,15 @@ export class Fight implements Combat {
   private readonly traits: Record<Team, TraitLevels> = { A: {}, B: {} };
   private readonly rng: Rng;
   /** In creation order, which is also the order to resolve entries due on the same tick. */
-  private queue: Projectile[] = [];
+  private queue: QueueEntry[] = [];
   private outcome: Outcome | null = null;
+  /** Orc grunts get stronger each stage. */
+  private readonly stage: number;
 
   constructor(input: CombatInput) {
     validate(input);
     this.rng = createRng(input.seed);
+    this.stage = input.stage;
     this.start(input);
   }
 
@@ -205,6 +232,9 @@ export class Fight implements Combat {
           busyUntil: 0,
           targetsFarthest: burglarTrait && def.classes.includes('burglar'),
           nextAttackTick: 1,
+          ability: def.ability,
+          cost: def.cost,
+          castingUntil: 0,
         });
       }
     }
@@ -271,22 +301,31 @@ export class Fight implements Combat {
     unit.stats = finalStats(unit.base, unit.statuses.modifiers());
   }
 
-  /** Resolves the projectiles due this tick, in the order they were fired (section 6.4, step 2). */
+  /** Resolves the projectiles and delayed steps due this tick, in creation order (section 6.4, step 2). */
   private resolveQueue(): void {
-    const due = this.queue.filter((p) => p.dueTick === this.tick);
-    this.queue = this.queue.filter((p) => p.dueTick !== this.tick);
-    for (const projectile of due) {
+    const due = this.queue.filter((e) => e.dueTick === this.tick);
+    this.queue = this.queue.filter((e) => e.dueTick !== this.tick);
+    for (const entry of due) {
       if (this.outcome !== null) return;
-      // A projectile at a target that died or became untargetable is wasted. One whose attacker
-      // died still lands.
-      if (isTargetable(projectile.target)) this.hit(projectile.source, projectile.target);
+      if (entry.kind === 'projectile') {
+        // A projectile at a target that died or became untargetable is wasted. One whose attacker
+        // died still lands.
+        if (isTargetable(entry.target)) this.hit(entry.source, entry.target);
+      } else if (entry.caster.alive) {
+        // Delayed steps belong to the caster's ability, so they don't happen once it has died.
+        this.runSteps(entry.caster, entry.steps);
+      }
     }
   }
 
-  /** A unit's action for the tick (section 6.4, step 4). Casting comes with abilities. */
+  /** A unit's action for the tick (section 6.4, step 4). */
   private act(unit: Unit): void {
     // A stun doesn't stop a step already under way: the unit has claimed its new hex.
     if (!unit.alive || this.tick < unit.busyUntil || unit.statuses.has('stun')) return;
+    if (unit.ability !== null && unit.mana >= unit.base.maxMana) {
+      this.cast(unit, unit.ability);
+      return;
+    }
     let target = this.ensureTarget(unit);
     if (target === null) return;
 
@@ -314,6 +353,151 @@ export class Fight implements Combat {
     if (this.tick >= unit.nextAttackTick) this.attack(unit, target);
   }
 
+  /**
+   * Casts an ability (section 10.1): mana resets to 0, the steps resolve now (delayed ones go into
+   * the queue), and the caster is busy and gains no mana for the cast time.
+   */
+  private cast(unit: Unit, ability: AbilityDef): void {
+    unit.mana = 0;
+    unit.busyUntil = this.tick + CAST_TICKS;
+    unit.castingUntil = unit.busyUntil;
+    this.events.push({ type: 'cast', tick: this.tick, unit: unit.id, ability: ability.name });
+    this.runSteps(unit, ability.steps);
+  }
+
+  private runSteps(caster: Unit, steps: readonly AbilityStep[]): void {
+    for (const step of steps) {
+      if (this.outcome !== null) return;
+      if ('delaySeconds' in step) {
+        this.queue.push({ kind: 'delayed', dueTick: this.tick + toTicks(step.delaySeconds), caster, steps: step.steps });
+      } else {
+        this.runStep(caster, step.select, step.effects);
+      }
+    }
+  }
+
+  /**
+   * One ability step (section 10.3): select the units, then apply each effect in turn to every
+   * selected unit that is still alive.
+   */
+  private runStep(caster: Unit, selector: Selector, effects: readonly Effect[]): void {
+    const { units, hexes } = select(selector, {
+      caster,
+      allies: this.living(caster.team),
+      enemies: this.targetableEnemies(caster),
+      target: () => this.ensureTarget(caster),
+    });
+    /** Damage this step has dealt so far, for `healFromDamage`. */
+    let dealt = 0;
+    for (const effect of effects) {
+      if (this.outcome !== null) return;
+      switch (effect.kind) {
+        case 'damage':
+          for (const target of units) dealt += this.abilityDamage(caster, target, effect);
+          break;
+        case 'shield': {
+          const amount = abilityValue('S', effect.pct, caster.cost, caster.star, caster.stats.abilityPower);
+          for (const target of units) this.addShield(caster.id, target.id, amount, effect.seconds ?? ABILITIES.shieldSeconds);
+          break;
+        }
+        case 'heal': {
+          const amount = abilityValue('H', effect.pct, caster.cost, caster.star, caster.stats.abilityPower);
+          for (const target of units) this.heal(caster, target, amount);
+          break;
+        }
+        case 'healFromDamage':
+          this.heal(caster, caster, (dealt * effect.pct) / 100);
+          break;
+        case 'dashAdjacentTo': {
+          // The unit dashed to becomes the caster's target (section 8).
+          const target = units[0];
+          if (target === undefined || !target.alive) break;
+          this.dash(caster, dashHex(caster.team, caster.hex, target.hex, this.isFreeFor(caster)));
+          caster.target = target.id;
+          break;
+        }
+        case 'dashThroughLine':
+          this.dash(caster, lineDashHex(hexes, this.isFreeFor(caster)));
+          break;
+        case 'summon':
+          for (let i = 0; i < effect.count; i++) this.summon(caster, effect.unit);
+          break;
+        default:
+          for (const target of units) this.applyStatus(caster.id, target.id, effect);
+      }
+    }
+  }
+
+  /** Ability damage (sections 9.1 and 10.2): it can't be dodged, and crits only if the ability says so. Returns the damage dealt. */
+  private abilityDamage(caster: Unit, target: Unit, effect: Extract<Effect, { kind: 'damage' }>): number {
+    const value = abilityValue('D', effect.pct, caster.cost, caster.star, caster.stats.abilityPower);
+    const bonusPct = effect.bonusVs !== undefined && target.origin === effect.bonusVs.origin ? effect.bonusVs.multiplierPct : 100;
+    let dealt = 0;
+    for (let hit = 0; hit < (effect.hits ?? 1); hit++) {
+      if (!target.alive || this.outcome !== null) break;
+      const crit = effect.canCrit === true && rollAttack(this.rng, caster.stats.critChancePct, 0).crit;
+      const raw = (value * bonusPct * (crit ? caster.stats.critDamagePct : 100)) / 10_000;
+      dealt += this.dealDamage(caster, target, raw, effect.type, crit, 'ability');
+    }
+    return dealt;
+  }
+
+  /** Heals a unit, rounded and capped at max Health (section 9.2). Emits nothing if no Health is restored. */
+  private heal(source: Unit, target: Unit, amount: number): void {
+    if (!target.alive) return;
+    const restored = Math.min(Math.round(amount), target.stats.maxHealth - target.health);
+    if (restored <= 0) return;
+    target.health += restored;
+    this.events.push({ type: 'heal', tick: this.tick, source: source.id, target: target.id, amount: restored });
+  }
+
+  /** Moves a unit instantly (section 10.4). It stays put if there is nowhere to go. */
+  private dash(unit: Unit, to: Hex | null): void {
+    if (to === null || hexEquals(to, unit.hex)) return;
+    const from = unit.hex;
+    unit.hex = to;
+    unit.busyUntil = Math.max(unit.busyUntil, this.tick + DASH_TICKS);
+    this.events.push({ type: 'dash', tick: this.tick, unit: unit.id, from, to });
+  }
+
+  /** Spawns a summon next to its owner (section 10.3). It doesn't appear if its owner's half is full. */
+  private summon(owner: Unit, unitId: SummonId): void {
+    const hex = summonHex(owner.team, owner.hex, this.isFreeFor(null));
+    if (hex === null) return;
+    // Orc grunts are the only summon.
+    const base = gruntStats(this.stage);
+    this.addUnit({
+      id: this.units.length,
+      unitId,
+      team: owner.team,
+      origin: SUMMONS[unitId].origin,
+      star: 1,
+      summon: true,
+      // The next free slot: slots run from 0 with no gaps, dead units keeping theirs.
+      slot: this.units.filter((u) => u.team === owner.team).length,
+      hex,
+      target: null,
+      alive: true,
+      health: base.maxHealth,
+      mana: 0,
+      base,
+      stats: finalStats(base, {}),
+      statuses: new Statuses(),
+      busyUntil: 0,
+      targetsFarthest: false,
+      nextAttackTick: 1,
+      ability: null,
+      cost: 1,
+      castingUntil: 0,
+    });
+  }
+
+  /** A hex is free if it is on the board with no living unit on it. With `mover`, its own hex counts as free. */
+  private isFreeFor(mover: Unit | null): (hex: Hex) => boolean {
+    const occupied = new Set(this.living().filter((u) => u !== mover).map((u) => boardIndex(u.hex)));
+    return (hex) => !occupied.has(boardIndex(hex));
+  }
+
   /** Fires a basic attack (section 9). */
   private attack(unit: Unit, target: Unit): void {
     const ranged = unit.stats.range >= 2;
@@ -323,7 +507,7 @@ export class Fight implements Combat {
     unit.nextAttackTick = this.tick + TICKS_PER_SECOND / unit.stats.attackSpeed;
     this.gainMana(unit, MANA.perAttack);
     this.events.push({ type: 'attack', tick: this.tick, unit: unit.id, target: target.id, ranged, hitTick });
-    if (ranged) this.queue.push({ dueTick: hitTick, source: unit, target });
+    if (ranged) this.queue.push({ kind: 'projectile', dueTick: hitTick, source: unit, target });
     else this.hit(unit, target);
   }
 
@@ -338,12 +522,12 @@ export class Fight implements Combat {
     this.dealDamage(source, target, raw, 'physical', crit, 'attack');
   }
 
-  /** Runs the damage pipeline (section 9.1). Amps and damage reduction come with traits and abilities. */
-  private dealDamage(source: Unit, target: Unit, raw: number, damageType: DamageType, crit: boolean, kind: DamageEvent['kind']): void {
+  /** Runs the damage pipeline (section 9.1) and returns the final damage. Damage amps come with traits. */
+  private dealDamage(source: Unit, target: Unit, raw: number, damageType: DamageType, crit: boolean, kind: DamageEvent['kind']): number {
     const amount = finalDamage(raw, damageType, target.stats, {
       ampPct: 0,
       overtimePct: overtimePct(this.tick),
-      reductionPct: 0,
+      reductionPct: damageReductionPct(source, target),
     });
     // Shields take it first; the defender gains mana from all of it.
     const absorbed = target.statuses.absorb(amount);
@@ -361,6 +545,7 @@ export class Fight implements Combat {
     });
     this.gainMana(target, manaFromDamage(amount));
     if (target.health <= 0) this.kill(target);
+    return amount;
   }
 
   /** The unit dies at once and frees its hex (section 9.1). On-death traits come with traits. */
@@ -371,8 +556,9 @@ export class Fight implements Combat {
     this.checkWipe();
   }
 
-  /** Mana is capped at max mana; the rest is lost (section 10.1). */
+  /** Mana is capped at max mana; the rest is lost (section 10.1). None is gained while casting (section 9.1). */
   private gainMana(unit: Unit, amount: number): void {
+    if (this.tick < unit.castingUntil) return;
     unit.mana = Math.min(unit.mana + amount, unit.base.maxMana);
   }
 
@@ -455,6 +641,14 @@ function isUnitId(id: UnitId | SummonId): id is UnitId {
 
 function enemyOf(team: Team): Team {
   return team === 'A' ? 'B' : 'A';
+}
+
+/** The target's passive damage reduction against this source, such as the Witch-king's (section 9.1). */
+function damageReductionPct(source: Unit, target: Unit): number {
+  const passive = target.ability?.passive;
+  if (passive === undefined) return 0;
+  const exempt = (passive.exceptUnits as readonly string[]).includes(source.unitId);
+  return passive.fromOrigins.includes(source.origin) && !exempt ? passive.pct : 0;
 }
 
 function isTargetable(unit: Unit): boolean {

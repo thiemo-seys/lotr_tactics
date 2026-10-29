@@ -1,9 +1,9 @@
 import { describe, expect, it } from 'vitest';
-import { createCombat, simulateCombat, type Combat, type CombatResult } from '../src/combat/combat.js';
+import { createCombat, Fight, simulateCombat, type Combat, type CombatResult, type UnitState } from '../src/combat/combat.js';
 import { finalDamage, manaFromDamage, overtimePct } from '../src/combat/damage.js';
 import type { CombatEvent } from '../src/combat/events.js';
 import { actionOrder, firstTeam, startingSlots } from '../src/combat/order.js';
-import { baseStats } from '../src/combat/stats.js';
+import { baseStats, finalStats, type Stats } from '../src/combat/stats.js';
 import { LAST_TICK, OVERTIME_START_TICK } from '../src/combat/time.js';
 import { UNITS, type UnitId } from '../src/data/units.js';
 import { boardIndex, distance, fromOffset } from '../src/hex.js';
@@ -120,12 +120,10 @@ describe('end of combat', () => {
   });
 
   it('is a draw when both teams are still alive after tick 1349', () => {
-    // With nine units a side, some fights reach the time limit.
-    const seed = Array.from({ length: 100 }, (_, i) => i + 1).find(
-      (s) => simulateCombat(mirrorMatch(BOARDS.full, s)).outcome === 'draw',
-    );
-    expect(seed).toBeDefined();
-    const combat = createCombat(mirrorMatch(BOARDS.full, seed!));
+    // Neither side can target the other, so nobody attacks.
+    const combat = new Fight(input([placed('sam', 3, 0)], [placed('gimli', 3, 0)]));
+    combat.applyStatus(0, 0, { kind: 'untargetable', seconds: 60 });
+    combat.applyStatus(1, 1, { kind: 'untargetable', seconds: 60 });
     const result = run(combat);
     expect(result).toMatchObject({ outcome: 'draw', finalTick: LAST_TICK });
     expect(result.events.filter((e) => e.type === 'end')).toEqual([{ type: 'end', tick: LAST_TICK, outcome: 'draw' }]);
@@ -238,10 +236,10 @@ describe('basic attacks', () => {
   it('deals physical damage reduced by Armor, with crits', () => {
     // Sam has 45 Attack Damage, Gimli 59 (45 × 1.3 = 58.5); Armor 40 and 50; Crit Damage 140%.
     const events = run(createCombat(DUEL)).events;
-    const hits = events.flatMap((e) => (e.type === 'damage' && e.tick < OVERTIME_START_TICK ? [e] : []));
+    const hits = events.flatMap((e) => (e.type === 'damage' && e.kind === 'attack' && e.tick < OVERTIME_START_TICK ? [e] : []));
     for (const hit of hits) {
       const expected = hit.source === 0 ? (hit.crit ? 42 : 30) : hit.crit ? 59 : 42;
-      expect(hit).toMatchObject({ amount: expected, absorbed: 0, damageType: 'physical', kind: 'attack' });
+      expect(hit).toMatchObject({ amount: expected, damageType: 'physical' });
     }
     expect(hits.some((h) => h.crit)).toBe(true);
     expect(hits.some((h) => !h.crit)).toBe(true);
@@ -266,7 +264,7 @@ describe('basic attacks', () => {
         if (u.mana === u.base.maxMana) reachedMax = true;
       }
     });
-    // Casting comes with abilities, so for now mana fills up and stays full.
+    // Units at full mana cast on their next action.
     expect(reachedMax).toBe(true);
   });
 
@@ -285,13 +283,38 @@ describe('basic attacks', () => {
   });
 });
 
-describe('fight invariants', () => {
-  /** Several fights with melee and ranged units, long enough to reach overtime. */
-  const fights = [1, 2, 3, 4, 5, 6, 7, 8].map((seed) => {
-    const combat = createCombat(mirrorMatch(BOARDS.full, seed));
-    const result = run(combat);
-    return { units: combat.state.units, result };
+/**
+ * A unit's stats when event `index` happened, rebuilt from the status events before it: buffs add
+ * up, and only the strongest slow and reduction of each stat counts (section 12.1).
+ */
+function statsAt(events: readonly CombatEvent[], index: number, unit: UnitState): Stats {
+  const tick = events[index]!.tick;
+  const active = events
+    .slice(0, index)
+    .flatMap((e) => (e.type === 'status' && e.target === unit.id && e.expiresTick > tick ? [e] : []));
+  const total = (stat: string) => active.reduce((sum, e) => sum + (e.status === 'buff' && e.stat === stat ? e.value! : 0), 0);
+  const strongest = (status: string, stat: string | null) =>
+    active.reduce((max, e) => (e.status === status && e.stat === stat ? Math.max(max, e.value!) : max), 0);
+  return finalStats(unit.base, {
+    attackDamagePct: total('attackDamagePct'),
+    attackSpeedPct: total('attackSpeedPct'),
+    armor: total('armor'),
+    magicResist: total('magicResist'),
+    slowPct: strongest('slow', null),
+    armorReductionPct: strongest('reduce', 'armor'),
+    magicResistReductionPct: strongest('reduce', 'magicResist'),
   });
+}
+
+describe('fight invariants', () => {
+  /** Fights with melee and ranged units, buffs and shields. The tank fights tend to reach overtime. */
+  const fights = [BOARDS.full, BOARDS.tanks].flatMap((board) =>
+    [1, 2, 3, 4].map((seed) => {
+      const combat = createCombat(mirrorMatch(board, seed));
+      const result = run(combat);
+      return { units: combat.state.units, result };
+    }),
+  );
 
   it('never hits a dead unit, and never hits after the fight is over', () => {
     for (const { result } of fights) {
@@ -307,31 +330,35 @@ describe('fight invariants', () => {
     }
   });
 
-  it('runs every hit through the damage pipeline, with overtime', () => {
+  it('runs every basic attack through the damage pipeline, with the stats of the moment and overtime', () => {
     let overtimeHits = 0;
+    let buffedHits = 0;
     for (const { units, result } of fights) {
-      for (const e of result.events) {
-        if (e.type !== 'damage') continue;
-        const source = units[e.source]!;
-        const raw = (source.stats.attackDamage * (e.crit ? source.stats.critDamagePct : 100)) / 100;
-        const expected = finalDamage(raw, 'physical', units[e.target]!.stats, {
-          ampPct: 0,
-          overtimePct: overtimePct(e.tick),
-          reductionPct: 0,
-        });
+      result.events.forEach((e, i) => {
+        if (e.type !== 'damage' || e.kind !== 'attack') return;
+        const source = statsAt(result.events, i, units[e.source]!);
+        const target = statsAt(result.events, i, units[e.target]!);
+        const raw = (source.attackDamage * (e.crit ? source.critDamagePct : 100)) / 100;
+        const expected = finalDamage(raw, 'physical', target, { ampPct: 0, overtimePct: overtimePct(e.tick), reductionPct: 0 });
         expect(e.amount).toBe(expected);
         if (e.tick >= OVERTIME_START_TICK + 30) overtimeHits++;
-      }
+        if (source.attackDamage !== units[e.source]!.base.attackDamage) buffedHits++;
+      });
     }
     expect(overtimeHits).toBeGreaterThan(0);
+    expect(buffedHits).toBeGreaterThan(0);
   });
 
-  it('takes each unit’s Health down by exactly the damage it took', () => {
+  it('changes each unit’s Health by exactly the damage its shields didn’t absorb and the healing it got', () => {
     for (const { units, result } of fights) {
       for (const unit of units) {
-        const taken = result.events.reduce((sum, e) => sum + (e.type === 'damage' && e.target === unit.id ? e.amount : 0), 0);
-        if (unit.alive) expect(unit.health).toBe(unit.stats.maxHealth - taken);
-        else expect(taken).toBeGreaterThanOrEqual(unit.stats.maxHealth);
+        let change = 0;
+        for (const e of result.events) {
+          if (e.type === 'damage' && e.target === unit.id) change -= e.amount - e.absorbed;
+          if (e.type === 'heal' && e.target === unit.id) change += e.amount;
+        }
+        if (unit.alive) expect(unit.health).toBe(unit.stats.maxHealth + change);
+        else expect(-change).toBeGreaterThanOrEqual(unit.stats.maxHealth);
       }
     }
   });
