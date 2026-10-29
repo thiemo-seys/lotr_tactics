@@ -23,6 +23,9 @@ importers:
 
   packages/client:
     dependencies:
+      '@lotr-tactics/server':
+        specifier: workspace:*
+        version: link:../server
       '@lotr-tactics/sim':
         specifier: workspace:*
         version: link:../sim
