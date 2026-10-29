@@ -80,7 +80,7 @@ Every class has members from both sides.
 | Guardian | 8 | 2/4/6 | Guardians start combat with a 200 / 400 / 700 shield for 8 seconds |
 | Archer | 6 | 2/4/6 | Archers gain +3% / +6% / +10% Attack Speed per attack, up to 15 stacks |
 | Rider | 6 | 2/4/6 | Riders charge their target at combat start, dealing 100 / 220 / 400 bonus physical damage on arrival |
-| Burglar | 6 | 2/4/6 | Burglars leap to the enemy backline at combat start and gain +20% / +45% / +75% Crit Damage |
+| Burglar | 6 | 2/4/6 | Burglars leap to the enemy backline at combat start, target the farthest enemy, and gain +20% / +45% / +75% Crit Damage |
 | Captain | 6 | 2/4/6 | Allies next to a Captain deal +10% / +20% / +35% damage |
 | Sorcerer | 6 | 2/4/6 | Sorcerers gain +20 / +45 / +80 Ability Power |
 
@@ -270,7 +270,7 @@ All numbers are *(placeholder)*.
 
 - A unit targets the nearest enemy by hex distance. Ties are broken by a fixed order.
 - It keeps that target until the target dies or becomes untargetable.
-- Traits and abilities can override the default, e.g. Burglars target the farthest enemy, and the Hobbit rule makes enemies prefer other targets while a non-Hobbit ally is adjacent.
+- Active traits and some abilities override the default. With the Burglar trait, Burglars target the farthest enemy. With the Hobbit trait, enemies prefer other targets while a non-Hobbit ally is next to a Hobbit. Without their trait, Burglars and Hobbits follow the default rules.
 
 ### Movement
 
