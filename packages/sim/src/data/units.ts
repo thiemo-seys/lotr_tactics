@@ -46,7 +46,7 @@ export type UnitId =
   | 'treebeard'
   | 'sauron';
 
-export type SummonId = 'orc-grunt';
+export type SummonId = 'orc-grunt' | 'eye-nazgul';
 
 export type Cost = 1 | 2 | 3 | 4 | 5;
 
@@ -572,4 +572,6 @@ export const UNITS: Readonly<Record<UnitId, UnitDef>> = {
 
 export const SUMMONS: Readonly<Record<SummonId, SummonDef>> = {
   'orc-grunt': { id: 'orc-grunt', name: 'Orc grunt', origin: 'orc' },
+  /** Hunts the One Ring's bearer (sim-spec.md section 12.6). */
+  'eye-nazgul': { id: 'eye-nazgul', name: "Eye's Nazgûl", origin: 'nazgul' },
 };
