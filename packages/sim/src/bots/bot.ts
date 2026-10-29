@@ -93,6 +93,7 @@ export class Bot {
     this.tidyBench(game);
     this.arrange(game);
     this.equip(game);
+    this.bearRing(game);
   }
 
   /** Picks a Council option if it is this bot's turn: the one it wants most, the first if tied. */
@@ -104,7 +105,8 @@ export class Bot {
     let best = -1;
     let bestScore = -Infinity;
     council.options.forEach((option, i) => {
-      const score = option.pickedBy === null ? this.want(me, option.unitId) : -Infinity;
+      const ring = me.hp <= BOT.ringTakeBelowHp ? BOT.want.merge + 1 : -Infinity;
+      const score = option.pickedBy !== null ? -Infinity : option.ring ? ring : this.want(me, option.unitId);
       if (score > bestScore) {
         best = i;
         bestScore = score;
@@ -258,6 +260,26 @@ export class Bot {
       const to = targets.get(unit.id)!;
       if (!samePlace(from, to)) game.act(this.seat, { type: 'move', from, to });
     }
+  }
+
+  /**
+   * Destroys the One Ring as soon as it can, and otherwise keeps it on a board unit: a Hobbit if it
+   * has one, else its attacker (section 11).
+   */
+  private bearRing(game: Game): void {
+    const { ring } = game.state;
+    if (ring.state !== 'held' || ring.holder !== this.seat) return;
+    if (game.act(this.seat, { type: 'destroyRing' }).ok) return;
+    const me = this.me(game);
+    const board = owned(me)
+      .filter((o) => !('bench' in o.place))
+      .sort((a, b) => this.strength(me, b.unit) - this.strength(me, a.unit));
+    if (board.some((o) => o.unit.id === ring.bearer)) return;
+    const holder =
+      board.find((o) => UNITS[o.unit.unitId].origin === 'hobbit') ??
+      board.find((o) => !hasClass(o.unit, 'guardian') && !hasClass(o.unit, 'sorcerer')) ??
+      board[0];
+    if (holder !== undefined) game.act(this.seat, { type: 'ring', to: holder.place });
   }
 
   /** How strong a unit is, for choosing the board and item holders. Ties go to the older unit. */
