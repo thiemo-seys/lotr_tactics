@@ -17,6 +17,7 @@ Implementation spec for the `sim` package's combat simulation. It turns the rule
 - The six item components and all 21 combined items (section 12.4).
 - The Gifts of Lothlórien that act in the fight (section 12.5).
 - The One Ring's bearer and the Eye's Nazgûl (section 12.6).
+- The Rings of Power that act in the fight: the Three and the Nine (section 12.7).
 - Star levels.
 - Determinism and a per-tick event log for rendering.
 - Headless tests.
@@ -183,13 +184,13 @@ Tick 0 only sets up the fight; units start acting at tick 1.
 1. Create units with derived stats (section 7), including static trait, item and Gift bonuses, and Gift mana.
 2. **Gondor:** front-row bonus for allies in their team's row 3.
 3. **Guardian:** shields.
-4. **Gifts, items and the Ring at combat start**, unit by unit in slot order, team A's first: the team's Light of Valinor shield, then the unit's Star of Elendil shields, King's Banner buffs and Miruvor stun immunity, then the Ring's invisibility on its bearer (sections 12.4 to 12.6).
+4. **Gifts, items and the Ring at combat start**, unit by unit in slot order, team A's first: the team's Light of Valinor shield, then the unit's Star of Elendil and Nenya shields, King's Banner buffs and Miruvor stun immunity, in the order it holds them, then the Ring's invisibility on its bearer (sections 12.4 to 12.7).
 5. **Orc:** spawn grunts, team A's first. Then **the Eye's Nazgûl**, if the other team bears the Ring (section 12.6).
 6. **Burglar:** leaps, in action order.
 7. **Rider:** charges, in action order.
 8. **Elven Rope:** stuns, in action order.
 9. **Horn of Helm Hammerhand:** stuns every enemy, team A's Horn first (section 12.5).
-10. **Nazgûl and the Phial of Galadriel:** set the slow and the Magic Resist reduction on enemies in reach (sections 12.3 and 12.4).
+10. **Nazgûl, the Phial of Galadriel and Narya:** set the slow and the Magic Resist reduction on enemies in reach, and Narya's Attack Speed on allies in reach (sections 12.3, 12.4 and 12.7).
 
 Tick 0 takes one number from the generator to pick the first team for the leaps, charges and Elven Rope stuns (section 6.3), whether or not anyone leaps or charges.
 
@@ -206,9 +207,9 @@ Tick 0 takes one number from the generator to pick the first team for the leaps,
 
 First, pick the team that goes first this tick (section 6.3). Then:
 
-1. **Expire** statuses and shields whose `expiresTick` is the current tick, then update the Nazgûl slow and the Phial of Galadriel reduction from the units' current hexes (sections 12.3 and 12.4).
+1. **Expire** statuses and shields whose `expiresTick` is the current tick, then update the Nazgûl slow, the Phial of Galadriel reduction and Narya's Attack Speed from the units' current hexes (sections 12.3, 12.4 and 12.7).
 2. **Resolve the queue:** projectiles and delayed effects due this tick, ordered by due tick, then by creation order.
-3. **Every second**, on ticks 30, 60, 90, …: Istari mana, Ent, Elven Cloak and Hands of the King healing, and Dragon-helm damage (sections 12.3 to 12.5).
+3. **Every second**, on ticks 30, 60, 90, …: Istari mana, Ent, Elven Cloak and Hands of the King healing, Dragon-helm damage, and Nenya and Vilya when theirs are due (sections 12.3 to 12.5 and 12.7).
 4. **Act:** each living unit in action order. A unit that is stunned or busy (moving, casting, recovering from a dash) does nothing. Otherwise:
    1. If mana ≥ max mana: cast its ability (section 10).
    2. Else make sure it has a target (section 8).
@@ -584,7 +585,7 @@ The same numbers as `design.md` section 5, written as selectors and effects.
 
 ---
 
-## 12. Statuses, traits, items and Gifts
+## 12. Statuses, traits, items, Gifts and rings
 
 ### 12.1 Statuses
 
@@ -606,6 +607,7 @@ The same numbers as `design.md` section 5, written as selectors and effects.
 
 - At tick 0, count **distinct unit ids** per trait among non-summon units. Each unit counts once per trait however many copies are on the board.
 - Each crest Gift adds one to its trait's count, if the count is at least 1 (section 12.5).
+- A unit id also counts towards Nazgûl if a copy of it on the board wears a Ring of the Nine (section 12.7).
 - The highest breakpoint reached is active.
 - Trait values do not scale with Ability Power.
 
@@ -636,7 +638,7 @@ Numbers are from `design.md` section 4. Where a trait lists several values, they
 
 Numbers are from `design.md` section 6, in `data/items.ts`.
 
-- **Holding items:** a placed unit's `items` lists up to 3 item ids, components or combined items. Monsters carry none, and summons have none. The sim doesn't combine anything: two components on a unit are just two components.
+- **Holding items:** a placed unit's `items` lists up to 3 item ids, components, combined items or Rings of Power (section 12.7). Monsters carry none, and summons have none. The sim doesn't combine anything: two components on a unit are just two components.
 - **Stats:** each item adds its stats to the unit's bonuses for the whole fight, like static trait bonuses (section 7.4). A combined item's stats are both its components' stats plus any of its own.
 - **Copies:** every copy of an item on a unit works on its own. Two Black Arrows are a 60% amp, two Gronds give two stacks per attack, two Herugrims trigger twice.
 - **Values** don't scale with Ability Power or star level.
@@ -707,6 +709,23 @@ Numbers are from `design.md` section 9, in `data/ring.ts`. A placed unit with `r
   - Health 500 + 100 per point of Corruption, Attack Damage 40 + 10 per point, Attack Speed 0.8, Range 1, Armor and Magic Resist 30.
   - While the bearer is alive, the bearer is its target, even while untargetable. Its attacks on the bearer land as usual. Once the bearer dies, it targets like any unit.
 
+### 12.7 Rings of Power
+
+Rings of Power are items in `data/items.ts`, from `design.md` section 9. A placed unit wears one by listing it in its `items`, where it counts towards the 3 items. A unit wears at most one Ring of Power. The rings have no stats; the sim acts on the Three and the Nine, and the Seven act outside the fight (`game-spec.md` section 9.12).
+
+- **Kin:** on a bearer whose origin is Elf or Istari, the Three's Attack Speed, shield and heal are 150% of those listed.
+- Values don't scale with Ability Power or star level.
+
+| Ring | When | Behaviour |
+|---|---|---|
+| Narya | Continuous | Allies within 2 hexes of a living bearer, the bearer and summons included, gain +20% Attack Speed. With two Naryas on a team, only the strongest counts. It is updated with the Nazgûl slow, emits no events, and shows in the unit's stats. |
+| Nenya | Tick 0; every 6 seconds | At tick 0 (section 6.2, step 4) and on ticks 180, 360, 540, …, the bearer and its allies within 2 hexes, in slot order, gain a 120 shield that lasts 6 seconds. |
+| Vilya | Every 2 seconds | On ticks 60, 120, 180, …, the ally with the lowest Health %, the bearer included, heals 80. The tie-break is `lowestHealthPctAllies`'s (section 10.3). |
+| Ring of the Nine | Trait counting; continuous; damage | The bearer is a Nazgûl as well as its own origin, for everything that asks whether a unit is a Nazgûl: trait counting (section 12.2), the Nazgûl slow it spreads, the Dark Lord amp, Éowyn's bonus against Nazgûl and The Fellowship's origin count. While `CombatInput.oneRingCorruption` is set, the bearer gets a damage amp of 5% per point of it (section 9.1). |
+
+- **Order:** Nenya and Vilya act among the unit's items, in the order it holds them (section 12.4).
+- **Grip:** Nenya's shields and Vilya's heals don't reach the One Ring's bearer at Grip unless it wears the ring itself (section 12.6).
+
 ---
 
 ## 13. End of combat and result
@@ -732,7 +751,7 @@ interface PlacedUnit {
   star: 1 | 2 | 3;    // always 1 for monsters
   col: number;        // 0–6, own perspective
   row: number;        // 0 = back, 3 = front, own perspective
-  items: ItemId[];    // up to 3 components or combined items (section 12.4); none for a monster
+  items: ItemId[];    // up to 3 components, combined items or Rings of Power (sections 12.4 and 12.7); none for a monster
   ring?: number;      // set on the One Ring's bearer: the Ring's Corruption, 0–9 (section 12.6)
 }
 
@@ -741,6 +760,7 @@ interface CombatInput {
   stage: number;      // affects Orc grunt stats
   teams: { A: PlacedUnit[]; B: PlacedUnit[] };
   gifts?: { A: GiftId[]; B: GiftId[] };   // each team's Gifts of Lothlórien (section 12.5); none if left out
+  oneRingCorruption?: number;              // the One Ring's Corruption, 0–9, while a player holds it; strengthens the Nine (section 12.7)
 }
 
 interface CombatResult {
@@ -765,7 +785,7 @@ function simulateCombat(input: CombatInput): CombatResult;   // runs to the end
 
 The client creates the same combat, plays tick 0's events from `events`, then calls `step()` once per tick, reading `state` for health and mana bars and using events for animations.
 
-Invalid input throws: an unknown unit id, a star level other than 1–3 (other than 1 for a monster), an unknown item id, more than 3 items, items on a monster, an unknown Gift id, more than one Ring bearer, a Ring on a monster, a Corruption outside 0–9, a placement outside the team's half, two units of one team on the same hex, a seed that isn't an integer, or a stage below 1.
+Invalid input throws: an unknown unit id, a star level other than 1–3 (other than 1 for a monster), an unknown item id, more than 3 items, more than one Ring of Power on a unit, items on a monster, an unknown Gift id, more than one Ring bearer, a Ring on a monster, a Corruption outside 0–9 (on a bearer or in `oneRingCorruption`), a placement outside the team's half, two units of one team on the same hex, a seed that isn't an integer, or a stage below 1.
 
 ### Events
 
@@ -860,6 +880,11 @@ Every event has a `tick`.
 **The One Ring**
 - The bearer's invisibility and damage; Burden, Grip and Betrayal at their levels, and Sam lowering them by 2.
 - The Eye's Nazgûl: when it appears, where, its stats by Corruption, and it targeting the bearer through invisibility.
+
+**Rings of Power**
+- Narya's Attack Speed on allies in reach as they move, Nenya's shields at tick 0 and every 6 seconds, and Vilya's heals every 2 seconds, each 150% on an Elf or Istari.
+- A Ring of the Nine counting towards Nazgûl, spreading the slow, getting the Dark Lord amp and Éowyn's bonus, and its damage amp by the One Ring's Corruption.
+- The Seven change nothing in the fight; two Rings of Power on a unit and a bad `oneRingCorruption` throw.
 
 **End of combat**
 - A team wipe ends the fight immediately.
