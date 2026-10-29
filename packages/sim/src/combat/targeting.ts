@@ -8,7 +8,8 @@ import type { Team } from '../types.js';
 export interface Candidate {
   readonly hex: Hex;
   readonly slot: number;
-  readonly origin: OriginId;
+  /** Null for monsters. */
+  readonly origin: OriginId | null;
 }
 
 export interface TargetingRules {

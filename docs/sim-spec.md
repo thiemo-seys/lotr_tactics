@@ -22,7 +22,7 @@ Implementation spec for the `sim` package's combat simulation. It turns the rule
 
 - Shop, economy, levels and rounds (`design.md` sections 8–9). These also live in `sim`; see [`game-spec.md`](game-spec.md).
 - Items: not designed yet. Keep an empty `items` field on placed units and an on-hit hook, but implement no items.
-- PvE enemies: not designed yet. A PvE round is just a board of monster units, so the sim needs nothing special beyond the Large tag.
+- PvE enemies: not designed yet. A PvE round is a board of monsters (section 7.6), with placeholder stats from [`game-spec.md`](game-spec.md) section 9.8.
 - Rendering (`client`) and networking (`server`).
 
 ---
@@ -275,6 +275,16 @@ A summon with:
 - Attack Speed 0.7, range 1, Armor and Magic Resist 20
 
 Grunts don't count toward traits and don't count as survivors for player damage. They do count as living units for ending the fight, and they receive the Dark Lord bonus.
+
+### 7.6 Monsters
+
+PvE monsters (`data/monsters.ts`, from `game-spec.md` section 9.8) can be placed like units:
+
+- They have no origin or classes, so they have no traits, don't count toward traits, and get no trait bonuses. They do get statuses, and other units' amps and reductions apply to them as usual.
+- They are always 1★. Their stats are given directly, not from a template, and their ability values scale like a unit of their listed cost.
+- A monster can grow by a percent of Health and Attack Damage for each stage after a given one (the Balrog).
+- Some are Large, so Dwarves deal bonus damage to them.
+- They count as survivors for player damage, as 1★ units.
 
 ---
 
@@ -612,7 +622,7 @@ Numbers are from `design.md` section 4. Where a trait lists several values, they
 - If tick 1349 finishes with both teams alive, the outcome is a draw. Both players take damage outside the sim.
 - **The result contains:**
   - the outcome: `A`, `B` or `draw`
-  - for each team, the surviving **non-summon** units with unit id and star level, in slot order (the round system uses this for player damage)
+  - for each team, the surviving **non-summon** units (monsters included) with unit id and star level, in slot order (the round system uses this for player damage)
   - the final tick
   - the event log
 
@@ -624,8 +634,8 @@ Numbers are from `design.md` section 4. Where a trait lists several values, they
 type Team = 'A' | 'B';
 
 interface PlacedUnit {
-  unitId: string;
-  star: 1 | 2 | 3;
+  unitId: string;     // a unit or a monster (section 7.6)
+  star: 1 | 2 | 3;    // always 1 for monsters
   col: number;        // 0–6, own perspective
   row: number;        // 0 = back, 3 = front, own perspective
   items: string[];    // empty for now
@@ -659,7 +669,7 @@ function simulateCombat(input: CombatInput): CombatResult;   // runs to the end
 
 The client creates the same combat, plays tick 0's events from `events`, then calls `step()` once per tick, reading `state` for health and mana bars and using events for animations.
 
-Invalid input throws: an unknown unit id, a star level other than 1–3, a placement outside the team's half, two units of one team on the same hex, a seed that isn't an integer, or a stage below 1.
+Invalid input throws: an unknown unit id, a star level other than 1–3 (other than 1 for a monster), a placement outside the team's half, two units of one team on the same hex, a seed that isn't an integer, or a stage below 1.
 
 ### Events
 
@@ -734,6 +744,11 @@ Every event has a `tick`.
 - Healing stops at max Health, and the `heal` event reports only the Health restored.
 - Gothmog's grunts go next to him on his own half, fall back to the nearest free hex on his half, and don't appear when his half is full.
 - One scripted scenario per unit, checking targets, damage and statuses.
+
+**Monsters**
+- No traits for monsters, while the units next to them keep theirs.
+- Only 1★; the Balrog's growth per stage; Dwarf bonus damage against Large monsters.
+- Each monster ability; monsters count as survivors.
 
 **End of combat**
 - A team wipe ends the fight immediately.

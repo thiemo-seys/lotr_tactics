@@ -5,6 +5,7 @@ export * from './data/rules.js';
 export * from './data/templates.js';
 export * from './data/traits.js';
 export * from './data/units.js';
+export * from './data/monsters.js';
 export * from './data/economy.js';
 export * from './data/items.js';
 export * from './combat/stats.js';
