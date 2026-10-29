@@ -388,9 +388,9 @@ function createGame(config: GameConfig): Game;   // throws on an invalid config
 
 ## 12. Client: playing against bots
 
-The play page, `play.html` in `packages/client`, next to the fight viewer (`viewer-spec.md`), which links to it. The person plays seat 0 and bots play the rest.
+The play page, `play.html` in `packages/client`, next to the fight viewer (`viewer-spec.md`), which links to it. Offline, the person plays seat 0 and bots play the rest. The page also plays online games; `server-spec.md` section 10 covers the menu, lobbies and how the page follows the server.
 
-- **Session** (`session.ts`, no Three.js or DOM): runs the game for the person. Bots pick in a Council as soon as it's their group's turn, and plan at the start of planning, in a rotating order. Once the person is out, the rest of the game plays out at once.
+- **Running the game:** the match runner from `packages/server` (`server-spec.md` section 5), in the page for offline games. Bots pick in a Council as soon as it's their group's turn, and plan at the start of planning, in a rotating order. Once the person is out, the rest of the game plays out at once.
 - **Planning view:** the person's half of the board and their bench, a row of 9 tiles in front of it, in 3D. An HTML overlay with the round, a timer, HP, gold, level, XP and the board count, the shop, the buy XP, reroll and lock buttons, the item components and a Ready button.
 - **Drag and drop** moves units between the bench and the board, swapping with a unit already there; dropping a unit on the shop bar sells it.
 - **Keys:** D rerolls, F buys XP, Space is Ready.
@@ -399,8 +399,8 @@ The play page, `play.html` in `packages/client`, next to the fight viewer (`view
 - **Fights:** the person's fight plays back with the viewer's playback, at 1×, 2× or 4×, and can be skipped; the others run headless. When the person is team B, the camera starts on their side. The person's units are always blue.
 - **Results:** for a few seconds after each fight, the damage everyone took and who was knocked out.
 - **End:** the person's place and the final standings, with a New game button.
-- **Timers:** 30 seconds of planning (`design.md` section 9), ended early by Ready; 15 seconds for the person's Council pick, after which they get a random option.
-- **Seed:** from the URL (`play.html#seed=7`) or random.
+- **Timers:** 30 seconds of planning (`design.md` section 9), ended early by Ready; 15 seconds for the person's Council pick, after which they get a random option. The match runner keeps them, offline as online.
+- **Seed:** from the URL (`play.html#seed=7`), which starts an offline game straight away, or random from the menu's Play against bots.
 
 ---
 
