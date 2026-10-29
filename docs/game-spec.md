@@ -1,6 +1,6 @@
 # Game Spec
 
-Implementation spec for the game around the fights: the shop, the economy, the rounds and the bots. It turns `design.md` sections 8 and 9 into exact behaviour. This is step 3 of the build order (`design.md` section 11): a whole game, playable alone against 7 bots.
+Implementation spec for the game around the fights: the shop, the economy, the rounds and the bots. It turns `design.md` sections 6, 8 and 9 into exact behaviour. This is step 3 of the build order (`design.md` section 11): a whole game, playable alone against 7 bots.
 
 - `design.md` is the source of truth for game rules and content. This spec adds the implementation detail and the defaults needed to build it.
 - Every number here is a *placeholder* to be tuned during balancing. Keep numbers in data files, not in logic.
@@ -13,6 +13,7 @@ Implementation spec for the game around the fights: the shop, the economy, the r
 
 - A whole game for 2 to 8 players, from round 1-1 to the last player standing.
 - The shared unit pool, the shop, the bench, board placement, merging and selling.
+- Items: components from the Council and PvE rounds, given to units, where two combine into an item (section 7.7).
 - Gold, interest, streaks, XP and levels.
 - The round schedule, the Council of Elrond, PvE rounds, matchmaking, ghost fights, player damage, elimination and placement.
 - Placeholder PvE monsters and loot (`design.md` section 12 leaves them open).
@@ -21,7 +22,6 @@ Implementation spec for the game around the fights: the shop, the economy, the r
 
 **Out of scope (later)**
 
-- **Items:** only components exist. They drop and are kept in an inventory, but can't be equipped or combined until items are designed.
 - **Gifts of Lothlórien:** skipped until the augments are designed. The rounds that offer them play as normal.
 - **Server, lobbies and networking** (build order step 4, [`server-spec.md`](server-spec.md)). The game layer is turn-based and knows nothing about time; the client or server that drives it runs the timers.
 - The parked features (`design.md` section 13).
@@ -53,7 +53,10 @@ These are not in `design.md` yet. They were chosen to remove ambiguity and can b
 | PvE loot | Given in full whether the player wins or loses |
 | Matchmaking | The pairing with the fewest repeats of recent opponents, searched in a seeded order |
 | Several eliminations in one round | Higher HP after the damage places higher, then higher HP before it, then a seeded draw |
-| Eliminated players | Their units go back to the pool |
+| Eliminated players | Their units go back to the pool; their items are lost |
+| Items held | No limit on the items a player holds off their units |
+| Giving items | During planning, to units on the bench or the board |
+| A merge with more than 3 items | The kept copy's items first, then the others' in the order the copies are found; the rest go back to the player |
 
 ---
 
@@ -68,7 +71,7 @@ packages/sim/src/
     rounds.ts       round schedule, stage damage, Council costs
     monsters.ts     PvE monsters and their abilities
     pve.ts          PvE boards and loot
-    items.ts        item components
+    items.ts        item components and combined items
   game/
     game.ts         createGame, actions, advancing rounds
     pool.ts         the shared pool and shop rolls
@@ -106,11 +109,11 @@ Each player has:
 - **Bench:** 9 slots.
 - **Board:** the player's half, in their own perspective (`sim-spec.md` section 5): columns 0–6, rows 0–3, row 3 at the front. At most `level` units.
 - **Shop:** 5 slots and a lock.
-- **Items:** a list of item components.
+- **Items:** the items they hold that aren't on a unit, in the order they got them: components, and combined items from units they sold.
 - **Recent opponents:** the last 3 players they fought, for matchmaking.
 - **Placement:** set when they are eliminated or win.
 
-An owned unit is a unit id, a star level and a game-wide numeric id. The numeric id lets a client follow a unit as it moves or merges.
+An owned unit is a unit id, a star level, a game-wide numeric id and the items it holds (section 7.7). The numeric id lets a client follow a unit as it moves or merges.
 
 ---
 
@@ -154,7 +157,7 @@ When a player gains a 1★ unit (by buying it or from the Council):
 
 - Three copies of a unit at the same star level merge into one copy a star higher. 3★ units don't merge.
 - **Where the merged unit goes:** the place of the copy on the board if there is one (lowest row, then lowest column, in the player's perspective, if there are two), otherwise the lowest bench slot holding a copy. It keeps that copy's numeric id.
-- The other copies are removed.
+- The other copies are removed. Their items go to the merged unit as if given to it (section 7.7), one by one in order, copy by copy in the order the copies were found; any it can't take go back to the player's items.
 - If the merge makes a third copy at the new star level, those merge too.
 - Because merges happen at once, a player never owns three copies of a unit at the same 1★ or 2★ level.
 
@@ -165,11 +168,24 @@ When a player gains a 1★ unit (by buying it or from the Council):
 
 ### 7.5 Selling
 
-Selling a unit gives back its cost for each copy in it (1, 3 or 9 copies) and returns those copies to the pool.
+Selling a unit gives back its cost for each copy in it (1, 3 or 9 copies) and returns those copies to the pool. Its items go back to the player's items, in the order it held them.
 
 ### 7.6 Filling the board
 
 Before each fight, if a player has fewer than `level` units on the board and units on the bench, bench units move to the board, lowest bench slot first, until the board is full or the bench is empty. Each takes the first free place in this order: row 3 to row 0, and in each row the columns 3, 2, 4, 1, 5, 0, 6.
+
+### 7.7 Items
+
+Items are in `design.md` section 6 and `data/items.ts`.
+
+- **Getting items:** Council picks and PvE loot add components to the end of the player's items (sections 9.6 and 9.7).
+- **Giving an item** to a unit on the bench or the board, during planning:
+  1. If the item is a component and the unit holds a lone component, the two combine into the recipe's item, which takes the lone component's place in the unit's items.
+  2. Otherwise the unit must hold fewer than 3 items, and the item goes at the end of them.
+  3. The item leaves the player's items.
+- Combined items never combine further, and nothing combines off a unit.
+- Items move with their unit. Only selling the unit takes them off (7.5).
+- A fight's input lists each board unit's items in order (section 9.4).
 
 ---
 
@@ -230,7 +246,7 @@ During planning, living players act in any order: buy, sell, reroll, buy XP, loc
 1. Every living player's board is filled from the bench (7.6).
 2. **PvE round:** each living player fights the round's monsters. The player is team A.
 3. **PvP round:** players are paired (9.5). In each pair the first player is team A.
-4. Fights run in pairing order with `simulateCombat`. Each gets a new seed from the game generator, and the current stage as its stage. Units carry no items yet.
+4. Fights run in pairing order with `simulateCombat`. Each gets a new seed from the game generator, and the current stage as its stage. Units carry their items; a ghost carries a copy of its owner's.
 
 ### 9.5 Matchmaking
 
@@ -310,7 +326,7 @@ After all the round's fights:
 2. **Damage:** a player who loses a fight, or draws one, takes stage damage plus 1, 2 or 3 for each surviving enemy unit at 1★, 2★ or 3★ (`design.md` section 9). Stage damage at stage 1 is 0. In a PvP draw both players take damage. A ghost owner takes none.
 3. **Loot** on PvE rounds (9.7).
 4. **Recent opponents** (9.5).
-5. **Eliminations:** every player at 0 HP or below is eliminated. Their bench, board and shop go back to the pool. They take the lowest places still free, ordered by higher HP after the damage, then higher HP before it, then a seeded draw.
+5. **Eliminations:** every player at 0 HP or below is eliminated. Their bench, board and shop go back to the pool, and their items are lost. They take the lowest places still free, ordered by higher HP after the damage, then higher HP before it, then a seeded draw.
 6. **Game over:** if one player is left, they place first. If none are left, the places from step 5 cover everyone. Otherwise the next round starts.
 
 ---
@@ -332,6 +348,7 @@ type Action =
   | { type: 'reroll' }
   | { type: 'buyXp' }
   | { type: 'lock'; locked: boolean }
+  | { type: 'equip'; item: number; to: Place }   // index into the player's items
   | { type: 'pick'; option: number };      // Council option 0–8
 
 type ActionResult = { ok: true } | { ok: false; reason: string };
@@ -380,8 +397,14 @@ function createGame(config: GameConfig): Game;   // throws on an invalid config
   - **Selling:** when the bench is full, sell the least useful unit that isn't part of a pair.
   - **Board:** the strongest units up to the level, by cost and star. Guardians at the front, Riders, Captains and Burglars behind them, Archers and Sorcerers at the back.
 - **Focus traits:** chosen at 2-1 from the units the bot owns, with a seeded preference so bots in one lobby play different comps.
+- **Items:** after arranging its board, the bot gives each of its items, in order, to a board unit by the item's role:
+  - Blades and Bows to its **attacker**: the strongest board unit that isn't a Guardian or a Sorcerer.
+  - Staffs to its **caster**: the strongest Sorcerer, otherwise the attacker.
+  - Mail, Cloaks and Lembas to its **tank**: the strongest Guardian, otherwise the strongest unit in the front row.
+  - A combined item has the role of its first component, in the order Blade, Bow, Mail, Cloak, Lembas, Staff.
+  - If that unit can't take the item, the next strongest board unit that can; if none can, the bot keeps it.
 - **Council:** the option that completes a pair or merge, then one of its focus traits, then the highest cost.
-- **Balance runner:** `pnpm balance [games] [first seed]` (`scripts/balance.ts`) plays many 8-bot games and prints the game length, the average placement, top-4 rate and win rate of each unit and active trait on players' final boards, the same for each pair of focus traits, and PvE win rates by round.
+- **Balance runner:** `pnpm balance [games] [first seed]` (`scripts/balance.ts`) plays many 8-bot games and prints the game length, the average placement, top-4 rate and win rate of each unit, active trait and item on players' final boards, the same for each pair of focus traits, and PvE win rates by round.
 - The numbers bots play by are in `data/bots.ts`. They tune the bots, not the game.
 
 ---
@@ -391,8 +414,9 @@ function createGame(config: GameConfig): Game;   // throws on an invalid config
 The play page, `play.html` in `packages/client`, next to the fight viewer (`viewer-spec.md`), which links to it. Offline, the person plays seat 0 and bots play the rest. The page also plays online games; `server-spec.md` section 10 covers the menu, lobbies and how the page follows the server.
 
 - **Running the game:** the match runner from `packages/server` (`server-spec.md` section 5), in the page for offline games. Bots pick in a Council as soon as it's their group's turn, and plan at the start of planning, in a rotating order. Once the person is out, the rest of the game plays out at once.
-- **Planning view:** the person's half of the board and their bench, a row of 9 tiles in front of it, in 3D. An HTML overlay with the round, a timer, HP, gold, level, XP and the board count, the shop, the buy XP, reroll and lock buttons, the item components and a Ready button.
-- **Drag and drop** moves units between the bench and the board, swapping with a unit already there; dropping a unit on the shop bar sells it.
+- **Planning view:** the person's half of the board and their bench, a row of 9 tiles in front of it, in 3D. An HTML overlay with the round, a timer, HP, gold, level, XP and the board count, the shop, the buy XP, reroll and lock buttons, the person's items and a Ready button.
+- **Drag and drop** moves units between the bench and the board, swapping with a unit already there; dropping a unit on the shop bar sells it. Dragging one of the person's items onto a unit gives it to that unit.
+- **Items** show on each unit's label, in planning and in fights, and each item names its effect when hovered.
 - **Keys:** D rerolls, F buys XP, Space is Ready.
 - **Players list:** every player's HP, level and place.
 - **Council:** the options as cards with their components and who took them; the person picks one when it's their group's turn.
@@ -416,6 +440,11 @@ The play page, `play.html` in `packages/client`, next to the fight viewer (`view
 - Where the merged unit goes.
 - Refunds for 1★, 2★ and 3★ units.
 - Moves, swaps and the level limit; filling the board before a fight.
+
+**Items**
+- Giving components and items, combining, the 3-item limit, and giving to bench units.
+- Items going back to the player on selling, and moving to the merged unit on merging, with the extras going back.
+- Fights get the board units' items; eliminated players' items are gone.
 
 **Economy**
 - Income by round, interest steps and the cap, win and streak gold.
