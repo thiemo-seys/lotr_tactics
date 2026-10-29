@@ -94,7 +94,7 @@ packages/client/
 ## 6. Controls
 
 - **Fight:** team A board, team B board, seed, stage, and a New fight button.
-  - Presets: duel, tanks, archers, mixed, full, items (all 21 combined items), traits.
+  - Presets: duel, tanks, archers, mixed, full, items (all 21 combined items), ring (a One Ring bearer), traits.
   - Random: 7 units with star levels from 1 to 3 and up to 3 random items each, placed at random on their half, from the seed and the team.
 - **Playback:**
   - Play/pause, which the space bar also toggles.
