@@ -3,9 +3,10 @@
 import {
   BOARD_COLS,
   BOARD_HEXES,
-  ITEMS,
   PLAYER,
   fromPlacement,
+  isComponent,
+  isRingOfPower,
   toOffset,
   type FighterId,
   type ItemId,
@@ -447,10 +448,10 @@ export function ringChip(corruption: number): HTMLElement {
   return chip;
 }
 
-/** An item's tag in its components' colours, naming the item and its effect when hovered. */
+/** An item's tag in its components' or ring's colours, naming the item and its effect when hovered. */
 export function itemChip(id: ItemId): HTMLElement {
   const chip = document.createElement('span');
-  chip.className = ITEMS[id].recipe === null ? 'item component' : 'item';
+  chip.className = isRingOfPower(id) ? 'item ring-of-power' : isComponent(id) ? 'item component' : 'item';
   chip.textContent = itemTag(id);
   chip.title = itemText(id);
   const [a, b] = itemColours(id);

@@ -40,7 +40,7 @@ packages/client/
     playback.ts    stepping the fight and what to draw at a moment (no Three.js, no DOM)
     scene.ts       Three.js scene, units, overlays, and the planning view
     units.ts       names and sizes of units, monsters and summons
-    items.ts       item tags, colours and descriptions from the item data
+    items.ts       item and Ring of Power tags, colours and descriptions from the item data
     gifts.ts       Gift tiers and descriptions from the Gift data
     ring.ts        the One Ring's tier and description at a Corruption
     log.ts         event log text
@@ -94,7 +94,7 @@ packages/client/
 ## 6. Controls
 
 - **Fight:** team A board, team B board, seed, stage, and a New fight button.
-  - Presets: duel, tanks, archers, mixed, full, items (all 21 combined items), ring (a One Ring bearer), traits.
+  - Presets: duel, tanks, archers, mixed, full, items (all 21 combined items), ring (a One Ring bearer), rings (the Three, the Seven and the Nine), traits.
   - Random: 7 units with star levels from 1 to 3 and up to 3 random items each, placed at random on their half, from the seed and the team.
 - **Playback:**
   - Play/pause, which the space bar also toggles.
@@ -114,6 +114,6 @@ The parts without Three.js are tested with Vitest:
 - random boards, which are valid and the same for the same seed;
 - playback timing, interpolated positions and projectiles;
 - the event log text;
-- item tags and descriptions, Gift descriptions, and the One Ring's.
+- item and Ring of Power tags, colours and descriptions, Gift descriptions, and the One Ring's.
 
 The Three.js scene is checked by building the viewer and looking at it in a browser.
