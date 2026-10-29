@@ -6,6 +6,7 @@ export * from './data/templates.js';
 export * from './data/traits.js';
 export * from './data/units.js';
 export * from './combat/stats.js';
+export * from './combat/time.js';
 export { createCombat, simulateCombat } from './combat/combat.js';
 export type {
   Combat,
