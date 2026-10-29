@@ -35,6 +35,12 @@ export const BOT = {
   focusFromStage: 2,
   /** The most a bot's seeded taste for a trait can add to the units it owns of that trait. */
   tasteWeight: 1.5,
+  /**
+   * How much a bot wants a Gift: a crest of one of its focus traits or of another trait, a combat
+   * Gift, or an economy Gift, which it wants more while its HP is at least `greedHp`. It rerolls an
+   * offer whose best Gift scores below `rerollBelow`.
+   */
+  gifts: { focusCrest: 40, otherCrest: 5, combat: 20, economy: 15, greedHp: 70, greedBonus: 10, rerollBelow: 20 },
   /** The unit each component goes to. A combined item goes where its first component would. */
   itemRoles: {
     blade: 'attacker',
