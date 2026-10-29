@@ -1,7 +1,7 @@
 // The fight viewer page: controls, URL state and the frame loop (docs/viewer-spec.md section 6).
 
 import { LAST_TICK, OVERTIME_START_TICK, TICKS_PER_SECOND, createCombat, type CombatEvent } from '@lotr-tactics/sim';
-import { BOARD_CHOICES, boardFor, isBoardChoice, type BoardChoice } from './boards.js';
+import { BOARD_CHOICES, fightBoards, isBoardChoice, type BoardChoice } from './boards.js';
 import { describe } from './log.js';
 import { Playback } from './playback.js';
 import { FightScene } from './scene.js';
@@ -80,7 +80,7 @@ function start(): Playback {
     createCombat({
       seed: settings.seed,
       stage: settings.stage,
-      teams: { A: boardFor(settings.a, settings.seed, 'A'), B: boardFor(settings.b, settings.seed, 'B') },
+      teams: fightBoards(settings.a, settings.b, settings.seed),
     }),
   );
   next.speed = Number(speedSelect.value);
