@@ -538,7 +538,7 @@ function renderCouncil(): void {
     c.options.map((option, i) =>
       unitCard(
         option.unitId,
-        `${COMPONENT_NAMES[option.component]}${option.pickedBy === null ? '' : ` · ${seatName(option.pickedBy)}`}`,
+        `${option.component === null ? 'The One Ring' : COMPONENT_NAMES[option.component]}${option.pickedBy === null ? '' : ` · ${seatName(option.pickedBy)}`}`,
         picking && option.pickedBy === null ? () => act({ type: 'pick', option: i }) : null,
       ),
     ),
