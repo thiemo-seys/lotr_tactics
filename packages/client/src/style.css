@@ -173,7 +173,9 @@ main {
   border-color: #fbbf24;
 }
 
-.card.ring {
+/* The Council option with the One Ring. #options outweighs the cost colours
+   of .card.cost-N below. */
+#options .card.ring {
   border-color: #fbbf24;
 }
 
