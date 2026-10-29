@@ -40,13 +40,13 @@ These are not in `design.md` yet. They were chosen to remove ambiguity and can b
 | Host | The person who created the lobby. If the host leaves before the start, the person in the lowest seat becomes host |
 | Starting | The host starts with 1 to 8 people. Nobody can join after the start |
 | Council turn | 15 seconds for each group, as in the offline game. Bots pick at once |
-| Planning | 30 seconds (`design.md` section 9). It ends early once every connected person still in the game is Ready |
+| Planning | 30 seconds (`design.md` section 9), or 45 in a round with a Gift offer. It ends early once every connected person still in the game is Ready |
 | Fight step | The round's longest fight, plus 1 second, 4 seconds of results and 2 seconds of slack. It ends early once every connected person still in the game has finished watching |
 | Disconnecting | The seat's bot plays it until the person rejoins |
 | Leaving a game | The seat's bot plays it for the rest of the game |
 | Everyone out | Once every person is out, the rest of the game plays out at once |
 | Idle lobbies | Closed after 60 seconds with nobody connected |
-| Hidden information | Other players' shops, shop locks and XP, the pool and the seed |
+| Hidden information | Other players' shops, shop locks, XP and Gift offers, the pool and the seed |
 | Names | 1 to 20 characters. Bots are named Bot 1, Bot 2 and so on, in seat order |
 | Offline games | The same match runner in the browser, with one person and 7 bots, and no server |
 
@@ -107,7 +107,7 @@ The match is always in one step:
 | Step | Ends | Then |
 |---|---|---|
 | `council` | When every member of the current group has picked, or after 15 seconds, when `advance()` picks for anyone who hasn't | The next group's `council` turn, or `planning` |
-| `planning` | After 30 seconds, or once every connected person still in the game is Ready. It ends with `advance()`, which runs the fights | `fight` |
+| `planning` | After 30 seconds, or 45 if anyone has a Gift offer when it starts, or once every connected person still in the game is Ready. It ends with `advance()`, which runs the fights | `fight` |
 | `fight` | After the round's longest fight, plus 1, 4 and 2 seconds (section 2), or once every connected person still in the game has finished watching | The game's next phase: `council` or `planning` |
 | `over` | When the lobby closes | |
 
@@ -157,7 +157,7 @@ interface StepView {
   ms: number | null;           // milliseconds left when sent, or null for over
 }
 
-type PublicPlayer = Omit<PlayerView, 'shop' | 'shopLocked' | 'xp'>;
+type PublicPlayer = Omit<PlayerView, 'shop' | 'shopLocked' | 'xp' | 'giftOffer' | 'giftRerolled'>;
 ```
 
 - A round is sent as a `RoundRecord`. This is a `RoundReport` whose fight results leave out their events, which are long and can be replayed from the input. A client replays a fight with `createCombat(fight.input)`.
@@ -290,7 +290,7 @@ The play page (`game-spec.md` section 12) talks to a `Connection`. The connectio
 - A match with one person who is always Ready plays to the end.
 
 **Views**
-- A view hides other players' shops, shop locks and XP, the pool and the seed.
+- A view hides other players' shops, shop locks, XP and Gift offers, the pool and the seed.
 - Round records leave out events, and replaying a fight's input gives the recorded result.
 
 **Lobbies and protocol**
