@@ -179,6 +179,17 @@ main {
   border-color: #fbbf24;
 }
 
+/* A Ring of Power: round, in gold and its stone. */
+.item.ring-of-power {
+  border-color: #fbbf24;
+  border-radius: 7px;
+}
+
+.card.ring-of-power {
+  border-color: #eab308;
+  border-style: dashed;
+}
+
 .player.ring-holder {
   border-left: 3px solid #fbbf24;
 }
