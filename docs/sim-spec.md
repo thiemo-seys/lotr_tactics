@@ -276,10 +276,11 @@ Grunts don't count toward traits and don't count as survivors for player damage.
 ### Choosing a target
 
 - **Default:** the nearest targetable enemy by hex distance, with the tie-break from section 5.
-- **Burglars:** the farthest targetable enemy.
-- **Hobbit rule:**
-  - While choosing, enemies skip any Hobbit that currently has a non-Hobbit ally next to it.
+- **Burglars**, while their team's Burglar trait is active: the farthest targetable enemy, with the same tie-break.
+- **Hobbit rule**, while the Hobbits' team has the Hobbit trait active:
+  - While choosing, enemies skip any Hobbit that currently has a non-Hobbit ally next to it. Any living ally counts, including summons and untargetable units.
   - If every candidate would be skipped, ignore the rule.
+- Without their trait, Burglars and Hobbits follow the default rules.
 
 ### Keeping a target
 
@@ -287,7 +288,7 @@ A unit keeps its target until the target dies or becomes untargetable.
 
 ### Unreachable targets
 
-If a unit can't find a path to any hex within range of its target, it switches to the nearest enemy it can reach. If it can't reach any enemy, it waits.
+If a unit can't find a path to any hex within range of its target, it switches to the target it would choose (by the rules above) among the enemies it can reach: those already in range, and those with a path to a hex in range. If the new target is in range, the unit doesn't move this tick. If it can't reach any enemy, it waits and tries again next tick.
 
 ### Abilities
 
@@ -517,7 +518,7 @@ The same numbers as `design.md` section 5, written as selectors and effects.
 
 ## 11. Movement
 
-- A unit out of range of its target moves one hex per step. Each step takes 15 ticks, and the unit is busy for that time.
+- A unit out of range of its target moves one hex per step. Each step takes 15 ticks, and the unit is busy for that time: a step started on tick `t` arrives on tick `t + 15`, when the unit acts again.
 - **Pathfinding:**
   - Breadth-first search over free hexes from the unit's hex.
   - Neighbours are visited in perspective direction order.
