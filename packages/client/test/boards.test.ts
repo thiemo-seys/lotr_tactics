@@ -1,4 +1,4 @@
-import { createCombat } from '@lotr-tactics/sim';
+import { MAX_ITEMS, createCombat, isComponent } from '@lotr-tactics/sim';
 import { describe, expect, it } from 'vitest';
 import { BOARD_CHOICES, PRESETS, RANDOM_BOARD_SIZE, boardFor, isBoardChoice, randomBoard } from '../src/boards.js';
 
@@ -28,6 +28,12 @@ describe('boards', () => {
         expect([1, 2, 3]).toContain(p.star);
       }
     }
+  });
+
+  it('gives random boards up to 3 combined items per unit', () => {
+    const items = Array.from({ length: 20 }, (_, i) => randomBoard(i + 1, 'A')).flatMap((board) => board.map((p) => p.items));
+    expect(items.every((list) => list.length <= MAX_ITEMS && list.every((id) => !isComponent(id)))).toBe(true);
+    expect(items.some((list) => list.length > 0)).toBe(true);
   });
 
   it('makes the same random board for the same seed and team, and different ones otherwise', () => {

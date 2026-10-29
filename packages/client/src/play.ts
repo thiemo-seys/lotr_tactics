@@ -4,7 +4,6 @@
 
 import {
   COMPONENT_NAMES,
-  ITEMS,
   SHOP,
   TICKS_PER_SECOND,
   TRAITS,
@@ -24,7 +23,7 @@ import { LocalConnection, SocketConnection, savedSeat, socketUrl, type Connectio
 import { yourFight, yourTeam } from './fights.js';
 import { placeAtPoint } from './layout.js';
 import { Playback } from './playback.js';
-import { FightScene } from './scene.js';
+import { FightScene, itemChip } from './scene.js';
 import './style.css';
 
 /** How long a finished fight stays on screen, in ticks of fight time, before the results. */
@@ -73,6 +72,8 @@ let show: Show = { kind: 'menu' };
 let menuMessage = '';
 let lobbyMessage = '';
 let dragging: { unit: OwnedUnit; from: Place } | null = null;
+/** One of the person's items being dragged onto a unit, with the chip that follows the mouse. */
+let draggingItem: { index: number; ghost: HTMLElement } | null = null;
 
 // Menu and lobby
 
@@ -133,8 +134,7 @@ view.addEventListener(
   'pointerdown',
   (event) => {
     if (show.kind !== 'planning' || event.button !== 0) return;
-    const point = scene.groundPoint(event.clientX, event.clientY);
-    const place = point === null ? null : placeAtPoint(point);
+    const place = unitPlaceAt(event.clientX, event.clientY);
     const unit = place === null ? null : unitAt(me(), place);
     if (place === null || unit === null) return;
     // No text selection while dragging.
@@ -145,11 +145,20 @@ view.addEventListener(
   { capture: true },
 );
 window.addEventListener('pointermove', (event) => {
+  if (draggingItem !== null) moveGhost(draggingItem.ghost, event);
   if (dragging === null) return;
   const point = scene.groundPoint(event.clientX, event.clientY);
   if (point !== null) scene.drag(dragging.unit.id, point);
 });
 window.addEventListener('pointerup', (event) => {
+  if (draggingItem !== null) {
+    const { index, ghost } = draggingItem;
+    draggingItem = null;
+    ghost.remove();
+    scene.cameraControls = true;
+    const to = view.contains(document.elementFromPoint(event.clientX, event.clientY)) ? unitPlaceAt(event.clientX, event.clientY) : null;
+    if (to !== null) act({ type: 'equip', item: index, to });
+  }
   if (dragging === null) return;
   const { from } = dragging;
   dragging = null;
@@ -283,6 +292,38 @@ function me(): PlayerView {
 
 function unitAt(player: PlayerView, place: Place): OwnedUnit | null {
   return ('bench' in place ? player.bench[place.bench] : player.board[place.row * 7 + place.col]) ?? null;
+}
+
+/** The place of the person's unit under the mouse: its pawn, or else the hex or bench tile. */
+function unitPlaceAt(clientX: number, clientY: number): Place | null {
+  const id = scene.planningUnitAt(clientX, clientY);
+  const p = me();
+  if (id !== null) {
+    const board = p.board.findIndex((u) => u?.id === id);
+    if (board >= 0) return { col: board % 7, row: Math.floor(board / 7) };
+    const bench = p.bench.findIndex((u) => u?.id === id);
+    if (bench >= 0) return { bench };
+  }
+  const point = scene.groundPoint(clientX, clientY);
+  const place = point === null ? null : placeAtPoint(point);
+  return place !== null && unitAt(p, place) !== null ? place : null;
+}
+
+/** Starts dragging one of the person's items; dropping it on a unit gives it to that unit. */
+function dragItem(index: number, event: PointerEvent): void {
+  if (show.kind !== 'planning' || event.button !== 0) return;
+  event.preventDefault();
+  const ghost = itemChip(me().items[index]!);
+  ghost.classList.add('ghost');
+  document.body.append(ghost);
+  moveGhost(ghost, event);
+  draggingItem = { index, ghost };
+  scene.cameraControls = false;
+}
+
+function moveGhost(ghost: HTMLElement, event: PointerEvent): void {
+  ghost.style.left = `${event.clientX}px`;
+  ghost.style.top = `${event.clientY}px`;
 }
 
 function act(action: Action): void {
@@ -456,9 +497,14 @@ function renderShop(p: PlayerView): void {
   element<HTMLButtonElement>('reroll').disabled = p.gold < SHOP.rerollCost;
   element<HTMLButtonElement>('buy-xp').disabled = p.gold < XP.buyCost || p.level < XP.buyFromLevel || xpForNextLevel(p.level) === null;
   text('lock', p.shopLocked ? 'Unlock' : 'Lock');
-  const counts = new Map<string, number>();
-  for (const item of p.items) counts.set(ITEMS[item].name, (counts.get(ITEMS[item].name) ?? 0) + 1);
-  text('items', [...counts].map(([name, n]) => `${name}${n > 1 ? ` ×${n}` : ''}`).join(' · '));
+  rebuild(element('items'), JSON.stringify(p.items), () =>
+    p.items.map((id, index) => {
+      const chip = itemChip(id);
+      chip.title += '\nDrag onto a unit to give it this item.';
+      chip.addEventListener('pointerdown', (event) => dragItem(index, event));
+      return chip;
+    }),
+  );
   const isReady = state!.ready.includes(you);
   readyButton.disabled = isReady;
   const others = planners().filter((seat) => seat !== you && !state!.ready.includes(seat)).length;
