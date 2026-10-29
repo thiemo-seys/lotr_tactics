@@ -106,7 +106,7 @@ describe('the first Council', () => {
     expect(game.act(1, { type: 'pick', option: 9 }).ok).toBe(false);
     expect(game.act(1, { type: 'buy', slot: 0 }).ok).toBe(false);
     expect(player(game, 0).bench[0]).toMatchObject({ unitId: option.unitId, star: 1 });
-    expect(player(game, 0).items).toEqual([option.component]);
+    expect(player(game, 0).items).toEqual([option.item]);
   });
 
   it('gives random options to those who haven, t picked when time is up, then starts 1-2', () => {
@@ -343,7 +343,7 @@ describe('later Councils', () => {
     if (groups[0]!.includes(1) && !groups[0]!.includes(0)) game.act(1, { type: 'pick', option: 1 });
     expect(game.act(0, { type: 'pick', option: 0 }).ok).toBe(true);
     expect(player(game, 0).gold).toBe(before + UNITS[option.unitId].cost);
-    expect(player(game, 0).items).toContain(option.component);
+    expect(player(game, 0).items).toContain(option.item);
     expect(copies(game)).toEqual(STARTING_COPIES);
   });
 });
