@@ -1,10 +1,12 @@
 // How items look and read in the client (docs/game-spec.md section 12, docs/viewer-spec.md
-// section 4): a short tag and colours for each item, and a description built from the item data,
-// so the numbers shown are always the sim's. No Three.js or DOM, so it can be tested.
+// section 4): a short tag and colours for each item and Ring of Power, and a description built
+// from the item data, so the numbers shown are always the sim's. No Three.js or DOM, so it can be
+// tested.
 
 import {
   ITEMS,
   TRAITS,
+  isRingOfPower,
   itemStats,
   type BuffStat,
   type ComponentId,
@@ -13,6 +15,7 @@ import {
   type ItemStats,
   type RingFamily,
   type RingOfPowerDef,
+  type RingOfPowerId,
 } from '@lotr-tactics/sim';
 
 export const COMPONENT_COLOURS: Readonly<Record<ComponentId, string>> = {
@@ -24,6 +27,15 @@ export const COMPONENT_COLOURS: Readonly<Record<ComponentId, string>> = {
   staff: '#2563eb',
 };
 
+/** A Ring of Power's gold, then its stone or its maker's colour. */
+export const RING_COLOURS: Readonly<Record<RingOfPowerId, readonly [string, string]>> = {
+  narya: ['#eab308', '#dc2626'],
+  nenya: ['#eab308', '#e5e7eb'],
+  vilya: ['#eab308', '#2563eb'],
+  'ring-of-the-seven': ['#eab308', '#92400e'],
+  'ring-of-the-nine': ['#eab308', '#111827'],
+};
+
 /** Words left out of tags. */
 const SMALL_WORDS = new Set(['of', 'the']);
 
@@ -33,8 +45,9 @@ export function itemTag(id: ItemId): string {
   return words.length > 1 ? words.map((w) => w[0]).join('').slice(0, 2) : words[0]!.slice(0, 2);
 }
 
-/** A component's colour twice, or a combined item's two components' colours. */
+/** A component's colour twice, a combined item's two components' colours, or a Ring of Power's gold and stone. */
 export function itemColours(id: ItemId): readonly [string, string] {
+  if (isRingOfPower(id)) return RING_COLOURS[id];
   const recipe = ITEMS[id].recipe;
   const [a, b] = recipe ?? [id as ComponentId, id as ComponentId];
   return [COMPONENT_COLOURS[a], COMPONENT_COLOURS[b]];
