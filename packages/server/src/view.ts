@@ -94,7 +94,7 @@ export function matchView(
       council === null
         ? null
         : {
-            options: council.options.map((o) => ({ unitId: o.unitId, component: o.component, ring: o.ring, pickedBy: o.pickedBy })),
+            options: council.options.map((o) => ({ unitId: o.unitId, item: o.item, ring: o.ring, pickedBy: o.pickedBy })),
             groups: council.groups.map((g) => [...g]),
             group: council.group,
           },
