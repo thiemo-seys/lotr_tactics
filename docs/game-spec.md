@@ -16,6 +16,7 @@ Implementation spec for the game around the fights: the shop, the economy, the r
 - Items: components from the Council and PvE rounds, given to units, where two combine into an item (section 7.7).
 - Gifts of Lothlórien: offers, rerolls, picks and every Gift's effect outside the fight (section 9.10). The sim runs the ones that act in the fight (`sim-spec.md` section 12.5).
 - The One Ring: its arrival, Corruption, bearers and exits (section 9.11). The sim runs it in fights (`sim-spec.md` section 12.6).
+- Rings of Power: their copies, arrival at Councils, the Seven's gold, and their fate with the One Ring (section 9.12). The sim runs the Three and the Nine in fights (`sim-spec.md` section 12.7).
 - Gold, interest, streaks, XP and levels.
 - The round schedule, the Council of Elrond, PvE rounds, matchmaking, ghost fights, player damage, elimination and placement.
 - Placeholder PvE monsters and loot (`design.md` section 12 leaves them open).
@@ -61,6 +62,8 @@ These are not in `design.md` yet. They were chosen to remove ambiguity and can b
 | Gift offers | Rolled from each player's own Gift generator, so one player's rerolls don't change another's offer |
 | A Gift offer left unpicked | When planning ends, the player gets one of the three at random |
 | Gift units with no room | Sold at once, like a Council unit |
+| Rings of Power at a Council | On the last two options that don't bring the One Ring |
+| An eliminated player's Rings of Power | Back to the supply, while their other items are lost |
 
 ---
 
@@ -99,7 +102,7 @@ packages/sim/scripts/
 - The game is a function of its config and the ordered list of calls made on it. Replaying the same calls gives the same game, so a server can be authoritative and a client can follow along.
 - Randomness comes from seeded generators, each with its own stream so that one choice can't shift another:
   - each player's **shop generator**, used only for that player's shop rolls, so one player's rerolls don't change what another player's shop rolls;
-  - the **game generator**, for matchmaking, fight seeds, Council options and pick order, loot, automatic Council picks and placement ties;
+  - the **game generator**, for matchmaking, fight seeds, Council options, their Rings of Power and pick order, loot, automatic Council picks and placement ties;
   - each player's **Gift generator**, for that player's Gift offers, rerolls, automatic picks and the random rewards of their Gifts.
 - Each stream's seed is `deriveSeed(seed, stream)`, a fixed integer hash of the game seed and the stream number: 0 for the game generator, 1 + seat for shop generators, 20 + seat for Gift generators. Bots use streams from 100 upwards for their own choices.
 - A fight's seed is a 32-bit integer drawn from the game generator.
@@ -116,7 +119,7 @@ Each player has:
 - **Bench:** 9 slots.
 - **Board:** the player's half, in their own perspective (`sim-spec.md` section 5): columns 0–6, rows 0–3, row 3 at the front. At most `level` units.
 - **Shop:** 5 slots and a lock.
-- **Items:** the items they hold that aren't on a unit, in the order they got them: components, and combined items from units they sold.
+- **Items:** the items they hold that aren't on a unit, in the order they got them: components, combined items and Rings of Power.
 - **Gifts:** the Gifts they have picked, in order; their current Gift offer, if any, and whether they have rerolled it; and the free rerolls left this round (section 9.10).
 - **Recent opponents:** the last 3 players they fought, for matchmaking.
 - **Placement:** set when they are eliminated or win.
@@ -187,12 +190,12 @@ Before each fight, if a player has fewer than `level` units on the board and uni
 
 Items are in `design.md` section 6 and `data/items.ts`.
 
-- **Getting items:** Council picks and PvE loot add components to the end of the player's items (sections 9.6 and 9.7).
+- **Getting items:** Council picks and PvE loot add components, and Council picks Rings of Power, to the end of the player's items (sections 9.6, 9.7 and 9.12).
 - **Giving an item** to a unit on the bench or the board, during planning:
   1. If the item is a component and the unit holds a lone component, the two combine into the recipe's item, which takes the lone component's place in the unit's items.
-  2. Otherwise the unit must hold fewer than 3 items, and the item goes at the end of them.
+  2. Otherwise the unit must hold fewer than 3 items, and the item goes at the end of them. A Ring of Power can't go to a unit that already wears one.
   3. The item leaves the player's items.
-- Combined items never combine further, and nothing combines off a unit.
+- Combined items and Rings of Power never combine, and nothing combines off a unit.
 - Items move with their unit. Only selling the unit takes them off (7.5).
 - A fight's input lists each board unit's items in order (section 9.4).
 
@@ -256,7 +259,7 @@ During planning, living players act in any order: buy, sell, reroll, buy XP, loc
 1. Every living player's board is filled from the bench (7.6). Then a Ring without a bearer equips itself (9.11).
 2. **PvE round:** each living player fights the round's monsters. The player is team A.
 3. **PvP round:** players are paired (9.5). In each pair the first player is team A.
-4. Fights run in pairing order with `simulateCombat`. Each gets a new seed from the game generator, and the current stage as its stage. Units carry their items, and each team its Gifts; a ghost carries copies of its owner's.
+4. Fights run in pairing order with `simulateCombat`. Each gets a new seed from the game generator, and the current stage as its stage. Units carry their items, and each team its Gifts; a ghost carries copies of its owner's. While a player holds the One Ring, every fight gets its Corruption as `oneRingCorruption`, for the Nine (9.12).
 
 ### 9.5 Matchmaking
 
@@ -270,7 +273,7 @@ During planning, living players act in any order: buy, sell, reroll, buy XP, loc
 
 ### 9.6 Council of Elrond
 
-- **Options:** 9, rolled at the start of the Council with the game generator. Each is a 1★ unit and an item component.
+- **Options:** 9, rolled at the start of the Council with the game generator. Each is a 1★ unit and an item component; the One Ring (9.11) and Rings of Power (9.12) can take the component's place.
   - The cost is drawn evenly from the stage's costs, skipping costs with no copies left. The unit is then picked as in 6.2 and taken out of the pool.
   - The component is drawn evenly from the six.
 
@@ -281,9 +284,9 @@ During planning, living players act in any order: buy, sell, reroll, buy XP, loc
 - **Pick order:**
   - At 1-1, all players pick at once: one group.
   - Later, living players are sorted by HP, lowest first, with ties in a seeded order, and pick in groups of two in that order.
-- **Picking:** a player in the current group who hasn't picked takes any option still there. The unit is gained (7.2) and the component goes to their items. When everyone in the group has picked, the next group's turn begins.
+- **Picking:** a player in the current group who hasn't picked takes any option still there. The unit is gained (7.2) and the component or Ring of Power goes to their items. When everyone in the group has picked, the next group's turn begins.
 - **Running out of time:** when the driver ends a group's turn, everyone in it who hasn't picked gets a random option still there, other than the One Ring's (9.11). Someone with only the Ring's option left gets nothing.
-- After the last group, unpicked options go back to the pool and the next round starts.
+- After the last group, unpicked options' units go back to the pool, their Rings of Power to the supply (9.12), and the next round starts.
 
 ### 9.7 PvE rounds
 
@@ -334,10 +337,10 @@ After all the round's fights:
 
 1. **PvP:** fight gold and streaks (8.2) for both players. A ghost fight does this for the real player only.
 2. **Damage:** a player who loses a fight, or draws one, takes stage damage plus 1, 2 or 3 for each surviving enemy unit at 1★, 2★ or 3★ (`design.md` section 9). Stage damage at stage 1 is 0. In a PvP draw both players take damage. A ghost owner takes none.
-3. **Loot** on PvE rounds (9.7).
+3. **Loot** on PvE rounds (9.7), then **the Seven's gold** (9.12), for players above 0 HP.
 4. **The One Ring:** Hobbit fights, then stealing (9.11).
 5. **Recent opponents** (9.5).
-6. **Eliminations:** every player at 0 HP or below is eliminated. Their bench, board and shop go back to the pool, and their items are lost. They take the lowest places still free, ordered by higher HP after the damage, then higher HP before it, then a seeded draw. A Ring they held waits for the next Council (9.11).
+6. **Eliminations:** every player at 0 HP or below is eliminated. Their bench, board and shop go back to the pool, their Rings of Power to the supply (9.12), and their other items are lost. They take the lowest places still free, ordered by higher HP after the damage, then higher HP before it, then a seeded draw. A Ring they held waits for the next Council (9.11).
 7. **Game over:** if one player is left, they place first. If none are left, the places from step 5 cover everyone. Otherwise the next round starts.
 
 ### 9.10 Gifts of Lothlórien
@@ -369,10 +372,23 @@ Rules from `design.md` section 9, numbers in `data/ring.ts`. The game has one Ri
   1. **Hobbit fights:** if the bearer was on the board of a fight of the holder's own, not a ghost of their board, and is a Hobbit, the count rises by 1.
   2. **Stolen:** for a PvP fight between the holder and another player, if a Gollum is among the other player's survivors, that player holds the Ring. The bearer is their first Gollum on the board, in fill order (7.6). Corruption and counts are kept.
 - **Selling** the bearer leaves the Ring with no bearer. **Merging:** if the bearer is one of the copies that merge, the merged unit bears it.
-- **Destroying:** during planning, the holder's `destroyRing` action works while the bearer is a Hobbit and Hobbit bearers have fought at least 3 fights. The holder gains 30 gold and a random combined item, drawn with the game generator, and the Ring is destroyed for the rest of the game.
+- **Destroying:** during planning, the holder's `destroyRing` action works while the bearer is a Hobbit and Hobbit bearers have fought at least 3 fights. The holder gains 30 gold and a random combined item, drawn with the game generator, and the Ring is destroyed for the rest of the game. The Three and the Nine go with it (9.12).
 - **Consumed:** the bearer is removed: its copies go back to the pool and its items to the holder. The Ring waits for the next Council with no Corruption and both counts at 0.
 - **Eliminated holder:** the Ring waits for the next Council, keeping its Corruption and counts.
 - `GameState.ring` shows the Ring to everyone: its state, holder, bearer (the owned unit's id), Corruption and Hobbit fights.
+
+### 9.12 Rings of Power
+
+Rules from `design.md` section 9. The rings are items in `data/items.ts`, with their copies; the Council numbers are in `data/rounds.ts`.
+
+- **Supply:** the game starts with every copy of every ring in its supply: each of the Three once, 7 Rings of the Seven and 9 Rings of the Nine. A ring is in the supply, on a Council option, in a player's items or on an owned unit, and the copies always add up, until the One Ring is destroyed.
+- **Arrival:** when a Council starts from stage 2 on (2-4 is the first), the last 2 options that don't bring the One Ring (9.11) each carry a Ring of Power instead of their component, while the supply has any. Each ring is drawn with the game generator, weighted by its copies in the supply, and taken out of it.
+- **Picking** one gives the ring to the picker's items (9.6). An unpicked one goes back to the supply.
+- **Wearing:** given like any item (7.7), at most one per unit. It moves, merges and sells like any item; a merge that would put a second Ring of Power on a unit sends it to the player's items.
+- **The Seven:** after the fights (9.9, step 3), each player above 0 HP gains 1 gold for each Ring of the Seven on a unit on their board, or 2 if that unit is a Dwarf.
+- **In fights:** the Three and the Nine act through the units' items (`sim-spec.md` section 12.7). While the One Ring is held, every fight gets its Corruption (9.4).
+- **The One destroyed** (9.11): every ring of the Three and the Nine leaves the game, from players' items and owned units alike, and the supply keeps none of them. Later Councils draw only Rings of the Seven.
+- **Eliminated players:** their rings, worn or not, go back to the supply (9.9, step 6).
 
 ---
 
@@ -452,8 +468,9 @@ function createGame(config: GameConfig): Game;   // throws on an invalid config
   - Mail, Cloaks and Lembas to its **tank**: the strongest Guardian, otherwise the strongest unit in the front row.
   - A combined item has the role of its first component, in the order Blade, Bow, Mail, Cloak, Lembas, Staff.
   - If that unit can't take the item, the next strongest board unit that can; if none can, the bot keeps it.
-- **Council:** the option that completes a pair or merge, then one of its focus traits, then the highest cost.
-- **The One Ring:** in a Council, a bot at or below 60 HP wants the Ring's option over any other; above it, it never takes the Ring. A bot holding the Ring gives it to a Hobbit on its board if it has one, otherwise to its attacker (section 11, Items), whenever the Ring has no bearer on the board. It destroys the Ring as soon as it can.
+- **Council:** the option that completes a pair or merge, then one of its focus traits, then the highest cost. A Ring of Power adds 40 to an option's score.
+- **Rings of Power:** given with the other items, in order. Each ring prefers a board unit of its kin, an Elf or Istari for the Three and a Dwarf for the Seven; otherwise Narya and the Nine go to the attacker, Nenya and the Seven to the tank, and Vilya to the caster.
+- **The One Ring:** in a Council, a bot at or below 60 HP wants the Ring's option over any other; above it, it never takes the Ring. A bot holding the Ring gives it to a Hobbit on its board if it has one, otherwise to its attacker (section 11, Items), whenever the Ring has no bearer on the board. It destroys the Ring as soon as it can, unless it has a ring of the Three or the Nine.
 - **Gifts:** at the start of planning, a bot with an offer scores each Gift: a crest of one of its focus traits highest, then combat Gifts, then economy Gifts, which it values more while its HP is high. It rerolls once if no option scores well enough, then takes the best, the first if tied. The scores are in `data/bots.ts`.
 - **Balance runner:** `pnpm balance [games] [first seed]` (`scripts/balance.ts`) plays many 8-bot games and prints the game length, the average placement, top-4 rate and win rate of each unit, active trait and item on players' final boards, the same for each pair of focus traits, and PvE win rates by round.
 - The numbers bots play by are in `data/bots.ts`. They tune the bots, not the game.
@@ -470,7 +487,8 @@ The play page, `play.html` in `packages/client`, next to the fight viewer (`view
 - **Items** show on each unit's label, in planning and in fights, and each item names its effect when hovered.
 - **Keys:** D rerolls, F buys XP, Space is Ready.
 - **Players list:** every player's HP, level and place.
-- **Council:** the options as cards with their components and who took them; the person picks one when it's their group's turn.
+- **Council:** the options as cards with their components or Rings of Power and who took them; the person picks one when it's their group's turn.
+- **Rings of Power** show like other items, as chips in the ring's colours, each naming its effect when hovered.
 - **The One Ring:** the Ring's Council option shows the Ring instead of a component. The holder sees the Ring's Corruption and tier in the HUD, and a Destroy button when they can destroy it. The Ring is a chip among the person's items, which they drag onto a unit to make it the bearer. The bearer's label shows the Ring and its Corruption, in planning and in fights, and the players list marks the holder.
 - **Gifts:** during planning with an offer, a panel shows the three Gifts with their tier and effect, and a Reroll button until it is used. The person's Gifts are listed by the players list, each naming its effect when hovered.
 - **Fights:** the person's fight plays back with the viewer's playback, at 1×, 2× or 4×, and can be skipped; the others run headless. When the person is team B, the camera starts on their side. The person's units are always blue.
@@ -508,6 +526,11 @@ The play page, `play.html` in `packages/client`, next to the fight viewer (`view
 - Arrival at 3-4 with Bilbo, automatic picks skipping it, and coming back when nobody takes it.
 - Corruption by round, every other round for Hobbits; Consumed at 10; equipping itself; giving and moving it; selling and merging the bearer.
 - Hobbit fights, destroying it and its reward, stealing by a surviving Gollum, and the holder's elimination.
+
+**Rings of Power**
+- Two at each Council from 2-4, drawn from the supply, never on the One Ring's option; unpicked ones back to the supply.
+- One per unit, when given and when merging; the Seven's gold, double on a Dwarf; the One's Corruption in every fight while it is held.
+- The Three and the Nine gone everywhere when the One is destroyed; an eliminated player's rings back to the supply; copies conserved throughout.
 
 **Economy**
 - Income by round, interest steps and the cap, win and streak gold.
