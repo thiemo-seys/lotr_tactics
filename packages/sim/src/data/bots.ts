@@ -1,6 +1,6 @@
 // How bots play (docs/game-spec.md section 11). These tune the bots, not the game.
 
-import type { ComponentId } from './items.js';
+import type { ComponentId, RingOfPowerId } from './items.js';
 
 /** Which of a bot's board units gets an item: its attacker, its caster or its tank. */
 export type ItemRole = 'attacker' | 'caster' | 'tank';
@@ -43,7 +43,12 @@ export const BOT = {
   gifts: { focusCrest: 40, otherCrest: 5, combat: 20, economy: 15, greedHp: 70, greedBonus: 10, rerollBelow: 20 },
   /** A bot takes the One Ring's Council option at or below this HP, and never above it. */
   ringTakeBelowHp: 60,
-  /** The unit each component goes to. A combined item goes where its first component would. */
+  /** How much a Ring of Power adds to a Council option's score. */
+  ringOfPowerWant: 40,
+  /**
+   * The unit each component and Ring of Power goes to. A combined item goes where its first
+   * component would; a ring goes to a unit of its kin first.
+   */
   itemRoles: {
     blade: 'attacker',
     bow: 'attacker',
@@ -51,5 +56,10 @@ export const BOT = {
     cloak: 'tank',
     lembas: 'tank',
     staff: 'caster',
-  } as Readonly<Record<ComponentId, ItemRole>>,
+    narya: 'attacker',
+    nenya: 'tank',
+    vilya: 'caster',
+    'ring-of-the-seven': 'tank',
+    'ring-of-the-nine': 'attacker',
+  } as Readonly<Record<ComponentId | RingOfPowerId, ItemRole>>,
 } as const;
