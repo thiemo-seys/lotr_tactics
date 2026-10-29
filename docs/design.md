@@ -409,7 +409,7 @@ With 5–8 units per cost tier (TFT has about 13), a specific unit appears in th
 
 - At 1-1 everyone picks at once.
 - Later Councils: players pick in pairs, lowest HP first.
-- Every Council unit carries an item component.
+- Every Council unit carries an item component, except Bilbo when he brings the One Ring.
 
 ### Gifts of Lothlórien
 
@@ -476,6 +476,32 @@ Gifts are augments: lasting bonuses each player picks for themselves. All number
 | Order of Wizards | Crest: Istari |
 | Pits of Isengard | Crest: Orc |
 | Ringwraiths' Call | Crest: Nazgûl |
+
+### The One Ring
+
+One per lobby. Its power grows the longer it is worn, but so do its drawbacks. All numbers are *(placeholder)*.
+
+- **Arrival:** from the 3-4 Council of Elrond on, one option is Bilbo carrying the Ring instead of an item component. Lowest-HP players pick first as usual, and nobody is forced to take it: a pick made because time ran out never takes the Ring. If nobody takes it, it comes back at the next Council.
+- **Bearer:** the holder gives the Ring to one of their units during planning and can move it to another. It doesn't use an item slot. If the Ring has no bearer when a fight starts, it equips itself on a random unit on the board.
+- **Base power:** the bearer is invisible (cannot be targeted) for the first 3 seconds of each fight.
+- **Corruption** rises by 1 at the start of each round the Ring has a bearer. Hobbit bearers gain it only every other round. Each point gives the bearer +10% damage, and the drawbacks stack:
+
+  | Corruption | Tier | Damage | Drawback added |
+  |---|---|---|---|
+  | 1–3 | Gift | +10% to +30% | None |
+  | 4–6 | Burden | +40% to +60% | Stretched thin: −5% max Health per point above 3 |
+  | 7–8 | Grip | +70% to +80% | "Mine!": allies' heals and shields don't reach the bearer |
+  | 9 | Betrayal | +90% | Attacks its nearest ally, and can't cast, for the first 3 seconds of each fight |
+  | 10 | Consumed | — | The bearer is lost; the Ring returns to the next Council |
+
+- **Sam:** if Sam is next to the bearer when a fight starts, its drawbacks act as if Corruption were 2 lower. The damage bonus doesn't change.
+- **Corruption belongs to the Ring,** not the unit. Moving the Ring or selling the bearer doesn't reset it; selling the bearer leaves the Ring with the player, unworn.
+- **The Eye:** in a fight against the holder's board, ghost fights included, the other side gets the Eye's Nazgûl. It is a summon that appears next to the bearer, sees through the invisibility and attacks the bearer first. It has 500 Health and 40 Attack Damage, plus 100 and 10 per point of Corruption.
+- **Exits:**
+  - *Destroyed:* once Hobbits have carried it through 3 fights, a Hobbit bearer can throw it into Mount Doom during planning. The holder gains 30 gold and a random combined item, and the Ring is gone for the rest of the game.
+  - *Stolen:* if an opponent's Gollum survives a fight against the holder, he takes the Ring, Corruption kept. Ghost fights don't count, since the ghost's owner isn't there.
+  - *Consumed:* at 10 Corruption the bearer is lost (its items go back to the player), and the Ring returns to the next Council with no Corruption.
+  - If the holder is eliminated, the Ring returns to the next Council with its Corruption.
 
 ### PvE rounds
 
@@ -572,35 +598,6 @@ All numbers marked *(placeholder)* will be tuned during balancing.
 Grow from 36 units to about 45–50 (9–10 per cost tier) so that specific units appear in the shop about as often as in TFT.
 
 These are deliberately left out of the base game and will be revisited once it is well defined.
-
-### The One Ring
-
-One per lobby. Its power grows the longer it is worn, but so do its drawbacks.
-
-- **Arrival:** at a mid-game Council of Elrond, carried by Bilbo. Lowest-HP player picks first; nobody is forced to take it.
-- **Base power:** the bearer is invisible (cannot be targeted) for the first 3 seconds of each combat.
-- **Corruption curve** *(placeholder numbers)*: Corruption rises by 1 at the start of each turn the Ring is worn. Each point gives +10% damage. Drawbacks stack.
-
-  | Corruption | Tier | Damage | Drawback added |
-  |---|---|---|---|
-  | 1–3 | Gift | +10% to +30% | None |
-  | 4–6 | Burden | +40% to +60% | Stretched thin: −5% max health per point above 3 |
-  | 7–8 | Grip | +70% to +80% | "Mine!": cannot be healed or shielded by allies |
-  | 9 | Betrayal | +90% | Attacks its own team for the first 3 seconds of combat |
-  | 10 | Consumed | — | Bearer is lost; Ring returns to the next Council |
-
-- **Rules:**
-  - Corruption belongs to the Ring, not the unit; swapping bearers does not reset it.
-  - Selling the bearer returns the Ring to the bench with its Corruption unchanged.
-  - If the Ring is on the bench at combat start, it equips itself on a random unit.
-  - Hobbit bearers gain Corruption only every other turn.
-- **The Eye:** each opponent who fights the holder gets a Nazgûl that sees through the invisibility and attacks the bearer first. It grows stronger the longer the Ring is held.
-- **Exits:**
-  - *Destroyed:* once a Hobbit has carried it through 3 combats, it can be thrown into Mount Doom during a shop phase for a large reward.
-  - *Stolen:* if an opponent's Gollum is alive at the end of a fight against the holder, he takes the Ring (Corruption kept).
-  - *Consumed:* Corruption reaches 10.
-- **Optional:** Sam adjacent to the bearer makes drawbacks act as if Corruption were 2 lower.
-- **Open questions:** Is Betrayal at 9 too harsh? Should Consumed take the unit or only the Ring? Include Sam?
 
 ### Rings of Power
 
