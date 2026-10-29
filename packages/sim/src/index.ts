@@ -12,6 +12,7 @@ export * from './data/rounds.js';
 export * from './data/pve.js';
 export * from './combat/stats.js';
 export * from './combat/time.js';
+export * from './combat/items.js';
 export { createCombat, simulateCombat } from './combat/combat.js';
 export type {
   Combat,
