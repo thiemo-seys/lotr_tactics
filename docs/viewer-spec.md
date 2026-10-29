@@ -61,6 +61,7 @@ packages/client/
 - **Body:** a low-poly pawn in its team's colour. Large units are drawn bigger. Summons are smaller and have no name.
 - **Overlay** above each unit:
   - name and star level
+  - its items, if any, each naming its effect when hovered
   - a health bar with the shield drawn after it
   - a mana bar
   - tags for stun, stun immunity and untargetable
@@ -91,7 +92,7 @@ packages/client/
 
 - **Fight:** team A board, team B board, seed, stage, and a New fight button.
   - Presets: duel, tanks, archers, mixed, full, traits.
-  - Random: 7 units with star levels from 1 to 3, placed at random on their half, from the seed and the team.
+  - Random: 7 units with star levels from 1 to 3 and up to 3 random items each, placed at random on their half, from the seed and the team.
 - **Playback:**
   - Play/pause, which the space bar also toggles.
   - Step one tick.
