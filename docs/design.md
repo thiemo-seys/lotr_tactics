@@ -423,7 +423,7 @@ PvE rounds drop item components and gold.
 | Package | Responsibility |
 |---|---|
 | `sim` | Pure, deterministic game and combat logic. No rendering or networking. |
-| `server` | Node; lobbies and authoritative game state (Colyseus or plain WebSockets). |
+| `server` | Node; lobbies and authoritative game state over plain WebSockets. |
 | `client` | Vite + Three.js renderer; HTML/CSS overlay for shop, bench and gold. |
 
 ### Deterministic combat
@@ -453,7 +453,7 @@ Built from day one to:
 1. `sim`: hex grid, movement, targeting, attacks, mana and abilities, with headless tests (spec: [`sim-spec.md`](sim-spec.md))
 2. Three.js viewer that replays a fight from two boards plus a seed (spec: [`viewer-spec.md`](viewer-spec.md))
 3. Shop, bench and economy, playable alone against 7 bots (spec: [`game-spec.md`](game-spec.md))
-4. Server lobbies, with bots filling empty seats
+4. Server lobbies, with bots filling empty seats (spec: [`server-spec.md`](server-spec.md))
 5. Content: traits, items, and later the parked features
 
 ---
