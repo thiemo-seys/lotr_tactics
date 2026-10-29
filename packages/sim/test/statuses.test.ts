@@ -5,7 +5,7 @@ import type { CombatEvent } from '../src/combat/events.js';
 import { baseStats, finalStats } from '../src/combat/stats.js';
 import { Statuses } from '../src/combat/statuses.js';
 import { UNITS } from '../src/data/units.js';
-import { input, placed } from './helpers.js';
+import { input, ofType, placed, stepTo } from './helpers.js';
 
 describe('Statuses', () => {
   it('extends a stun, stun immunity or untargetable only if the new one lasts longer', () => {
@@ -97,17 +97,6 @@ describe('Statuses', () => {
     expect(statuses.absorb(10)).toBe(0);
   });
 });
-
-/** Steps the fight up to and including `tick`, returning those ticks' events. */
-function stepTo(fight: Fight, tick: number): CombatEvent[] {
-  const events: CombatEvent[] = [];
-  while (fight.tick < tick) events.push(...fight.step());
-  return events;
-}
-
-function ofType<T extends CombatEvent['type']>(events: readonly CombatEvent[], type: T): Extract<CombatEvent, { type: T }>[] {
-  return events.filter((e): e is Extract<CombatEvent, { type: T }> => e.type === type);
-}
 
 function ticksOf(events: readonly CombatEvent[], type: 'attack' | 'move', unit: number): number[] {
   return ofType(events, type).flatMap((e) => (e.unit === unit ? [e.tick] : []));
