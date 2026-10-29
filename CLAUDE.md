@@ -70,8 +70,9 @@ Subagents in `.claude/agents/`, each with its own area. They start without this 
 - `bot-strategist`: how bots play (`bots/`, `data/bots.ts`).
 - `balance-analyst`: balance runs, and the numbers in `data/` with the docs to match.
 - `client-engineer`: `packages/client`.
+- `low-poly-artist`: the 3D look in `packages/client`: models for units, monsters and summons, the board, lighting and effects, built in code and checked with screenshots.
 - `server-engineer`: `packages/server`.
 - `determinism-auditor`: reviews sim and browser-safe server changes for anything that breaks determinism; read-only.
 - `playtester`: plays the game in a browser and reports bugs; changes no code.
 
-A new feature usually goes: game-designer, then design-keeper to check the docs, then spec-test-writer and the engineers for each package, then determinism-auditor and playtester, then balance-analyst.
+A new feature usually goes: game-designer, then design-keeper to check the docs, then spec-test-writer and the engineers for each package, with low-poly-artist for anything new on screen, then determinism-auditor and playtester, then balance-analyst.
