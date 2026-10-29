@@ -41,6 +41,7 @@ packages/client/
     scene.ts       Three.js scene, units, overlays, and the planning view
     units.ts       names and sizes of units, monsters and summons
     items.ts       item tags, colours and descriptions from the item data
+    gifts.ts       Gift tiers and descriptions from the Gift data
     log.ts         event log text
     style.css
   test/
@@ -112,6 +113,6 @@ The parts without Three.js are tested with Vitest:
 - random boards, which are valid and the same for the same seed;
 - playback timing, interpolated positions and projectiles;
 - the event log text;
-- item tags and descriptions.
+- item tags and descriptions, and Gift descriptions.
 
 The Three.js scene is checked by building the viewer and looking at it in a browser.
