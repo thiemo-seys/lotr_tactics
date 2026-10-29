@@ -380,7 +380,8 @@ function createGame(config: GameConfig): Game;   // throws on an invalid config
   - **Board:** the strongest units up to the level, by cost and star. Guardians at the front, Riders, Captains and Burglars behind them, Archers and Sorcerers at the back.
 - **Focus traits:** chosen at 2-1 from the units the bot owns, with a seeded preference so bots in one lobby play different comps.
 - **Council:** the option that completes a pair or merge, then one of its focus traits, then the highest cost.
-- **Balance runner:** `scripts/balance.ts` plays many 8-bot games and prints the game length, how often each unit and trait ends on the winning board, the average placement of each focus pair, and PvE win rates by round.
+- **Balance runner:** `pnpm balance [games] [first seed]` (`scripts/balance.ts`) plays many 8-bot games and prints the game length, the average placement, top-4 rate and win rate of each unit and active trait on players' final boards, the same for each pair of focus traits, and PvE win rates by round.
+- The numbers bots play by are in `data/bots.ts`. They tune the bots, not the game.
 
 ---
 
