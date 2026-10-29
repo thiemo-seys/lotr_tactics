@@ -15,6 +15,7 @@ Implementation spec for the game around the fights: the shop, the economy, the r
 - The shared unit pool, the shop, the bench, board placement, merging and selling.
 - Items: components from the Council and PvE rounds, given to units, where two combine into an item (section 7.7).
 - Gifts of Lothlórien: offers, rerolls, picks and every Gift's effect outside the fight (section 9.10). The sim runs the ones that act in the fight (`sim-spec.md` section 12.5).
+- The One Ring: its arrival, Corruption, bearers and exits (section 9.11). The sim runs it in fights (`sim-spec.md` section 12.6).
 - Gold, interest, streaks, XP and levels.
 - The round schedule, the Council of Elrond, PvE rounds, matchmaking, ghost fights, player damage, elimination and placement.
 - Placeholder PvE monsters and loot (`design.md` section 12 leaves them open).
@@ -24,7 +25,7 @@ Implementation spec for the game around the fights: the shop, the economy, the r
 **Out of scope (later)**
 
 - **Server, lobbies and networking** (build order step 4, [`server-spec.md`](server-spec.md)). The game layer is turn-based and knows nothing about time; the client or server that drives it runs the timers.
-- The parked features (`design.md` section 13).
+- The other parked features (`design.md` section 13).
 
 ---
 
@@ -75,6 +76,8 @@ packages/sim/src/
     monsters.ts     PvE monsters and their abilities
     pve.ts          PvE boards and loot
     items.ts        item components and combined items
+    gifts.ts        Gifts of Lothlórien
+    ring.ts         the One Ring
   game/
     game.ts         createGame, actions, advancing rounds
     pool.ts         the shared pool and shop rolls
@@ -233,7 +236,7 @@ The game starts at 1-1 and goes on until at most one player is left.
 
 ### 9.2 Round start
 
-At the start of a PvP or PvE round, for every living player in seat order:
+At the start of a PvP or PvE round, the One Ring gains Corruption if it has a bearer (9.11). Then, for every living player in seat order:
 
 1. the automatic level (8.3)
 2. income (8.1)
@@ -250,7 +253,7 @@ During planning, living players act in any order: buy, sell, reroll, buy XP, loc
 
 ### 9.4 Fights
 
-1. Every living player's board is filled from the bench (7.6).
+1. Every living player's board is filled from the bench (7.6). Then a Ring without a bearer equips itself (9.11).
 2. **PvE round:** each living player fights the round's monsters. The player is team A.
 3. **PvP round:** players are paired (9.5). In each pair the first player is team A.
 4. Fights run in pairing order with `simulateCombat`. Each gets a new seed from the game generator, and the current stage as its stage. Units carry their items, and each team its Gifts; a ghost carries copies of its owner's.
@@ -279,7 +282,7 @@ During planning, living players act in any order: buy, sell, reroll, buy XP, loc
   - At 1-1, all players pick at once: one group.
   - Later, living players are sorted by HP, lowest first, with ties in a seeded order, and pick in groups of two in that order.
 - **Picking:** a player in the current group who hasn't picked takes any option still there. The unit is gained (7.2) and the component goes to their items. When everyone in the group has picked, the next group's turn begins.
-- **Running out of time:** when the driver ends a group's turn, everyone in it who hasn't picked gets a random option still there.
+- **Running out of time:** when the driver ends a group's turn, everyone in it who hasn't picked gets a random option still there, other than the One Ring's (9.11). Someone with only the Ring's option left gets nothing.
 - After the last group, unpicked options go back to the pool and the next round starts.
 
 ### 9.7 PvE rounds
@@ -332,9 +335,10 @@ After all the round's fights:
 1. **PvP:** fight gold and streaks (8.2) for both players. A ghost fight does this for the real player only.
 2. **Damage:** a player who loses a fight, or draws one, takes stage damage plus 1, 2 or 3 for each surviving enemy unit at 1★, 2★ or 3★ (`design.md` section 9). Stage damage at stage 1 is 0. In a PvP draw both players take damage. A ghost owner takes none.
 3. **Loot** on PvE rounds (9.7).
-4. **Recent opponents** (9.5).
-5. **Eliminations:** every player at 0 HP or below is eliminated. Their bench, board and shop go back to the pool, and their items are lost. They take the lowest places still free, ordered by higher HP after the damage, then higher HP before it, then a seeded draw.
-6. **Game over:** if one player is left, they place first. If none are left, the places from step 5 cover everyone. Otherwise the next round starts.
+4. **The One Ring:** Hobbit fights, then stealing (9.11).
+5. **Recent opponents** (9.5).
+6. **Eliminations:** every player at 0 HP or below is eliminated. Their bench, board and shop go back to the pool, and their items are lost. They take the lowest places still free, ordered by higher HP after the damage, then higher HP before it, then a seeded draw. A Ring they held waits for the next Council (9.11).
+7. **Game over:** if one player is left, they place first. If none are left, the places from step 5 cover everyone. Otherwise the next round starts.
 
 ### 9.10 Gifts of Lothlórien
 
@@ -349,6 +353,26 @@ Gifts are in `design.md` section 9 and `data/gifts.ts`.
 - **Lasting Gifts** change the rules above: free rerolls (6.3), shop odds (6.3), interest (8.1) and XP each round (9.2).
 - **In the fight:** every fight's input lists each team's Gifts (`sim-spec.md` section 12.5). A ghost has its owner's Gifts; monsters have none.
 - An eliminated player's Gifts and offer are gone.
+
+### 9.11 The One Ring
+
+Rules from `design.md` section 9, numbers in `data/ring.ts`. The game has one Ring. It is **waiting** for a Council, **offered** in one, **held** by a player, or **destroyed**. It has a Corruption, a holder and a bearer while held, and two counts: rounds borne by Hobbits, and fights fought by Hobbit bearers.
+
+- **Arrival:** when a Council starts from stage 3 on (3-4 is the first) and the Ring is waiting, the last option carries the Ring instead of a component. If a copy of Bilbo is in the pool, the option's rolled unit goes back to the pool and a Bilbo is taken instead; otherwise the option keeps its unit.
+- **Picking it:** the unit is gained as usual (7.2), and the picker holds the Ring. The bearer is the picker's Bilbo, if they now own one (the first in the order of 7.3: board, then bench), otherwise no unit.
+- **Left over:** if the Ring's option is still there after the last group, the Ring waits for the next Council.
+- **Giving it:** during planning, the holder's `ring` action makes the unit at a place the bearer, on the bench or the board.
+- **Corruption:** at the start of each PvP and PvE round (9.2), if the Ring has a bearer, its Corruption rises by 1. For a Hobbit bearer, the Hobbit round count rises instead, and Corruption only when that count is even. At 10 the Ring is Consumed.
+- **Equipping itself:** before the fights, after the boards fill (9.4), a held Ring with no bearer goes to a random unit on the holder's board, drawn with the game generator. With an empty board it stays unworn.
+- **In fights:** if the bearer is on the board, its placement has `ring` set to the Corruption (`sim-spec.md` section 12.6). A ghost of the holder's board carries it too.
+- **After the fights** (9.9, step 4):
+  1. **Hobbit fights:** if the bearer was on the board of a fight of the holder's own, not a ghost of their board, and is a Hobbit, the count rises by 1.
+  2. **Stolen:** for a PvP fight between the holder and another player, if a Gollum is among the other player's survivors, that player holds the Ring. The bearer is their first Gollum on the board, in fill order (7.6). Corruption and counts are kept.
+- **Selling** the bearer leaves the Ring with no bearer. **Merging:** if the bearer is one of the copies that merge, the merged unit bears it.
+- **Destroying:** during planning, the holder's `destroyRing` action works while the bearer is a Hobbit and Hobbit bearers have fought at least 3 fights. The holder gains 30 gold and a random combined item, drawn with the game generator, and the Ring is destroyed for the rest of the game.
+- **Consumed:** the bearer is removed: its copies go back to the pool and its items to the holder. The Ring waits for the next Council with no Corruption and both counts at 0.
+- **Eliminated holder:** the Ring waits for the next Council, keeping its Corruption and counts.
+- `GameState.ring` shows the Ring to everyone: its state, holder, bearer (the owned unit's id), Corruption and Hobbit fights.
 
 ---
 
@@ -372,6 +396,8 @@ type Action =
   | { type: 'equip'; item: number; to: Place }   // index into the player's items
   | { type: 'gift'; option: number }       // Gift offer option 0–2
   | { type: 'rerollGifts' }
+  | { type: 'ring'; to: Place }            // the holder gives the One Ring to the unit there
+  | { type: 'destroyRing' }
   | { type: 'pick'; option: number };      // Council option 0–8
 
 type ActionResult = { ok: true } | { ok: false; reason: string };
@@ -427,6 +453,7 @@ function createGame(config: GameConfig): Game;   // throws on an invalid config
   - A combined item has the role of its first component, in the order Blade, Bow, Mail, Cloak, Lembas, Staff.
   - If that unit can't take the item, the next strongest board unit that can; if none can, the bot keeps it.
 - **Council:** the option that completes a pair or merge, then one of its focus traits, then the highest cost.
+- **The One Ring:** in a Council, a bot at or below 60 HP wants the Ring's option over any other; above it, it never takes the Ring. A bot holding the Ring gives it to a Hobbit on its board if it has one, otherwise to its attacker (section 11, Items), whenever the Ring has no bearer on the board. It destroys the Ring as soon as it can.
 - **Gifts:** at the start of planning, a bot with an offer scores each Gift: a crest of one of its focus traits highest, then combat Gifts, then economy Gifts, which it values more while its HP is high. It rerolls once if no option scores well enough, then takes the best, the first if tied. The scores are in `data/bots.ts`.
 - **Balance runner:** `pnpm balance [games] [first seed]` (`scripts/balance.ts`) plays many 8-bot games and prints the game length, the average placement, top-4 rate and win rate of each unit, active trait and item on players' final boards, the same for each pair of focus traits, and PvE win rates by round.
 - The numbers bots play by are in `data/bots.ts`. They tune the bots, not the game.
@@ -444,6 +471,7 @@ The play page, `play.html` in `packages/client`, next to the fight viewer (`view
 - **Keys:** D rerolls, F buys XP, Space is Ready.
 - **Players list:** every player's HP, level and place.
 - **Council:** the options as cards with their components and who took them; the person picks one when it's their group's turn.
+- **The One Ring:** the Ring's Council option shows the Ring instead of a component. The holder sees the Ring's Corruption and tier in the HUD, and a Destroy button when they can destroy it. The Ring is a chip among the person's items, which they drag onto a unit to make it the bearer. The bearer's label shows the Ring and its Corruption, in planning and in fights, and the players list marks the holder.
 - **Gifts:** during planning with an offer, a panel shows the three Gifts with their tier and effect, and a Reroll button until it is used. The person's Gifts are listed by the players list, each naming its effect when hovered.
 - **Fights:** the person's fight plays back with the viewer's playback, at 1×, 2× or 4×, and can be skipped; the others run headless. When the person is team B, the camera starts on their side. The person's units are always blue.
 - **Results:** for a few seconds after each fight, the damage everyone took and who was knocked out.
@@ -475,6 +503,11 @@ The play page, `play.html` in `packages/client`, next to the fight viewer (`view
 - Offers in the Gift rounds only, of the right tier, never repeating a held Gift, with at most one crest.
 - One reroll, picking, the automatic pick, and each Gift's reward: gold, components, combined items, units (and their fallback cost), XP, free rerolls, shop odds, interest and XP per round.
 - Fights get both teams' Gifts.
+
+**The One Ring**
+- Arrival at 3-4 with Bilbo, automatic picks skipping it, and coming back when nobody takes it.
+- Corruption by round, every other round for Hobbits; Consumed at 10; equipping itself; giving and moving it; selling and merging the bearer.
+- Hobbit fights, destroying it and its reward, stealing by a surviving Gollum, and the holder's elimination.
 
 **Economy**
 - Income by round, interest steps and the cap, win and streak gold.
