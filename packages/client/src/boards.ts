@@ -46,6 +46,14 @@ export const PRESETS = {
     placed('gandalf', 3, 0, 1, ['wizards-staff', 'athelas', 'sting']),
     placed('haldir', 6, 0, 1, ['blade', 'staff']),
   ],
+  /** Aragorn bears the One Ring at Corruption 6 with Sam beside him; the other side gets the Eye's Nazgûl. */
+  ring: [
+    { ...placed('aragorn', 3, 3), ring: 6 },
+    placed('sam', 2, 3),
+    placed('gimli', 4, 3),
+    placed('legolas', 1, 0),
+    placed('gandalf', 4, 0),
+  ],
   traits: [
     placed('khamul', 2, 3),
     placed('eomer', 3, 3),
@@ -69,6 +77,14 @@ export function isBoardChoice(value: string): value is BoardChoice {
 
 /** Units on a random board. */
 export const RANDOM_BOARD_SIZE = 7;
+
+/** Both teams' boards. Only one unit can bear the One Ring, so with two bearers team A keeps it. */
+export function fightBoards(a: BoardChoice, b: BoardChoice, seed: number): { A: readonly PlacedUnit[]; B: readonly PlacedUnit[] } {
+  const A = boardFor(a, seed, 'A');
+  const B = boardFor(b, seed, 'B');
+  const ringInA = A.some((p) => p.ring !== undefined);
+  return { A, B: ringInA ? B.map((p) => ({ unitId: p.unitId, star: p.star, col: p.col, row: p.row, items: p.items })) : B };
+}
 
 /** A board for one team: a preset, or a random one from the seed and the team. */
 export function boardFor(choice: BoardChoice, seed: number, team: Team): readonly PlacedUnit[] {
