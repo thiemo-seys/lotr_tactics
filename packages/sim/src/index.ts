@@ -32,6 +32,7 @@ export { TEAM_ROWS, baseIncome, streakGold, xpForNextLevel } from './game/player
 export type { ActionResult, OwnedUnit, Place, PlayerView } from './game/player.js';
 export { councilCosts, nextRound, playerDamage, pveRound, roundType, roundsInStage, stageDamage } from './game/schedule.js';
 export { createGame } from './game/game.js';
+export type { RingState, RingView } from './game/ring.js';
 export type {
   Action,
   CouncilOptionView,
