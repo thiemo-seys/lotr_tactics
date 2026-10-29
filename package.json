@@ -7,7 +7,8 @@
     "node": ">=22.12"
   },
   "scripts": {
-    "dev": "pnpm --filter @lotr-tactics/client dev",
+    "dev": "pnpm --parallel --filter @lotr-tactics/client --filter @lotr-tactics/server dev",
+    "start": "pnpm build && pnpm --filter @lotr-tactics/server start",
     "lint": "eslint .",
     "typecheck": "pnpm -r typecheck",
     "test": "pnpm -r test",
