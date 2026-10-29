@@ -92,14 +92,18 @@ function effectText(effect: ItemEffect): string {
   }
 }
 
+/** Stat bonuses as text, such as "+15% Attack Damage, +20 Armor". */
+export function statsText(stats: ItemStats): string {
+  return STATS.flatMap(({ key, name, pct }) => {
+    const value = stats[key] ?? 0;
+    return value === 0 ? [] : [`+${value}${pct ? '%' : ''} ${name}`];
+  }).join(', ');
+}
+
 /** An item's name, recipe, stats and effect, for a tooltip. */
 export function itemText(id: ItemId): string {
   const { name, recipe, effect } = ITEMS[id];
-  const stats = itemStats(id);
-  const statText = STATS.flatMap(({ key, name: stat, pct }) => {
-    const value = stats[key] ?? 0;
-    return value === 0 ? [] : [`+${value}${pct ? '%' : ''} ${stat}`];
-  }).join(', ');
+  const statText = statsText(itemStats(id));
   const title = recipe === null ? `${name} (component)` : `${name} (${ITEMS[recipe[0]].name} + ${ITEMS[recipe[1]].name})`;
   return [title, statText, ...(effect === null ? [] : [effectText(effect)])].join('\n');
 }
