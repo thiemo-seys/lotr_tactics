@@ -451,8 +451,8 @@ Built from day one to:
 ## 11. Build order
 
 1. `sim`: hex grid, movement, targeting, attacks, mana and abilities, with headless tests (spec: [`sim-spec.md`](sim-spec.md))
-2. Three.js viewer that replays a fight from two boards plus a seed
-3. Shop, bench and economy, playable alone against 7 bots
+2. Three.js viewer that replays a fight from two boards plus a seed (spec: [`viewer-spec.md`](viewer-spec.md))
+3. Shop, bench and economy, playable alone against 7 bots (spec: [`game-spec.md`](game-spec.md))
 4. Server lobbies, with bots filling empty seats
 5. Content: traits, items, and later the parked features
 
@@ -462,7 +462,7 @@ Built from day one to:
 
 1. **Items:** effects for all 21 combined items
 2. **Gifts of Lothlórien:** the list of augments
-3. **PvE enemies:** stats and loot tables
+3. **PvE enemies:** stats and loot tables (placeholders in [`game-spec.md`](game-spec.md) section 9)
 
 All numbers marked *(placeholder)* will be tuned during balancing.
 
