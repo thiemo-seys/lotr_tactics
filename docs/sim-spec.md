@@ -16,6 +16,7 @@ Implementation spec for the `sim` package's combat simulation. It turns the rule
 - All 16 traits and all 36 unit abilities.
 - The six item components and all 21 combined items (section 12.4).
 - The Gifts of Lothlórien that act in the fight (section 12.5).
+- The One Ring's bearer and the Eye's Nazgûl (section 12.6).
 - Star levels.
 - Determinism and a per-tick event log for rendering.
 - Headless tests.
@@ -69,6 +70,7 @@ packages/sim/
       units.ts        unit definitions and abilities
       items.ts        item components, combined items and their numbers
       gifts.ts        Gifts of Lothlórien and their numbers
+      ring.ts         the One Ring's numbers
     combat/
       combat.ts       createCombat / step / result
       stats.ts        stat derivation and modifiers
@@ -181,8 +183,8 @@ Tick 0 only sets up the fight; units start acting at tick 1.
 1. Create units with derived stats (section 7), including static trait, item and Gift bonuses, and Gift mana.
 2. **Gondor:** front-row bonus for allies in their team's row 3.
 3. **Guardian:** shields.
-4. **Gifts and items at combat start**, unit by unit in slot order, team A's first: the team's Light of Valinor shield, then the unit's Star of Elendil shields, King's Banner buffs and Miruvor stun immunity (sections 12.4 and 12.5).
-5. **Orc:** spawn grunts, team A's first.
+4. **Gifts, items and the Ring at combat start**, unit by unit in slot order, team A's first: the team's Light of Valinor shield, then the unit's Star of Elendil shields, King's Banner buffs and Miruvor stun immunity, then the Ring's invisibility on its bearer (sections 12.4 to 12.6).
+5. **Orc:** spawn grunts, team A's first. Then **the Eye's Nazgûl**, if the other team bears the Ring (section 12.6).
 6. **Burglar:** leaps, in action order.
 7. **Rider:** charges, in action order.
 8. **Elven Rope:** stuns, in action order.
@@ -224,7 +226,7 @@ From `design.md` section 5. Use plain ASCII ids:
 
 `sam, merry, pippin, beregond, hama, grishnakh, sharku, gorbag, frodo, haldir, faramir, gamling, balin, lurtz, radagast, ringwraith, bilbo, gollum, gimli, boromir, eomer, eowyn, ugluk, khamul, legolas, elrond, aragorn, theoden, dain, saruman, gothmog, gandalf, galadriel, witch-king, treebeard, sauron`
 
-Plus the summon `orc-grunt`.
+Plus the summons `orc-grunt` and `eye-nazgul` (section 12.6).
 
 Each definition holds:
 
@@ -362,6 +364,7 @@ final      = Math.round(reduced × (1 − target's damage reductions)), at least
 ```
 
 - **Damage amps** add together:
+  - the One Ring's Corruption, on its bearer
   - Captain adjacency
   - Dark Lord
   - Dwarf against a Large target
@@ -688,6 +691,22 @@ Gifts are in `data/gifts.ts`, from `design.md` section 9. `CombatInput.gifts` li
 | The Fellowship | Damage | A damage amp of 4% for each distinct origin among the team's units at tick 0, for every unit of the team, summons included. Monsters have no origin. |
 | Crests | Trait counting | One more unit towards the crest's trait, if the team counts at least one (section 12.2). |
 
+### 12.6 The One Ring
+
+Numbers are from `design.md` section 9, in `data/ring.ts`. A placed unit with `ring` set is the Ring's bearer, and `ring` is the Ring's Corruption, from 0 to 9. At most one unit in a fight bears it.
+
+- **Drawback level:** the Corruption the drawbacks use. It is the Corruption, or 2 lower if Sam is placed next to the bearer on its team.
+- **Damage:** the bearer gets a damage amp of 10% per point of Corruption (section 9.1). Sam doesn't change it.
+- **Invisibility:** at tick 0 (section 6.2, step 4) the bearer becomes untargetable for 3 seconds.
+- **Burden**, from drawback level 4: the bearer's max Health is lowered by 5% per point above 3, when it is created, after every other bonus: a flat bonus of `−round(max Health × pct / 100)`. It starts at full Health.
+- **Grip**, from drawback level 7: heals and shields from any source other than the bearer itself do nothing to it, and emit no event.
+- **Betrayal**, at drawback level 9: for the first 3 seconds (ticks 1 to 90), the bearer neither casts nor moves, nor chooses an enemy target. When its attack is ready and an ally (not itself) is within its Range, it attacks the nearest ally, by the section 5 tie-break, as a basic attack (section 9). Otherwise it waits.
+- **The Eye's Nazgûl:** when one team has a bearer and the other team placed at least one unit that isn't a monster, the other team gets the summon `eye-nazgul` at tick 0, step 5, after its grunts.
+  - It is placed like a summon of the bearer (section 10.3), but on its own team's half: the first free hex next to the bearer on that half, in its team's neighbour order, otherwise the free hex on its half nearest the bearer. It doesn't appear if its half is full.
+  - Nazgûl origin, no classes and no ability. It counts as a living unit, like a grunt, but not for traits or player damage.
+  - Health 500 + 100 per point of Corruption, Attack Damage 40 + 10 per point, Attack Speed 0.8, Range 1, Armor and Magic Resist 30.
+  - While the bearer is alive, the bearer is its target, even while untargetable. Its attacks on the bearer land as usual. Once the bearer dies, it targets like any unit.
+
 ---
 
 ## 13. End of combat and result
@@ -714,6 +733,7 @@ interface PlacedUnit {
   col: number;        // 0–6, own perspective
   row: number;        // 0 = back, 3 = front, own perspective
   items: ItemId[];    // up to 3 components or combined items (section 12.4); none for a monster
+  ring?: number;      // set on the One Ring's bearer: the Ring's Corruption, 0–9 (section 12.6)
 }
 
 interface CombatInput {
@@ -745,7 +765,7 @@ function simulateCombat(input: CombatInput): CombatResult;   // runs to the end
 
 The client creates the same combat, plays tick 0's events from `events`, then calls `step()` once per tick, reading `state` for health and mana bars and using events for animations.
 
-Invalid input throws: an unknown unit id, a star level other than 1–3 (other than 1 for a monster), an unknown item id, more than 3 items, items on a monster, an unknown Gift id, a placement outside the team's half, two units of one team on the same hex, a seed that isn't an integer, or a stage below 1.
+Invalid input throws: an unknown unit id, a star level other than 1–3 (other than 1 for a monster), an unknown item id, more than 3 items, items on a monster, an unknown Gift id, more than one Ring bearer, a Ring on a monster, a Corruption outside 0–9, a placement outside the team's half, two units of one team on the same hex, a seed that isn't an integer, or a stage below 1.
 
 ### Events
 
@@ -836,6 +856,10 @@ Every event has a `tick`.
 - Each combat Gift's effect, for the right units: all, front row or back row; starting mana capped at max mana; the Horn's stuns and stun immunity; damage amps, including The Fellowship's origin count.
 - Crests raise a trait's level only when the team has the trait.
 - Gifts that act outside the fight change nothing in it.
+
+**The One Ring**
+- The bearer's invisibility and damage; Burden, Grip and Betrayal at their levels, and Sam lowering them by 2.
+- The Eye's Nazgûl: when it appears, where, its stats by Corruption, and it targeting the bearer through invisibility.
 
 **End of combat**
 - A team wipe ends the fight immediately.
