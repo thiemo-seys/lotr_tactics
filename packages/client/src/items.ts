@@ -2,7 +2,18 @@
 // section 4): a short tag and colours for each item, and a description built from the item data,
 // so the numbers shown are always the sim's. No Three.js or DOM, so it can be tested.
 
-import { ITEMS, itemStats, type BuffStat, type ComponentId, type ItemEffect, type ItemId, type ItemStats } from '@lotr-tactics/sim';
+import {
+  ITEMS,
+  TRAITS,
+  itemStats,
+  type BuffStat,
+  type ComponentId,
+  type ItemEffect,
+  type ItemId,
+  type ItemStats,
+  type RingFamily,
+  type RingOfPowerDef,
+} from '@lotr-tactics/sim';
 
 export const COMPONENT_COLOURS: Readonly<Record<ComponentId, string>> = {
   blade: '#dc2626',
@@ -89,6 +100,16 @@ function effectText(effect: ItemEffect): string {
       return `Enemies within ${effect.radius} hexes of the holder have ${effect.pct}% less Magic Resist.`;
     case 'healOnCast':
       return `After each cast, heals the ally with the lowest Health % for ${effect.amount}.`;
+    case 'attackSpeedAura':
+      return `The holder and allies within ${effect.radius} hexes gain +${effect.pct}% Attack Speed.`;
+    case 'shieldPulse':
+      return `At combat start and every ${effect.everySeconds} seconds, the holder and allies within ${effect.radius} hexes gain a ${effect.amount} shield for ${effect.seconds}s.`;
+    case 'healPulse':
+      return `Every ${effect.everySeconds} seconds, heals the ally with the lowest Health % for ${effect.amount}.`;
+    case 'goldPerRound':
+      return `After each PvP or PvE round with the holder on your board, gain ${effect.gold} gold.`;
+    case 'nazgul':
+      return `The holder is a Nazgûl as well as its own origin. While a player holds the One Ring, it deals ${effect.damagePctPerCorruption}% more damage per point of the One Ring's Corruption.`;
   }
 }
 
@@ -100,10 +121,29 @@ export function statsText(stats: ItemStats): string {
   }).join(', ');
 }
 
-/** An item's name, recipe, stats and effect, for a tooltip. */
+const FAMILY_NAMES: Readonly<Record<RingFamily, string>> = { three: 'the Three', seven: 'the Seven', nine: 'the Nine' };
+
+/** A Ring of Power's bonus on its kin, such as "50% stronger on Elf or Istari bearers." */
+function kinText(kin: NonNullable<RingOfPowerDef['kin']>): string {
+  const bearers = `on ${kin.origins.map((o) => TRAITS[o].name).join(' or ')} bearers`;
+  return kin.pct === 200 ? `Double ${bearers}.` : `${kin.pct - 100}% stronger ${bearers}.`;
+}
+
+function title(id: ItemId): string {
+  const { name, recipe, ringOfPower } = ITEMS[id];
+  if (ringOfPower !== undefined) return `${name} (Ring of Power: ${FAMILY_NAMES[ringOfPower.family]})`;
+  return recipe === null ? `${name} (component)` : `${name} (${ITEMS[recipe[0]].name} + ${ITEMS[recipe[1]].name})`;
+}
+
+/** An item's name, recipe, stats and effect, for a tooltip. A Ring of Power has no stats, and may have a kin bonus. */
 export function itemText(id: ItemId): string {
-  const { name, recipe, effect } = ITEMS[id];
+  const { effect, ringOfPower } = ITEMS[id];
   const statText = statsText(itemStats(id));
-  const title = recipe === null ? `${name} (component)` : `${name} (${ITEMS[recipe[0]].name} + ${ITEMS[recipe[1]].name})`;
-  return [title, statText, ...(effect === null ? [] : [effectText(effect)])].join('\n');
+  const kin = ringOfPower?.kin;
+  return [
+    title(id),
+    ...(statText === '' ? [] : [statText]),
+    ...(effect === null ? [] : [effectText(effect)]),
+    ...(kin === undefined ? [] : [kinText(kin)]),
+  ].join('\n');
 }
