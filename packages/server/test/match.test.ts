@@ -138,7 +138,10 @@ describe('Seats', () => {
     const t = testMatch(11, [0]);
     t.match.setConnected(0, false);
     expect(t.match.stepKind).toBe('planning');
-    expect(t.match.game.state.players[0]!.items).toHaveLength(1);
+    // The bot picked, then planned at once, which can give the component to the unit.
+    const p = t.match.game.state.players[0]!;
+    const held = [...p.bench, ...p.board].flatMap((u) => u?.items ?? []);
+    expect([...p.items, ...held]).toHaveLength(1);
   });
 
   it('plays the rest of the game at once when the last person leaves', () => {
