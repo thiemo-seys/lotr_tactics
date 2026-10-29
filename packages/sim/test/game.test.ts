@@ -24,7 +24,7 @@ function clear(game: Game, seat: number): void {
 /** Gives a player a unit on the board, taking its copies from the pool. */
 function field(game: Game, seat: number, unitId: UnitId, col: number, row: number, star: Star = 1): void {
   pool(game).take(unitId, copiesIn(star));
-  player(game, seat).board[row * 7 + col] = { id: 1000 + col + row * 7, unitId, star };
+  player(game, seat).board[row * 7 + col] = { id: 1000 + col + row * 7, unitId, star, items: [] };
 }
 
 /** Copies of each unit anywhere: pool, shops, Council options and owned units. */
@@ -57,6 +57,7 @@ function playRandomly(game: Game, seed: number, check?: () => void): RoundReport
             { type: 'move', from: place(), to: place() },
             ...(p.gold > 20 ? [{ type: 'reroll' } as const, { type: 'buyXp' } as const] : []),
             ...(randomInt(rng, 10) === 0 ? [{ type: 'sell', from: place() } as const] : []),
+            ...(p.items.length > 0 ? [{ type: 'equip', item: randomInt(rng, p.items.length), to: place() } as const] : []),
           ];
           game.act(p.seat, actions[randomInt(rng, actions.length)]!);
         }
@@ -151,6 +152,20 @@ describe('stage 1', () => {
       expect([p.level, p.xp, p.gold]).toEqual([3, 2, 13]);
       expect(p.items).toHaveLength(4);
     }
+  });
+
+  it('lets players give items to their units during planning only, and fights with them', () => {
+    const game = createGame({ seed: 5, players: 2 });
+    expect(game.act(0, { type: 'pick', option: 0 }).ok).toBe(true);
+    expect(game.state.players[0]!.items).toHaveLength(1);
+    const unit = { bench: 0 };
+    expect(game.act(0, { type: 'equip', item: 0, to: unit })).toEqual({ ok: false, reason: 'Units can only be bought and moved during planning.' });
+    game.advance();
+    const item = game.state.players[0]!.items[0]!;
+    expect(game.act(0, { type: 'equip', item: 0, to: unit })).toEqual({ ok: true });
+    expect(game.state.players[0]!.bench[0]!.items).toEqual([item]);
+    const report = game.advance()!;
+    expect(report.fights.find((f) => f.home === 0)!.input.teams.A[0]!.items).toEqual([item]);
   });
 
   it('keeps a locked shop', () => {
@@ -318,7 +333,7 @@ describe('later Councils', () => {
     clear(game, 0);
     filler.forEach((id, slot) => {
       pool(game).take(id);
-      player(game, 0).bench[slot] = { id: 2000 + slot, unitId: id, star: 1 };
+      player(game, 0).bench[slot] = { id: 2000 + slot, unitId: id, star: 1, items: [] };
     });
     const before = game.state.players[0]!.gold;
     const groups = game.state.council!.groups;
