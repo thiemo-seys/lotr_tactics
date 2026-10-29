@@ -14,6 +14,7 @@ describe('views', () => {
       expect(p).not.toHaveProperty('shopLocked');
       expect(p).not.toHaveProperty('xp');
     }
+    expect(view.ring).toEqual({ state: 'waiting', holder: null, bearer: null, corruption: 0, hobbitFights: 0 });
     const json = JSON.stringify(view);
     expect(json).not.toContain('pool');
     expect(json).not.toContain('seed');
