@@ -413,8 +413,69 @@ With 5–8 units per cost tier (TFT has about 13), a specific unit appears in th
 
 ### Gifts of Lothlórien
 
-- Offered at 2-1, 3-2 and 4-2.
-- Choose 1 of 3, with one reroll per pick.
+Gifts are augments: lasting bonuses each player picks for themselves. All numbers are *(placeholder)*.
+
+- Offered at the start of planning in 2-1 (Silver), 3-2 (Gold) and 4-2 (Mithril). Each player gets their own offer of 3 Gifts of that tier.
+- Choose 1 of 3. One reroll per offer replaces all three.
+- An offer holds at most one crest. A player never gets a Gift they already have.
+- If planning ends before a player picks, they get one of their three at random.
+- Gifts last the rest of the game. Planning lasts longer in rounds with an offer.
+- **Your units** means the units on your board when a fight starts, not summons. **Front row** and **back row** are the rows they start in.
+- A **crest** counts one more unit towards a trait, as long as at least one unit on your board has it.
+
+**Silver (2-1)**
+
+| Gift | Effect |
+|---|---|
+| Bilbo's Purse | Gain 12 gold |
+| Second Breakfast | Your first reroll each round is free |
+| Pocketses | Gain 2 random item components |
+| The Road Goes Ever On | Gain 2 more XP every round |
+| Beorn's Honey | Your units gain +120 Health |
+| Swift as the Wind | Your units gain +10% Attack Speed |
+| Shield Wall | Your front-row units gain +20 Armor and Magic Resist |
+| High Ground | Your back-row units gain +15% Attack Damage |
+| Lore of the Wise | Your units gain +15 Ability Power |
+| Gandalf's Fireworks | Your units start combat with 15 more mana |
+
+**Gold (3-2)**
+
+| Gift | Effect |
+|---|---|
+| Smaug's Hoard | Gain 25 gold |
+| Treasure of Erebor | Interest can reach 3 gold more |
+| Elven-smiths | Gain a random combined item |
+| Muster of Rohan | Gain two random 3-cost units |
+| Hands of the King | Your units regenerate 1% of max Health every second |
+| The Last Alliance | Your units deal 8% more damage |
+| Light of Valinor | At combat start, your units gain a 200 shield for 8 seconds |
+| Guard of the Citadel | Crest: Guardian |
+| Quiver of Lórien | Crest: Archer |
+| Horse-lords | Crest: Rider |
+| Burglar's Contract | Crest: Burglar |
+| Captain's Horn | Crest: Captain |
+| Wizard's Hat | Crest: Sorcerer |
+
+**Mithril (4-2)**
+
+| Gift | Effect |
+|---|---|
+| The Arkenstone | Gain 40 gold |
+| Celebrimbor's Forge | Gain 2 random combined items |
+| Mirror of Galadriel | Your shop rolls with the odds of one level higher |
+| The Fellowship | Your units deal 4% more damage for each different origin among them |
+| Horn of Helm Hammerhand | At combat start, all enemies are stunned for 1.5 seconds |
+| March of the Ents | Your units gain +300 Health and +30 Armor and Magic Resist |
+| Wisdom of the Istari | Your units gain +30 Ability Power and start combat with 20 more mana |
+| Return of the King | Gain a random 5-cost unit |
+| Shire Folk | Crest: Hobbit |
+| Elven Kinship | Crest: Elf |
+| Sons of Durin | Crest: Dwarf |
+| Men of the West | Crest: Gondor |
+| Eorlingas | Crest: Rohan |
+| Order of Wizards | Crest: Istari |
+| Pits of Isengard | Crest: Orc |
+| Ringwraiths' Call | Crest: Nazgûl |
 
 ### PvE rounds
 
@@ -498,8 +559,7 @@ Built from day one to:
 
 ## 12. Still to define
 
-1. **Gifts of Lothlórien:** the list of augments
-2. **PvE enemies:** stats and loot tables (placeholders in [`game-spec.md`](game-spec.md) section 9)
+1. **PvE enemies:** stats and loot tables (placeholders in [`game-spec.md`](game-spec.md) section 9)
 
 All numbers marked *(placeholder)* will be tuned during balancing.
 
