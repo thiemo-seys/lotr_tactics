@@ -136,6 +136,52 @@ main {
   white-space: nowrap;
 }
 
+.unit-label .items {
+  display: flex;
+  justify-content: center;
+  gap: 2px;
+  margin-top: 1px;
+}
+
+/* An item's tag, in its components' colours. Hovering shows what it does. */
+.item {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 16px;
+  height: 14px;
+  padding: 0 2px;
+  font-size: 9px;
+  font-weight: 700;
+  color: #fff;
+  text-shadow: 0 1px 1px #000a;
+  border: 1px solid #0008;
+  border-radius: 3px;
+  pointer-events: auto;
+  cursor: help;
+}
+
+.item.component {
+  border-style: dashed;
+  border-color: #fff8;
+}
+
+#items .item,
+.item.ghost {
+  min-width: 26px;
+  height: 22px;
+  font-size: 11px;
+  cursor: grab;
+  touch-action: none;
+}
+
+.item.ghost {
+  position: fixed;
+  z-index: 10;
+  pointer-events: none;
+  transform: translate(-50%, -50%);
+}
+
 .float {
   font-weight: 700;
   text-shadow: 0 1px 2px #000;
@@ -338,8 +384,10 @@ body.play {
 }
 
 #items {
-  color: var(--muted);
-  font-size: 11px;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 3px;
+  max-width: 180px;
 }
 
 .card {
