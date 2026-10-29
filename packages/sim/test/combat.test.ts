@@ -4,7 +4,7 @@ import { actionOrder, startingSlots } from '../src/combat/order.js';
 import { baseStats } from '../src/combat/stats.js';
 import { LAST_TICK, OVERTIME_START_TICK } from '../src/combat/time.js';
 import { UNITS, type UnitId } from '../src/data/units.js';
-import { fromOffset } from '../src/hex.js';
+import { boardIndex, distance, fromOffset } from '../src/hex.js';
 import type { Star } from '../src/types.js';
 
 function placed(unitId: UnitId, col: number, row: number, star: Star = 1): PlacedUnit {
@@ -86,7 +86,8 @@ describe('createCombat', () => {
 
 describe('end of combat', () => {
   it('is a draw when both teams are still alive after tick 1349', () => {
-    const combat = createCombat(FIGHT);
+    // Two melee units side by side, so nothing moves.
+    const combat = createCombat(input([placed('sam', 3, 3)], [placed('gimli', 3, 3)]));
     expect(combat.step()).toEqual([]);
     expect(combat.tick).toBe(1);
     while (combat.tick < LAST_TICK - 1) expect(combat.step()).toEqual([]);
@@ -126,6 +127,64 @@ describe('end of combat', () => {
     const combat = createCombat(FIGHT);
     while (!combat.isOver()) combat.step();
     expect(simulateCombat(FIGHT)).toEqual(combat.result());
+  });
+});
+
+describe('targeting and movement', () => {
+  it('moves units in action order, team B first on odd ticks', () => {
+    // Ids: sam 0, legolas 1, gimli 2, saruman 3. Nobody starts in range.
+    const fight = input([placed('sam', 3, 0), placed('legolas', 0, 0)], [placed('gimli', 3, 0), placed('saruman', 6, 0)]);
+    const tick1 = createCombat(fight).step();
+    expect(tick1.map((e) => (e.type === 'move' ? e.unit : null))).toEqual([2, 0, 3, 1]);
+  });
+
+  it('walks units into range one step at a time, never sharing a hex', () => {
+    const combat = createCombat(
+      input([placed('sam', 3, 0), placed('legolas', 0, 0), placed('aragorn', 6, 1)], [placed('gimli', 3, 0), placed('saruman', 6, 0), placed('eomer', 1, 1)]),
+    );
+    const arrives = new Map<number, number>();
+    let moves = 0;
+    while (!combat.isOver()) {
+      for (const e of combat.step()) {
+        if (e.type !== 'move') continue;
+        moves++;
+        expect(distance(e.from, e.to)).toBe(1);
+        expect(e.arriveTick).toBe(e.tick + 15);
+        expect(e.tick).toBeGreaterThanOrEqual(arrives.get(e.unit) ?? 1);
+        arrives.set(e.unit, e.arriveTick);
+      }
+      const hexes = combat.state.units.map((u) => boardIndex(u.hex));
+      expect(new Set(hexes).size).toBe(hexes.length);
+    }
+    expect(moves).toBeGreaterThan(0);
+    for (const u of combat.state.units) {
+      const target = combat.state.units[u.target!]!;
+      expect(distance(u.hex, target.hex)).toBeLessThanOrEqual(u.stats.range);
+    }
+  });
+
+  it('applies the Hobbit rule only while the defending team has the Hobbit trait', () => {
+    // Legolas is 4 hexes from both Sam and Haldir, and Sam comes first in the tie-break.
+    // Haldir stands next to Sam and is in range of Legolas, so he doesn't move away.
+    const legolas = [placed('legolas', 3, 0)];
+    const withTrait = createCombat(input(legolas, [placed('sam', 3, 3), placed('haldir', 2, 3), placed('merry', 0, 0)]));
+    const withoutTrait = createCombat(input(legolas, [placed('sam', 3, 3), placed('haldir', 2, 3), placed('hama', 0, 0)]));
+    withTrait.step();
+    withoutTrait.step();
+    const targetOf = (c: typeof withTrait) => c.state.units[c.state.units[0]!.target!]!.unitId;
+    expect(targetOf(withTrait)).toBe('haldir');
+    expect(targetOf(withoutTrait)).toBe('sam');
+  });
+
+  it('makes Burglars target the farthest enemy only while their team has the Burglar trait', () => {
+    const enemies = [placed('beregond', 3, 3), placed('hama', 0, 0)];
+    const withTrait = createCombat(input([placed('merry', 3, 3), placed('grishnakh', 0, 0)], enemies));
+    const withoutTrait = createCombat(input([placed('merry', 3, 3), placed('sam', 0, 0)], enemies));
+    withTrait.step();
+    withoutTrait.step();
+    const targetOf = (c: typeof withTrait) => c.state.units[c.state.units[0]!.target!]!.unitId;
+    expect(targetOf(withTrait)).toBe('hama');
+    expect(targetOf(withoutTrait)).toBe('beregond');
   });
 });
 
