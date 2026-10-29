@@ -4,6 +4,7 @@
 
 import {
   COMPONENT_NAMES,
+  GIFTS,
   SHOP,
   TICKS_PER_SECOND,
   TRAITS,
@@ -21,6 +22,7 @@ import {
 import { TIMERS, type FightRecord, type LobbyView, type MatchView, type RoundRecord, type ServerMessage } from '@lotr-tactics/server';
 import { LocalConnection, SocketConnection, savedSeat, socketUrl, type Connection } from './connection.js';
 import { yourFight, yourTeam } from './fights.js';
+import { TIER_NAMES, giftEffect, giftText } from './gifts.js';
 import { placeAtPoint } from './layout.js';
 import { Playback } from './playback.js';
 import { FightScene, itemChip } from './scene.js';
@@ -52,6 +54,7 @@ const shop = element('shop');
 const menu = element('menu');
 const lobbyPanel = element('lobby');
 const council = element('council');
+const giftPanel = element('gift-offer');
 const result = element('result');
 const banner = element('banner');
 const nameInput = element<HTMLInputElement>('name');
@@ -108,6 +111,7 @@ element('copy-link').addEventListener('click', () => {
 // The game
 
 element('reroll').addEventListener('click', () => act({ type: 'reroll' }));
+element('reroll-gifts').addEventListener('click', () => act({ type: 'rerollGifts' }));
 element('buy-xp').addEventListener('click', () => act({ type: 'buyXp' }));
 element('lock').addEventListener('click', () => act({ type: 'lock', locked: !me().shopLocked }));
 readyButton.addEventListener('click', ready);
@@ -375,6 +379,7 @@ function render(now: number): void {
   lobbyPanel.hidden = show.kind !== 'lobby';
   shopBar.hidden = show.kind !== 'planning';
   council.hidden = show.kind !== 'council';
+  giftPanel.hidden = !(inGame && show.kind === 'planning' && state!.me.giftOffer !== null);
   result.hidden = show.kind !== 'results' && show.kind !== 'waiting' && show.kind !== 'over';
   speedButton.hidden = skipButton.hidden = show.kind !== 'fight';
   element('leave-game').hidden = !inGame;
@@ -390,6 +395,7 @@ function render(now: number): void {
   if (show.kind === 'planning') {
     scene.showPlanning(p);
     renderShop(p);
+    renderGiftOffer(p);
   } else if (show.kind === 'council') {
     scene.showPlanning(p);
     renderCouncil();
@@ -494,7 +500,8 @@ function renderShop(p: PlayerView): void {
       return unitCard(id, '', p.gold >= UNITS[id].cost ? () => act({ type: 'buy', slot }) : null);
     }),
   );
-  element<HTMLButtonElement>('reroll').disabled = p.gold < SHOP.rerollCost;
+  element<HTMLButtonElement>('reroll').disabled = p.gold < SHOP.rerollCost && p.freeRerolls === 0;
+  text('reroll', p.freeRerolls > 0 ? `Reroll · free${p.freeRerolls > 1 ? ` ×${p.freeRerolls}` : ''}` : `Reroll · ${SHOP.rerollCost}`);
   element<HTMLButtonElement>('buy-xp').disabled = p.gold < XP.buyCost || p.level < XP.buyFromLevel || xpForNextLevel(p.level) === null;
   text('lock', p.shopLocked ? 'Unlock' : 'Lock');
   rebuild(element('items'), JSON.stringify(p.items), () =>
@@ -536,6 +543,24 @@ function renderCouncil(): void {
       ),
     ),
   );
+}
+
+function renderGiftOffer(p: PlayerView): void {
+  const offer = p.giftOffer;
+  if (offer === null) return;
+  text('gift-tier', offer.length > 0 ? `· ${TIER_NAMES[GIFTS[offer[0]!].tier]}` : '');
+  rebuild(element('gift-options'), JSON.stringify(offer), () =>
+    offer.map((id, option) => {
+      const card = document.createElement('button');
+      card.className = `card gift ${GIFTS[id].tier}`;
+      card.innerHTML = '<strong></strong><span class="extra"></span>';
+      card.querySelector('strong')!.textContent = GIFTS[id].name;
+      card.querySelector('.extra')!.textContent = giftEffect(id);
+      card.addEventListener('click', () => act({ type: 'gift', option }));
+      return card;
+    }),
+  );
+  element<HTMLButtonElement>('reroll-gifts').disabled = p.giftRerolled;
 }
 
 function renderResults(round: RoundRecord, waiting: boolean): void {
@@ -586,13 +611,15 @@ function renderOver(): void {
 
 function renderPlayers(): void {
   const s = state!;
-  rebuild(element('players'), JSON.stringify([s.players.map((p) => [p.hp, p.level, p.placement]), lobby?.seats]), () =>
-    [...s.players]
+  const key = JSON.stringify([s.players.map((p) => [p.hp, p.level, p.placement, p.gifts]), lobby?.seats]);
+  rebuild(element('players'), key, () => [
+    ...[...s.players]
       .sort((a, b) => (a.placement ?? 0) - (b.placement ?? 0) || b.hp - a.hp)
       .map((p) => {
         const seat = lobby?.seats[p.seat];
         const row = document.createElement('div');
         row.className = `player${p.seat === you ? ' you' : ''}${p.placement !== null ? ' out' : ''}`;
+        if (p.gifts.length > 0) row.title = `Gifts: ${p.gifts.map((g) => GIFTS[g].name).join(', ')}`;
         const name = document.createElement('span');
         const away = seat?.kind === 'person' && !seat.connected ? ' (away)' : '';
         name.textContent = `${seatName(p.seat)}${away} · ${p.level}`;
@@ -604,7 +631,23 @@ function renderPlayers(): void {
         row.append(name, hp, bar);
         return row;
       }),
-  );
+    ...yourGifts(s.me),
+  ]);
+}
+
+/** The person's Gifts under the players list, each naming its effect when hovered. */
+function yourGifts(p: PlayerView): HTMLElement[] {
+  if (p.gifts.length === 0) return [];
+  const list = document.createElement('div');
+  list.className = 'your-gifts';
+  for (const id of p.gifts) {
+    const gift = document.createElement('div');
+    gift.className = `gift ${GIFTS[id].tier}`;
+    gift.textContent = GIFTS[id].name;
+    gift.title = giftText(id);
+    list.append(gift);
+  }
+  return [list];
 }
 
 function ordinal(n: number): string {
