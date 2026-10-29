@@ -1,6 +1,7 @@
 // One line of text per fight event, for the event log (docs/viewer-spec.md section 6).
 
-import { SUMMONS, UNITS, toOffset, type CombatEvent, type Hex, type UnitState } from '@lotr-tactics/sim';
+import { toOffset, type CombatEvent, type Hex, type UnitState } from '@lotr-tactics/sim';
+import { displayName } from './units.js';
 
 const STAT_NAMES = {
   attackDamagePct: 'Attack Damage',
@@ -11,8 +12,7 @@ const STAT_NAMES = {
 
 /** A unit's name and team, such as "Sam (A)". */
 export function unitName(unit: UnitState): string {
-  const def = unit.unitId in UNITS ? UNITS[unit.unitId as keyof typeof UNITS] : SUMMONS[unit.unitId as keyof typeof SUMMONS];
-  return `${def.name} (${unit.team})`;
+  return `${displayName(unit.unitId)} (${unit.team})`;
 }
 
 /** The event as a line of text, or null for moves, which would drown out everything else. */
