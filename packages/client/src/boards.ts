@@ -1,10 +1,22 @@
 // Boards to fight with: the sample boards from the sim's tests, or random ones
 // (docs/viewer-spec.md section 6). Placements are in each team's own perspective.
 
-import { BOARD_COLS, UNITS, createRng, type PlacedUnit, type Star, type Team, type UnitId } from '@lotr-tactics/sim';
+import {
+  BOARD_COLS,
+  ITEM_IDS,
+  MAX_ITEMS,
+  UNITS,
+  createRng,
+  isComponent,
+  type ItemId,
+  type PlacedUnit,
+  type Star,
+  type Team,
+  type UnitId,
+} from '@lotr-tactics/sim';
 
-function placed(unitId: UnitId, col: number, row: number, star: Star = 1): PlacedUnit {
-  return { unitId, star, col, row, items: [] };
+function placed(unitId: UnitId, col: number, row: number, star: Star = 1, items: readonly ItemId[] = []): PlacedUnit {
+  return { unitId, star, col, row, items };
 }
 
 export const PRESETS = {
@@ -22,6 +34,17 @@ export const PRESETS = {
     placed('legolas', 0, 0),
     placed('gandalf', 3, 0),
     placed('haldir', 6, 0),
+  ],
+  items: [
+    placed('gimli', 2, 3, 1, ['oakenshield', 'dragon-helm', 'mithril-shirt']),
+    placed('dain', 3, 3, 1, ['star-of-elendil', 'elven-cloak', 'ent-draught']),
+    placed('beregond', 4, 3, 1, ['miruvor', 'kings-banner', 'herugrim']),
+    placed('aragorn', 1, 2, 1, ['anduril', 'black-arrow', 'orcrist']),
+    placed('theoden', 3, 2, 1, ['glamdring', 'grond']),
+    placed('boromir', 5, 2, 1, ['elven-rope', 'phial']),
+    placed('legolas', 0, 0, 1, ['galadhrim-bow', 'palantir']),
+    placed('gandalf', 3, 0, 1, ['wizards-staff', 'athelas', 'sting']),
+    placed('haldir', 6, 0, 1, ['blade', 'staff']),
   ],
   traits: [
     placed('khamul', 2, 3),
@@ -52,16 +75,25 @@ export function boardFor(choice: BoardChoice, seed: number, team: Team): readonl
   return choice === 'random' ? randomBoard(seed, team) : PRESETS[choice];
 }
 
-/** Distinct units with random star levels on random hexes of the team's half. The same seed and team give the same board. */
+/**
+ * Distinct units with random star levels on random hexes of the team's half, each with up to 3
+ * random combined items. The same seed and team give the same board.
+ */
 export function randomBoard(seed: number, team: Team): PlacedUnit[] {
   const rng = createRng((seed ^ (team === 'A' ? 0x2545f491 : 0x6c8e9cf5)) | 0);
   const pick = <T>(list: T[]): T => list.splice(Math.floor(rng() * list.length), 1)[0]!;
   const units = Object.keys(UNITS) as UnitId[];
   const hexes = Array.from({ length: BOARD_COLS * 4 }, (_, i) => ({ col: i % BOARD_COLS, row: Math.floor(i / BOARD_COLS) }));
-  return Array.from({ length: RANDOM_BOARD_SIZE }, () => {
+  const board = Array.from({ length: RANDOM_BOARD_SIZE }, () => {
     const roll = rng();
     const star: Star = roll < 0.6 ? 1 : roll < 0.9 ? 2 : 3;
     const { col, row } = pick(hexes);
     return placed(pick(units), col, row, star);
   });
+  // Items come after the units, so a seed's units are the same as before items existed.
+  const combined = ITEM_IDS.filter((id) => !isComponent(id));
+  return board.map((p) => ({
+    ...p,
+    items: Array.from({ length: Math.floor(rng() * (MAX_ITEMS + 1)) }, () => combined[Math.floor(rng() * combined.length)]!),
+  }));
 }
