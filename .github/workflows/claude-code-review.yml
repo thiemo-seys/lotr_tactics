@@ -70,7 +70,7 @@ jobs:
 
             Review this pull request to LOTR Tactics. Its head is checked out in the working directory. CLAUDE.md lists the project's conventions, and its "When reviewing" section says what to check and what isn't worth a comment. The docs it names (docs/design.md and the specs) are the source of truth for the rules.
 
-            Read and search files with the Read, Grep and Glob tools, not cat or git grep. Bash is only for the gh commands named here and plain read-only git commands such as git log, show and diff, run from the working directory: commands with `cd`, or that write to a file, are refused.
+            Read files with the Read tool. There is no Grep or Glob tool here: search with `grep -rn` (with -i, -A or `| head` as needed), `find` and `ls`. Bash is otherwise only for the gh commands named here and plain read-only git commands such as git log, show and diff. Run everything from the working directory: commands with `cd`, `git -C`, `$(...)` or awk, or that write to a file, are refused.
 
             1. Read the pull request with `gh pr view` and `gh pr diff`, and the comments already on it with `gh pr view --comments`. This may be a re-review: don't repeat a finding that is already there unless the latest commits still have the problem.
             2. Launch four general-purpose subagents (not Explore agents) in one message, one for each area of "When reviewing": determinism, rules against the docs, bugs, and tests. Give each the pull request's title and description, and ask for findings with the file, the line and what goes wrong. Each can run `gh pr diff <PR NUMBER>` itself, and use git log, show and diff; pass on the rule above about reading files. Wait for all four reports before going on.
