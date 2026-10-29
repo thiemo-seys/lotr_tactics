@@ -23,7 +23,7 @@ Implementation spec for the game around the fights: the shop, the economy, the r
 
 - **Items:** only components exist. They drop and are kept in an inventory, but can't be equipped or combined until items are designed.
 - **Gifts of Lothlórien:** skipped until the augments are designed. The rounds that offer them play as normal.
-- **Server, lobbies and networking** (build order step 4). The game layer is turn-based and knows nothing about time; the client or server that drives it runs the timers.
+- **Server, lobbies and networking** (build order step 4, [`server-spec.md`](server-spec.md)). The game layer is turn-based and knows nothing about time; the client or server that drives it runs the timers.
 - The parked features (`design.md` section 13).
 
 ---
