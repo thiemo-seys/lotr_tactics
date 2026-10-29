@@ -108,8 +108,8 @@ export interface StatusEvent {
   readonly stat: BuffStat | null;
   /** A slow's or reduction's percent, or a buff's amount; null for the other statuses. */
   readonly value: number | null;
-  /** The status is gone from the start of this tick. */
-  readonly expiresTick: number;
+  /** The status is gone from the start of this tick; null if it lasts the rest of the fight (trait buffs). */
+  readonly expiresTick: number | null;
 }
 
 export interface DeathEvent {

@@ -1,12 +1,13 @@
 // The combat simulation: createCombat / step / result (docs/sim-spec.md sections 6, 13 and 14).
 
 import { ABILITIES, ATTACKS, MANA, MOVEMENT, TICKS_PER_SECOND } from '../data/rules.js';
-import type { OriginId } from '../data/traits.js';
+import type { ClassId, OriginId } from '../data/traits.js';
 import {
   SUMMONS,
   UNITS,
   type AbilityDef,
   type AbilityStep,
+  type BuffStat,
   type Cost,
   type DamageType,
   type Effect,
@@ -22,11 +23,20 @@ import { finalDamage, manaFromDamage, overtimePct, rollAttack } from './damage.j
 import type { CombatEvent, DamageEvent, Outcome } from './events.js';
 import { MOVE_TICKS, planMove } from './movement.js';
 import { actionOrder, firstTeam, startingSlots } from './order.js';
-import { abilityValue, baseStats, finalStats, gruntStats, type BaseStats, type Stats } from './stats.js';
+import {
+  abilityValue,
+  baseStats,
+  combineModifiers,
+  finalStats,
+  gruntStats,
+  type BaseStats,
+  type StatModifiers,
+  type Stats,
+} from './stats.js';
 import { Statuses, type StatusKind, type StatusState } from './statuses.js';
 import { chooseTarget, type TargetingRules } from './targeting.js';
 import { LAST_TICK, toTicks } from './time.js';
-import { traitLevels, type TraitLevels } from './traits.js';
+import { activeTrait, traitLevels, traitModifiers, type TraitLevels } from './traits.js';
 
 export interface PlacedUnit {
   readonly unitId: UnitId;
@@ -129,6 +139,16 @@ type Unit = { -readonly [K in Exclude<keyof UnitState, 'statuses'>]: UnitState[K
   readonly cost: Cost;
   /** The unit gains no mana before this tick (section 9.1). */
   castingUntil: number;
+  /** Empty for summons. */
+  readonly classes: readonly ClassId[];
+  /** Treebeard and Sauron (design.md section 4). */
+  readonly large: boolean;
+  /** Bonuses from traits that hold for the whole fight (section 12.3). */
+  readonly traitBonus: Partial<StatModifiers>;
+  /** The Nazgûl slow on this unit, updated at the start of each tick. */
+  auraSlowPct: number;
+  /** Attack Speed stacks from the Archer trait. */
+  archerStacks: number;
 };
 
 /** Something due on a later tick (section 6.4, step 2). */
@@ -169,11 +189,12 @@ export class Fight implements Combat {
     if (this.outcome !== null) throw new Error('The combat is over.');
     this.tick++;
     const firstEvent = this.events.length;
-    // Section 6.4. Regeneration comes with traits. Once a team is wiped out, nothing else is
-    // processed.
+    // Section 6.4. Once a team is wiped out, nothing else is processed.
     const first = firstTeam(this.rng);
     this.expireStatuses();
+    this.updateAuras();
     this.resolveQueue();
+    if (this.outcome === null && this.tick % TICKS_PER_SECOND === 0) this.regenerate(first);
     for (const unit of actionOrder(this.living(), first)) {
       if (this.outcome !== null) break;
       this.act(unit);
@@ -202,17 +223,20 @@ export class Fight implements Combat {
     };
   }
 
-  /** Tick 0 (section 6.2). Trait effects at combat start are added in a later step. */
+  /** Tick 0 (section 6.2). */
   private start(input: CombatInput): void {
+    // 1–2. Units, with their static trait bonuses and the Gondor front-row bonus.
     for (const team of TEAMS) {
       const placements = input.teams[team];
-      this.traits[team] = traitLevels(placements.map((p) => p.unitId));
-      const burglarTrait = this.traits[team].burglar !== undefined;
+      const levels = traitLevels(placements.map((p) => p.unitId));
+      this.traits[team] = levels;
       const slots = startingSlots(placements);
       const bySlot = placements.map((p, i) => ({ p, slot: slots[i]! })).sort((a, b) => a.slot - b.slot);
       for (const { p, slot } of bySlot) {
         const def = UNITS[p.unitId];
         const base = baseStats(def, p.star);
+        const traitBonus = traitModifiers(def, levels, p.row === HALF_ROWS - 1);
+        const stats = finalStats(base, traitBonus);
         this.addUnit({
           id: this.units.length,
           unitId: p.unitId,
@@ -224,21 +248,133 @@ export class Fight implements Combat {
           hex: fromPlacement(team, p),
           target: null,
           alive: true,
-          health: base.maxHealth,
+          health: stats.maxHealth,
           mana: base.startMana,
           base,
-          stats: finalStats(base, {}),
+          stats,
           statuses: new Statuses(),
           busyUntil: 0,
-          targetsFarthest: burglarTrait && def.classes.includes('burglar'),
+          targetsFarthest: levels.burglar !== undefined && def.classes.includes('burglar'),
           nextAttackTick: 1,
           ability: def.ability,
           cost: def.cost,
           castingUntil: 0,
+          classes: def.classes,
+          large: def.large === true,
+          traitBonus,
+          auraSlowPct: 0,
+          archerStacks: 0,
         });
       }
     }
+
+    // 3. Guardian shields.
+    for (const unit of this.units) {
+      const guardian = activeTrait(this.traits[unit.team], 'guardian');
+      if (guardian !== undefined && unit.classes.includes('guardian')) {
+        this.addShield(unit.id, unit.id, guardian.shield, guardian.shieldSeconds);
+      }
+    }
+
+    // 4. Orc grunts, spread round-robin over the team's Orcs in slot order.
+    for (const team of TEAMS) {
+      const orc = activeTrait(this.traits[team], 'orc');
+      const orcs = this.living(team).filter((u) => u.origin === 'orc');
+      for (let i = 0; orc !== undefined && i < orc.grunts; i++) this.summon(orcs[i % orcs.length]!, 'orc-grunt');
+    }
+
+    // 5–6. Burglar leaps, then Rider charges, each in action order.
+    const first = firstTeam(this.rng);
+    const withClass = (trait: 'burglar' | 'rider') =>
+      this.units.filter((u) => u.classes.includes(trait) && activeTrait(this.traits[u.team], trait) !== undefined);
+    for (const unit of actionOrder(withClass('burglar'), first)) this.leap(unit);
+    for (const unit of actionOrder(withClass('rider'), first)) {
+      if (this.outcome !== null) return;
+      if (unit.alive) this.charge(unit, activeTrait(this.traits[unit.team], 'rider')!.chargeDamage);
+    }
+    if (this.outcome !== null) return;
+    this.updateAuras();
     this.checkWipe();
+  }
+
+  /** A Burglar's leap at combat start: next to its target, the farthest enemy (section 12.3). */
+  private leap(unit: Unit): void {
+    const target = this.ensureTarget(unit);
+    if (target === null) return;
+    this.dash(unit, dashHex(unit.team, unit.hex, target.hex, this.isFreeFor(unit)));
+    unit.busyUntil = this.tick + DASH_TICKS;
+  }
+
+  /**
+   * A Rider's charge at combat start: next to its target, the nearest enemy, dealing trait damage
+   * that can't crit or be dodged if it ends next to it (section 12.3).
+   */
+  private charge(unit: Unit, damage: number): void {
+    const target = this.ensureTarget(unit);
+    if (target === null) return;
+    this.dash(unit, dashHex(unit.team, unit.hex, target.hex, this.isFreeFor(unit)));
+    unit.busyUntil = this.tick + DASH_TICKS;
+    if (distance(unit.hex, target.hex) === 1) this.dealDamage(unit, target, damage, 'physical', false, 'trait');
+  }
+
+  /** Istari mana and Ent healing, on ticks 30, 60, 90, … in action order (section 6.4, step 3). */
+  private regenerate(first: Team): void {
+    for (const unit of actionOrder(this.living(), first)) {
+      const istari = activeTrait(this.traits[unit.team], 'istari');
+      if (istari !== undefined && unit.origin === 'istari') this.gainMana(unit, istari.manaPerSecond);
+      const ent = activeTrait(this.traits[unit.team], 'ent');
+      if (ent !== undefined && unit.origin === 'ent') this.heal(unit, unit, (unit.stats.maxHealth * ent.regenPctPerSecond) / 100);
+    }
+  }
+
+  /** The Nazgûl slow: enemies within reach of any living Nazgûl are slowed (section 12.3). */
+  private updateAuras(): void {
+    for (const team of TEAMS) {
+      const nazgul = activeTrait(this.traits[team], 'nazgul');
+      if (nazgul === undefined) continue;
+      const wraiths = this.living(team).filter((u) => u.origin === 'nazgul');
+      for (const unit of this.living(enemyOf(team))) {
+        const slowPct = wraiths.some((w) => distance(w.hex, unit.hex) <= nazgul.radius) ? nazgul.slowPct : 0;
+        if (slowPct !== unit.auraSlowPct) {
+          unit.auraSlowPct = slowPct;
+          this.refreshStats(unit);
+        }
+      }
+    }
+  }
+
+  /** A buff for the rest of the fight, from the Rohan and Archer traits (section 12.3). */
+  private addPermanentBuff(source: Unit, target: Unit, stat: BuffStat, amount: number): void {
+    target.statuses.addBuff(stat, amount, Infinity);
+    this.events.push({
+      type: 'status',
+      tick: this.tick,
+      source: source.id,
+      target: target.id,
+      status: 'buff',
+      stat,
+      value: amount,
+      expiresTick: null,
+    });
+    this.refreshStats(target);
+  }
+
+  /** The sum of the damage amps on a source against a target (section 9.1). */
+  private damageAmpPct(source: Unit, target: Unit): number {
+    const levels = this.traits[source.team];
+    const captain = activeTrait(levels, 'captain');
+    const darkLord = activeTrait(levels, 'dark-lord');
+    const dwarf = activeTrait(levels, 'dwarf');
+    const nextToCaptain =
+      captain !== undefined &&
+      this.units.some(
+        (u) => u.alive && u.team === source.team && u !== source && u.classes.includes('captain') && distance(u.hex, source.hex) === 1,
+      );
+    return (
+      (nextToCaptain ? captain.damageAmpPct : 0) +
+      (darkLord !== undefined && (source.origin === 'orc' || source.origin === 'nazgul') ? darkLord.damageAmpPct : 0) +
+      (dwarf !== undefined && source.origin === 'dwarf' && target.large ? dwarf.damageVsLargePct : 0)
+    );
   }
 
   /**
@@ -296,9 +432,9 @@ export class Fight implements Combat {
     }
   }
 
-  /** Recomputes a unit's stats after its statuses change (section 7.4). */
+  /** Recomputes a unit's stats after its statuses or the Nazgûl slow on it change (section 7.4). */
   private refreshStats(unit: Unit): void {
-    unit.stats = finalStats(unit.base, unit.statuses.modifiers());
+    unit.stats = finalStats(unit.base, combineModifiers(unit.traitBonus, unit.statuses.modifiers(), { slowPct: unit.auraSlowPct }));
   }
 
   /** Resolves the projectiles and delayed steps due this tick, in creation order (section 6.4, step 2). */
@@ -489,6 +625,11 @@ export class Fight implements Combat {
       ability: null,
       cost: 1,
       castingUntil: 0,
+      classes: [],
+      large: false,
+      traitBonus: {},
+      auraSlowPct: 0,
+      archerStacks: 0,
     });
   }
 
@@ -504,9 +645,15 @@ export class Fight implements Combat {
     const hitTick = ranged
       ? this.tick + Math.ceil((distance(unit.hex, target.hex) * TICKS_PER_SECOND) / ATTACKS.projectileHexesPerSecond)
       : this.tick;
-    unit.nextAttackTick = this.tick + TICKS_PER_SECOND / unit.stats.attackSpeed;
-    this.gainMana(unit, MANA.perAttack);
     this.events.push({ type: 'attack', tick: this.tick, unit: unit.id, target: target.id, ranged, hitTick });
+    this.gainMana(unit, MANA.perAttack);
+    // The cooldown after this attack already counts its Archer stack.
+    const archer = activeTrait(this.traits[unit.team], 'archer');
+    if (archer !== undefined && unit.classes.includes('archer') && unit.archerStacks < archer.maxStacks) {
+      unit.archerStacks++;
+      this.addPermanentBuff(unit, unit, 'attackSpeedPct', archer.attackSpeedPctPerStack);
+    }
+    unit.nextAttackTick = this.tick + TICKS_PER_SECOND / unit.stats.attackSpeed;
     if (ranged) this.queue.push({ kind: 'projectile', dueTick: hitTick, source: unit, target });
     else this.hit(unit, target);
   }
@@ -522,10 +669,10 @@ export class Fight implements Combat {
     this.dealDamage(source, target, raw, 'physical', crit, 'attack');
   }
 
-  /** Runs the damage pipeline (section 9.1) and returns the final damage. Damage amps come with traits. */
+  /** Runs the damage pipeline (section 9.1) and returns the final damage. */
   private dealDamage(source: Unit, target: Unit, raw: number, damageType: DamageType, crit: boolean, kind: DamageEvent['kind']): number {
     const amount = finalDamage(raw, damageType, target.stats, {
-      ampPct: 0,
+      ampPct: this.damageAmpPct(source, target),
       overtimePct: overtimePct(this.tick),
       reductionPct: damageReductionPct(source, target),
     });
@@ -548,11 +695,18 @@ export class Fight implements Combat {
     return amount;
   }
 
-  /** The unit dies at once and frees its hex (section 9.1). On-death traits come with traits. */
+  /** The unit dies at once and frees its hex (section 9.1), then on-death traits run. */
   private kill(unit: Unit): void {
     unit.alive = false;
     unit.health = 0;
     this.events.push({ type: 'death', tick: this.tick, unit: unit.id });
+    // Rohan: the other living Rohan units of its team gain Attack Speed for the rest of the fight.
+    const rohan = activeTrait(this.traits[unit.team], 'rohan');
+    if (rohan !== undefined && !unit.summon && unit.origin === 'rohan') {
+      for (const ally of this.living(unit.team)) {
+        if (ally.origin === 'rohan') this.addPermanentBuff(unit, ally, 'attackSpeedPct', rohan.attackSpeedPctPerDeath);
+      }
+    }
     this.checkWipe();
   }
 
