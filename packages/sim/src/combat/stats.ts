@@ -3,6 +3,7 @@
 // Percentages are whole numbers. Formulas multiply them and divide once at the end, so a result
 // that should be exactly x.5 is exactly x.5 and rounds as it would by hand.
 
+import { RING } from '../data/ring.js';
 import { ABILITIES, STAT_LIMITS } from '../data/rules.js';
 import {
   CLASS_TEMPLATE,
@@ -125,6 +126,25 @@ export function monsterStats(monster: MonsterDef, stage: number): BaseStats {
     dodgePct: SHARED_STATS.dodgePct,
     startMana: s.startMana,
     maxMana: s.maxMana,
+  };
+}
+
+/** Stats for the Eye's Nazgûl at a Corruption (section 12.6). It has no ability, so its mana is unused. */
+export function eyeStats(corruption: number): BaseStats {
+  const e = RING.eye;
+  return {
+    maxHealth: e.health + e.healthPerCorruption * corruption,
+    attackDamage: e.attackDamage + e.attackDamagePerCorruption * corruption,
+    attackSpeed: e.attackSpeed,
+    range: e.range,
+    armor: e.armor,
+    magicResist: e.magicResist,
+    abilityPower: SHARED_STATS.abilityPower,
+    critChancePct: SHARED_STATS.critChancePct,
+    critDamagePct: SHARED_STATS.critDamagePct,
+    dodgePct: SHARED_STATS.dodgePct,
+    startMana: 0,
+    maxMana: 0,
   };
 }
 
