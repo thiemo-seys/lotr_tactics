@@ -1,7 +1,7 @@
 // What a seat sees of the game and of a round (docs/server-spec.md section 6). Views are plain
 // copies, so they can be sent or kept while the game goes on.
 
-import type { CombatInput, CombatResult, CouncilState, GameState, Phase, PlayerView, RoundReport, RoundType } from '@lotr-tactics/sim';
+import type { CombatInput, CombatResult, CouncilState, GameState, Phase, PlayerView, RingView, RoundReport, RoundType } from '@lotr-tactics/sim';
 
 export type StepKind = 'council' | 'planning' | 'fight' | 'over';
 
@@ -27,6 +27,8 @@ export interface MatchView {
   /** Everyone, in seat order, including the receiver. */
   readonly players: readonly PublicPlayer[];
   readonly council: CouncilState | null;
+  /** The One Ring, which everyone sees. */
+  readonly ring: RingView;
   /** Seats that are Ready in this step. */
   readonly ready: readonly number[];
 }
@@ -92,10 +94,17 @@ export function matchView(
       council === null
         ? null
         : {
-            options: council.options.map((o) => ({ unitId: o.unitId, component: o.component, pickedBy: o.pickedBy })),
+            options: council.options.map((o) => ({ unitId: o.unitId, component: o.component, ring: o.ring, pickedBy: o.pickedBy })),
             groups: council.groups.map((g) => [...g]),
             group: council.group,
           },
+    ring: {
+      state: state.ring.state,
+      holder: state.ring.holder,
+      bearer: state.ring.bearer,
+      corruption: state.ring.corruption,
+      hobbitFights: state.ring.hobbitFights,
+    },
     ready: [...ready].sort((a, b) => a - b),
   };
 }
