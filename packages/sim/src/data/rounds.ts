@@ -22,6 +22,8 @@ export const COUNCIL = {
   groupSize: 2,
   /** The unit costs offered, from stage 1. The last entry holds for every later stage. */
   costs: [[1], [1, 2], [2, 3], [3, 4], [3, 4, 5]] as readonly (readonly Cost[])[],
+  /** From this stage, this many options at each Council carry a Ring of Power (game-spec.md section 9.12). */
+  ringsOfPower: { fromStage: 2, options: 2 },
 } as const;
 
 export const MATCHMAKING = {
