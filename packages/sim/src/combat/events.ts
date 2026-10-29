@@ -29,6 +29,15 @@ export interface MoveEvent {
   readonly arriveTick: number;
 }
 
+/** An instant move from an ability. The renderer animates it; the unit is busy for a moment after. */
+export interface DashEvent {
+  readonly type: 'dash';
+  readonly tick: number;
+  readonly unit: number;
+  readonly from: Hex;
+  readonly to: Hex;
+}
+
 /** A basic attack fires. Melee attacks hit now; ranged ones hit at `hitTick` unless the target is gone. */
 export interface AttackEvent {
   readonly type: 'attack';
@@ -60,6 +69,15 @@ export interface DamageEvent {
   readonly kind: 'attack' | 'ability' | 'trait';
 }
 
+/** Health actually restored, never 0 (section 9.2). */
+export interface HealEvent {
+  readonly type: 'heal';
+  readonly tick: number;
+  readonly source: number;
+  readonly target: number;
+  readonly amount: number;
+}
+
 export interface ShieldEvent {
   readonly type: 'shield';
   readonly tick: number;
@@ -68,6 +86,15 @@ export interface ShieldEvent {
   readonly amount: number;
   /** The shield is gone from the start of this tick, if damage hasn't used it up first. */
   readonly expiresTick: number;
+}
+
+/** A unit casts its ability. Its effects follow in the same tick, apart from delayed steps. */
+export interface CastEvent {
+  readonly type: 'cast';
+  readonly tick: number;
+  readonly unit: number;
+  /** The ability's name. */
+  readonly ability: string;
 }
 
 /** A status starts, or a stun, stun immunity or untargetable is extended. */
@@ -100,10 +127,13 @@ export interface EndEvent {
 export type CombatEvent =
   | SpawnEvent
   | MoveEvent
+  | DashEvent
   | AttackEvent
   | DodgeEvent
   | DamageEvent
+  | HealEvent
   | ShieldEvent
+  | CastEvent
   | StatusEvent
   | DeathEvent
   | EndEvent;

@@ -366,12 +366,13 @@ final      = Math.round(reduced × (1 − target's damage reduction)), at least 
 
 - Mana is always a whole number: start and max values, +10 per attack, damage mana rounded down (section 9.1) and Istari mana in whole amounts (section 12.3).
 - Mana is capped at max mana; anything beyond is lost.
-- **When mana ≥ max:** at its action step, a unit that isn't stunned or busy casts.
-  - Mana resets to 0.
+- **When mana ≥ max:** at its action step, a unit that isn't stunned or busy casts, even if its target is out of range.
+  - Mana resets to 0 and a `cast` event is emitted.
   - The ability's effects resolve immediately.
-  - The unit is then busy for 15 ticks.
-- **Missing target:** if the ability uses the current target and the unit has none, it first picks one (section 8).
-- **Delayed steps** go into the queue (section 6.4), for example Frodo's strike.
+  - The unit is then busy for 15 ticks, and gains no mana until they are over: a unit casting on tick `t` gains none on ticks `t` to `t + 14`.
+  - The attack cooldown is unchanged.
+- **Missing target:** if the ability uses the current target and the unit has none, it first picks one (section 8). If no enemy can be targeted, those steps select nothing; the cast still happens and the mana is spent.
+- **Delayed steps** go into the queue (section 6.4), for example Frodo's strike. They don't run if the caster has died by then.
 
 ### 10.2 Ability values
 
@@ -416,13 +417,25 @@ Model abilities as data: a list of steps, each with a **selector** (who or where
 - `bounce(n, jump)`
 - `bestClusterHex(r)`
 
+How selectors pick:
+
+- Enemy selectors only consider targetable enemies, so untargetable units are never hit by enemy abilities. The Hobbit rule and Burglar targeting (section 8) only apply when a unit chooses its target, so they affect `target` but no other selector.
+- **Ties:**
+  - `farthestEnemy`, `nearestEnemies` and `nearestAlly`: the section 5 tie-break in the caster's perspective.
+  - `lowestHealthEnemy` and `highestHealthEnemy`: the enemy nearer the caster, then the section 5 tie-break.
+  - `lowestHealthPctAllies` includes the caster and compares Health / max Health exactly; ties go to the ally nearer the caster, then the section 5 tie-break.
+  - `bounce`: the enemy nearer the last one hit, then the section 5 tie-break.
+- **Order:** a multi-unit selection is in slot order, except `nearestEnemies` (nearest first), `lowestHealthPctAllies` (lowest first), `line` (from the caster outwards) and `bounce` (in hit order).
+
 **Effects**
 
-- `damage(mult, type, hits = 1, canCrit = false)`
+A step applies each effect in turn to every selected unit before the next effect, skipping units that have died.
+
+- `damage(mult, type, hits = 1, canCrit = false)`: each hit runs the damage pipeline (section 9.1) and emits its own `damage` event, and with `canCrit` rolls its own crit. The hits stop if the target dies.
 - `stun(s)`
 - `slow(pct, s)`: reduces Attack Speed
 - `shield(mult, s = 4)`
-- `heal(mult)` and `healFromDamage(pct)`: capped at max Health (section 9.2)
+- `heal(mult)` and `healFromDamage(pct)`: capped at max Health (section 9.2). `healFromDamage` heals the caster once, for `pct`% of the damage the step has dealt so far, including any part shields absorbed.
 - `buff(stat, amount, s)`
 - `reduce(stats, pct, s)`: lowers Armor and/or Magic Resist
 - `untargetable(s)`
@@ -430,6 +443,8 @@ Model abilities as data: a list of steps, each with a **selector** (who or where
 - `dashAdjacentTo(unit)`
 - `dashThroughLine`: with a `line(n)` selector, after the step's other effects (section 10.4)
 - `summon(unitId, count)`: placed like Orc trait grunts (section 12.3), each on a free hex next to the caster on its own half, otherwise the nearest free hex on its own half. A summon with no free hex on its own half doesn't appear.
+  - Neighbours are tried in the caster's perspective direction order. The fallback takes the free hex nearest the caster, then the section 5 tie-break.
+  - A summon takes the team's next slot and the next id (section 6.3), and acts from the next tick.
 - `delay(s, steps)`: a step of its own that runs `steps` after `s` seconds, through the queue
 
 **Passives:** always-on rules attached to the unit (the Witch-king).
@@ -462,13 +477,16 @@ All of these are computed in the caster's perspective (section 5).
 - Stops after `n` hits or when no enemy is in range.
 
 **bestClusterHex(r)**
-- Every hex on the board, scored by the number of living enemies within `r`.
+- Every hex on the board, scored by the number of targetable enemies within `r`.
 - The highest score wins. Ties go to the hex closest to the caster's target, then the section 5 tie-break.
 
 **dashAdjacentTo(unit)**
 - Move instantly to the free hex next to that unit that is closest to the caster.
 - If none is free, move to the nearest free hex to that unit.
 - If nothing is free, stay.
+- Ties go to the hex closer to the caster, then the section 5 tie-break. The caster's own hex counts as free, so a caster already next to the unit stays.
+
+**Dashes** emit `dash` and leave the unit busy for 9 ticks, or until its cast ends if that is later. A unit that stays put emits nothing.
 
 **dashThroughLine(n)**
 - Hit every enemy on the first `n` line hexes.
@@ -654,7 +672,7 @@ Every event has a `tick`.
 | `damage` | source, target, amount (the final damage, including any absorbed part), absorbed, damageType, crit, kind (`attack`, `ability` or `trait`) |
 | `heal` | source, target, amount |
 | `shield` | source, target, amount, expiresTick |
-| `cast` | unit, ability |
+| `cast` | unit, ability (its name) |
 | `status` | source, target, status (`stun`, `stunImmune`, `untargetable`, `slow`, `reduce` or `buff`), stat (for `reduce` and `buff`, otherwise null), value (the slow or reduction percent, or the buff amount, otherwise null), expiresTick. A reduction of both Armor and Magic Resist emits one event per stat. A stun, stun immunity or untargetable that doesn't outlast the current one emits nothing. |
 | `death` | unit |
 | `end` | outcome |
@@ -707,6 +725,9 @@ Every event has a `tick`.
 
 **Abilities**
 - Ability values for a sample unit at each star level match section 10.2, and extra Ability Power scales them once (+80 Ability Power → ×1.8).
+- Selector tie-breaks and order, dash and summon placement, and the same results in team B's mirrored perspective.
+- Casting even out of range, waiting out a stun at full mana, skipping delayed steps of a dead caster, and never hitting untargetable enemies.
+- Only abilities that say so can crit; the Witch-king's passive halves damage from Gondor and Rohan sources other than Éowyn.
 - Healing stops at max Health, and the `heal` event reports only the Health restored.
 - Gothmog's grunts go next to him on his own half, fall back to the nearest free hex on his half, and don't appear when his half is full.
 - One scripted scenario per unit, checking targets, damage and statuses.

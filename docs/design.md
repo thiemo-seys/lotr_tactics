@@ -260,7 +260,8 @@ All numbers are *(placeholder)*.
 - A unit gains 10 mana per basic attack.
 - When hit, a unit gains mana equal to a share of the damage taken, rounded down and capped per hit.
 - Mana is always a whole number.
-- At full mana, the unit casts its ability instead of its next basic attack, then mana resets to 0. No mana is gained while casting.
+- At full mana, the unit casts its ability instead of its next basic attack, even if its target is out of range, then mana resets to 0. No mana is gained while casting.
+- Untargetable units can't be hit by enemy abilities either.
 - Abilities are built from shared building blocks. Most abilities are data combining these; the few that don't fit get custom code.
   - **Shapes:** single target, area, line, cone, bounce
   - **Effects:** damage (including multi-hit), stun, slow, shield, heal, buff, debuff (lower Armor / Magic Resist), untargetable, dash, summon
