@@ -33,6 +33,18 @@ export const BOARDS = {
     placed('gandalf', 3, 0),
     placed('haldir', 6, 0),
   ],
+  /** Riders charge, Burglars leap, Nazgûl slow, an Orc grunt spawns and the Istari gain mana. */
+  traits: [
+    placed('khamul', 2, 3),
+    placed('eomer', 3, 3),
+    placed('sharku', 4, 3),
+    placed('ringwraith', 3, 2),
+    placed('merry', 1, 1),
+    placed('grishnakh', 5, 1),
+    placed('gandalf', 2, 0),
+    placed('sauron', 3, 0),
+    placed('saruman', 4, 0),
+  ],
 } satisfies Record<string, PlacedUnit[]>;
 
 /** Steps the fight up to and including `tick`, returning those ticks' events. */
