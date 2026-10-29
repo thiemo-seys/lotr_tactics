@@ -54,7 +54,7 @@ These are not in `design.md` yet. They were chosen to remove ambiguity and can b
 
 ## 3. Package layout
 
-`packages/server`, the third package in `design.md` section 10. Everything except `main.ts` uses neither Node nor the DOM, so the client can run it in the browser for offline games. ESLint enforces this: no `node:` or `ws` imports and no `process`, `Buffer` or `Date` outside `main.ts`. Time and randomness come in through a `Host` object (section 4).
+`packages/server`, the third package in `design.md` section 10. Everything except `server.ts` and `main.ts` uses neither Node nor the DOM, so the client can run it in the browser for offline games. ESLint enforces this: no Node or `ws` imports and no `process`, `Buffer`, `Date` or timers outside those two files. Time and randomness come in through a `Host` object (section 4).
 
 ```
 packages/server/
@@ -67,7 +67,8 @@ packages/server/
     match.ts       one game: steps, timers, bots and Ready votes
     lobby.ts       one lobby: seats, host, start, connections
     lobbies.ts     every lobby on a server: codes, joining, closing idle lobbies
-    main.ts        the Node program: HTTP, static files and WebSockets
+    server.ts      the Node server: HTTP, static files and WebSockets
+    main.ts        reads PORT and starts the server
   test/
 ```
 
@@ -203,7 +204,7 @@ type ServerMessage =
   | { type: 'state'; state: MatchView }      // whenever the game, the step or Ready votes change
   | { type: 'round'; round: RoundRecord }    // when planning ends, just before the fight step's state
   | { type: 'left'; reason: string }         // the connection is no longer in a lobby
-  | { type: 'refused'; request: ClientMessage['type']; reason: string };
+  | { type: 'refused'; request: ClientMessage['type'] | 'unknown'; reason: string };   // 'unknown' for a malformed message
 
 interface LobbyView {
   code: string;
