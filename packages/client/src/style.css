@@ -166,6 +166,26 @@ main {
   border-color: #fff8;
 }
 
+.item.ring {
+  color: #3b2a00;
+  text-shadow: none;
+  background: radial-gradient(circle at 35% 35%, #fde68a, #d97706) !important;
+  border-color: #fbbf24;
+}
+
+.card.ring {
+  border-color: #fbbf24;
+}
+
+.player.ring-holder {
+  border-left: 3px solid #fbbf24;
+}
+
+#ring-status {
+  color: #fbbf24;
+  cursor: help;
+}
+
 #items .item,
 .item.ghost {
   min-width: 26px;
