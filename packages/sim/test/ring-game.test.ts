@@ -53,7 +53,7 @@ describe('the One Ring arriving', () => {
     skipTo(game, 3, 4);
     const options = game.state.council!.options;
     const ring = options.at(-1)!;
-    expect(ring).toMatchObject({ ring: true, component: null, unitId: 'bilbo' });
+    expect(ring).toMatchObject({ ring: true, item: null, unitId: 'bilbo' });
     expect(options.filter((o) => o.ring)).toHaveLength(1);
     expect(game.state.ring.state).toBe('offered');
     // Time runs out for every group: the Ring is never picked automatically, and waits.
