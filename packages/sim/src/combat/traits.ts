@@ -8,16 +8,22 @@ import type { StatModifiers } from './stats.js';
 /** Each active trait's level: 0 at its first breakpoint, 1 at its second, and so on. Inactive traits are left out. */
 export type TraitLevels = Partial<Record<TraitId, number>>;
 
+/** A trait a unit has from an item, such as the Nazgûl origin from a Ring of the Nine (sim-spec.md section 12.7). */
+export interface Emblem {
+  readonly unitId: UnitId;
+  readonly trait: TraitId;
+}
+
 /**
- * The active traits for a team's non-summon units. Each distinct unit counts once per trait, and
- * each crest Gift adds one to a trait the team has (sim-spec.md section 12.5).
+ * The active traits for a team's non-summon units. Each distinct unit counts once per trait, its
+ * emblems included, and each crest Gift adds one to a trait the team has (sim-spec.md section 12.5).
  */
-export function traitLevels(unitIds: readonly UnitId[], crests: readonly TraitId[] = []): TraitLevels {
+export function traitLevels(unitIds: readonly UnitId[], crests: readonly TraitId[] = [], emblems: readonly Emblem[] = []): TraitLevels {
+  const traitsOf = new Map<UnitId, Set<TraitId>>();
+  for (const id of unitIds) if (!traitsOf.has(id)) traitsOf.set(id, new Set([UNITS[id].origin, ...UNITS[id].classes]));
+  for (const { unitId, trait } of emblems) traitsOf.get(unitId)?.add(trait);
   const counts = new Map<TraitId, number>();
-  for (const id of new Set(unitIds)) {
-    const unit = UNITS[id];
-    for (const trait of [unit.origin, ...unit.classes]) counts.set(trait, (counts.get(trait) ?? 0) + 1);
-  }
+  for (const traits of traitsOf.values()) for (const trait of traits) counts.set(trait, (counts.get(trait) ?? 0) + 1);
   for (const trait of crests) {
     const count = counts.get(trait);
     if (count !== undefined) counts.set(trait, count + 1);
