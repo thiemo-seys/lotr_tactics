@@ -61,6 +61,7 @@ packages/server/
   src/
     index.ts       the browser-safe entry, imported by the client as @lotr-tactics/server
     config.ts      timers and limits
+    host.ts        the Host interface: time and randomness
     protocol.ts    message types, and checking messages from clients
     view.ts        what a seat sees of the game and of a round
     match.ts       one game: steps, timers, bots and Ready votes
