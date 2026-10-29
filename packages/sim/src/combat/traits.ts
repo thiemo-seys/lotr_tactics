@@ -8,12 +8,19 @@ import type { StatModifiers } from './stats.js';
 /** Each active trait's level: 0 at its first breakpoint, 1 at its second, and so on. Inactive traits are left out. */
 export type TraitLevels = Partial<Record<TraitId, number>>;
 
-/** The active traits for a team's non-summon units. Each distinct unit counts once per trait. */
-export function traitLevels(unitIds: readonly UnitId[]): TraitLevels {
+/**
+ * The active traits for a team's non-summon units. Each distinct unit counts once per trait, and
+ * each crest Gift adds one to a trait the team has (sim-spec.md section 12.5).
+ */
+export function traitLevels(unitIds: readonly UnitId[], crests: readonly TraitId[] = []): TraitLevels {
   const counts = new Map<TraitId, number>();
   for (const id of new Set(unitIds)) {
     const unit = UNITS[id];
     for (const trait of [unit.origin, ...unit.classes]) counts.set(trait, (counts.get(trait) ?? 0) + 1);
+  }
+  for (const trait of crests) {
+    const count = counts.get(trait);
+    if (count !== undefined) counts.set(trait, count + 1);
   }
   const levels: TraitLevels = {};
   for (const [trait, count] of counts) {

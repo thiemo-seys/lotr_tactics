@@ -1,6 +1,7 @@
 // The combat simulation: createCombat / step / result (docs/sim-spec.md sections 6, 13 and 14).
 
 import { ABILITIES, ATTACKS, MANA, MOVEMENT, TICKS_PER_SECOND } from '../data/rules.js';
+import { GIFTS, type GiftCombat, type GiftId } from '../data/gifts.js';
 import { MAX_ITEMS, type ItemEffect, type ItemId } from '../data/items.js';
 import { MONSTERS, type FighterId, type MonsterId } from '../data/monsters.js';
 import type { ClassId, OriginId } from '../data/traits.js';
@@ -61,6 +62,8 @@ export interface CombatInput {
   /** The round's stage, from 1. Orc grunts get stronger each stage. */
   readonly stage: number;
   readonly teams: { readonly [T in Team]: readonly PlacedUnit[] };
+  /** Each team's Gifts of Lothlórien (section 12.5). None if left out. */
+  readonly gifts?: { readonly [T in Team]: readonly GiftId[] };
 }
 
 export interface Survivor {
@@ -189,6 +192,10 @@ export class Fight implements Combat {
   readonly events: CombatEvent[] = [];
   private readonly units: Unit[] = [];
   private readonly traits: Record<Team, TraitLevels> = { A: {}, B: {} };
+  /** The fight effects of each team's Gifts (section 12.5). */
+  private readonly gifts: Record<Team, readonly GiftCombat[]> = { A: [], B: [] };
+  /** Each team's damage amp from its Gifts, set at tick 0. */
+  private readonly giftAmpPct: Record<Team, number> = { A: 0, B: 0 };
   private readonly rng: Rng;
   /** In creation order, which is also the order to resolve entries due on the same tick. */
   private queue: QueueEntry[] = [];
@@ -247,19 +254,24 @@ export class Fight implements Combat {
 
   /** Tick 0 (section 6.2). */
   private start(input: CombatInput): void {
-    // 1–2. Units, with their static trait bonuses and the Gondor front-row bonus.
+    // 1–2. Units, with their static trait, item and Gift bonuses and the Gondor front-row bonus.
     for (const team of TEAMS) {
       const placements = input.teams[team];
+      const gifts = (input.gifts?.[team] ?? []).flatMap((id) => GIFTS[id].combat ?? []);
+      this.gifts[team] = gifts;
       // Monsters have no traits.
-      const levels = traitLevels(placements.map((p) => p.unitId).filter(isUnitId));
+      const crests = gifts.flatMap((g) => g.crest ?? []);
+      const levels = traitLevels(placements.map((p) => p.unitId).filter(isUnitId), crests);
       this.traits[team] = levels;
+      const giftMana = gifts.reduce((mana, g) => mana + (g.startMana ?? 0), 0);
       const slots = startingSlots(placements);
       const bySlot = placements.map((p, i) => ({ p, slot: slots[i]! })).sort((a, b) => a.slot - b.slot);
       for (const { p, slot } of bySlot) {
         const fighter = isUnitId(p.unitId)
           ? unitFighter(UNITS[p.unitId], p.star, levels, p.row === HALF_ROWS - 1, p.items)
           : monsterFighter(p.unitId, input.stage);
-        const { base, staticBonus } = fighter;
+        const { base } = fighter;
+        const staticBonus = combineModifiers(fighter.staticBonus, giftModifiers(gifts, p.row));
         const stats = finalStats(base, staticBonus);
         this.addUnit({
           id: this.units.length,
@@ -273,7 +285,7 @@ export class Fight implements Combat {
           target: null,
           alive: true,
           health: stats.maxHealth,
-          mana: base.startMana,
+          mana: Math.min(base.startMana + giftMana, base.maxMana),
           base,
           stats,
           statuses: new Statuses(),
@@ -293,6 +305,8 @@ export class Fight implements Combat {
           archerStacks: 0,
         });
       }
+      const origins = new Set(this.units.filter((u) => u.team === team && u.origin !== null).map((u) => u.origin)).size;
+      this.giftAmpPct[team] = gifts.reduce((pct, g) => pct + (g.damageAmpPct ?? 0) + (g.damageAmpPctPerOrigin ?? 0) * origins, 0);
     }
 
     // 3. Guardian shields.
@@ -303,8 +317,11 @@ export class Fight implements Combat {
       }
     }
 
-    // 4. Items at combat start, unit by unit in slot order, team A's first.
+    // 4. Gifts and items at combat start, unit by unit in slot order, team A's first.
     for (const unit of this.units) {
+      for (const { startShield } of this.gifts[unit.team]) {
+        if (startShield !== undefined) this.addShield(unit.id, unit.id, startShield.amount, startShield.seconds);
+      }
       for (const { effect } of unit.effects) {
         if (effect.kind === 'startShield') {
           for (const ally of this.selectFor(unit, NEARBY_ALLIES).units) this.addShield(unit.id, ally.id, effect.amount, effect.seconds);
@@ -343,7 +360,17 @@ export class Fight implements Combat {
       }
     }
 
-    // 9. The Nazgûl slow and the Phial of Galadriel.
+    // 9. Horn of Helm Hammerhand: every enemy is stunned, team A's Horn first. The team's first
+    // unit in slot order is the source.
+    for (const team of TEAMS) {
+      const source = this.living(team)[0];
+      for (const { stunEnemiesSeconds } of this.gifts[team]) {
+        if (stunEnemiesSeconds === undefined || source === undefined) continue;
+        for (const enemy of this.living(enemyOf(team))) this.applyStatus(source.id, enemy.id, { kind: 'stun', seconds: stunEnemiesSeconds });
+      }
+    }
+
+    // 10. The Nazgûl slow and the Phial of Galadriel.
     this.updateAuras();
     this.checkWipe();
   }
@@ -369,8 +396,8 @@ export class Fight implements Combat {
   }
 
   /**
-   * Istari mana, Ent healing, and the Elven Cloak and Dragon-helm, on ticks 30, 60, 90, … in
-   * action order (section 6.4, step 3).
+   * Istari mana, Ent healing, the Elven Cloak and Dragon-helm, and Hands of the King, on ticks 30,
+   * 60, 90, … in action order (section 6.4, step 3).
    */
   private regenerate(first: Team): void {
     for (const unit of actionOrder(this.living(), first)) {
@@ -388,6 +415,10 @@ export class Fight implements Combat {
           if (this.outcome !== null) return;
           if (enemy.alive) this.dealDamage(unit, enemy, (unit.stats.maxHealth * effect.maxHealthPct) / 100, 'magic', false, 'item');
         }
+      }
+      // Hands of the King.
+      for (const { regenPct } of this.gifts[unit.team]) {
+        if (regenPct !== undefined && !unit.summon) this.heal(unit, unit, (unit.stats.maxHealth * regenPct) / 100);
       }
     }
   }
@@ -453,7 +484,8 @@ export class Fight implements Combat {
       (nextToCaptain ? captain.damageAmpPct : 0) +
       (darkLord !== undefined && (source.origin === 'orc' || source.origin === 'nazgul') ? darkLord.damageAmpPct : 0) +
       (dwarf !== undefined && source.origin === 'dwarf' && target.large ? dwarf.damageVsLargePct : 0) +
-      blackArrows
+      blackArrows +
+      this.giftAmpPct[source.team]
     );
   }
 
@@ -1000,6 +1032,12 @@ function monsterFighter(id: MonsterId, stage: number): Fighter {
   };
 }
 
+/** The stats a team's Gifts give a unit placed in `row`, in the team's own perspective (section 12.5). */
+function giftModifiers(gifts: readonly GiftCombat[], row: number): Partial<StatModifiers> {
+  const applies = ({ who }: GiftCombat) => who === undefined || who === 'all' || row === (who === 'front' ? HALF_ROWS - 1 : 0);
+  return combineModifiers(...gifts.flatMap((g) => (g.stats !== undefined && applies(g) ? [g.stats] : [])));
+}
+
 function enemyOf(team: Team): Team {
   return team === 'A' ? 'B' : 'A';
 }
@@ -1033,6 +1071,8 @@ function validate(input: CombatInput): void {
     throw new Error(`The stage must be a whole number from 1, not ${input.stage}.`);
   }
   for (const team of TEAMS) {
+    const unknownGift = (input.gifts?.[team] ?? []).find((id) => !Object.hasOwn(GIFTS, id));
+    if (unknownGift !== undefined) throw new Error(`Team ${team}: unknown Gift "${unknownGift}".`);
     const taken = new Set<string>();
     for (const p of input.teams[team]) {
       const where = `Team ${team} (${p.col}, ${p.row})`;
