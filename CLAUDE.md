@@ -13,14 +13,14 @@ Browser-based, 8-player auto battler in the style of Teamfight Tactics, with Lor
 
 Design is done for combat, units, traits, economy and rounds. The combat simulation in `packages/sim` (`docs/sim-spec.md`) is done: hex maths (`hex.ts`), the seeded generator (`rng.ts`), the data files (`data/`), stat calculation (`combat/stats.ts`), the combat loop (`combat/combat.ts`: tick 0, action order, events, end of combat), targeting and movement (`combat/targeting.ts`, `combat/movement.ts`), basic attacks, damage and mana (`combat/damage.ts`), statuses (`combat/statuses.ts`: stuns, slows, buffs, reductions, shields, untargetable), abilities (`combat/abilities.ts` for selectors and placement, `combat/combat.ts` for casting and effects), and traits (`combat/traits.ts` for counting and static bonuses, `combat/combat.ts` for the rest). That covers everything in scope in `docs/sim-spec.md` section 1 apart from the on-hit hook for items, which aren't designed yet.
 
-`packages/client` is the fight viewer (`docs/viewer-spec.md`): Vite and Three.js, running a fight with the sim and playing it back.
+`packages/client` is the fight viewer (`docs/viewer-spec.md`): Vite and Three.js, running a fight with the sim and playing it back. Its play page (`play.html`, `docs/game-spec.md` section 12) plays a whole game against 7 bots.
 
-The current milestone is the game around the fights (`docs/game-spec.md`): the shop, economy, rounds and bots in `packages/sim`, and a client screen to play against 7 bots. Done so far: the pool and shop rolls (`game/pool.ts`), and each player's bench, board, merging, gold and XP (`game/player.ts`), with the numbers in `data/economy.ts`; PvE monsters in the combat (`data/monsters.ts`, `sim-spec.md` section 7.6); and the rounds (`game/game.ts`: `createGame`, actions, fights, damage, eliminations; `game/matchmaking.ts`, `game/council.ts`, `game/schedule.ts`; data in `data/rounds.ts` and `data/pve.ts`); and bots (`bots/bot.ts`, tuned in `data/bots.ts`) with a balance runner (`scripts/balance.ts`).
+The current milestone is the game around the fights (`docs/game-spec.md`): the shop, economy, rounds and bots in `packages/sim`, and a client screen to play against 7 bots. Done so far: the pool and shop rolls (`game/pool.ts`), and each player's bench, board, merging, gold and XP (`game/player.ts`), with the numbers in `data/economy.ts`; PvE monsters in the combat (`data/monsters.ts`, `sim-spec.md` section 7.6); and the rounds (`game/game.ts`: `createGame`, actions, fights, damage, eliminations; `game/matchmaking.ts`, `game/council.ts`, `game/schedule.ts`; data in `data/rounds.ts` and `data/pve.ts`); bots (`bots/bot.ts`, tuned in `data/bots.ts`) with a balance runner (`scripts/balance.ts`); and the client's play page. That covers the milestone apart from items, Gifts of Lothlórien and tuning.
 
 ## Commands
 
 - `pnpm install`
-- `pnpm dev`: serve the fight viewer
+- `pnpm dev`: serve the client: the fight viewer at `/`, the play page at `/play.html`
 - `pnpm check`: lint, typecheck, tests and build, the same checks CI runs
 - `pnpm balance [games] [first seed]`: play 8-bot games and print balance statistics
 - `pnpm lint`, `pnpm typecheck`, `pnpm test`, `pnpm build`: one at a time

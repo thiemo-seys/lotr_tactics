@@ -28,13 +28,17 @@ A browser tool that runs one fight with `packages/sim` and plays it back in 3D. 
 
 ```
 packages/client/
-  index.html
+  index.html       the fight viewer
+  play.html        the play page (game-spec.md section 12)
   src/
-    main.ts        page setup, controls, URL state
+    main.ts        viewer page setup, controls, URL state
+    play.ts        play page setup, shop, Council, timers, drag and drop
+    session.ts     a game against bots for one person (no Three.js, no DOM)
     boards.ts      preset and random boards
-    layout.ts      hex to world coordinates
+    layout.ts      hex and bench positions, and finding the place under a point
     playback.ts    stepping the fight and what to draw at a moment (no Three.js, no DOM)
-    scene.ts       Three.js scene, units, overlays
+    scene.ts       Three.js scene, units, overlays, and the planning view
+    units.ts       names and sizes of units, monsters and summons
     log.ts         event log text
     style.css
   test/
