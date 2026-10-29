@@ -6,6 +6,8 @@ import tseslint from 'typescript-eslint';
 // These are the only Math functions it may use; the others can differ between engines.
 const ALLOWED_MATH = ['floor', 'ceil', 'round', 'trunc', 'min', 'max', 'abs', 'sqrt', 'imul'];
 const WHY = 'the sim must be deterministic (docs/sim-spec.md section 4)';
+// The server's game code also runs in the browser for offline games (docs/server-spec.md section 3).
+const BROWSER_SAFE = 'it also runs in the browser; only main.ts may use Node (docs/server-spec.md section 3)';
 
 export default defineConfig(
   { ignores: ['**/node_modules/', '**/dist/', '**/coverage/'] },
@@ -34,6 +36,23 @@ export default defineConfig(
           selector: "BinaryExpression[operator='**'], AssignmentExpression[operator='**=']",
           message: `No exponentiation; use a lookup table or repeated multiplication: ${WHY}.`,
         },
+      ],
+    },
+  },
+  {
+    files: ['packages/server/src/**/*.ts'],
+    ignores: ['packages/server/src/main.ts'],
+    rules: {
+      'no-restricted-imports': [
+        'error',
+        { patterns: [{ group: ['node:*', 'ws', 'fs', 'path', 'http', 'https', 'crypto', 'url', 'os'], message: `No Node modules: ${BROWSER_SAFE}.` }] },
+      ],
+      'no-restricted-globals': [
+        'error',
+        ...['process', 'Buffer', 'Date', 'setTimeout', 'setInterval'].map((name) => ({
+          name,
+          message: `Time and randomness come from the Host, and Node globals are off limits: ${BROWSER_SAFE}.`,
+        })),
       ],
     },
   },
