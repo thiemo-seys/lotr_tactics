@@ -7,12 +7,15 @@ Browser-based, 8-player auto battler in the style of Teamfight Tactics, with Lor
 - `docs/design.md`: game design, the source of truth for rules and content.
 - `docs/sim-spec.md`: implementation spec for the combat simulation, including defaults not yet in the design doc.
 - `docs/viewer-spec.md`: spec for the fight viewer in `packages/client`.
+- `docs/game-spec.md`: implementation spec for the game around the fights: shop, economy, rounds and bots.
 
 ## Status
 
-Design is done for combat, units, traits, economy and rounds. The current milestone is `packages/sim`, the deterministic combat simulation described in `docs/sim-spec.md`. Done so far: hex maths (`hex.ts`), the seeded generator (`rng.ts`), the data files (`data/`), stat calculation (`combat/stats.ts`), the combat loop (`combat/combat.ts`: tick 0, action order, events, end of combat), targeting and movement (`combat/targeting.ts`, `combat/movement.ts`), basic attacks, damage and mana (`combat/damage.ts`), statuses (`combat/statuses.ts`: stuns, slows, buffs, reductions, shields, untargetable), abilities (`combat/abilities.ts` for selectors and placement, `combat/combat.ts` for casting and effects), and traits (`combat/traits.ts` for counting and static bonuses, `combat/combat.ts` for the rest). That covers everything in scope in `docs/sim-spec.md` section 1 apart from the on-hit hook for items, which aren't designed yet.
+Design is done for combat, units, traits, economy and rounds. The combat simulation in `packages/sim` (`docs/sim-spec.md`) is done: hex maths (`hex.ts`), the seeded generator (`rng.ts`), the data files (`data/`), stat calculation (`combat/stats.ts`), the combat loop (`combat/combat.ts`: tick 0, action order, events, end of combat), targeting and movement (`combat/targeting.ts`, `combat/movement.ts`), basic attacks, damage and mana (`combat/damage.ts`), statuses (`combat/statuses.ts`: stuns, slows, buffs, reductions, shields, untargetable), abilities (`combat/abilities.ts` for selectors and placement, `combat/combat.ts` for casting and effects), and traits (`combat/traits.ts` for counting and static bonuses, `combat/combat.ts` for the rest). That covers everything in scope in `docs/sim-spec.md` section 1 apart from the on-hit hook for items, which aren't designed yet.
 
 `packages/client` is the fight viewer (`docs/viewer-spec.md`): Vite and Three.js, running a fight with the sim and playing it back.
+
+The current milestone is the game around the fights (`docs/game-spec.md`): the shop, economy, rounds and bots in `packages/sim`, and a client screen to play against 7 bots.
 
 ## Commands
 
