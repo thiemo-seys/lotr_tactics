@@ -1,9 +1,24 @@
 // The Three.js scene: board, units, overlays and effects (docs/viewer-spec.md sections 3–5).
 
-import { BOARD_COLS, BOARD_HEXES, PLAYER, fromPlacement, toOffset, type FighterId, type OwnedUnit, type PlayerView, type Star, type Team, type UnitState } from '@lotr-tactics/sim';
+import {
+  BOARD_COLS,
+  BOARD_HEXES,
+  ITEMS,
+  PLAYER,
+  fromPlacement,
+  toOffset,
+  type FighterId,
+  type ItemId,
+  type OwnedUnit,
+  type PlayerView,
+  type Star,
+  type Team,
+  type UnitState,
+} from '@lotr-tactics/sim';
 import * as THREE from 'three';
 import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
 import { CSS2DObject, CSS2DRenderer } from 'three/addons/renderers/CSS2DRenderer.js';
+import { itemColours, itemTag, itemText } from './items.js';
 import { benchToWorld, hexToWorld, type Point } from './layout.js';
 import { EFFECT_TICKS, facing, type CastRing, type FloatingText, type Playback, type Projectile } from './playback.js';
 import { displayName, isLarge } from './units.js';
@@ -128,7 +143,8 @@ export class FightScene {
     this.bench.visible = true;
     if (entering) this.aim('planning');
     const add = (unit: OwnedUnit, at: Point) => {
-      const pawn = this.createPawn(unit.unitId, unit.star, 'A', 'A', false).group;
+      const pawn = this.createPawn(unit.unitId, unit.star, 'A', 'A', false, unit.items).group;
+      pawn.userData.unitId = unit.id;
       pawn.position.set(at.x, 0, at.z);
       this.fightLayer.add(pawn);
       this.planning.set(unit.id, pawn);
@@ -148,11 +164,26 @@ export class FightScene {
 
   /** The point on the ground under a screen position, or null if the ray misses it. */
   groundPoint(clientX: number, clientY: number): Point | null {
+    this.aimRay(clientX, clientY);
+    const hit = this.raycaster.ray.intersectPlane(this.ground, new THREE.Vector3());
+    return hit === null ? null : { x: hit.x, z: hit.z };
+  }
+
+  /** The id of the planning unit whose pawn is under a screen position, if any. */
+  planningUnitAt(clientX: number, clientY: number): number | null {
+    this.aimRay(clientX, clientY);
+    for (const hit of this.raycaster.intersectObjects([...this.planning.values()], true)) {
+      for (let object: THREE.Object3D | null = hit.object; object !== null; object = object.parent) {
+        if (typeof object.userData.unitId === 'number') return object.userData.unitId;
+      }
+    }
+    return null;
+  }
+
+  private aimRay(clientX: number, clientY: number): void {
     const rect = this.renderer.domElement.getBoundingClientRect();
     const ndc = new THREE.Vector2(((clientX - rect.left) / rect.width) * 2 - 1, -((clientY - rect.top) / rect.height) * 2 + 1);
     this.raycaster.setFromCamera(ndc, this.camera);
-    const hit = this.raycaster.ray.intersectPlane(this.ground, new THREE.Vector3());
-    return hit === null ? null : { x: hit.x, z: hit.z };
   }
 
   private aim(view: keyof typeof CAMERA): void {
@@ -271,7 +302,7 @@ export class FightScene {
 
   private createUnit(unit: UnitState): UnitView {
     const look = unit.team === this.side ? 'A' : 'B';
-    const { group, material, label } = this.createPawn(unit.unitId, unit.star, unit.team, look, unit.summon);
+    const { group, material, label } = this.createPawn(unit.unitId, unit.star, unit.team, look, unit.summon, unit.items);
     const element = label.element;
     const healthBar = bar('health');
     const shield = document.createElement('div');
@@ -286,10 +317,10 @@ export class FightScene {
   }
 
   /**
-   * A pawn with its name and stars above it, facing the other team, coloured as the near (`look`
-   * A) or far team. Summons are smaller and unnamed.
+   * A pawn with its name, stars and items above it, facing the other team, coloured as the near
+   * (`look` A) or far team. Summons are smaller and unnamed.
    */
-  private createPawn(unitId: FighterId | UnitState['unitId'], star: Star, team: Team, look: Team, summon: boolean) {
+  private createPawn(unitId: FighterId | UnitState['unitId'], star: Star, team: Team, look: Team, summon: boolean, items: readonly ItemId[]) {
     const material = new THREE.MeshStandardMaterial({ color: TEAM_COLOURS[look], flatShading: true, transparent: true });
     const body = new THREE.Mesh(geometry.body, material);
     body.position.y = 0.45;
@@ -306,6 +337,12 @@ export class FightScene {
     name.className = 'name';
     name.textContent = summon ? '' : `${displayName(unitId)} ${'★'.repeat(star)}`;
     element.append(name);
+    if (items.length > 0) {
+      const row = document.createElement('div');
+      row.className = 'items';
+      row.append(...items.map(itemChip));
+      element.append(row);
+    }
     const label = new CSS2DObject(element);
     label.position.set(0, 1.8, 0);
 
@@ -379,6 +416,17 @@ export class FightScene {
       (ring.material as THREE.MeshBasicMaterial).opacity = 1 - progress;
     }
   }
+}
+
+/** An item's tag in its components' colours, naming the item and its effect when hovered. */
+export function itemChip(id: ItemId): HTMLElement {
+  const chip = document.createElement('span');
+  chip.className = ITEMS[id].recipe === null ? 'item component' : 'item';
+  chip.textContent = itemTag(id);
+  chip.title = itemText(id);
+  const [a, b] = itemColours(id);
+  chip.style.background = `linear-gradient(135deg, ${a} 50%, ${b} 50%)`;
+  return chip;
 }
 
 function bar(kind: string): { bar: HTMLElement; fill: HTMLElement } {
