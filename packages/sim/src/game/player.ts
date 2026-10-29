@@ -1,13 +1,15 @@
 // One player's bench, board, shop, gold and XP (docs/game-spec.md sections 5–8).
 
 import type { PlacedUnit } from '../combat/combat.js';
-import { combine, isComponent } from '../combat/items.js';
+import { ITEM_IDS, combine, isComponent } from '../combat/items.js';
 import { INCOME, PLAYER, SHOP, STREAK_GOLD, XP } from '../data/economy.js';
-import { MAX_ITEMS, type ComponentId, type ItemId } from '../data/items.js';
-import { UNITS, type UnitId } from '../data/units.js';
+import { GIFTS, type GiftId, type GiftTier } from '../data/gifts.js';
+import { COMPONENTS, MAX_ITEMS, type ComponentId, type ItemId } from '../data/items.js';
+import { UNITS, type Cost, type UnitId } from '../data/units.js';
 import { BOARD_COLS, BOARD_ROWS } from '../hex.js';
-import type { Rng } from '../rng.js';
+import { randomInt, type Rng } from '../rng.js';
 import type { Star } from '../types.js';
+import { giftBonus, rollGiftOffer } from './gifts.js';
 import { copiesIn, type Pool } from './pool.js';
 
 /** Rows on one player's half of the board. */
@@ -50,6 +52,14 @@ export interface PlayerView {
   readonly shopLocked: boolean;
   /** Items not on a unit, in the order the player got them. */
   readonly items: readonly ItemId[];
+  /** Gifts of Lothlórien picked so far, in order (section 9.10). */
+  readonly gifts: readonly GiftId[];
+  /** The Gifts on offer, or null when there is no offer. */
+  readonly giftOffer: readonly GiftId[] | null;
+  /** Whether the current offer has been rerolled. */
+  readonly giftRerolled: boolean;
+  /** Free rerolls left this round. */
+  readonly freeRerolls: number;
   /** The last players fought, oldest first. */
   readonly recentOpponents: readonly number[];
   /** Set when the player is eliminated or wins. */
@@ -57,6 +67,9 @@ export interface PlayerView {
 }
 
 const OK: ActionResult = { ok: true };
+
+/** Combined items, which some Gifts give at random. */
+const COMBINED_ITEMS = ITEM_IDS.filter((id) => !isComponent(id));
 
 function fail(reason: string): ActionResult {
   return { ok: false, reason };
@@ -110,13 +123,20 @@ export class Player implements PlayerView {
   readonly shop: (UnitId | null)[] = new Array<UnitId | null>(SHOP.size).fill(null);
   shopLocked = false;
   readonly items: ItemId[] = [];
+  readonly gifts: GiftId[] = [];
+  giftOffer: GiftId[] | null = null;
+  giftRerolled = false;
+  freeRerolls = 0;
   readonly recentOpponents: number[] = [];
   placement: number | null = null;
+  /** The tier of the current Gift offer. */
+  private giftTier: GiftTier | null = null;
 
   constructor(
     readonly seat: number,
     private readonly context: PlayerContext,
     private readonly shopRng: Rng,
+    private readonly giftRng: Rng,
   ) {}
 
   get eliminated(): boolean {
@@ -171,8 +191,9 @@ export class Player implements PlayerView {
   }
 
   reroll(): ActionResult {
-    if (this.gold < SHOP.rerollCost) return fail('Not enough gold.');
-    this.gold -= SHOP.rerollCost;
+    if (this.freeRerolls > 0) this.freeRerolls--;
+    else if (this.gold < SHOP.rerollCost) return fail('Not enough gold.');
+    else this.gold -= SHOP.rerollCost;
     this.returnShop();
     this.rollShop();
     return OK;
@@ -197,6 +218,28 @@ export class Player implements PlayerView {
     if (items === null) return fail(`A unit can hold at most ${MAX_ITEMS} items.`);
     this.items.splice(item, 1);
     this.setAt(to, { ...unit, items });
+    return OK;
+  }
+
+  /** Takes one of the Gifts on offer, and anything it gives right away (section 9.10). */
+  pickGift(option: number): ActionResult {
+    const offer = this.giftOffer;
+    if (offer === null) return fail('There is no Gift to pick.');
+    const gift = Number.isInteger(option) ? offer[option] : undefined;
+    if (gift === undefined) return fail('There is no such Gift.');
+    this.giftOffer = null;
+    this.giftTier = null;
+    this.gifts.push(gift);
+    this.receive(gift);
+    return OK;
+  }
+
+  /** Replaces the Gifts on offer with new ones, once per offer. */
+  rerollGifts(): ActionResult {
+    if (this.giftOffer === null || this.giftTier === null) return fail('There is no Gift to reroll.');
+    if (this.giftRerolled) return fail('This offer has been rerolled already.');
+    this.giftRerolled = true;
+    this.giftOffer = rollGiftOffer(this.giftTier, new Set([...this.gifts, ...this.giftOffer]), this.giftRng);
     return OK;
   }
 
@@ -233,9 +276,32 @@ export class Player implements PlayerView {
     });
   }
 
-  /** Fills every shop slot from the pool. The shop must be empty. */
+  /** Fills every shop slot from the pool, with the odds of the level and any Mirror of Galadriel. The shop must be empty. */
   rollShop(): void {
-    for (let slot = 0; slot < SHOP.size; slot++) this.shop[slot] = this.context.pool.rollShopSlot(this.level, this.shopRng);
+    const level = Math.min(this.level + giftBonus(this.gifts, 'shopLevels'), PLAYER.maxLevel);
+    for (let slot = 0; slot < SHOP.size; slot++) this.shop[slot] = this.context.pool.rollShopSlot(level, this.shopRng);
+  }
+
+  /** Offers Gifts of a tier the player doesn't have (section 9.10). */
+  offerGifts(tier: GiftTier): void {
+    this.giftTier = tier;
+    this.giftRerolled = false;
+    this.giftOffer = rollGiftOffer(tier, new Set(this.gifts), this.giftRng);
+  }
+
+  /** Takes a random Gift from an offer left unpicked when planning ends. */
+  autoPickGift(): void {
+    if (this.giftOffer !== null && this.giftOffer.length > 0) this.pickGift(randomInt(this.giftRng, this.giftOffer.length));
+  }
+
+  /** The free rerolls and extra XP the player's Gifts give at the start of a round (section 9.2). */
+  startRound(): void {
+    this.freeRerolls = giftBonus(this.gifts, 'freeRerollsPerRound');
+  }
+
+  /** Extra XP each round from Gifts. */
+  giftXp(): number {
+    return giftBonus(this.gifts, 'xpPerRound');
   }
 
   /** Moves bench units to free board places until the board is full for the level (section 7.6). */
@@ -251,7 +317,8 @@ export class Player implements PlayerView {
 
   /** Interest on the gold held, then base income (section 8.1). */
   collectIncome(base: number): void {
-    const interest = Math.min(INCOME.maxInterest, Math.floor(this.gold / INCOME.goldPerInterest));
+    const maxInterest = INCOME.maxInterest + giftBonus(this.gifts, 'maxInterest');
+    const interest = Math.min(maxInterest, Math.floor(this.gold / INCOME.goldPerInterest));
     this.gold += interest + base;
   }
 
@@ -299,9 +366,39 @@ export class Player implements PlayerView {
     }
     this.returnShop();
     this.items.length = 0;
+    this.gifts.length = 0;
+    this.giftOffer = null;
+    this.giftTier = null;
   }
 
   // Internals
+
+  /** What a Gift gives right away: gold, components, combined items and units (section 9.10). */
+  private receive(gift: GiftId): void {
+    const economy = GIFTS[gift].economy;
+    if (economy === undefined) return;
+    this.gold += economy.gold ?? 0;
+    for (let i = 0; i < (economy.components ?? 0); i++) this.items.push(COMPONENTS[randomInt(this.giftRng, COMPONENTS.length)]!);
+    for (let i = 0; i < (economy.combinedItems ?? 0); i++) this.items.push(COMBINED_ITEMS[randomInt(this.giftRng, COMBINED_ITEMS.length)]!);
+    for (let i = 0; i < (economy.units?.count ?? 0); i++) this.gainFromPool(economy.units!.cost);
+  }
+
+  /**
+   * Gains a unit of a cost from the pool, drawn like a Council unit, or of the next lower cost
+   * with copies left. One with no room is sold at once.
+   */
+  private gainFromPool(cost: Cost): void {
+    const { pool } = this.context;
+    for (let c = cost; c >= 1; c--) {
+      if (pool.countOfCost(c as Cost) === 0) continue;
+      const unitId = pool.takeOfCost(c as Cost, this.giftRng);
+      if (!this.gain(unitId)) {
+        this.gold += UNITS[unitId].cost;
+        pool.put(unitId);
+      }
+      return;
+    }
+  }
 
   private setAt(place: Place, unit: OwnedUnit | null): void {
     if ('bench' in place) this.bench[place.bench] = unit;
