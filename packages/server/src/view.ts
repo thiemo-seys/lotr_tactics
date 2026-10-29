@@ -12,7 +12,7 @@ export interface StepView {
 }
 
 /** What every player sees of a player. */
-export type PublicPlayer = Omit<PlayerView, 'shop' | 'shopLocked' | 'xp'>;
+export type PublicPlayer = Omit<PlayerView, 'shop' | 'shopLocked' | 'xp' | 'giftOffer' | 'giftRerolled'>;
 
 export interface MatchView {
   /** The seat this view is for. */
@@ -54,13 +54,22 @@ export function publicPlayer(p: PlayerView): PublicPlayer {
     bench: [...p.bench],
     board: [...p.board],
     items: [...p.items],
+    gifts: [...p.gifts],
+    freeRerolls: p.freeRerolls,
     recentOpponents: [...p.recentOpponents],
     placement: p.placement,
   };
 }
 
 export function fullPlayer(p: PlayerView): PlayerView {
-  return { ...publicPlayer(p), xp: p.xp, shop: [...p.shop], shopLocked: p.shopLocked };
+  return {
+    ...publicPlayer(p),
+    xp: p.xp,
+    shop: [...p.shop],
+    shopLocked: p.shopLocked,
+    giftOffer: p.giftOffer === null ? null : [...p.giftOffer],
+    giftRerolled: p.giftRerolled,
+  };
 }
 
 export function matchView(
