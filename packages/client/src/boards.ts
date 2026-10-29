@@ -3,11 +3,10 @@
 
 import {
   BOARD_COLS,
-  ITEM_IDS,
+  COMBINED_ITEM_IDS,
   MAX_ITEMS,
   UNITS,
   createRng,
-  isComponent,
   type ItemId,
   type PlacedUnit,
   type Star,
@@ -107,9 +106,8 @@ export function randomBoard(seed: number, team: Team): PlacedUnit[] {
     return placed(pick(units), col, row, star);
   });
   // Items come after the units, so a seed's units are the same as before items existed.
-  const combined = ITEM_IDS.filter((id) => !isComponent(id));
   return board.map((p) => ({
     ...p,
-    items: Array.from({ length: Math.floor(rng() * (MAX_ITEMS + 1)) }, () => combined[Math.floor(rng() * combined.length)]!),
+    items: Array.from({ length: Math.floor(rng() * (MAX_ITEMS + 1)) }, () => COMBINED_ITEM_IDS[Math.floor(rng() * COMBINED_ITEM_IDS.length)]!),
   }));
 }
