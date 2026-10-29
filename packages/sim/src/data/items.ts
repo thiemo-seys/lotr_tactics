@@ -1,7 +1,8 @@
-// Item components and combined items (docs/design.md section 6). Behaviour is in
-// docs/sim-spec.md section 12.4. All numbers are placeholders until balancing. Percentages are
-// whole numbers and durations are in seconds.
+// Item components, combined items and the Rings of Power (docs/design.md sections 6 and 9).
+// Behaviour is in docs/sim-spec.md sections 12.4 and 12.7. All numbers are placeholders until
+// balancing. Percentages are whole numbers and durations are in seconds.
 
+import type { OriginId } from './traits.js';
 import type { BuffStat } from './units.js';
 
 export const COMPONENTS = ['blade', 'bow', 'mail', 'cloak', 'lembas', 'staff'] as const;
@@ -31,7 +32,9 @@ export type CombinedItemId =
   | 'athelas'
   | 'wizards-staff';
 
-export type ItemId = ComponentId | CombinedItemId;
+export type RingOfPowerId = 'narya' | 'nenya' | 'vilya' | 'ring-of-the-seven' | 'ring-of-the-nine';
+
+export type ItemId = ComponentId | CombinedItemId | RingOfPowerId;
 
 /** Stat bonuses for the whole fight. Missing fields are 0. */
 export interface ItemStats {
@@ -87,7 +90,31 @@ export type ItemEffect =
   /** Enemies near the holder have less Magic Resist (Phial of Galadriel). */
   | { readonly kind: 'magicResistAura'; readonly pct: number; readonly radius: number }
   /** After each cast, heals the ally with the lowest Health % (Athelas). */
-  | { readonly kind: 'healOnCast'; readonly amount: number };
+  | { readonly kind: 'healOnCast'; readonly amount: number }
+  /** Allies near the holder, the holder included, have more Attack Speed (Narya). */
+  | { readonly kind: 'attackSpeedAura'; readonly pct: number; readonly radius: number }
+  /** At combat start and every `everySeconds`, the holder and allies near it gain a shield (Nenya). */
+  | { readonly kind: 'shieldPulse'; readonly amount: number; readonly radius: number; readonly seconds: number; readonly everySeconds: number }
+  /** Every `everySeconds`, heals the ally with the lowest Health %, the holder included (Vilya). */
+  | { readonly kind: 'healPulse'; readonly amount: number; readonly everySeconds: number }
+  /** Gold for the holder's player after each PvP or PvE round with the holder on the board (the Seven). The game acts on it. */
+  | { readonly kind: 'goldPerRound'; readonly gold: number }
+  /**
+   * The holder is a Nazgûl as well as its own origin, and deals more damage per point of the One
+   * Ring's Corruption while a player holds it (the Nine).
+   */
+  | { readonly kind: 'nazgul'; readonly damagePctPerCorruption: number };
+
+export type RingFamily = 'three' | 'seven' | 'nine';
+
+/** What makes an item a Ring of Power (design.md section 9). */
+export interface RingOfPowerDef {
+  readonly family: RingFamily;
+  /** Copies in a game's supply. */
+  readonly copies: number;
+  /** On a holder of one of these origins, the effect's numbers are `pct` percent of those listed. */
+  readonly kin?: { readonly origins: readonly OriginId[]; readonly pct: number };
+}
 
 export interface ItemDef {
   readonly name: string;
@@ -96,6 +123,8 @@ export interface ItemDef {
   /** The item's own stats. A combined item also has its components' stats (see `itemStats`). */
   readonly stats: ItemStats;
   readonly effect: ItemEffect | null;
+  /** Set on the Rings of Power. */
+  readonly ringOfPower?: RingOfPowerDef;
 }
 
 /** The most items a unit can hold. */
@@ -109,6 +138,11 @@ const combined = (name: string, recipe: readonly [ComponentId, ComponentId], eff
   stats,
   effect,
 });
+
+/** The Three are stronger on Elves and Istari (design.md section 9). */
+const ELVEN_KIN = { origins: ['elf', 'istari'], pct: 150 } as const;
+
+const ring = (name: string, effect: ItemEffect, ringOfPower: RingOfPowerDef): ItemDef => ({ name, recipe: null, stats: {}, effect, ringOfPower });
 
 export const ITEMS: { readonly [K in ItemId]: ItemDef } = {
   blade: component('Blade', { attackDamagePct: 15 }),
@@ -149,6 +183,16 @@ export const ITEMS: { readonly [K in ItemId]: ItemDef } = {
   'ent-draught': combined('Ent-draught', ['lembas', 'lembas'], null, { health: 300 }),
   athelas: combined('Athelas', ['lembas', 'staff'], { kind: 'healOnCast', amount: 200 }),
   'wizards-staff': combined("Wizard's Staff", ['staff', 'staff'], null, { abilityPower: 40 }),
+
+  narya: ring('Narya', { kind: 'attackSpeedAura', pct: 20, radius: 2 }, { family: 'three', copies: 1, kin: ELVEN_KIN }),
+  nenya: ring('Nenya', { kind: 'shieldPulse', amount: 120, radius: 2, seconds: 6, everySeconds: 6 }, { family: 'three', copies: 1, kin: ELVEN_KIN }),
+  vilya: ring('Vilya', { kind: 'healPulse', amount: 80, everySeconds: 2 }, { family: 'three', copies: 1, kin: ELVEN_KIN }),
+  'ring-of-the-seven': ring('Ring of the Seven', { kind: 'goldPerRound', gold: 1 }, {
+    family: 'seven',
+    copies: 7,
+    kin: { origins: ['dwarf'], pct: 200 },
+  }),
+  'ring-of-the-nine': ring('Ring of the Nine', { kind: 'nazgul', damagePctPerCorruption: 5 }, { family: 'nine', copies: 9 }),
 };
 
 /** Component names, for the Council and loot. */

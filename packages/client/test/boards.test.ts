@@ -1,4 +1,4 @@
-import { MAX_ITEMS, createCombat, isComponent } from '@lotr-tactics/sim';
+import { MAX_ITEMS, createCombat, isCombined } from '@lotr-tactics/sim';
 import { describe, expect, it } from 'vitest';
 import { BOARD_CHOICES, PRESETS, RANDOM_BOARD_SIZE, fightBoards, isBoardChoice, randomBoard } from '../src/boards.js';
 
@@ -39,7 +39,7 @@ describe('boards', () => {
 
   it('gives random boards up to 3 combined items per unit', () => {
     const items = Array.from({ length: 20 }, (_, i) => randomBoard(i + 1, 'A')).flatMap((board) => board.map((p) => p.items));
-    expect(items.every((list) => list.length <= MAX_ITEMS && list.every((id) => !isComponent(id)))).toBe(true);
+    expect(items.every((list) => list.length <= MAX_ITEMS && list.every(isCombined))).toBe(true);
     expect(items.some((list) => list.length > 0)).toBe(true);
   });
 
