@@ -15,7 +15,7 @@ Design is done for combat, units, traits, economy and rounds. The combat simulat
 
 `packages/client` is the fight viewer (`docs/viewer-spec.md`): Vite and Three.js, running a fight with the sim and playing it back.
 
-The current milestone is the game around the fights (`docs/game-spec.md`): the shop, economy, rounds and bots in `packages/sim`, and a client screen to play against 7 bots. Done so far: the pool and shop rolls (`game/pool.ts`), and each player's bench, board, merging, gold and XP (`game/player.ts`), with the numbers in `data/economy.ts`; and PvE monsters in the combat (`data/monsters.ts`, `sim-spec.md` section 7.6).
+The current milestone is the game around the fights (`docs/game-spec.md`): the shop, economy, rounds and bots in `packages/sim`, and a client screen to play against 7 bots. Done so far: the pool and shop rolls (`game/pool.ts`), and each player's bench, board, merging, gold and XP (`game/player.ts`), with the numbers in `data/economy.ts`; PvE monsters in the combat (`data/monsters.ts`, `sim-spec.md` section 7.6); and the rounds (`game/game.ts`: `createGame`, actions, fights, damage, eliminations; `game/matchmaking.ts`, `game/council.ts`, `game/schedule.ts`; data in `data/rounds.ts` and `data/pve.ts`).
 
 ## Commands
 
