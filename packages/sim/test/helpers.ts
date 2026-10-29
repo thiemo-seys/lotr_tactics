@@ -1,4 +1,5 @@
-import type { CombatInput, PlacedUnit } from '../src/combat/combat.js';
+import type { Combat, CombatInput, PlacedUnit } from '../src/combat/combat.js';
+import type { CombatEvent } from '../src/combat/events.js';
 import type { UnitId } from '../src/data/units.js';
 import type { Star } from '../src/types.js';
 
@@ -33,3 +34,14 @@ export const BOARDS = {
     placed('haldir', 6, 0),
   ],
 } satisfies Record<string, PlacedUnit[]>;
+
+/** Steps the fight up to and including `tick`, returning those ticks' events. */
+export function stepTo(combat: Combat, tick: number): CombatEvent[] {
+  const events: CombatEvent[] = [];
+  while (combat.tick < tick) events.push(...combat.step());
+  return events;
+}
+
+export function ofType<T extends CombatEvent['type']>(events: readonly CombatEvent[], type: T): Extract<CombatEvent, { type: T }>[] {
+  return events.filter((e): e is Extract<CombatEvent, { type: T }> => e.type === type);
+}
