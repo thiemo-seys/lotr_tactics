@@ -12,6 +12,7 @@ import {
   STAR_PCT,
   TEMPLATES,
 } from '../data/templates.js';
+import type { MonsterDef } from '../data/monsters.js';
 import type { Cost, UnitDef } from '../data/units.js';
 import type { Star } from '../types.js';
 
@@ -103,6 +104,27 @@ export function baseStats(unit: UnitDef, star: Star): BaseStats {
     dodgePct: SHARED_STATS.dodgePct,
     startMana: template.startMana,
     maxMana: template.maxMana,
+  };
+}
+
+/** Stats for a PvE monster at a stage, before buffs and statuses (game-spec.md section 9.8). */
+export function monsterStats(monster: MonsterDef, stage: number): BaseStats {
+  const s = monster.stats;
+  const growth = monster.growth;
+  const pct = 100 + (growth === undefined ? 0 : growth.pctPerStage * Math.max(0, stage - growth.afterStage));
+  return {
+    maxHealth: Math.round((s.health * pct) / 100),
+    attackDamage: Math.round((s.attackDamage * pct) / 100),
+    attackSpeed: s.attackSpeed,
+    range: s.range,
+    armor: s.armor,
+    magicResist: s.magicResist,
+    abilityPower: SHARED_STATS.abilityPower,
+    critChancePct: SHARED_STATS.critChancePct,
+    critDamagePct: SHARED_STATS.critDamagePct,
+    dodgePct: SHARED_STATS.dodgePct,
+    startMana: s.startMana,
+    maxMana: s.maxMana,
   };
 }
 
