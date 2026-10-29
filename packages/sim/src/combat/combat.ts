@@ -2,7 +2,7 @@
 
 import { ATTACKS, MANA, TICKS_PER_SECOND } from '../data/rules.js';
 import type { OriginId } from '../data/traits.js';
-import { UNITS, type DamageType, type SummonId, type UnitId } from '../data/units.js';
+import { UNITS, type DamageType, type Effect, type SummonId, type UnitId } from '../data/units.js';
 import { BOARD_COLS, BOARD_ROWS, boardIndex, distance, fromPlacement, type Hex } from '../hex.js';
 import { createRng, type Rng } from '../rng.js';
 import type { Star, Team } from '../types.js';
@@ -11,8 +11,9 @@ import type { CombatEvent, DamageEvent, Outcome } from './events.js';
 import { MOVE_TICKS, planMove } from './movement.js';
 import { actionOrder, firstTeam, startingSlots } from './order.js';
 import { baseStats, finalStats, type BaseStats, type Stats } from './stats.js';
+import { Statuses, type StatusKind, type StatusState } from './statuses.js';
 import { chooseTarget, type TargetingRules } from './targeting.js';
-import { LAST_TICK } from './time.js';
+import { LAST_TICK, toTicks } from './time.js';
 import { traitLevels, type TraitLevels } from './traits.js';
 
 export interface PlacedUnit {
@@ -66,7 +67,11 @@ export interface UnitState {
   readonly base: BaseStats;
   /** Current stats. */
   readonly stats: Stats;
+  readonly statuses: StatusState;
 }
+
+/** An ability effect that puts a status on a unit (section 12.1). */
+export type StatusEffect = Extract<Effect, { readonly kind: StatusKind }>;
 
 /** Read-only view of the fight for the renderer. */
 export interface CombatState {
@@ -92,7 +97,8 @@ const TEAMS: readonly Team[] = ['A', 'B'];
 /** Each team's half of the board is this many rows deep. */
 const HALF_ROWS = BOARD_ROWS / 2;
 
-type Unit = { -readonly [K in keyof UnitState]: UnitState[K] } & {
+type Unit = { -readonly [K in Exclude<keyof UnitState, 'statuses'>]: UnitState[K] } & {
+  readonly statuses: Statuses;
   /** The unit can't act before this tick. */
   busyUntil: number;
   /** A Burglar with its team's Burglar trait active, so it targets the farthest enemy. */
@@ -108,7 +114,11 @@ interface Projectile {
   readonly target: Unit;
 }
 
-class Fight implements Combat {
+/**
+ * The fight itself. Code outside the package uses it through `createCombat`; abilities and traits
+ * use the methods that aren't part of `Combat`, and so do tests.
+ */
+export class Fight implements Combat {
   tick = 0;
   readonly events: CombatEvent[] = [];
   private readonly units: Unit[] = [];
@@ -132,9 +142,10 @@ class Fight implements Combat {
     if (this.outcome !== null) throw new Error('The combat is over.');
     this.tick++;
     const firstEvent = this.events.length;
-    // Section 6.4. Statuses and regeneration come in later steps. Once a team is wiped out,
-    // nothing else is processed.
+    // Section 6.4. Regeneration comes with traits. Once a team is wiped out, nothing else is
+    // processed.
     const first = firstTeam(this.rng);
+    this.expireStatuses();
     this.resolveQueue();
     for (const unit of actionOrder(this.living(), first)) {
       if (this.outcome !== null) break;
@@ -190,6 +201,7 @@ class Fight implements Combat {
           mana: base.startMana,
           base,
           stats: finalStats(base, {}),
+          statuses: new Statuses(),
           busyUntil: 0,
           targetsFarthest: burglarTrait && def.classes.includes('burglar'),
           nextAttackTick: 1,
@@ -197,6 +209,66 @@ class Fight implements Combat {
       }
     }
     this.checkWipe();
+  }
+
+  /**
+   * Puts a status on a unit (section 12.1). A stun on a stun-immune unit, or a stun, stun immunity
+   * or untargetable that doesn't outlast the current one, changes nothing and emits no event.
+   */
+  applyStatus(sourceId: number, targetId: number, effect: StatusEffect): void {
+    const target = this.units[targetId]!;
+    if (!target.alive) return;
+    const expiresTick = this.tick + toTicks(effect.seconds);
+    const event = { type: 'status', tick: this.tick, source: sourceId, target: targetId, status: effect.kind, expiresTick } as const;
+    switch (effect.kind) {
+      case 'stun':
+      case 'stunImmune':
+      case 'untargetable':
+        if (!target.statuses.extend(effect.kind, expiresTick)) return;
+        this.events.push({ ...event, stat: null, value: null });
+        // Enemies targeting it drop it, and choose again when they next act.
+        if (effect.kind === 'untargetable') {
+          for (const enemy of this.living(enemyOf(target.team))) if (enemy.target === targetId) enemy.target = null;
+        }
+        return;
+      case 'slow':
+        target.statuses.addSlow(effect.pct, expiresTick);
+        this.events.push({ ...event, stat: null, value: effect.pct });
+        break;
+      case 'reduce':
+        for (const stat of effect.stats) {
+          target.statuses.addReduction(stat, effect.pct, expiresTick);
+          this.events.push({ ...event, stat, value: effect.pct });
+        }
+        break;
+      case 'buff':
+        target.statuses.addBuff(effect.stat, effect.amount, expiresTick);
+        this.events.push({ ...event, stat: effect.stat, value: effect.amount });
+        break;
+    }
+    this.refreshStats(target);
+  }
+
+  /** Gives a unit a shield, rounded to a whole number (section 4). A shield of 0 isn't added. */
+  addShield(sourceId: number, targetId: number, amount: number, seconds: number): void {
+    const target = this.units[targetId]!;
+    const rounded = Math.round(amount);
+    if (!target.alive || rounded <= 0) return;
+    const expiresTick = this.tick + toTicks(seconds);
+    target.statuses.addShield(rounded, expiresTick);
+    this.events.push({ type: 'shield', tick: this.tick, source: sourceId, target: targetId, amount: rounded, expiresTick });
+  }
+
+  /** Removes the statuses and shields that expire this tick (section 6.4, step 1). */
+  private expireStatuses(): void {
+    for (const unit of this.units) {
+      if (unit.alive && unit.statuses.expire(this.tick)) this.refreshStats(unit);
+    }
+  }
+
+  /** Recomputes a unit's stats after its statuses change (section 7.4). */
+  private refreshStats(unit: Unit): void {
+    unit.stats = finalStats(unit.base, unit.statuses.modifiers());
   }
 
   /** Resolves the projectiles due this tick, in the order they were fired (section 6.4, step 2). */
@@ -213,7 +285,8 @@ class Fight implements Combat {
 
   /** A unit's action for the tick (section 6.4, step 4). Casting comes with abilities. */
   private act(unit: Unit): void {
-    if (!unit.alive || this.tick < unit.busyUntil) return;
+    // A stun doesn't stop a step already under way: the unit has claimed its new hex.
+    if (!unit.alive || this.tick < unit.busyUntil || unit.statuses.has('stun')) return;
     let target = this.ensureTarget(unit);
     if (target === null) return;
 
@@ -265,21 +338,23 @@ class Fight implements Combat {
     this.dealDamage(source, target, raw, 'physical', crit, 'attack');
   }
 
-  /** Runs the damage pipeline (section 9.1). Amps, shields and damage reduction come with traits, statuses and abilities. */
+  /** Runs the damage pipeline (section 9.1). Amps and damage reduction come with traits and abilities. */
   private dealDamage(source: Unit, target: Unit, raw: number, damageType: DamageType, crit: boolean, kind: DamageEvent['kind']): void {
     const amount = finalDamage(raw, damageType, target.stats, {
       ampPct: 0,
       overtimePct: overtimePct(this.tick),
       reductionPct: 0,
     });
-    target.health -= amount;
+    // Shields take it first; the defender gains mana from all of it.
+    const absorbed = target.statuses.absorb(amount);
+    target.health -= amount - absorbed;
     this.events.push({
       type: 'damage',
       tick: this.tick,
       source: source.id,
       target: target.id,
       amount,
-      absorbed: 0,
+      absorbed,
       damageType,
       crit,
       kind,
@@ -382,9 +457,8 @@ function enemyOf(team: Team): Team {
   return team === 'A' ? 'B' : 'A';
 }
 
-/** Untargetable units come with statuses (section 12.1). */
 function isTargetable(unit: Unit): boolean {
-  return unit.alive;
+  return unit.alive && !unit.statuses.has('untargetable');
 }
 
 /** Throws on input the server should never send. */

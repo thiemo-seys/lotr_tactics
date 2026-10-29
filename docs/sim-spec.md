@@ -72,6 +72,7 @@ packages/sim/
       targeting.ts
       movement.ts
       damage.ts
+      statuses.ts     stuns, slows, buffs, reductions and shields on one unit
       abilities.ts    ability executor (selectors and effects)
       traits.ts       trait hooks
       events.ts       event types
@@ -343,7 +344,7 @@ final      = Math.round(reduced × (1 − target's damage reduction)), at least 
   - Dwarf against a Large target
 - **Overtime** = 1 + 0.1 × floor((tick − 900) / 30) during overtime, otherwise 1.
 - **Target's damage reduction:** the Witch-king's passive (50% against Gondor and Rohan sources other than Éowyn).
-- **Shields** absorb `final` first, earliest-expiring shield first. The rest comes off Health.
+- **Shields** absorb `final` first, earliest-expiring shield first, then the oldest. The rest comes off Health.
 - **Defender mana gain:**
   - `Math.floor(final × 6 / 100)`, where `final` is absorbed plus health damage, capped at 15 per hit.
   - Nobody gains mana from any source while casting.
@@ -541,12 +542,16 @@ The same numbers as `design.md` section 5, written as selectors and effects.
 | Status | Rule |
 |---|---|
 | Stun | No moving, attacking or casting. A new stun extends the current one only if it lasts longer. A move already in progress completes. |
-| Stun immunity | New stuns are ignored. |
+| Stun immunity | New stuns are ignored; a stun already in place runs its course. A new one extends the current one only if it lasts longer. |
 | Slow | Only the strongest active slow applies. |
 | Armor / Magic Resist reduction | Only the strongest active reduction per stat applies. |
 | Buff | Buffs add together; each has its own duration. |
-| Shield | Separate instances, each with its own amount and expiry. |
-| Untargetable | Can't be chosen as a target. Enemies currently targeting it drop it and choose again. Projectiles at it are wasted. |
+| Shield | Separate instances, each with its own amount and expiry. Damage takes the earliest-expiring shield first, then the oldest (section 9.1). |
+| Untargetable | Can't be chosen as a target. Enemies currently targeting it drop it at once and choose again when they next act. Projectiles at it are wasted. A new one extends the current one only if it lasts longer. |
+
+- **Timing:** a status applied on tick `t` for `s` seconds has `expiresTick = t + Math.round(s × 30)` and is removed at the start of that tick (section 6.4, step 1). A unit stunned for 1 s on tick 10 acts again on tick 40.
+- **Stats** are recomputed whenever a buff, slow or reduction starts or ends (section 7.4). An attack's cooldown uses the Attack Speed at the moment it fires.
+- **Shields** are rounded to a whole number when applied (section 4). A shield that rounds to 0 isn't added.
 
 ### 12.2 Trait counting
 
@@ -650,7 +655,7 @@ Every event has a `tick`.
 | `heal` | source, target, amount |
 | `shield` | source, target, amount, expiresTick |
 | `cast` | unit, ability |
-| `status` | target, status, expiresTick, value |
+| `status` | source, target, status (`stun`, `stunImmune`, `untargetable`, `slow`, `reduce` or `buff`), stat (for `reduce` and `buff`, otherwise null), value (the slow or reduction percent, or the buff amount, otherwise null), expiresTick. A reduction of both Armor and Magic Resist emits one event per stat. A stun, stun immunity or untargetable that doesn't outlast the current one emits nothing. |
 | `death` | unit |
 | `end` | outcome |
 
@@ -679,6 +684,13 @@ Every event has a `tick`.
 - Projectile travel and wasted projectiles.
 - Resolution order (dodge → crit → reduction → damage → mana).
 - Armor and Magic Resist formula; damage amps; overtime multiplier; shields absorbing first; Witch-king reduction.
+
+**Statuses**
+- Stuns extend only if longer, stun immunity ignores new stuns, and a move in progress completes.
+- Only the strongest slow, and the strongest reduction of each stat, applies; buffs add together.
+- Shields absorb earliest-expiring first, then oldest; the damage event reports the absorbed part.
+- Untargetable units are dropped as targets, and projectiles at them are wasted.
+- Statuses expire at the start of their expiry tick, before the queue resolves.
 
 **Mana**
 - Gain per attack and per hit, including rounding down and the cap.
