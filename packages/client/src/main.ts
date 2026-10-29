@@ -54,7 +54,6 @@ playButton.addEventListener('click', togglePlay);
 element('step').addEventListener('click', stepOnce);
 speedSelect.addEventListener('change', () => (playback.speed = Number(speedSelect.value)));
 element('toggle-log').addEventListener('click', () => (log.hidden = !log.hidden));
-window.addEventListener('resize', () => scene.resize());
 window.addEventListener('keydown', (event) => {
   if (event.target instanceof HTMLInputElement || event.target instanceof HTMLSelectElement) return;
   if (event.key === ' ') {

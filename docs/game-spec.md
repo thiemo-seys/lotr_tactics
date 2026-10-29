@@ -48,6 +48,7 @@ These are not in `design.md` yet. They were chosen to remove ambiguity and can b
 | Board below the level | Before a fight, bench units fill the free board places |
 | Council options | 9 units from the pool, each with a random item component. Unit costs depend on the stage |
 | Council with a full bench | A picked unit that can't go on the bench or merge is sold at once |
+| Council pick time | 15 seconds for a person's pick in the client |
 | Stage 1 damage | No stage damage. Surviving monsters still deal their damage |
 | PvE loot | Given in full whether the player wins or loses |
 | Matchmaking | The pairing with the fewest repeats of recent opponents, searched in a seeded order |
@@ -387,15 +388,19 @@ function createGame(config: GameConfig): Game;   // throws on an invalid config
 
 ## 12. Client: playing against bots
 
-The fight viewer (`viewer-spec.md`) becomes the game client. The person plays seat 0 and bots play the rest.
+The play page, `play.html` in `packages/client`, next to the fight viewer (`viewer-spec.md`), which links to it. The person plays seat 0 and bots play the rest.
 
-- **Planning view:** the person's half of the board and their bench in 3D. An HTML overlay with the shop, gold, level and XP, the reroll, buy XP and lock buttons, a timer and a Ready button.
-- **Drag and drop** moves units between the bench and the board; dropping a unit on the shop sells it.
-- **Players list:** every player's HP and placement.
-- **Council:** the options as cards; the person picks one when it's their turn.
-- **Fights:** the person's fight plays back with the viewer; the others run headless. When the person is team B, the camera starts on their side.
-- **Timers:** 30 seconds of planning (`design.md` section 9), ended early by Ready. Bots act at the start of planning.
-- The fight viewer stays available for tuning.
+- **Session** (`session.ts`, no Three.js or DOM): runs the game for the person. Bots pick in a Council as soon as it's their group's turn, and plan at the start of planning, in a rotating order. Once the person is out, the rest of the game plays out at once.
+- **Planning view:** the person's half of the board and their bench, a row of 9 tiles in front of it, in 3D. An HTML overlay with the round, a timer, HP, gold, level, XP and the board count, the shop, the buy XP, reroll and lock buttons, the item components and a Ready button.
+- **Drag and drop** moves units between the bench and the board, swapping with a unit already there; dropping a unit on the shop bar sells it.
+- **Keys:** D rerolls, F buys XP, Space is Ready.
+- **Players list:** every player's HP, level and place.
+- **Council:** the options as cards with their components and who took them; the person picks one when it's their group's turn.
+- **Fights:** the person's fight plays back with the viewer's playback, at 1×, 2× or 4×, and can be skipped; the others run headless. When the person is team B, the camera starts on their side. The person's units are always blue.
+- **Results:** for a few seconds after each fight, the damage everyone took and who was knocked out.
+- **End:** the person's place and the final standings, with a New game button.
+- **Timers:** 30 seconds of planning (`design.md` section 9), ended early by Ready; 15 seconds for the person's Council pick, after which they get a random option.
+- **Seed:** from the URL (`play.html#seed=7`) or random.
 
 ---
 
