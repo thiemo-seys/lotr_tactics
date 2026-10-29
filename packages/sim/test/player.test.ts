@@ -11,7 +11,7 @@ function setup(gold = 100, seed = 1) {
   const pool = new Pool();
   let nextId = 0;
   const context = { pool, nextUnitId: () => nextId++ };
-  const player = new Player(0, context, createRng(seed));
+  const player = new Player(0, context, createRng(seed), createRng(seed + 1000));
   player.gold = gold;
   return { pool, player, context };
 }
@@ -440,7 +440,7 @@ describe('copies', () => {
     const pool = new Pool();
     let nextId = 0;
     const context = { pool, nextUnitId: () => nextId++ };
-    const players = [0, 1, 2].map((seat) => new Player(seat, context, createRng(seat)));
+    const players = [0, 1, 2].map((seat) => new Player(seat, context, createRng(seat), createRng(seat + 1000)));
     const rng = createRng(77);
     const randomPlace = (): Place =>
       randomInt(rng, 2) ? { bench: randomInt(rng, 9) } : { col: randomInt(rng, 7), row: randomInt(rng, 4) };

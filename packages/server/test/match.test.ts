@@ -83,6 +83,17 @@ describe('Match steps', () => {
 });
 
 describe('Ready votes', () => {
+  it('gives planning more time while a person has a Gift offer', () => {
+    const t = testMatch(25, [0]);
+    while (!(t.match.game.state.stage === 2 && t.match.stepKind === 'planning')) timeOut(t);
+    expect(t.match.view(0).step.ms).toBe((TIMERS.planning + TIMERS.giftOffer) * 1000);
+    expect(t.match.act(0, { type: 'gift', option: 0 }).ok).toBe(true);
+    timeOut(t);
+    timeOut(t);
+    expect([t.match.game.state.round, t.match.stepKind]).toEqual([2, 'planning']);
+    expect(t.match.view(0).step.ms).toBe(TIMERS.planning * 1000);
+  });
+
   it('ends planning once every connected person is Ready', () => {
     const t = toPlanning(7, [0, 3]);
     expect(t.match.ready(0).ok).toBe(true);

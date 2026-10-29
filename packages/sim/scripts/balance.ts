@@ -5,6 +5,7 @@
 import { playBotGame } from '../src/bots/bot.js';
 import { traitLevels } from '../src/combat/traits.js';
 import type { PlacedUnit } from '../src/combat/combat.js';
+import { GIFTS, type GiftId } from '../src/data/gifts.js';
 import { ITEMS } from '../src/data/items.js';
 import { TRAITS, type TraitId } from '../src/data/traits.js';
 import { UNITS, type UnitId } from '../src/data/units.js';
@@ -39,6 +40,7 @@ class Placements {
 const units = new Placements();
 const traits = new Placements();
 const items = new Placements();
+const gifts = new Placements();
 const focus = new Placements();
 const endStages = new Map<number, number>();
 const pve = new Map<string, { won: number; fought: number }>();
@@ -54,11 +56,17 @@ for (let seed = firstSeed; seed < firstSeed + games; seed++) {
   endStages.set(last.stage, (endStages.get(last.stage) ?? 0) + 1);
 
   // Each player's board in their last fight, which is the one they finished with.
+  // And the Gifts they had then, since an eliminated player's Gifts are gone.
+  const giftsOf = new Map<number, readonly GiftId[]>();
   const boards = new Map<number, readonly PlacedUnit[]>();
   for (const report of reports) {
     for (const fight of report.fights) {
       boards.set(fight.home, fight.input.teams.A);
-      if (fight.kind === 'pvp') boards.set(fight.away!, fight.input.teams.B);
+      giftsOf.set(fight.home, fight.input.gifts?.A ?? []);
+      if (fight.kind === 'pvp') {
+        boards.set(fight.away!, fight.input.teams.B);
+        giftsOf.set(fight.away!, fight.input.gifts?.B ?? []);
+      }
       if (fight.kind === 'pve') {
         const key = report.stage >= 6 ? '6-7 on' : `${report.stage}-${report.round}`;
         const p = pve.get(key) ?? { won: 0, fought: 0 };
@@ -74,6 +82,7 @@ for (let seed = firstSeed; seed < firstSeed + games; seed++) {
     const ids = board.map((u) => u.unitId as UnitId);
     for (const id of new Set(ids)) units.add(UNITS[id].name, placement);
     for (const id of new Set(board.flatMap((u) => u.items))) items.add(ITEMS[id].name, placement);
+    for (const id of giftsOf.get(player.seat) ?? []) gifts.add(GIFTS[id].name, placement);
     for (const [trait, level] of Object.entries(traitLevels(ids))) {
       const def = TRAITS[trait as TraitId];
       traits.add(`${def.name} ${def.breakpoints[level]}`, placement);
@@ -89,4 +98,5 @@ console.log(`PvE win rate: ${[...pve].map(([k, p]) => `${k} ${Math.round((100 * 
 units.print('Units on final boards, by average placement');
 traits.print('Active traits on final boards, by average placement');
 items.print('Items on final boards, by average placement');
+gifts.print('Gifts, by average placement');
 focus.print('Bot focus traits, by average placement', 3);

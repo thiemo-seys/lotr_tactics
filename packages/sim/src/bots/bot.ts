@@ -1,6 +1,7 @@
 // A bot that plays one seat through the same actions as a person (docs/game-spec.md section 11).
 
 import { BOT, type ItemRole } from '../data/bots.js';
+import { GIFTS, type GiftId } from '../data/gifts.js';
 import { ITEMS, type ItemId } from '../data/items.js';
 import { TRAITS, type ClassId, type TraitId } from '../data/traits.js';
 import { UNITS, type UnitId } from '../data/units.js';
@@ -80,6 +81,7 @@ export class Bot {
   plan(game: Game): void {
     if (game.state.phase !== 'planning' || this.me(game).placement !== null) return;
     this.chooseFocus(game);
+    this.chooseGift(game);
     this.level(game);
     this.buy(game);
     if (this.shouldRoll(game)) {
@@ -109,6 +111,27 @@ export class Bot {
       }
     });
     if (best >= 0) game.act(this.seat, { type: 'pick', option: best });
+  }
+
+  /** Picks from a Gift offer, rerolling once if nothing on it is good enough (section 11). */
+  private chooseGift(game: Game): void {
+    const best = () => {
+      const offer = this.me(game).giftOffer ?? [];
+      const scores = offer.map((gift) => this.giftScore(game, gift));
+      const top = Math.max(...scores);
+      return { option: scores.indexOf(top), score: top };
+    };
+    if (this.me(game).giftOffer === null) return;
+    if (best().score < BOT.gifts.rerollBelow && !this.me(game).giftRerolled) game.act(this.seat, { type: 'rerollGifts' });
+    const { option } = best();
+    if (option >= 0) game.act(this.seat, { type: 'gift', option });
+  }
+
+  private giftScore(game: Game, gift: GiftId): number {
+    const { combat } = GIFTS[gift];
+    if (combat?.crest !== undefined) return this.focus.includes(combat.crest) ? BOT.gifts.focusCrest : BOT.gifts.otherCrest;
+    if (combat !== undefined) return BOT.gifts.combat;
+    return BOT.gifts.economy + (this.me(game).hp >= BOT.gifts.greedHp ? BOT.gifts.greedBonus : 0);
   }
 
   private me(game: Game): PlayerView {
