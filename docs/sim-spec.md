@@ -34,7 +34,7 @@ These are not in `design.md` yet. They were chosen to remove ambiguity and can b
 | Topic | Default |
 |---|---|
 | Hex layout | Odd-r offset grid, 7 columns × 8 rows |
-| Action order | Units act one at a time in a fixed order; which team goes first alternates every tick |
+| Action order | Units act one at a time in slot order; each tick, the seeded generator picks which team goes first within each slot |
 | Movement | 15 ticks per hex; position updates at the start of the step |
 | Projectiles | Ranged attacks only; 12 hexes per second |
 | Mana from damage taken | 6% of post-reduction damage taken, rounded down, max 15 per hit |
@@ -185,10 +185,13 @@ Tick 0 only sets up the fight; units start acting at tick 1.
 - Each unit has a **slot**: its rank within its team.
   - Initial units are ranked by own-perspective row (front first), then by column.
   - Summons get the next free slot when they spawn.
-- Each tick, units act sorted by (slot, team). On even ticks team A goes first within each slot; on odd ticks team B goes first.
+- Each tick, before anything else, the seeded generator picks the team that goes first within each slot: team A if `rng() < 0.5`, otherwise team B. Units then act sorted by slot, with the first team's unit before the other team's. Tick 0's leaps and charges use the same rule.
+  - Why not a fixed alternation: units with the same attack speed attack on ticks of the same parity (a 50-tick cooldown fires on ticks 1, 51, 101, …), so the same team would always strike first. With team B first on odd ticks, B won 68% of mirrored 1 v 1 duels and 88% of mirrored archer fights.
 - Each unit also has a unique numeric `id` for identity and events. Ids are given in creation order: team A's starting units by slot, then team B's, then summons as they spawn.
 
 ### 6.4 Each tick (from tick 1)
+
+First, pick the team that goes first this tick (section 6.3). Then:
 
 1. **Expire** statuses and shields whose `expiresTick` is the current tick.
 2. **Resolve the queue:** projectiles and delayed effects due this tick, ordered by due tick, then by creation order.
@@ -310,6 +313,7 @@ Abilities that dash to a specific enemy (Grishnákh, the Witch-king) make that e
 - **Ranged (Range ≥ 2):**
   - Fires a projectile that resolves at `now + ceil(distance × 30 / 12)`.
   - If the target is dead or untargetable on arrival, the projectile is wasted.
+  - If the attacker has died, the projectile still lands, using the attacker's stats as they were when it died.
 
 ### Resolving a hit
 
@@ -642,7 +646,7 @@ Every event has a `tick`.
 | `dash` | unit, from, to |
 | `attack` | unit, target, ranged, hitTick |
 | `dodge` | unit (defender), source |
-| `damage` | source, target, amount, absorbed, type, crit, kind (`attack`, `ability` or `trait`) |
+| `damage` | source, target, amount (the final damage, including any absorbed part), absorbed, damageType, crit, kind (`attack`, `ability` or `trait`) |
 | `heal` | source, target, amount |
 | `shield` | source, target, amount, expiresTick |
 | `cast` | unit, ability |
@@ -705,7 +709,7 @@ Every event has a `tick`.
 - A different seed can give a different result when crits or dodges are involved.
 
 **Fairness**
-- A board fighting its own mirror wins close to 50% over 1,000 seeds.
+- A board fighting its own mirror wins close to 50% over 1,000 seeds: between 45% and 55% of the fights that aren't draws, for each test board.
 
 **Performance**
 - A 9 v 9 fight to completion should take well under 10 ms in Node, so bots can run thousands of games for balancing.
