@@ -157,7 +157,9 @@ export class Match {
         return;
       }
       this.plan();
-      this.step = { kind: 'planning', endsAt: this.after(TIMERS.planning) };
+      // Bots have picked their Gifts by now, so this is a person with an offer.
+      const offers = this.game.state.players.some((p) => p.giftOffer !== null);
+      this.step = { kind: 'planning', endsAt: this.after(TIMERS.planning + (offers ? TIMERS.giftOffer : 0)) };
       return;
     }
   }
