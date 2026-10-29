@@ -194,8 +194,3 @@ export const ITEMS: { readonly [K in ItemId]: ItemDef } = {
   }),
   'ring-of-the-nine': ring('Ring of the Nine', { kind: 'nazgul', damagePctPerCorruption: 5 }, { family: 'nine', copies: 9 }),
 };
-
-/** Component names, for the Council and loot. */
-export const COMPONENT_NAMES: Readonly<Record<ComponentId, string>> = Object.fromEntries(
-  COMPONENTS.map((id) => [id, ITEMS[id].name]),
-) as Record<ComponentId, string>;
