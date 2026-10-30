@@ -2,16 +2,7 @@
 
 import { describe, expect, it } from 'vitest';
 import { simulateCombat } from '../src/combat/combat.js';
-import type { CombatEvent } from '../src/combat/events.js';
-import { BOARDS, input, mirrorMatch, placed } from './helpers.js';
-
-/** FNV-1a hash of the event log. */
-function hashEvents(events: readonly CombatEvent[]): string {
-  const text = JSON.stringify(events);
-  let hash = 0x811c9dc5;
-  for (let i = 0; i < text.length; i++) hash = Math.imul(hash ^ text.charCodeAt(i), 0x01000193) >>> 0;
-  return hash.toString(16);
-}
+import { BOARDS, hashEvents, input, mirrorMatch, placed } from './helpers.js';
 
 describe('determinism', () => {
   const fight = input(BOARDS.full, [placed('saruman', 3, 0), ...BOARDS.tanks, ...BOARDS.archers]);

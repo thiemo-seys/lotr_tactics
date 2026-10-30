@@ -70,3 +70,15 @@ export function stepTo(combat: Combat, tick: number): CombatEvent[] {
 export function ofType<T extends CombatEvent['type']>(events: readonly CombatEvent[], type: T): Extract<CombatEvent, { type: T }>[] {
   return events.filter((e): e is Extract<CombatEvent, { type: T }> => e.type === type);
 }
+
+/** FNV-1a hash of a string, in hex. */
+export function hash(text: string): string {
+  let h = 0x811c9dc5;
+  for (let i = 0; i < text.length; i++) h = Math.imul(h ^ text.charCodeAt(i), 0x01000193) >>> 0;
+  return h.toString(16);
+}
+
+/** A hash of an event log. */
+export function hashEvents(events: readonly CombatEvent[]): string {
+  return hash(JSON.stringify(events));
+}
