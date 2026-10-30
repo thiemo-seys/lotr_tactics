@@ -6,27 +6,13 @@ import { INCOME, PLAYER, SHOP, STREAK_GOLD, XP } from '../data/economy.js';
 import { GIFTS, type GiftId, type GiftTier } from '../data/gifts.js';
 import { COMPONENTS, MAX_ITEMS, type ComponentId, type ItemId } from '../data/items.js';
 import { UNITS, type Cost, type UnitId } from '../data/units.js';
-import { BOARD_COLS, BOARD_ROWS } from '../hex.js';
+import { BOARD_COLS } from '../hex.js';
 import { randomInt, type Rng } from '../rng.js';
 import type { Star } from '../types.js';
 import { giftBonus, rollGiftOffer } from './gifts.js';
+import { TEAM_ROWS, boardPlace, boardSlot, isIndex, isPlace, placeOf, unitAt, type BoardPlace, type OwnedUnit, type Place } from './places.js';
 import { copiesIn, type Pool } from './pool.js';
 import type { Ring } from './ring.js';
-
-/** Rows on one player's half of the board. */
-export const TEAM_ROWS = BOARD_ROWS / 2;
-
-/** A bench slot, or a board place in the player's own perspective (row 3 is the front). */
-export type Place = { readonly bench: number } | { readonly col: number; readonly row: number };
-
-export interface OwnedUnit {
-  /** Unique in the game, so a client can follow a unit as it moves or merges. */
-  readonly id: number;
-  readonly unitId: UnitId;
-  readonly star: Star;
-  /** The items it holds, in order (section 7.7). */
-  readonly items: readonly ItemId[];
-}
 
 export type ActionResult = { readonly ok: true } | { readonly ok: false; readonly reason: string };
 
@@ -49,7 +35,7 @@ export interface PlayerView {
   /** Consecutive PvP results: positive for wins, negative for losses. */
   readonly streak: number;
   readonly bench: readonly (OwnedUnit | null)[];
-  /** Indexed by `row * BOARD_COLS + col`, in the player's own perspective. */
+  /** Indexed by `boardSlot`, in the player's own perspective. */
   readonly board: readonly (OwnedUnit | null)[];
   readonly shop: readonly (UnitId | null)[];
   readonly shopLocked: boolean;
@@ -76,7 +62,7 @@ function fail(reason: string): ActionResult {
 }
 
 /** The order free board places are filled in before a fight (section 7.6). */
-const FILL_ORDER: readonly { col: number; row: number }[] = [3, 2, 1, 0].flatMap((row) =>
+const FILL_ORDER: readonly BoardPlace[] = [3, 2, 1, 0].flatMap((row) =>
   [3, 2, 4, 1, 5, 0, 6].map((col) => ({ col, row })),
 );
 
@@ -144,10 +130,6 @@ export class Player implements PlayerView {
     return this.hp <= 0;
   }
 
-  unitAt(place: Place): OwnedUnit | null {
-    return 'bench' in place ? this.bench[place.bench]! : this.board[place.row * BOARD_COLS + place.col]!;
-  }
-
   boardCount(): number {
     return this.board.filter((u) => u !== null).length;
   }
@@ -169,7 +151,7 @@ export class Player implements PlayerView {
 
   sell(from: Place): ActionResult {
     if (!isPlace(from)) return fail('There is no such place.');
-    const unit = this.unitAt(from);
+    const unit = unitAt(this, from);
     if (unit === null) return fail('There is no unit there.');
     this.setAt(from, null);
     this.release(unit);
@@ -183,9 +165,9 @@ export class Player implements PlayerView {
 
   move(from: Place, to: Place): ActionResult {
     if (!isPlace(from) || !isPlace(to)) return fail('There is no such place.');
-    const unit = this.unitAt(from);
+    const unit = unitAt(this, from);
     if (unit === null) return fail('There is no unit there.');
-    const other = this.unitAt(to);
+    const other = unitAt(this, to);
     if (other === null && 'bench' in from && !('bench' in to) && this.boardCount() >= this.level) {
       return fail('The board is full for this level.');
     }
@@ -216,7 +198,7 @@ export class Player implements PlayerView {
   equip(item: number, to: Place): ActionResult {
     if (!isIndex(item, this.items.length)) return fail('There is no such item.');
     if (!isPlace(to)) return fail('There is no such place.');
-    const unit = this.unitAt(to);
+    const unit = unitAt(this, to);
     if (unit === null) return fail('There is no unit there.');
     if (isRingOfPower(this.items[item]!) && unit.items.some(isRingOfPower)) return fail('A unit can wear only one Ring of Power.');
     const items = addItem(unit.items, this.items[item]!);
@@ -314,7 +296,7 @@ export class Player implements PlayerView {
     for (let slot = 0; slot < this.bench.length && this.boardCount() < this.level; slot++) {
       const unit = this.bench[slot]!;
       if (unit === null) continue;
-      const place = FILL_ORDER.find((p) => this.unitAt(p) === null)!;
+      const place = FILL_ORDER.find((p) => unitAt(this, p) === null)!;
       this.bench[slot] = null;
       this.setAt(place, unit);
     }
@@ -356,18 +338,10 @@ export class Player implements PlayerView {
     const ring = this.context.ring;
     this.board.forEach((unit, i) => {
       if (unit === null) return;
-      const place = { unitId: unit.unitId, star: unit.star, col: i % BOARD_COLS, row: Math.floor(i / BOARD_COLS), items: [...unit.items] };
+      const place = { unitId: unit.unitId, star: unit.star, ...boardPlace(i), items: [...unit.items] };
       placed.push(ring?.isBorneBy(this.seat, unit.id) === true ? { ...place, ring: ring.corruption } : place);
     });
     return placed;
-  }
-
-  /** The place of an owned unit by its id, or null. */
-  placeOf(id: number): Place | null {
-    const board = this.board.findIndex((u) => u?.id === id);
-    if (board >= 0) return { col: board % BOARD_COLS, row: Math.floor(board / BOARD_COLS) };
-    const bench = this.bench.findIndex((u) => u?.id === id);
-    return bench >= 0 ? { bench } : null;
   }
 
   /** The first owned unit with a unit id, at any star level: board places in order, then the bench. */
@@ -378,7 +352,7 @@ export class Player implements PlayerView {
   /** The first unit on the board with a unit id, in the order the board fills (section 7.6). */
   firstOnBoard(unitId: UnitId): OwnedUnit | null {
     for (const place of FILL_ORDER) {
-      const unit = this.unitAt(place);
+      const unit = unitAt(this, place);
       if (unit?.unitId === unitId) return unit;
     }
     return null;
@@ -415,9 +389,9 @@ export class Player implements PlayerView {
 
   /** Removes an owned unit for good: its copies go back to the pool and its items to the player. */
   remove(id: number): void {
-    const place = this.placeOf(id);
+    const place = placeOf(this, id);
     if (place === null) return;
-    const unit = this.unitAt(place)!;
+    const unit = unitAt(this, place)!;
     this.setAt(place, null);
     this.release(unit);
     this.items.push(...unit.items);
@@ -469,7 +443,7 @@ export class Player implements PlayerView {
 
   private setAt(place: Place, unit: OwnedUnit | null): void {
     if ('bench' in place) this.bench[place.bench] = unit;
-    else this.board[place.row * BOARD_COLS + place.col] = unit;
+    else this.board[boardSlot(place)] = unit;
   }
 
   private release(unit: OwnedUnit): void {
@@ -480,7 +454,7 @@ export class Player implements PlayerView {
   private find(unitId: UnitId, star: Star): Place[] {
     const places: Place[] = [];
     this.board.forEach((u, i) => {
-      if (u?.unitId === unitId && u.star === star) places.push({ col: i % BOARD_COLS, row: Math.floor(i / BOARD_COLS) });
+      if (u?.unitId === unitId && u.star === star) places.push(boardPlace(i));
     });
     this.bench.forEach((u, i) => {
       if (u?.unitId === unitId && u.star === star) places.push({ bench: i });
@@ -496,13 +470,13 @@ export class Player implements PlayerView {
    */
   private merge(unitId: UnitId, star: Star, places: readonly Place[]): void {
     const [keep, ...others] = places;
-    const kept = this.unitAt(keep!)!;
+    const kept = unitAt(this, keep!)!;
     let items: readonly ItemId[] = kept.items;
     const ring = this.context.ring;
     for (const place of others) {
       // The merged unit bears the Ring if one of the copies did.
-      if (ring?.isBorneBy(this.seat, this.unitAt(place)!.id) === true) ring.bearer = kept.id;
-      for (const item of this.unitAt(place)!.items) {
+      if (ring?.isBorneBy(this.seat, unitAt(this, place)!.id) === true) ring.bearer = kept.id;
+      for (const item of unitAt(this, place)!.items) {
         const next = addItem(items, item);
         if (next === null) this.items.push(item);
         else items = next;
@@ -514,14 +488,4 @@ export class Player implements PlayerView {
     const same = this.find(unitId, merged);
     if (merged < 3 && same.length >= 3) this.merge(unitId, merged, same);
   }
-}
-
-export function isPlace(place: unknown): place is Place {
-  if (typeof place !== 'object' || place === null) return false;
-  if ('bench' in place) return isIndex(place.bench, PLAYER.benchSize);
-  return 'col' in place && 'row' in place && isIndex(place.col, BOARD_COLS) && isIndex(place.row, TEAM_ROWS);
-}
-
-function isIndex(value: unknown, length: number): boolean {
-  return Number.isInteger(value) && (value as number) >= 0 && (value as number) < length;
 }

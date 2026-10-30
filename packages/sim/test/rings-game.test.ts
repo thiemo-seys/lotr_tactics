@@ -7,6 +7,7 @@ import { ITEMS, type ItemId, type RingOfPowerId } from '../src/data/items.js';
 import { RING } from '../src/data/ring.js';
 import type { UnitId } from '../src/data/units.js';
 import { createGame, type Game } from '../src/game/game.js';
+import { boardSlot } from '../src/game/places.js';
 import type { Player } from '../src/game/player.js';
 import { copiesIn, type Pool } from '../src/game/pool.js';
 import type { Ring } from '../src/game/ring.js';
@@ -31,7 +32,7 @@ function field(game: Game, seat: number, unitId: UnitId, place: { col: number; r
   const unit = { id, unitId, star, items };
   const p = player(game, seat);
   if ('bench' in place) p.bench[place.bench] = unit;
-  else p.board[place.row * 7 + place.col] = unit;
+  else p.board[boardSlot(place)] = unit;
   return id;
 }
 

@@ -7,8 +7,8 @@ import { ITEMS, type ItemId } from '../data/items.js';
 import { TRAITS, type ClassId, type TraitId } from '../data/traits.js';
 import { UNITS, type UnitId } from '../data/units.js';
 import { createGame, type Game, type GameState, type RoundReport } from '../game/game.js';
-import { TEAM_ROWS, addItem, type OwnedUnit, type Place, type PlayerView } from '../game/player.js';
-import { BOARD_COLS } from '../hex.js';
+import { TEAM_ROWS, ownedUnits, placeOf, samePlace, unitAt, type BoardPlace, type OwnedUnit } from '../game/places.js';
+import { addItem, type PlayerView } from '../game/player.js';
 import { createRng, deriveSeed } from '../rng.js';
 
 /** Bots' random streams start here (game-spec.md section 4). */
@@ -34,17 +34,6 @@ function traitsOf(unitId: UnitId): TraitId[] {
   return [def.origin, ...def.classes];
 }
 
-function owned(p: PlayerView): { unit: OwnedUnit; place: Place }[] {
-  const units: { unit: OwnedUnit; place: Place }[] = [];
-  p.board.forEach((unit, i) => {
-    if (unit !== null) units.push({ unit, place: { col: i % BOARD_COLS, row: Math.floor(i / BOARD_COLS) } });
-  });
-  p.bench.forEach((unit, i) => {
-    if (unit !== null) units.push({ unit, place: { bench: i } });
-  });
-  return units;
-}
-
 /** The role of an item: its own for a component or a Ring of Power, its first component's for a combined item. */
 function itemRole(item: ItemId): ItemRole {
   const recipe = ITEMS[item].recipe;
@@ -58,15 +47,6 @@ function isKin(item: ItemId, unit: OwnedUnit): boolean {
 
 function hasClass(unit: OwnedUnit, trait: ClassId): boolean {
   return UNITS[unit.unitId].classes.includes(trait);
-}
-
-function unitAt(p: PlayerView, place: Place): OwnedUnit | null {
-  return ('bench' in place ? p.bench[place.bench] : p.board[place.row * BOARD_COLS + place.col]) ?? null;
-}
-
-function samePlace(a: Place, b: Place): boolean {
-  if ('bench' in a || 'bench' in b) return 'bench' in a && 'bench' in b && a.bench === b.bench;
-  return a.col === b.col && a.row === b.row;
 }
 
 export class Bot {
@@ -174,7 +154,7 @@ export class Bot {
     const { stage } = game.state;
     if (stage < BOT.focusFromStage || stage === this.focusStage) return;
     this.focusStage = stage;
-    const ids = new Set(owned(this.me(game)).map((o) => o.unit.unitId));
+    const ids = new Set(ownedUnits(this.me(game)).map((o) => o.unit.unitId));
     const score = new Map(TRAIT_IDS.map((trait) => [trait, this.taste.get(trait)!]));
     for (const id of ids) for (const trait of traitsOf(id)) score.set(trait, score.get(trait)! + 1);
     this.focus = [...TRAIT_IDS].sort((a, b) => score.get(b)! - score.get(a)!).slice(0, BOT.focusTraits);
@@ -188,7 +168,7 @@ export class Bot {
 
   /** How much the bot wants another copy of a unit. */
   private want(me: PlayerView, unitId: UnitId): number {
-    const copies = owned(me).filter((o) => o.unit.unitId === unitId);
+    const copies = ownedUnits(me).filter((o) => o.unit.unitId === unitId);
     if (copies.filter((o) => o.unit.star === 1).length >= 2) return BOT.want.merge;
     let score = UNITS[unitId].cost * BOT.want.perCost;
     if (copies.some((o) => o.unit.star < 3)) score += BOT.want.copy;
@@ -200,7 +180,7 @@ export class Bot {
   private worth(me: PlayerView, unit: OwnedUnit): number {
     const copies = [1, 3, 9][unit.star - 1]!;
     let score = UNITS[unit.unitId].cost * copies * BOT.want.perCost;
-    const twin = owned(me).some((o) => o.unit !== unit && o.unit.unitId === unit.unitId && o.unit.star === unit.star);
+    const twin = ownedUnits(me).some((o) => o.unit !== unit && o.unit.unitId === unit.unitId && o.unit.star === unit.star);
     if (twin) score += BOT.want.copy;
     for (const trait of traitsOf(unit.unitId)) if (this.focus.includes(trait)) score += BOT.want.focusTrait;
     return score;
@@ -214,7 +194,7 @@ export class Bot {
       const cost = UNITS[unitId].cost;
       const score = this.want(me, unitId);
       const merges = score >= BOT.want.merge;
-      const needed = owned(me).length < me.level;
+      const needed = ownedUnits(me).length < me.level;
       const affordable = me.gold >= cost && (merges || needed || me.gold - cost >= this.goldFloor(game));
       if (!affordable || (score < BOT.buyThreshold && !needed)) continue;
       if (!merges && !me.bench.includes(null) && !this.sellWorst(game, score)) continue;
@@ -248,22 +228,21 @@ export class Bot {
   /** Puts the strongest units on the board and lines them up by class (section 11). */
   private arrange(game: Game): void {
     const me = this.me(game);
-    const chosen = owned(me)
+    const chosen = ownedUnits(me)
       .map((o) => o.unit)
       .sort((a, b) => this.strength(me, b) - this.strength(me, a))
       .slice(0, me.level);
     const chosenIds = new Set(chosen.map((u) => u.id));
-    const placeOf = (id: number) => owned(this.me(game)).find((o) => o.unit.id === id)!.place;
 
     // Swap unchosen board units with chosen bench units, then fill free places.
-    for (const { unit, place } of owned(me)) {
+    for (const { unit, place } of ownedUnits(me)) {
       if ('bench' in place || chosenIds.has(unit.id)) continue;
-      const waiting = owned(this.me(game)).find((o) => 'bench' in o.place && chosenIds.has(o.unit.id));
+      const waiting = ownedUnits(this.me(game)).find((o) => 'bench' in o.place && chosenIds.has(o.unit.id));
       if (waiting !== undefined) game.act(this.seat, { type: 'move', from: waiting.place, to: place });
     }
     const targets = layout(chosen);
     for (const unit of chosen) {
-      const from = placeOf(unit.id);
+      const from = placeOf(this.me(game), unit.id)!;
       const to = targets.get(unit.id)!;
       if (!samePlace(from, to)) game.act(this.seat, { type: 'move', from, to });
     }
@@ -278,12 +257,12 @@ export class Bot {
     const { ring } = game.state;
     if (ring.state !== 'held' || ring.holder !== this.seat) return;
     const me = this.me(game);
-    const bound = owned(me)
+    const bound = ownedUnits(me)
       .flatMap((o) => o.unit.items)
       .concat(me.items)
       .some((item) => ITEMS[item].ringOfPower !== undefined && ITEMS[item].ringOfPower.family !== 'seven');
     if (!bound && game.act(this.seat, { type: 'destroyRing' }).ok) return;
-    const board = owned(me)
+    const board = ownedUnits(me)
       .filter((o) => !('bench' in o.place))
       .sort((a, b) => this.strength(me, b.unit) - this.strength(me, a.unit));
     if (board.some((o) => o.unit.id === ring.bearer)) return;
@@ -305,7 +284,7 @@ export class Bot {
    */
   private equip(game: Game): void {
     const me = this.me(game);
-    const board = owned(me)
+    const board = ownedUnits(me)
       .filter((o) => !('bench' in o.place))
       .sort((a, b) => this.strength(me, b.unit) - this.strength(me, a.unit));
     if (board.length === 0) return;
@@ -330,9 +309,9 @@ export class Bot {
 }
 
 /** Board places for units: each class in its preferred row, from the middle out, spilling to the nearest row. */
-function layout(units: readonly OwnedUnit[]): Map<number, { col: number; row: number }> {
+function layout(units: readonly OwnedUnit[]): Map<number, BoardPlace> {
   const taken = new Set<string>();
-  const places = new Map<number, { col: number; row: number }>();
+  const places = new Map<number, BoardPlace>();
   const byRow = [...units].sort((a, b) => preferredRow(b) - preferredRow(a));
   for (const unit of byRow) {
     const preferred = preferredRow(unit);

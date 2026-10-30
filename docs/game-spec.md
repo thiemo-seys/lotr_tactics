@@ -85,6 +85,7 @@ packages/sim/src/
     game.ts         createGame, actions, advancing rounds
     pool.ts         the shared pool and shop rolls
     player.ts       bench, board, merging, gold and XP for one player
+    places.ts       bench slots and board places, and finding units by place or id
     matchmaking.ts  pairing players and ghosts
     council.ts      Council of Elrond options and pick order
   bots/

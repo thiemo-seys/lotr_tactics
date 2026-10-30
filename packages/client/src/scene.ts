@@ -1,9 +1,9 @@
 // The Three.js scene: board, units, overlays and effects (docs/viewer-spec.md sections 3–5).
 
 import {
-  BOARD_COLS,
   BOARD_HEXES,
   PLAYER,
+  boardPlace,
   fromPlacement,
   isComponent,
   isRingOfPower,
@@ -156,7 +156,7 @@ export class FightScene {
       this.planning.set(unit.id, pawn);
     };
     player.board.forEach((unit, i) => {
-      if (unit !== null) add(unit, hexToWorld(fromPlacement('A', { col: i % BOARD_COLS, row: Math.floor(i / BOARD_COLS) })));
+      if (unit !== null) add(unit, hexToWorld(fromPlacement('A', boardPlace(i))));
     });
     player.bench.forEach((unit, slot) => {
       if (unit !== null) add(unit, benchToWorld(slot));

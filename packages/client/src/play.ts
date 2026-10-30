@@ -13,7 +13,9 @@ import {
   XP,
   createCombat,
   isRingOfPower,
+  placeOf,
   roundType,
+  unitAt,
   xpForNextLevel,
   type Action,
   type OwnedUnit,
@@ -299,20 +301,12 @@ function me(): PlayerView {
   return state!.me;
 }
 
-function unitAt(player: PlayerView, place: Place): OwnedUnit | null {
-  return ('bench' in place ? player.bench[place.bench] : player.board[place.row * 7 + place.col]) ?? null;
-}
-
 /** The place of the person's unit under the mouse: its pawn, or else the hex or bench tile. */
 function unitPlaceAt(clientX: number, clientY: number): Place | null {
   const id = scene.planningUnitAt(clientX, clientY);
   const p = me();
-  if (id !== null) {
-    const board = p.board.findIndex((u) => u?.id === id);
-    if (board >= 0) return { col: board % 7, row: Math.floor(board / 7) };
-    const bench = p.bench.findIndex((u) => u?.id === id);
-    if (bench >= 0) return { bench };
-  }
+  const pawn = id === null ? null : placeOf(p, id);
+  if (pawn !== null) return pawn;
   const point = scene.groundPoint(clientX, clientY);
   const place = point === null ? null : placeAtPoint(point);
   return place !== null && unitAt(p, place) !== null ? place : null;
