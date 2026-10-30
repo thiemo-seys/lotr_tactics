@@ -11,7 +11,8 @@ import { UNITS, type Cost, type UnitId } from '../data/units.js';
 import { createRng, deriveSeed, randomInt, randomSeed, shuffle, type Rng } from '../rng.js';
 import { pickGroups, rollCouncilOptions, type CouncilOption } from './council.js';
 import { pairPlayers } from './matchmaking.js';
-import { Player, baseIncome, isPlace, type ActionResult, type Place, type PlayerView } from './player.js';
+import { isPlace, placeOf, unitAt, type Place } from './places.js';
+import { Player, baseIncome, type ActionResult, type PlayerView } from './player.js';
 import { Pool } from './pool.js';
 import { Ring, type RingView } from './ring.js';
 import { nextRound, playerDamage, pveRound, roundType } from './schedule.js';
@@ -314,8 +315,8 @@ class GameImpl implements Game, GameState {
     const { ring } = this;
     if (ring.state !== 'held' || ring.bearer === null) return;
     const holder = this.players[ring.holder!]!;
-    const place = holder.placeOf(ring.bearer);
-    const bearer = place === null ? null : holder.unitAt(place);
+    const place = placeOf(holder, ring.bearer);
+    const bearer = place === null ? null : unitAt(holder, place);
     if (bearer === null) return;
     if (UNITS[bearer.unitId].origin === 'hobbit') {
       ring.hobbitRounds++;
@@ -358,7 +359,7 @@ class GameImpl implements Game, GameState {
   private giveRing(player: Player, to: Place): ActionResult {
     if (this.ring.state !== 'held' || this.ring.holder !== player.seat) return fail("You don't hold the One Ring.");
     if (!isPlace(to)) return fail('There is no such place.');
-    const unit = player.unitAt(to);
+    const unit = unitAt(player, to);
     if (unit === null) return fail('There is no unit there.');
     this.ring.bearer = unit.id;
     return OK;
@@ -368,8 +369,8 @@ class GameImpl implements Game, GameState {
   private destroyRing(player: Player): ActionResult {
     const { ring } = this;
     if (ring.state !== 'held' || ring.holder !== player.seat) return fail("You don't hold the One Ring.");
-    const place = ring.bearer === null ? null : player.placeOf(ring.bearer);
-    const bearer = place === null ? null : player.unitAt(place);
+    const place = ring.bearer === null ? null : placeOf(player, ring.bearer);
+    const bearer = place === null ? null : unitAt(player, place);
     if (bearer === null || UNITS[bearer.unitId].origin !== 'hobbit') return fail('Only a Hobbit can carry the Ring to Mount Doom.');
     if (ring.hobbitFights < RING.destroy.hobbitFights) return fail(`Hobbits must carry the Ring through ${RING.destroy.hobbitFights} fights first.`);
     ring.state = 'destroyed';

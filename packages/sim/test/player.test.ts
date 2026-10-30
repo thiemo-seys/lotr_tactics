@@ -2,7 +2,8 @@ import { describe, expect, it } from 'vitest';
 import { POOL_COPIES, SHOP } from '../src/data/economy.js';
 import type { ItemId } from '../src/data/items.js';
 import { UNITS, type UnitId } from '../src/data/units.js';
-import { Player, addItem, baseIncome, streakGold, xpForNextLevel, type Place } from '../src/game/player.js';
+import { boardSlot, unitAt, type Place } from '../src/game/places.js';
+import { Player, addItem, baseIncome, streakGold, xpForNextLevel } from '../src/game/player.js';
 import { Pool, UNIT_IDS, copiesIn } from '../src/game/pool.js';
 import { createRng, randomInt } from '../src/rng.js';
 import type { Star } from '../src/types.js';
@@ -26,7 +27,7 @@ function stock(player: Player, pool: Pool, slot: number, unitId: UnitId): void {
 function give(player: Player, pool: Pool, place: Place, unitId: UnitId, star: Star = 1, id = 100, items: readonly ItemId[] = []): void {
   pool.take(unitId, copiesIn(star));
   if ('bench' in place) player.bench[place.bench] = { id, unitId, star, items };
-  else player.board[place.row * 7 + place.col] = { id, unitId, star, items };
+  else player.board[boardSlot(place)] = { id, unitId, star, items };
 }
 
 /** Copies of each unit in the pool, the shop and owned units. */
@@ -76,7 +77,7 @@ describe('buying', () => {
     stock(player, pool, 0, 'sam');
     expect(player.buy(0).ok).toBe(true);
     expect(player.gold).toBe(9);
-    expect(player.unitAt({ col: 2, row: 3 })).toEqual({ id: 8, unitId: 'sam', star: 2, items: [] });
+    expect(unitAt(player, { col: 2, row: 3 })).toEqual({ id: 8, unitId: 'sam', star: 2, items: [] });
     expect(player.bench[4]).toBeNull();
   });
 
@@ -96,8 +97,8 @@ describe('buying', () => {
     give(player, pool, { col: 5, row: 0 }, 'pippin', 1, 2);
     stock(player, pool, 0, 'pippin');
     player.buy(0);
-    expect(player.unitAt({ col: 5, row: 0 })).toEqual({ id: 2, unitId: 'pippin', star: 2, items: [] });
-    expect(player.unitAt({ col: 1, row: 2 })).toBeNull();
+    expect(unitAt(player, { col: 5, row: 0 })).toEqual({ id: 2, unitId: 'pippin', star: 2, items: [] });
+    expect(unitAt(player, { col: 1, row: 2 })).toBeNull();
   });
 
   it('merges twice when the new 2★ is the third', () => {
@@ -108,7 +109,7 @@ describe('buying', () => {
     give(player, pool, { bench: 2 }, 'beregond', 1, 4);
     stock(player, pool, 0, 'beregond');
     player.buy(0);
-    expect(player.unitAt({ col: 3, row: 3 })).toEqual({ id: 2, unitId: 'beregond', star: 3, items: [] });
+    expect(unitAt(player, { col: 3, row: 3 })).toEqual({ id: 2, unitId: 'beregond', star: 3, items: [] });
     expect(player.bench.every((u) => u === null)).toBe(true);
     expect(copies(pool, [player])).toEqual(STARTING_COPIES);
   });
@@ -192,7 +193,7 @@ describe('moving', () => {
     give(player, pool, { col: 3, row: 3 }, 'sam', 1, 1);
     give(player, pool, { bench: 0 }, 'merry', 1, 2);
     expect(player.move({ bench: 0 }, { col: 3, row: 3 }).ok).toBe(true);
-    expect(player.unitAt({ col: 3, row: 3 })!.unitId).toBe('merry');
+    expect(unitAt(player, { col: 3, row: 3 })!.unitId).toBe('merry');
     expect(player.bench[0]!.unitId).toBe('sam');
     expect(player.move({ col: 3, row: 3 }, { col: 0, row: 0 }).ok).toBe(true);
     expect(player.move({ col: 0, row: 0 }, { bench: 5 }).ok).toBe(true);
@@ -219,9 +220,9 @@ describe('filling the board', () => {
     give(player, pool, { bench: 7 }, 'gorbag', 1, 4);
     give(player, pool, { bench: 8 }, 'sharku', 1, 5);
     player.fillBoard();
-    expect(player.unitAt({ col: 2, row: 3 })!.unitId).toBe('pippin');
-    expect(player.unitAt({ col: 4, row: 3 })!.unitId).toBe('merry');
-    expect(player.unitAt({ col: 1, row: 3 })!.unitId).toBe('gorbag');
+    expect(unitAt(player, { col: 2, row: 3 })!.unitId).toBe('pippin');
+    expect(unitAt(player, { col: 4, row: 3 })!.unitId).toBe('merry');
+    expect(unitAt(player, { col: 1, row: 3 })!.unitId).toBe('gorbag');
     expect(player.bench[8]!.unitId).toBe('sharku');
     expect(player.boardCount()).toBe(4);
   });
@@ -261,7 +262,7 @@ describe('items', () => {
     expect(player.equip(0, { col: 3, row: 3 })).toEqual({ ok: true });
     expect(player.items).toEqual([]);
     expect(player.bench[0]!.items).toEqual(['blade']);
-    expect(player.unitAt({ col: 3, row: 3 })).toEqual({ id: 101, unitId: 'sam', star: 1, items: ['oakenshield'] });
+    expect(unitAt(player, { col: 3, row: 3 })).toEqual({ id: 101, unitId: 'sam', star: 1, items: ['oakenshield'] });
   });
 
   it('refuse a missing item, an empty or invalid place, and a full unit', () => {
@@ -281,7 +282,7 @@ describe('items', () => {
     const { player, pool } = setup();
     give(player, pool, { bench: 0 }, 'gimli', 1, 100, ['sting', 'bow']);
     expect(player.move({ bench: 0 }, { col: 3, row: 3 }).ok).toBe(true);
-    expect(player.unitAt({ col: 3, row: 3 })!.items).toEqual(['sting', 'bow']);
+    expect(unitAt(player, { col: 3, row: 3 })!.items).toEqual(['sting', 'bow']);
     player.items.push('staff');
     expect(player.sell({ col: 3, row: 3 }).ok).toBe(true);
     expect(player.items).toEqual(['staff', 'sting', 'bow']);
@@ -294,7 +295,7 @@ describe('items', () => {
     stock(player, pool, 0, 'sam');
     expect(player.buy(0).ok).toBe(true);
     // The Cloak completes the Blade; the Phial fills the third place, and the Grond goes back.
-    expect(player.unitAt({ col: 3, row: 3 })).toEqual({ id: 100, unitId: 'sam', star: 2, items: ['anduril', 'sting', 'phial'] });
+    expect(unitAt(player, { col: 3, row: 3 })).toEqual({ id: 100, unitId: 'sam', star: 2, items: ['anduril', 'sting', 'phial'] });
     expect(player.bench[2]).toBeNull();
     expect(player.items).toEqual(['grond']);
   });

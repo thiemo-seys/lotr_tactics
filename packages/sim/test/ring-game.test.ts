@@ -5,6 +5,7 @@ import { Bot } from '../src/bots/bot.js';
 import { RING } from '../src/data/ring.js';
 import type { UnitId } from '../src/data/units.js';
 import { createGame, type Game } from '../src/game/game.js';
+import { boardSlot, placeOf } from '../src/game/places.js';
 import type { Player } from '../src/game/player.js';
 import { copiesIn, type Pool } from '../src/game/pool.js';
 import type { Ring } from '../src/game/ring.js';
@@ -34,7 +35,7 @@ function field(game: Game, seat: number, unitId: UnitId, place: { col: number; r
   const unit = { id, unitId, star, items: [] };
   const p = player(game, seat);
   if ('bench' in place) p.bench[place.bench] = unit;
-  else p.board[place.row * 7 + place.col] = unit;
+  else p.board[boardSlot(place)] = unit;
   return id;
 }
 
@@ -101,11 +102,12 @@ describe('Corruption', () => {
     const game = createGame({ seed: 9, players: 2 });
     skipTo(game, 2, 1);
     const gimli = field(game, 0, 'gimli', { col: 3, row: 3 });
-    player(game, 0).board[3 * 7 + 3] = { ...player(game, 0).board[3 * 7 + 3]!, items: ['anduril'] };
+    const slot = boardSlot({ col: 3, row: 3 });
+    player(game, 0).board[slot] = { ...player(game, 0).board[slot]!, items: ['anduril'] };
     const before = pool(game).count('gimli');
     const ring = hold(game, 0, gimli, RING.consumedAt - 1);
     game.advance();
-    expect(player(game, 0).placeOf(gimli)).toBeNull();
+    expect(placeOf(player(game, 0), gimli)).toBeNull();
     expect(pool(game).count('gimli')).toBe(before + 1);
     expect(player(game, 0).items).toContain('anduril');
     expect([ring.state, ring.holder, ring.corruption]).toEqual(['waiting', null, 0]);
@@ -123,7 +125,7 @@ describe('the bearer', () => {
     const bearers = fight.input.teams[side].filter((p) => p.ring !== undefined);
     expect(bearers).toHaveLength(1);
     expect(bearers[0]!.ring).toBe(3);
-    expect(player(game, 0).placeOf(ring.bearer!)).not.toBeNull();
+    expect(placeOf(player(game, 0), ring.bearer!)).not.toBeNull();
   });
 
   it('is chosen by the holder, and selling or merging moves the Ring along', () => {
@@ -142,7 +144,7 @@ describe('the bearer', () => {
     player(game, 0).gold = 0;
     expect(player(game, 0).gain('gimli')).toBe(true);
     expect(ring.bearer).toBe(a);
-    expect(game.act(0, { type: 'sell', from: player(game, 0).placeOf(a)! }).ok).toBe(true);
+    expect(game.act(0, { type: 'sell', from: placeOf(player(game, 0), a)! }).ok).toBe(true);
     expect([ring.state, ring.holder, ring.bearer]).toEqual(['held', 0, null]);
   });
 });

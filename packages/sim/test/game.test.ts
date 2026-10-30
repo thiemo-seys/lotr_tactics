@@ -3,6 +3,7 @@ import { POOL_COPIES } from '../src/data/economy.js';
 import { PVE_ROUNDS } from '../src/data/pve.js';
 import { UNITS, type UnitId } from '../src/data/units.js';
 import { createGame, type Action, type Game, type RoundReport } from '../src/game/game.js';
+import { boardSlot } from '../src/game/places.js';
 import type { Player } from '../src/game/player.js';
 import { UNIT_IDS, copiesIn, type Pool } from '../src/game/pool.js';
 import { createRng, randomInt } from '../src/rng.js';
@@ -24,7 +25,8 @@ function clear(game: Game, seat: number): void {
 /** Gives a player a unit on the board, taking its copies from the pool. */
 function field(game: Game, seat: number, unitId: UnitId, col: number, row: number, star: Star = 1): void {
   pool(game).take(unitId, copiesIn(star));
-  player(game, seat).board[row * 7 + col] = { id: 1000 + col + row * 7, unitId, star, items: [] };
+  const slot = boardSlot({ col, row });
+  player(game, seat).board[slot] = { id: 1000 + slot, unitId, star, items: [] };
 }
 
 /** Copies of each unit anywhere: pool, shops, Council options and owned units. */

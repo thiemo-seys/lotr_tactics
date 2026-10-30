@@ -2,9 +2,9 @@ import { describe, expect, it } from 'vitest';
 import { Bot, playBotGame } from '../src/bots/bot.js';
 import { UNITS } from '../src/data/units.js';
 import { createGame, type Game } from '../src/game/game.js';
+import { boardPlace } from '../src/game/places.js';
 import type { Player } from '../src/game/player.js';
 import { copiesIn, type Pool } from '../src/game/pool.js';
-import { BOARD_COLS } from '../src/hex.js';
 
 /** Plays bots until the given round's planning starts, without letting them plan it. */
 function botsUntil(seed: number, stage: number, round: number, players = 8): { game: Game; bots: Bot[] } {
@@ -24,7 +24,7 @@ function botsUntil(seed: number, stage: number, round: number, players = 8): { g
 
 /** The board's units with their rows. */
 function boardRows(game: Game, seat: number) {
-  return game.state.players[seat]!.board.flatMap((u, i) => (u === null ? [] : [{ unit: u, row: Math.floor(i / 7) }]));
+  return game.state.players[seat]!.board.flatMap((u, i) => (u === null ? [] : [{ unit: u, row: boardPlace(i).row }]));
 }
 
 describe('bots', () => {
@@ -53,7 +53,7 @@ describe('bots', () => {
       const boards = new Map<number, string>();
       for (const p of state.players) {
         if (p.placement !== null) continue;
-        const units = p.board.flatMap((u, i) => (u === null ? [] : [{ ...u, col: i % BOARD_COLS, row: Math.floor(i / BOARD_COLS) }]));
+        const units = p.board.flatMap((u, i) => (u === null ? [] : [{ ...u, ...boardPlace(i) }]));
         boards.set(p.seat, text(units));
       }
       watched.push({ round: `${state.stage}-${state.round}`, boards });

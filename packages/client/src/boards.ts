@@ -5,7 +5,9 @@ import {
   BOARD_COLS,
   COMBINED_ITEM_IDS,
   MAX_ITEMS,
+  TEAM_ROWS,
   UNITS,
+  boardPlace,
   createRng,
   type ItemId,
   type PlacedUnit,
@@ -108,7 +110,7 @@ export function randomBoard(seed: number, team: Team): PlacedUnit[] {
   const rng = createRng((seed ^ (team === 'A' ? 0x2545f491 : 0x6c8e9cf5)) | 0);
   const pick = <T>(list: T[]): T => list.splice(Math.floor(rng() * list.length), 1)[0]!;
   const units = Object.keys(UNITS) as UnitId[];
-  const hexes = Array.from({ length: BOARD_COLS * 4 }, (_, i) => ({ col: i % BOARD_COLS, row: Math.floor(i / BOARD_COLS) }));
+  const hexes = Array.from({ length: BOARD_COLS * TEAM_ROWS }, (_, i) => boardPlace(i));
   const board = Array.from({ length: RANDOM_BOARD_SIZE }, () => {
     const roll = rng();
     const star: Star = roll < 0.6 ? 1 : roll < 0.9 ? 2 : 3;
