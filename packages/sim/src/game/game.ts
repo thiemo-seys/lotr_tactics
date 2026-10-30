@@ -11,10 +11,11 @@ import { UNITS, type Cost, type UnitId } from '../data/units.js';
 import { createRng, deriveSeed, randomInt, randomSeed, shuffle, type Rng } from '../rng.js';
 import { pickGroups, rollCouncilOptions, type CouncilOption } from './council.js';
 import { pairPlayers } from './matchmaking.js';
-import { isPlace, placeOf, unitAt, type Place } from './places.js';
-import { Player, baseIncome, type ActionResult, type PlayerView } from './player.js';
+import { placeOf, unitAt, type Place } from './places.js';
+import { Player, baseIncome, type PlayerView } from './player.js';
 import { Pool } from './pool.js';
 import { Ring, type RingView } from './ring.js';
+import { OK, checkAction, fail, type ActionResult } from './rules.js';
 import { nextRound, playerDamage, pveRound, roundType } from './schedule.js';
 
 export interface GameConfig {
@@ -110,12 +111,6 @@ export interface Game {
   isOver(): boolean;
 }
 
-const OK: ActionResult = { ok: true };
-
-function fail(reason: string): ActionResult {
-  return { ok: false, reason };
-}
-
 /** Random stream numbers (section 4): the game's own, then one per player's shop and one per player's Gifts. */
 const GAME_STREAM = 0;
 const SHOP_STREAM = 1;
@@ -157,11 +152,12 @@ class GameImpl implements Game, GameState {
   act(seat: number, action: Action): ActionResult {
     const player = Number.isInteger(seat) ? this.players[seat] : undefined;
     if (player === undefined) return fail('There is no such seat.');
-    if (player.placement !== null) return fail('That player is out of the game.');
-    if (typeof action !== 'object' || action === null) return fail('Unknown action.');
-    if (action.type === 'pick') return this.pick(player, action.option);
-    if (this.phase !== 'planning') return fail('Units can only be bought and moved during planning.');
+    const check = checkAction(player, this, action);
+    if (!check.ok) return check;
     switch (action.type) {
+      case 'pick':
+        this.pick(player, action.option);
+        return OK;
       case 'buy':
         return player.buy(action.slot);
       case 'sell':
@@ -181,11 +177,11 @@ class GameImpl implements Game, GameState {
       case 'rerollGifts':
         return player.rerollGifts();
       case 'ring':
-        return this.giveRing(player, action.to);
+        this.ring.bearer = unitAt(player, action.to)!.id;
+        return OK;
       case 'destroyRing':
-        return this.destroyRing(player);
-      default:
-        return fail('Unknown action.');
+        this.destroyRing(player);
+        return OK;
     }
   }
 
@@ -250,17 +246,10 @@ class GameImpl implements Game, GameState {
 
   // Council (section 9.6)
 
-  private pick(player: Player, option: number): ActionResult {
-    const council = this.council;
-    if (this.phase !== 'council' || council === null) return fail('There is no Council now.');
-    if (!council.groups[council.group]!.includes(player.seat)) return fail("It isn't your turn to pick.");
-    if (council.options.some((o) => o.pickedBy === player.seat)) return fail('You have already picked.');
-    const chosen = Number.isInteger(option) ? council.options[option] : undefined;
-    if (chosen === undefined) return fail('There is no such option.');
-    if (chosen.pickedBy !== null) return fail('That option has been taken.');
-    this.give(player, chosen);
+  private pick(player: Player, option: number): void {
+    const council = this.council!;
+    this.give(player, council.options[option]!);
     if (council.groups[council.group]!.every((seat) => council.options.some((o) => o.pickedBy === seat))) this.nextCouncilGroup();
-    return OK;
   }
 
   /** Gives a player a Council option. A unit with no room is sold at once (section 7.2). */
@@ -356,23 +345,9 @@ class GameImpl implements Game, GameState {
     }
   }
 
-  private giveRing(player: Player, to: Place): ActionResult {
-    if (this.ring.state !== 'held' || this.ring.holder !== player.seat) return fail("You don't hold the One Ring.");
-    if (!isPlace(to)) return fail('There is no such place.');
-    const unit = unitAt(player, to);
-    if (unit === null) return fail('There is no unit there.');
-    this.ring.bearer = unit.id;
-    return OK;
-  }
-
   /** Mount Doom: the holder's Hobbit bearer throws the Ring in, for a reward (section 9.11). */
-  private destroyRing(player: Player): ActionResult {
+  private destroyRing(player: Player): void {
     const { ring } = this;
-    if (ring.state !== 'held' || ring.holder !== player.seat) return fail("You don't hold the One Ring.");
-    const place = ring.bearer === null ? null : placeOf(player, ring.bearer);
-    const bearer = place === null ? null : unitAt(player, place);
-    if (bearer === null || UNITS[bearer.unitId].origin !== 'hobbit') return fail('Only a Hobbit can carry the Ring to Mount Doom.');
-    if (ring.hobbitFights < RING.destroy.hobbitFights) return fail(`Hobbits must carry the Ring through ${RING.destroy.hobbitFights} fights first.`);
     ring.state = 'destroyed';
     ring.holder = null;
     ring.bearer = null;
@@ -382,7 +357,6 @@ class GameImpl implements Game, GameState {
     for (const id of RING_OF_POWER_IDS) if (bound(id)) this.ringSupply[id] = 0;
     player.gold += RING.destroy.gold;
     for (let i = 0; i < RING.destroy.combinedItems; i++) player.items.push(COMBINED_ITEM_IDS[randomInt(this.rng, COMBINED_ITEM_IDS.length)]!);
-    return OK;
   }
 
   // Rings of Power (section 9.12)

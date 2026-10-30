@@ -2,13 +2,16 @@
 
 import { isRingOfPower } from '../combat/items.js';
 import { BOT, type ItemRole } from '../data/bots.js';
+import { SHOP, XP } from '../data/economy.js';
 import { GIFTS, type GiftId } from '../data/gifts.js';
 import { ITEMS, type ItemId } from '../data/items.js';
 import { TRAITS, type ClassId, type TraitId } from '../data/traits.js';
 import { UNITS, type UnitId } from '../data/units.js';
 import { createGame, type Game, type GameState, type RoundReport } from '../game/game.js';
 import { TEAM_ROWS, ownedUnits, placeOf, samePlace, unitAt, type BoardPlace, type OwnedUnit } from '../game/places.js';
-import { addItem, type PlayerView } from '../game/player.js';
+import type { PlayerView } from '../game/player.js';
+import { copiesIn } from '../game/pool.js';
+import { addItem } from '../game/rules.js';
 import { createRng, deriveSeed } from '../rng.js';
 
 /** Bots' random streams start here (game-spec.md section 4). */
@@ -71,7 +74,7 @@ export class Bot {
     this.level(game);
     this.buy(game);
     if (this.shouldRoll(game)) {
-      for (let i = 0; i < BOT.maxRerollsPerRound && this.me(game).gold - 2 >= this.rollFloor(game); i++) {
+      for (let i = 0; i < BOT.maxRerollsPerRound && this.me(game).gold - SHOP.rerollCost >= this.rollFloor(game); i++) {
         if (!game.act(this.seat, { type: 'reroll' }).ok) break;
         this.buy(game);
       }
@@ -161,7 +164,7 @@ export class Bot {
   }
 
   private level(game: Game): void {
-    while (this.me(game).level < this.targetLevel(game) && this.me(game).gold >= 4) {
+    while (this.me(game).level < this.targetLevel(game) && this.me(game).gold >= XP.buyCost) {
       if (!game.act(this.seat, { type: 'buyXp' }).ok) return;
     }
   }
@@ -178,8 +181,7 @@ export class Bot {
 
   /** How much the bot wants to keep a unit it owns. */
   private worth(me: PlayerView, unit: OwnedUnit): number {
-    const copies = [1, 3, 9][unit.star - 1]!;
-    let score = UNITS[unit.unitId].cost * copies * BOT.want.perCost;
+    let score = UNITS[unit.unitId].cost * copiesIn(unit.star) * BOT.want.perCost;
     const twin = ownedUnits(me).some((o) => o.unit !== unit && o.unit.unitId === unit.unitId && o.unit.star === unit.star);
     if (twin) score += BOT.want.copy;
     for (const trait of traitsOf(unit.unitId)) if (this.focus.includes(trait)) score += BOT.want.focusTrait;
@@ -187,7 +189,7 @@ export class Bot {
   }
 
   private buy(game: Game): void {
-    for (let slot = 0; slot < 5; slot++) {
+    for (let slot = 0; slot < SHOP.size; slot++) {
       const me = this.me(game);
       const unitId = me.shop[slot];
       if (unitId === null || unitId === undefined) continue;
