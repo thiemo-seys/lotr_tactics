@@ -33,6 +33,7 @@ packages/client/
   src/
     main.ts        viewer page setup, controls, URL state
     play.ts        play page setup: menu, lobby, shop, Council, fights, drag and drop
+    flow.ts        the play page's steps from the game's messages, and what it sends back (no Three.js, no DOM)
     connection.ts  offline and WebSocket connections to a game (server-spec.md section 10)
     fights.ts      which fight in a round is the person's
     boards.ts      preset and random boards

@@ -6,53 +6,34 @@ import {
   GIFTS,
   ITEMS,
   SHOP,
-  TICKS_PER_SECOND,
   TRAITS,
   UNITS,
   XP,
-  checkAction,
-  createCombat,
   isRingOfPower,
   placeOf,
   roundType,
   unitAt,
   xpForNextLevel,
   type Action,
-  type ActionResult,
   type OwnedUnit,
   type Place,
   type PlayerView,
   type UnitId,
 } from '@lotr-tactics/sim';
-import { TIMERS, type FightRecord, type LobbyView, type MatchView, type RoundRecord, type ServerMessage } from '@lotr-tactics/server';
+import type { RoundRecord, ServerMessage } from '@lotr-tactics/server';
 import { LocalConnection, SocketConnection, savedSeat, socketUrl, type Connection } from './connection.js';
-import { yourFight, yourTeam } from './fights.js';
+import { PlayFlow, ordinal, outcomeText, standings, type PlanningRing } from './flow.js';
+import { yourTeam } from './fights.js';
 import { TIER_NAMES, giftEffect, giftText } from './gifts.js';
 import { itemText } from './items.js';
 import { placeAtPoint } from './layout.js';
-import { Playback } from './playback.js';
 import { ringText, ringTier } from './ring.js';
-import { FightScene, itemChip, ringChip, type PlanningRing } from './scene.js';
+import { FightScene, itemChip, ringChip } from './scene.js';
 import './style.css';
-
-/** How long a finished fight stays on screen, in ticks of fight time, before the results. */
-const FIGHT_END_TICKS = TIMERS.fightHold * TICKS_PER_SECOND;
 
 const ROUND_NAMES = { council: 'Council of Elrond', pvp: 'PvP', pve: 'PvE' } as const;
 
 const NAME_KEY = 'lotr-tactics-name';
-
-/** What the page shows. The game's own step comes from the server; fights and results are shown here. */
-type Show =
-  | { kind: 'menu' }
-  | { kind: 'lobby' }
-  | { kind: 'council' }
-  | { kind: 'planning' }
-  | { kind: 'fight'; round: RoundRecord; fight: FightRecord; playback: Playback }
-  | { kind: 'results'; round: RoundRecord; until: number }
-  /** The results have been shown and Ready sent: waiting for the next step. */
-  | { kind: 'waiting'; round: RoundRecord }
-  | { kind: 'over' };
 
 const element = <T extends HTMLElement>(id: string) => document.getElementById(id) as T;
 const view = element('view');
@@ -73,14 +54,17 @@ const readyButton = element<HTMLButtonElement>('ready');
 const scene = new FightScene(view);
 let connection: Connection | null = null;
 let offline = false;
-let you = 0;
-let lobby: LobbyView | null = null;
-let state: MatchView | null = null;
-/** When `state` arrived, to count down its step's time. */
-let stateAt = 0;
-let show: Show = { kind: 'menu' };
-let menuMessage = '';
-let lobbyMessage = '';
+const flow = new PlayFlow({
+  send: (message) => connection?.send(message),
+  fight: (playback, team) => {
+    scene.show(playback, team);
+    speedButton.textContent = '1×';
+  },
+  menu: backToMenu,
+  joined: (code) => {
+    if (!offline) history.replaceState(null, '', `#lobby=${code}`);
+  },
+});
 let dragging: { unit: OwnedUnit; from: Place } | null = null;
 /** One of the person's items, or the One Ring, being dragged onto a unit, with the chip that follows the mouse. */
 let draggingItem: { index: number | 'ring'; ghost: HTMLElement } | null = null;
@@ -94,7 +78,7 @@ element('create').addEventListener('click', () => goOnline().send({ type: 'creat
 element('join').addEventListener('click', () => {
   const code = codeInput.value.trim();
   if (code === '') {
-    menuMessage = 'Enter the code of the lobby to join.';
+    flow.menuMessage = 'Enter the code of the lobby to join.';
     return;
   }
   goOnline().send({ type: 'join', code, name: nameInput.value });
@@ -105,39 +89,39 @@ codeInput.addEventListener('keydown', (event) => {
 element('start').addEventListener('click', () => connection?.send({ type: 'start' }));
 element('leave-lobby').addEventListener('click', leave);
 element('leave-game').addEventListener('click', () => {
-  if (show.kind === 'over' || confirm('Leave this game? A bot will play your seat for the rest of it.')) leave();
+  if (flow.show.kind === 'over' || confirm('Leave this game? A bot will play your seat for the rest of it.')) leave();
 });
 element('copy-link').addEventListener('click', () => {
-  if (lobby === null) return;
-  const link = `${location.origin}${location.pathname}#lobby=${lobby.code}`;
+  if (flow.lobby === null) return;
+  const link = `${location.origin}${location.pathname}#lobby=${flow.lobby.code}`;
   // The clipboard needs a secure page, such as localhost; otherwise show the link to copy by hand.
-  if (navigator.clipboard === undefined) lobbyMessage = link;
-  else void navigator.clipboard.writeText(link).then(() => (lobbyMessage = 'Link copied.'), () => (lobbyMessage = link));
+  if (navigator.clipboard === undefined) flow.lobbyMessage = link;
+  else void navigator.clipboard.writeText(link).then(() => (flow.lobbyMessage = 'Link copied.'), () => (flow.lobbyMessage = link));
 });
 
 // The game
 
-element('reroll').addEventListener('click', () => act({ type: 'reroll' }));
-element('reroll-gifts').addEventListener('click', () => act({ type: 'rerollGifts' }));
-element('mount-doom').addEventListener('click', () => act({ type: 'destroyRing' }));
-element('buy-xp').addEventListener('click', () => act({ type: 'buyXp' }));
-element('lock').addEventListener('click', () => act({ type: 'lock', locked: !me().shopLocked }));
-readyButton.addEventListener('click', ready);
+element('reroll').addEventListener('click', () => flow.act({ type: 'reroll' }));
+element('reroll-gifts').addEventListener('click', () => flow.act({ type: 'rerollGifts' }));
+element('mount-doom').addEventListener('click', () => flow.act({ type: 'destroyRing' }));
+element('buy-xp').addEventListener('click', () => flow.act({ type: 'buyXp' }));
+element('lock').addEventListener('click', () => flow.act({ type: 'lock', locked: !flow.me().shopLocked }));
+readyButton.addEventListener('click', () => flow.ready());
 speedButton.addEventListener('click', () => {
-  if (show.kind !== 'fight') return;
-  show.playback.speed = show.playback.speed >= 4 ? 1 : show.playback.speed * 2;
-  speedButton.textContent = `${show.playback.speed}×`;
+  if (flow.show.kind !== 'fight') return;
+  flow.show.playback.speed = flow.show.playback.speed >= 4 ? 1 : flow.show.playback.speed * 2;
+  speedButton.textContent = `${flow.show.playback.speed}×`;
 });
 skipButton.addEventListener('click', () => {
-  if (show.kind === 'fight') showResults(show.round);
+  flow.skip(performance.now());
 });
 window.addEventListener('keydown', (event) => {
-  if (show.kind !== 'planning' || event.target instanceof HTMLInputElement) return;
-  if (event.key === 'd') act({ type: 'reroll' });
-  else if (event.key === 'f') act({ type: 'buyXp' });
+  if (flow.show.kind !== 'planning' || event.target instanceof HTMLInputElement) return;
+  if (event.key === 'd') flow.act({ type: 'reroll' });
+  else if (event.key === 'f') flow.act({ type: 'buyXp' });
   else if (event.key === ' ') {
     event.preventDefault();
-    ready();
+    flow.ready();
   }
 });
 
@@ -145,9 +129,9 @@ window.addEventListener('keydown', (event) => {
 view.addEventListener(
   'pointerdown',
   (event) => {
-    if (show.kind !== 'planning' || event.button !== 0) return;
+    if (flow.show.kind !== 'planning' || event.button !== 0) return;
     const place = unitPlaceAt(event.clientX, event.clientY);
-    const unit = place === null ? null : unitAt(me(), place);
+    const unit = place === null ? null : unitAt(flow.me(), place);
     if (place === null || unit === null) return;
     // No text selection while dragging.
     event.preventDefault();
@@ -169,21 +153,21 @@ window.addEventListener('pointerup', (event) => {
     ghost.remove();
     scene.cameraControls = true;
     const to = view.contains(document.elementFromPoint(event.clientX, event.clientY)) ? unitPlaceAt(event.clientX, event.clientY) : null;
-    if (to !== null) act(index === 'ring' ? { type: 'ring', to } : { type: 'equip', item: index, to });
+    if (to !== null) flow.act(index === 'ring' ? { type: 'ring', to } : { type: 'equip', item: index, to });
   }
   if (dragging === null) return;
   const { from } = dragging;
   dragging = null;
   scene.cameraControls = true;
   if (shopBar.contains(document.elementFromPoint(event.clientX, event.clientY))) {
-    act({ type: 'sell', from });
+    flow.act({ type: 'sell', from });
   } else {
     const point = scene.groundPoint(event.clientX, event.clientY);
     const to = point === null ? null : placeAtPoint(point);
-    if (to !== null) act({ type: 'move', from, to });
+    if (to !== null) flow.act({ type: 'move', from, to });
   }
   // Back where it was until the game says where it is now.
-  scene.showPlanning(me(), true, planningRing());
+  scene.showPlanning(flow.me(), true, flow.planningRing());
 });
 
 startPage();
@@ -192,7 +176,7 @@ let last = performance.now();
 requestAnimationFrame(function frame(now) {
   const seconds = Math.min((now - last) / 1000, 0.1);
   last = now;
-  update(seconds, now);
+  flow.update(seconds, now);
   render(now);
   scene.render();
   requestAnimationFrame(frame);
@@ -213,15 +197,14 @@ function startPage(): void {
 function playOffline(seed: number): void {
   connection?.close();
   offline = true;
-  reset();
+  flow.reset();
   connection = new LocalConnection(seed, { message: receive, closed: backToMenu });
 }
 
 function goOnline(): Connection {
   connection?.close();
   offline = false;
-  reset();
-  menuMessage = 'Connecting…';
+  flow.reset('Connecting…');
   const socket = new SocketConnection(socketUrl(), { message: receive, closed: backToMenu });
   connection = socket;
   return socket;
@@ -235,77 +218,20 @@ function leave(): void {
 function backToMenu(message: string): void {
   connection?.close();
   connection = null;
-  reset();
-  menuMessage = message;
+  flow.reset(message);
   history.replaceState(null, '', location.pathname);
 }
 
-function reset(): void {
-  lobby = null;
-  state = null;
-  show = { kind: 'menu' };
-  menuMessage = '';
-  lobbyMessage = '';
-}
-
 function receive(message: ServerMessage): void {
-  switch (message.type) {
-    case 'joined':
-      you = message.seat;
-      menuMessage = '';
-      if (!offline) history.replaceState(null, '', `#lobby=${message.code}`);
-      return;
-    case 'lobby':
-      lobby = message.lobby;
-      if (!lobby.started) show = { kind: 'lobby' };
-      return;
-    case 'state':
-      state = message.state;
-      stateAt = performance.now();
-      follow(message.state);
-      return;
-    case 'round':
-      startRound(message.round);
-      return;
-    case 'left':
-      backToMenu(message.reason === 'You left the lobby.' ? '' : message.reason);
-      return;
-    case 'refused':
-      if (message.request === 'create' || message.request === 'join' || message.request === 'rejoin') backToMenu(message.reason);
-      else if (message.request === 'start') lobbyMessage = message.reason;
-      // A refused action was valid a moment ago; the next state shows how things are.
-      return;
-  }
-}
-
-/** Moves to the server's step. A fight that is still playing is cut short. */
-function follow(next: MatchView): void {
-  const out = next.me.placement !== null;
-  switch (next.step.kind) {
-    case 'over':
-      show = { kind: 'over' };
-      return;
-    case 'council':
-    case 'planning':
-      if (out) show = { kind: 'over' };
-      else if (show.kind !== next.step.kind) show = { kind: next.step.kind };
-      return;
-    case 'fight':
-      // The round arrived just before this step, and started the fight.
-      return;
-  }
+  flow.receive(message, performance.now());
 }
 
 // Steps
 
-function me(): PlayerView {
-  return state!.me;
-}
-
 /** The place of the person's unit under the mouse: its pawn, or else the hex or bench tile. */
 function unitPlaceAt(clientX: number, clientY: number): Place | null {
   const id = scene.planningUnitAt(clientX, clientY);
-  const p = me();
+  const p = flow.me();
   const pawn = id === null ? null : placeOf(p, id);
   if (pawn !== null) return pawn;
   const point = scene.groundPoint(clientX, clientY);
@@ -313,30 +239,19 @@ function unitPlaceAt(clientX: number, clientY: number): Place | null {
   return place !== null && unitAt(p, place) !== null ? place : null;
 }
 
-/** The One Ring, if the person holds it: its bearer among their units and its Corruption. */
-function planningRing(): PlanningRing | null {
-  const ring = state?.ring;
-  return ring !== undefined && ring.state === 'held' && ring.holder === you ? { bearer: ring.bearer, corruption: ring.corruption } : null;
-}
-
-/** Whether the game's rules let the person take an action now, and why not. */
-function check(action: Action): ActionResult {
-  return checkAction(me(), state!, action);
-}
-
 /** Enables a button if its action is allowed, and otherwise says why when hovered. */
 function allow(id: string, action: Action): void {
   const button = element<HTMLButtonElement>(id);
-  const result = check(action);
+  const result = flow.check(action);
   button.disabled = !result.ok;
   button.title = result.ok ? '' : result.reason;
 }
 
 /** Starts dragging one of the person's items or the Ring; dropping it on a unit gives it to that unit. */
 function dragItem(index: number | 'ring', event: PointerEvent): void {
-  if (show.kind !== 'planning' || event.button !== 0) return;
+  if (flow.show.kind !== 'planning' || event.button !== 0) return;
   event.preventDefault();
-  const ghost = index === 'ring' ? ringChip(state!.ring.corruption) : itemChip(me().items[index]!);
+  const ghost = index === 'ring' ? ringChip(flow.state!.ring.corruption) : itemChip(flow.me().items[index]!);
   ghost.classList.add('ghost');
   document.body.append(ghost);
   moveGhost(ghost, event);
@@ -349,51 +264,15 @@ function moveGhost(ghost: HTMLElement, event: PointerEvent): void {
   ghost.style.top = `${event.clientY}px`;
 }
 
-function act(action: Action): void {
-  if (show.kind === 'planning' || (show.kind === 'council' && action.type === 'pick')) connection?.send({ type: 'act', action });
-}
-
-function ready(): void {
-  if (show.kind === 'planning' && !state!.ready.includes(you)) connection?.send({ type: 'ready' });
-}
-
-function startRound(round: RoundRecord): void {
-  const fight = yourFight(round, you);
-  if (fight === null) {
-    showResults(round);
-    return;
-  }
-  const playback = new Playback(createCombat(fight.input));
-  scene.show(playback, yourTeam(fight, you));
-  speedButton.textContent = '1×';
-  show = { kind: 'fight', round, fight, playback };
-}
-
-function showResults(round: RoundRecord): void {
-  show = { kind: 'results', round, until: performance.now() + TIMERS.results * 1000 };
-}
-
-function update(seconds: number, now: number): void {
-  if (show.kind === 'fight') {
-    const { combat } = show.playback;
-    show.playback.advance(seconds);
-    if (combat.isOver() && show.playback.time >= combat.tick + FIGHT_END_TICKS) showResults(show.round);
-  } else if (show.kind === 'results' && now >= show.until) {
-    show = { kind: 'waiting', round: show.round };
-    // Finished watching; people who are out don't count.
-    if (state?.me.placement === null) connection?.send({ type: 'ready' });
-  }
-}
-
 // Drawing
 
 function render(now: number): void {
-  const inGame = state !== null && show.kind !== 'menu' && show.kind !== 'lobby';
+  const { inGame, show } = flow;
   menu.hidden = show.kind !== 'menu';
   lobbyPanel.hidden = show.kind !== 'lobby';
   shopBar.hidden = show.kind !== 'planning';
   council.hidden = show.kind !== 'council';
-  giftPanel.hidden = !(inGame && show.kind === 'planning' && state!.me.giftOffer !== null);
+  giftPanel.hidden = !(inGame && show.kind === 'planning' && flow.state!.me.giftOffer !== null);
   result.hidden = show.kind !== 'results' && show.kind !== 'waiting' && show.kind !== 'over';
   speedButton.hidden = skipButton.hidden = show.kind !== 'fight';
   element('leave-game').hidden = !inGame;
@@ -405,18 +284,17 @@ function render(now: number): void {
   renderHud(now, inGame);
   if (!inGame) return;
 
-  const p = me();
+  const p = flow.me();
   if (show.kind === 'planning') {
-    scene.showPlanning(p, false, planningRing());
+    scene.showPlanning(p, false, flow.planningRing());
     renderShop(p);
     renderGiftOffer(p);
   } else if (show.kind === 'council') {
-    scene.showPlanning(p, false, planningRing());
+    scene.showPlanning(p, false, flow.planningRing());
     renderCouncil();
   } else if (show.kind === 'fight' && show.playback.combat.isOver()) {
-    const outcome = show.playback.combat.result().outcome;
     banner.hidden = false;
-    banner.textContent = outcome === 'draw' ? 'Draw' : outcome === yourTeam(show.fight, you) ? 'Victory' : 'Defeat';
+    banner.textContent = outcomeText(show.playback.combat.result().outcome, yourTeam(show.fight, flow.you));
   } else if (show.kind === 'results' || show.kind === 'waiting') {
     renderResults(show.round, show.kind === 'waiting');
   } else if (show.kind === 'over') {
@@ -432,25 +310,23 @@ function renderHud(now: number, inGame: boolean): void {
     text('stats', '');
     return;
   }
-  const s = state!;
-  const shown = show.kind === 'fight' || show.kind === 'results' || show.kind === 'waiting' ? show.round : null;
-  const [stage, round] = shown === null ? [s.stage, s.round] : [shown.stage, shown.round];
+  const { stage, round } = flow.shownRound();
   text('round', `${stage}-${round} · ${ROUND_NAMES[roundType(stage, round)]}`);
-  const timed = (show.kind === 'council' || show.kind === 'planning') && s.step.ms !== null;
-  text('timer', timed ? `${Math.max(0, Math.ceil((s.step.ms! - (now - stateAt)) / 1000))} s` : '');
-  const p = me();
+  const seconds = flow.secondsLeft(now);
+  text('timer', seconds === null ? '' : `${seconds} s`);
+  const p = flow.me();
   const need = xpForNextLevel(p.level);
   const xp = p.level < XP.buyFromLevel ? '' : need === null ? ' · max level' : ` · XP ${p.xp}/${need}`;
   const fielded = p.board.filter((u) => u !== null).length;
   text('stats', `${p.hp} HP · ${p.gold} gold · Level ${p.level}${xp} · Board ${fielded}/${p.level}`);
-  const ring = planningRing();
+  const ring = flow.planningRing();
   const status = element('ring-status');
   status.hidden = ring === null;
   if (ring !== null) {
     text('ring-status', `The One Ring · ${ring.corruption} (${ringTier(ring.corruption)})${ring.bearer === null ? ' · unworn' : ''}`);
     status.title = ringText(ring.corruption);
   }
-  element('mount-doom').hidden = show.kind !== 'planning' || !check({ type: 'destroyRing' }).ok;
+  element('mount-doom').hidden = flow.show.kind !== 'planning' || !flow.check({ type: 'destroyRing' }).ok;
 }
 
 function text(id: string, value: string): void {
@@ -472,26 +348,26 @@ function paragraph(line: string): HTMLElement {
 }
 
 function renderMenu(): void {
-  text('menu-message', menuMessage);
+  text('menu-message', flow.menuMessage);
 }
 
 function renderLobby(): void {
-  if (lobby === null) return;
-  const l = lobby;
+  if (flow.lobby === null) return;
+  const l = flow.lobby;
   text('lobby-code', l.code);
-  rebuild(element('seats'), JSON.stringify([l, you]), () =>
+  rebuild(element('seats'), JSON.stringify([l, flow.you]), () =>
     l.seats.map((seat, i) => {
       const item = document.createElement('li');
-      const notes = [i === l.host ? 'host' : '', i === you ? 'you' : '', seat.kind === 'person' && !seat.connected ? 'away' : ''].filter((n) => n !== '');
+      const notes = [i === l.host ? 'host' : '', i === flow.you ? 'you' : '', seat.kind === 'person' && !seat.connected ? 'away' : ''].filter((n) => n !== '');
       item.textContent = seat.kind === 'empty' ? 'Empty seat' : `${seat.name}${notes.length > 0 ? ` (${notes.join(', ')})` : ''}`;
       item.className = seat.kind;
       return item;
     }),
   );
-  element('start').hidden = l.host !== you;
+  element('start').hidden = l.host !== flow.you;
   const people = l.seats.filter((s) => s.kind === 'person').length;
-  const status = l.host === you ? (people < l.seats.length ? 'Bots will take the empty seats.' : 'The lobby is full.') : 'Waiting for the host to start.';
-  text('lobby-message', lobbyMessage === '' ? status : lobbyMessage);
+  const status = l.host === flow.you ? (people < l.seats.length ? 'Bots will take the empty seats.' : 'The lobby is full.') : 'Waiting for the host to start.';
+  text('lobby-message', flow.lobbyMessage === '' ? status : flow.lobbyMessage);
 }
 
 function traitNames(id: UnitId): string {
@@ -512,7 +388,7 @@ function unitCard(id: UnitId, extra: string, onClick: (() => void) | null): HTML
 }
 
 function renderShop(p: PlayerView): void {
-  const buys = p.shop.map((_, slot) => check({ type: 'buy', slot }));
+  const buys = p.shop.map((_, slot) => flow.check({ type: 'buy', slot }));
   rebuild(shop, JSON.stringify([p.shop, buys]), () =>
     p.shop.map((id, slot) => {
       if (id === null) {
@@ -521,7 +397,7 @@ function renderShop(p: PlayerView): void {
         return empty;
       }
       const buy = buys[slot]!;
-      const card = unitCard(id, '', buy.ok ? () => act({ type: 'buy', slot }) : null);
+      const card = unitCard(id, '', buy.ok ? () => flow.act({ type: 'buy', slot }) : null);
       if (!buy.ok) card.title = buy.reason;
       return card;
     }),
@@ -530,7 +406,7 @@ function renderShop(p: PlayerView): void {
   text('reroll', p.freeRerolls > 0 ? `Reroll · free${p.freeRerolls > 1 ? ` ×${p.freeRerolls}` : ''}` : `Reroll · ${SHOP.rerollCost}`);
   allow('buy-xp', { type: 'buyXp' });
   text('lock', p.shopLocked ? 'Unlock' : 'Lock');
-  const ring = planningRing();
+  const ring = flow.planningRing();
   rebuild(element('items'), JSON.stringify([p.items, ring]), () => [
     ...(ring === null ? [] : [ringItem(ring)]),
     ...p.items.map((id, index) => {
@@ -540,39 +416,28 @@ function renderShop(p: PlayerView): void {
       return chip;
     }),
   ]);
-  const isReady = state!.ready.includes(you);
+  const isReady = flow.state!.ready.includes(flow.you);
   readyButton.disabled = isReady;
-  const others = planners().filter((seat) => seat !== you && !state!.ready.includes(seat)).length;
+  const others = flow.planners().filter((seat) => seat !== flow.you && !flow.state!.ready.includes(seat)).length;
   text('ready', isReady ? (others > 0 ? `Waiting for ${others}` : 'Ready ✓') : 'Ready');
 }
 
-/** Connected people still in the game: the ones a step waits for. */
-function planners(): number[] {
-  return state!.players
-    .filter((p) => p.placement === null && lobby?.seats[p.seat]?.kind === 'person' && lobby.seats[p.seat]!.connected)
-    .map((p) => p.seat);
-}
-
-function seatName(seat: number): string {
-  return seat === you ? 'You' : (lobby?.seats[seat]?.name ?? `Seat ${seat + 1}`);
-}
-
 function renderCouncil(): void {
-  const c = state!.council;
+  const c = flow.state!.council;
   if (c === null) return;
-  const picks = c.options.map((_, option) => check({ type: 'pick', option }).ok);
+  const picks = c.options.map((_, option) => flow.check({ type: 'pick', option }).ok);
   const picking = picks.includes(true);
   text('council-status', picking ? 'Your turn: pick a unit and what it brings.' : 'Waiting for the others to pick…');
   rebuild(element('options'), JSON.stringify([c.options, picks]), () =>
     c.options.map((option, i) => {
       const card = unitCard(
         option.unitId,
-        `${option.item === null ? 'The One Ring' : ITEMS[option.item].name}${option.pickedBy === null ? '' : ` · ${seatName(option.pickedBy)}`}`,
-        picks[i] ? () => act({ type: 'pick', option: i }) : null,
+        `${option.item === null ? 'The One Ring' : ITEMS[option.item].name}${option.pickedBy === null ? '' : ` · ${flow.seatName(option.pickedBy)}`}`,
+        picks[i] ? () => flow.act({ type: 'pick', option: i }) : null,
       );
       if (option.ring) {
         card.classList.add('ring');
-        card.title = `${ringText(state!.ring.corruption)}\nNobody is made to take it.`;
+        card.title = `${ringText(flow.state!.ring.corruption)}\nNobody is made to take it.`;
       } else if (option.item !== null && isRingOfPower(option.item)) {
         card.classList.add('ring-of-power');
         card.title = itemText(option.item);
@@ -601,7 +466,7 @@ function renderGiftOffer(p: PlayerView): void {
       card.innerHTML = '<strong></strong><span class="extra"></span>';
       card.querySelector('strong')!.textContent = GIFTS[id].name;
       card.querySelector('.extra')!.textContent = giftEffect(id);
-      card.addEventListener('click', () => act({ type: 'gift', option }));
+      card.addEventListener('click', () => flow.act({ type: 'gift', option }));
       return card;
     }),
   );
@@ -609,30 +474,22 @@ function renderGiftOffer(p: PlayerView): void {
 }
 
 function renderResults(round: RoundRecord, waiting: boolean): void {
-  const taken = round.damage.find((d) => d.seat === you)?.amount ?? 0;
-  const fight = yourFight(round, you);
-  const outcome = fight === null ? null : fight.result.outcome === 'draw' ? 'Draw' : fight.result.outcome === yourTeam(fight, you) ? 'Victory' : 'Defeat';
-  const lines = [
-    `${round.stage}-${round.round}: ${outcome ?? 'No fight'}${taken > 0 ? `, you take ${taken} damage` : ''}`,
-    ...round.damage.filter((d) => d.seat !== you).map((d) => `${seatName(d.seat)} takes ${d.amount}`),
-    ...round.eliminated.map((seat) => `${seatName(seat)} ${seat === you ? 'are' : 'is'} out in place ${state!.players[seat]!.placement}`),
-    ...(waiting && state!.me.placement === null ? ['Waiting for the others…'] : []),
-  ];
+  const lines = flow.resultLines(round, waiting);
   rebuild(result, JSON.stringify(lines), () => lines.map(paragraph));
 }
 
 function renderOver(): void {
-  const s = state!;
+  const s = flow.state!;
   const placement = s.me.placement!;
   const finished = s.step.kind === 'over';
-  const standings = [...s.players].sort((a, b) => (a.placement ?? 0) - (b.placement ?? 0) || b.hp - a.hp);
-  rebuild(result, JSON.stringify([placement, finished, offline, standings.map((p) => [p.seat, p.placement, p.hp]), lobby?.seats]), () => {
+  const order = standings(s.players);
+  rebuild(result, JSON.stringify([placement, finished, offline, order.map((p) => [p.seat, p.placement, p.hp]), flow.lobby?.seats]), () => {
     const title = document.createElement('h2');
     title.textContent = placement === 1 ? 'You win!' : `You placed ${ordinal(placement)}`;
     const list = document.createElement('ol');
-    for (const p of standings) {
+    for (const p of order) {
       const item = document.createElement('li');
-      item.textContent = p.placement === null ? `${seatName(p.seat)} · ${p.hp} HP` : seatName(p.seat);
+      item.textContent = p.placement === null ? `${flow.seatName(p.seat)} · ${p.hp} HP` : flow.seatName(p.seat);
       list.append(item);
     }
     const buttons = document.createElement('div');
@@ -655,15 +512,13 @@ function renderOver(): void {
 }
 
 function renderPlayers(): void {
-  const s = state!;
-  const key = JSON.stringify([s.players.map((p) => [p.hp, p.level, p.placement, p.gifts]), lobby?.seats, s.ring]);
+  const s = flow.state!;
+  const key = JSON.stringify([s.players.map((p) => [p.hp, p.level, p.placement, p.gifts]), flow.lobby?.seats, s.ring]);
   rebuild(element('players'), key, () => [
-    ...[...s.players]
-      .sort((a, b) => (a.placement ?? 0) - (b.placement ?? 0) || b.hp - a.hp)
-      .map((p) => {
-        const seat = lobby?.seats[p.seat];
+    ...standings(s.players).map((p) => {
+        const seat = flow.lobby?.seats[p.seat];
         const row = document.createElement('div');
-        row.className = `player${p.seat === you ? ' you' : ''}${p.placement !== null ? ' out' : ''}`;
+        row.className = `player${p.seat === flow.you ? ' you' : ''}${p.placement !== null ? ' out' : ''}`;
         const holds = s.ring.state === 'held' && s.ring.holder === p.seat;
         if (holds) row.classList.add('ring-holder');
         const notes = [
@@ -673,7 +528,7 @@ function renderPlayers(): void {
         if (notes.length > 0) row.title = notes.join('\n');
         const name = document.createElement('span');
         const away = seat?.kind === 'person' && !seat.connected ? ' (away)' : '';
-        name.textContent = `${seatName(p.seat)}${away} · ${p.level}`;
+        name.textContent = `${flow.seatName(p.seat)}${away} · ${p.level}`;
         const hp = document.createElement('span');
         hp.textContent = p.placement !== null ? ordinal(p.placement) : String(p.hp);
         const bar = document.createElement('div');
@@ -699,10 +554,6 @@ function yourGifts(p: PlayerView): HTMLElement[] {
     list.append(gift);
   }
   return [list];
-}
-
-function ordinal(n: number): string {
-  return `${n}${n === 1 ? 'st' : n === 2 ? 'nd' : n === 3 ? 'rd' : 'th'}`;
 }
 
 function randomSeed(): number {
