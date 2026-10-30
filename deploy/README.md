@@ -11,13 +11,13 @@ The game runs on one server as two containers: the game server (the `Dockerfile`
 
 `.github/workflows/docker.yml` builds the image when CI passes on `main` and pushes it to `ghcr.io/thiemo-seys/lotr_tactics`, tagged `latest` and with the commit SHA. You can also run it by hand from the Actions tab. The workflow only runs once it is on `main`.
 
-The images are built for x86 (`linux/amd64`), so pick an x86 server (CX or CPX), not an Arm one (CAX).
+The images are built for Arm (`linux/arm64`), so pick an Arm server (CAX), not an x86 one (CX or CPX). To build for x86 instead, change `--platform` in the workflow to `linux/amd64`.
 
 Each image has a version: a hash of the source under `packages/`. The server only lets pages of the same version into lobbies. A page that was left open over an update is told "The game has been updated. Reload the page to play." (`docs/server-spec.md` section 8).
 
 ## Setting up the server
 
-1. **Create the server** in the Hetzner Cloud console: the smallest x86 plan is plenty, with Ubuntu 24.04 and your SSH key.
+1. **Create the server** in the Hetzner Cloud console: the smallest Arm plan (CAX11) is plenty, with Ubuntu 24.04 and your SSH key.
 2. **Firewall:** add a Hetzner Cloud Firewall that lets in TCP 22, 80 and 443 and UDP 443, and apply it to the server. Docker bypasses `ufw` for published ports, so use the Cloud Firewall rather than `ufw`.
 3. **DNS:** point an A record (and an AAAA record for IPv6) for your domain at the server's IP. Caddy needs this to get a certificate.
 4. **Install Docker:** log in as root and run
@@ -99,10 +99,16 @@ All of these run in `/opt/lotr-tactics`.
 
 ## Building the image yourself
 
-From the root of the repository:
+From the root of the repository, an image for your own machine:
 
 ```bash
 docker build -t lotr-tactics .
+```
+
+Or for an Arm server, from any machine:
+
+```bash
+docker build --platform linux/arm64 -t lotr-tactics .
 ```
 
 ```bash

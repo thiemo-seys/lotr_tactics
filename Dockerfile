@@ -1,6 +1,9 @@
 # The game server with the built client (deploy/README.md).
 
-FROM node:22-slim AS build
+# Builds on the machine's own platform, since the client and the server's code are the same everywhere.
+# Only the production dependencies are installed for the target, which needs no emulation.
+FROM --platform=$BUILDPLATFORM node:22-slim AS build
+ARG TARGETARCH
 WORKDIR /app
 ENV CI=true
 RUN corepack enable
@@ -16,7 +19,7 @@ COPY packages packages
 RUN find packages -path '*/node_modules' -prune -o -type f -print | LC_ALL=C sort | xargs sha256sum | sha256sum | cut -c1-12 > VERSION \
   && GAME_VERSION="$(cat VERSION)" pnpm build \
   && rm -rf node_modules packages/*/node_modules \
-  && pnpm install --frozen-lockfile --prod --offline
+  && pnpm install --frozen-lockfile --prod --os=linux --libc=glibc --cpu="$(if [ "$TARGETARCH" = amd64 ]; then echo x64; else echo "$TARGETARCH"; fi)"
 
 FROM node:22-slim
 WORKDIR /app

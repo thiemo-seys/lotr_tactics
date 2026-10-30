@@ -245,8 +245,8 @@ interface SeatView {
 
 ### 9.1 Deploying
 
-- The `Dockerfile` builds the client and runs the server with production dependencies only. Its version is a hash of the source under `packages/`, so the server and the client it serves always share one.
-- `.github/workflows/docker.yml` pushes the image to the GitHub container registry when CI passes on `main`, tagged `latest` and with the commit SHA. CI also checks that the image builds.
+- The `Dockerfile` builds the client and runs the server with production dependencies only. It builds on the machine's own platform and installs only the production dependencies for the target, so an Arm image builds on x86 without emulation. Its version is a hash of the source under `packages/`, so the server and the client it serves always share one.
+- `.github/workflows/docker.yml` builds the image for Arm (`linux/arm64`) and pushes it to the GitHub container registry when CI passes on `main`, tagged `latest` and with the commit SHA. CI also checks that the image builds.
 - `deploy/` runs the image behind Caddy, which serves HTTPS, compresses, sends `/` to `/play.html` and hides `/status`. `deploy/README.md` has the steps for a server.
 - `deploy/deploy.sh` pulls the new image, then waits until `/status` shows no running games before restarting, for at most `WAIT_MINUTES` (default 60). After that it gives up; `--now` restarts at once.
 
