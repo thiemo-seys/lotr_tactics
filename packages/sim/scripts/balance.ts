@@ -44,16 +44,33 @@ const gifts = new Placements();
 const focus = new Placements();
 const endStages = new Map<number, number>();
 const pve = new Map<string, { won: number; fought: number }>();
+/** Per stage: the games that reach it, totals over living players after planning in its first round, and eliminations. */
+const stages = new Map<number, { round: string; games: number; alive: number; hp: number; level: number; gold: number; out: number }>();
 let rounds = 0;
 let millis = 0;
 
 for (let seed = firstSeed; seed < firstSeed + games; seed++) {
+  const seen = new Set<number>();
   const start = performance.now();
-  const { game, bots, reports } = playBotGame(seed);
+  const { game, bots, reports } = playBotGame(seed, 8, (state) => {
+    if (seen.has(state.stage)) return;
+    seen.add(state.stage);
+    const s = stages.get(state.stage) ?? { round: `${state.stage}-${state.round}`, games: 0, alive: 0, hp: 0, level: 0, gold: 0, out: 0 };
+    s.games++;
+    for (const p of state.players) {
+      if (p.placement !== null) continue;
+      s.alive++;
+      s.hp += p.hp;
+      s.level += p.level;
+      s.gold += p.gold;
+    }
+    stages.set(state.stage, s);
+  });
   millis += performance.now() - start;
   rounds += reports.length;
   const last = reports[reports.length - 1]!;
   endStages.set(last.stage, (endStages.get(last.stage) ?? 0) + 1);
+  for (const report of reports) stages.get(report.stage)!.out += report.eliminated.length;
 
   // Each player's board in their last fight, which is the one they finished with.
   // And the Gifts they had then, since an eliminated player's Gifts are gone.
@@ -95,6 +112,22 @@ for (let seed = firstSeed; seed < firstSeed + games; seed++) {
 console.log(`${games} games from seed ${firstSeed}: ${(millis / games).toFixed(0)} ms and ${(rounds / games).toFixed(1)} rounds per game`);
 console.log(`Games ending in stage: ${[...endStages].sort(([a], [b]) => a - b).map(([s, n]) => `${s}: ${n}`).join(', ')}`);
 console.log(`PvE win rate: ${[...pve].map(([k, p]) => `${k} ${Math.round((100 * p.won) / p.fought)}%`).join(', ')}`);
+
+console.log("\nStages: players alive after planning in the first round and out during the stage, per game; living players' average HP, level and gold");
+console.log('  round  games  alive    out     HP  level   gold');
+for (const [, s] of [...stages].sort(([a], [b]) => a - b)) {
+  const cells = [
+    s.round.padStart(5),
+    String(s.games).padStart(5),
+    (s.alive / s.games).toFixed(2).padStart(5),
+    (s.out / s.games).toFixed(2).padStart(5),
+    (s.hp / s.alive).toFixed(0).padStart(5),
+    (s.level / s.alive).toFixed(2).padStart(5),
+    (s.gold / s.alive).toFixed(1).padStart(5),
+  ];
+  console.log(`  ${cells.join('  ')}`);
+}
+
 units.print('Units on final boards, by average placement');
 traits.print('Active traits on final boards, by average placement');
 items.print('Items on final boards, by average placement');
