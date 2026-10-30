@@ -3,8 +3,8 @@ import { Bot, playBotGame } from '../src/bots/bot.js';
 import { UNITS } from '../src/data/units.js';
 import { createGame, type Game } from '../src/game/game.js';
 import { boardPlace } from '../src/game/places.js';
-import type { Player } from '../src/game/player.js';
-import { copiesIn, type Pool } from '../src/game/pool.js';
+import { copiesIn } from '../src/game/pool.js';
+import { playerOf, poolOf } from './fixtures.js';
 
 /** Plays bots until the given round's planning starts, without letting them plan it. */
 function botsUntil(seed: number, stage: number, round: number, players = 8): { game: Game; bots: Bot[] } {
@@ -80,8 +80,8 @@ describe('bots', () => {
 
   it('put Guardians at the front and Archers and Sorcerers at the back', () => {
     const { game, bots } = botsUntil(6, 2, 1, 2);
-    const me = game.state.players[0] as Player;
-    const pool = game.state.pool as Pool;
+    const me = playerOf(game, 0);
+    const pool = poolOf(game);
     me.returnEverything();
     me.level = 4;
     for (const [slot, id] of (['legolas', 'gimli', 'saruman', 'aragorn'] as const).entries()) {
@@ -98,8 +98,8 @@ describe('bots', () => {
 
   it('give items to their attacker, caster and tank by role', () => {
     const { game, bots } = botsUntil(6, 2, 1, 2);
-    const me = game.state.players[0] as Player;
-    const pool = game.state.pool as Pool;
+    const me = playerOf(game, 0);
+    const pool = poolOf(game);
     me.returnEverything();
     me.level = 4;
     for (const [slot, id] of (['legolas', 'gimli', 'saruman', 'aragorn'] as const).entries()) {
@@ -138,8 +138,8 @@ describe('bots', () => {
   it('pick the Council option that completes a merge', () => {
     const game = createGame({ seed: 8, players: 2 });
     const option = game.state.council!.options[4]!;
-    const me = game.state.players[0] as Player;
-    const pool = game.state.pool as Pool;
+    const me = playerOf(game, 0);
+    const pool = poolOf(game);
     for (const slot of [0, 1]) {
       pool.take(option.unitId);
       me.bench[slot] = { id: 600 + slot, unitId: option.unitId, star: 1, items: [] };

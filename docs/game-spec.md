@@ -89,6 +89,8 @@ packages/sim/src/
     places.ts       bench slots and board places, and finding units by place or id
     matchmaking.ts  pairing players and ghosts
     council.ts      Council of Elrond options and pick order
+    ring.ts         the One Ring's state: offered, held, borne, corrupted, stolen, destroyed
+    ring-supply.ts  the Rings of Power not in anyone's hands
   bots/
     bot.ts          a bot that plays one seat
   test/

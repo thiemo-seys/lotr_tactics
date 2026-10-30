@@ -5,11 +5,12 @@ import { Bot } from '../src/bots/bot.js';
 import { isComponent } from '../src/combat/items.js';
 import { GIFTS, GIFT_IDS, type GiftId } from '../src/data/gifts.js';
 import { UNITS, type UnitId } from '../src/data/units.js';
-import { createGame, type Game } from '../src/game/game.js';
+import { createGame } from '../src/game/game.js';
 import { rollGiftOffer } from '../src/game/gifts.js';
 import { Player } from '../src/game/player.js';
 import { Pool, copiesIn } from '../src/game/pool.js';
 import { createRng } from '../src/rng.js';
+import { playerOf, skipTo } from './fixtures.js';
 
 const isCrest = (id: GiftId) => GIFTS[id].combat?.crest !== undefined;
 
@@ -24,10 +25,6 @@ function setup(gold = 0) {
 /** Gives a player Gifts as if picked, without their rewards. */
 function hold(player: Player, ...gifts: GiftId[]): void {
   player.gifts.push(...gifts);
-}
-
-function skipTo(game: Game, stage: number, round: number): void {
-  while (!(game.state.stage === stage && game.state.round === round && game.state.phase === 'planning')) game.advance();
 }
 
 describe('gift offers', () => {
@@ -186,7 +183,7 @@ describe('gifts in the game', () => {
   it('give more XP each round with The Road Goes Ever On', () => {
     const game = createGame({ seed: 5, players: 2 });
     skipTo(game, 2, 1);
-    const p = game.state.players[0] as Player;
+    const p = playerOf(game, 0);
     p.giftOffer = ['road-goes-ever-on'];
     game.act(0, { type: 'gift', option: 0 });
     // 2 passive XP and 2 from the Gift at the start of 2-2, short of level 4's 6.
