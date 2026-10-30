@@ -43,6 +43,15 @@ describe('bots', () => {
     expect(summary(3)).not.toEqual(summary(4));
   });
 
+  it('show the state to a watcher once a round, after planning and before the fights', () => {
+    const watched: string[] = [];
+    const { reports } = playBotGame(1, 8, (state) => {
+      expect(state.phase).toBe('planning');
+      watched.push(`${state.stage}-${state.round}`);
+    });
+    expect(watched).toEqual(reports.map((r) => `${r.stage}-${r.round}`));
+  });
+
   it('level towards their target and fill the board up to their level', () => {
     const { game, bots } = botsUntil(5, 2, 1);
     for (const bot of bots) bot.plan(game);
