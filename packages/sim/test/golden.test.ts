@@ -6,8 +6,12 @@ import { describe, expect, it } from 'vitest';
 import { playBotGame } from '../src/bots/bot.js';
 import { simulateCombat, type CombatInput, type PlacedUnit } from '../src/combat/combat.js';
 import { RING_OF_POWER_IDS } from '../src/combat/items.js';
-import { GIFTS, GIFT_IDS } from '../src/data/gifts.js';
+import { hasTrait } from '../src/combat/traits.js';
+import { GIFTS, GIFT_IDS, type GiftId } from '../src/data/gifts.js';
 import { PVE_ROUNDS } from '../src/data/pve.js';
+import { TRAITS, type TraitId } from '../src/data/traits.js';
+import { UNITS } from '../src/data/units.js';
+import { UNIT_IDS } from '../src/game/pool.js';
 import { BOARDS, hash, hashEvents, input, mirrorMatch, placed } from './helpers.js';
 
 const SEEDS = [1, 2, 3, 4, 5, 6, 7, 8, 9, 10];
@@ -51,7 +55,52 @@ const STACKED: PlacedUnit[] = [
   placed('gandalf', 3, 0, 1, ['athelas', 'sting', 'narya']),
 ];
 
+/** Gifts that act in fights, apart from the crests. */
+const FIGHT_GIFTS = GIFT_IDS.filter((id) => GIFTS[id].combat !== undefined && GIFTS[id].combat.crest === undefined);
+
+/** Crest Gifts, each with the trait it counts towards. */
+const CRESTS = GIFT_IDS.flatMap((id) => {
+  const crest = GIFTS[id].combat?.crest;
+  return crest === undefined ? [] : [{ id, trait: crest }];
+});
+
+/**
+ * Team A for a crest: one unit short of its trait's second breakpoint, so the trait is active with
+ * at least two units holding it (Rohan acts only on the others) and the crest raises its level,
+ * then two units without the trait next to them, for traits such as Captain that act on
+ * neighbours.
+ */
+function crestBoard(trait: TraitId): PlacedUnit[] {
+  const breakpoint = TRAITS[trait].breakpoints[1]!;
+  const holders = UNIT_IDS.filter((id) => hasTrait(UNITS[id], trait)).slice(0, breakpoint - 1);
+  const others = UNIT_IDS.filter((id) => !hasTrait(UNITS[id], trait)).slice(0, 2);
+  return [...holders, ...others].map((id, col) => placed(id, col, 3));
+}
+
+/** A crest's fights against the full board, with the crest or without it. */
+function crestFights(crest: { id: GiftId; trait: TraitId }, withCrest: boolean): CombatInput[] {
+  return [1, 2, 3].map((seed) => ({ ...input(crestBoard(crest.trait), BOARDS.full, seed), gifts: { A: withCrest ? [crest.id] : [], B: [] } }));
+}
+
+/** Every PvE round's monsters against two boards, at each stage the round comes in: the later round at two, so monsters grow. */
+function monsterFights(): CombatInput[] {
+  return Object.entries(PVE_ROUNDS).flatMap(([key, round]) => {
+    const monsters = round.monsters.map((m): PlacedUnit => ({ ...m, star: 1, items: [] }));
+    const stages = key === 'later' ? [6, 8] : [Number(key.split('-')[0])];
+    return stages.flatMap((stage) =>
+      [BOARDS.tanks, BOARDS.full].flatMap((board) => [1, 2, 3].map((seed) => ({ ...input(board, monsters, seed), stage }))),
+    );
+  });
+}
+
 describe('golden hashes', () => {
+  it('cover every crest Gift and the monsters growing, which change their fights', () => {
+    for (const crest of CRESTS) expect(hashFights(crestFights(crest, true)), crest.id).not.toBe(hashFights(crestFights(crest, false)));
+    const later = PVE_ROUNDS.later.monsters.map((m): PlacedUnit => ({ ...m, star: 1, items: [] }));
+    const at = (stage: number) => hashFights([{ ...input(BOARDS.full, later, 1), stage }]);
+    expect(at(8)).not.toBe(at(6));
+  });
+
   it('of fights', () => {
     const hashes = {
       mirrors: hashFights(Object.values(BOARDS).flatMap((board) => SEEDS.map((seed) => mirrorMatch(board, seed)))),
@@ -71,24 +120,18 @@ describe('golden hashes', () => {
       ),
       stackedItems: hashFights(SEEDS.flatMap((seed) => [mirrorMatch(STACKED, seed), input(STACKED, BOARDS.items, seed)])),
       gifts: hashFights(
-        GIFT_IDS.filter((id) => GIFTS[id].combat !== undefined).flatMap((id) =>
-          [1, 2, 3].map((seed) => ({ ...input(BOARDS.traits, BOARDS.full, seed), gifts: { A: [id], B: [] } })),
-        ),
+        FIGHT_GIFTS.flatMap((id) => [1, 2, 3].map((seed) => ({ ...input(BOARDS.traits, BOARDS.full, seed), gifts: { A: [id], B: [] } }))),
       ),
-      monsters: hashFights(
-        Object.entries(PVE_ROUNDS).flatMap(([key, round]) => {
-          const monsters = round.monsters.map((m): PlacedUnit => ({ ...m, star: 1, items: [] }));
-          const stage = key === 'later' ? 6 : Number(key.split('-')[0]);
-          return [BOARDS.tanks, BOARDS.full].flatMap((board) => [1, 2, 3].map((seed) => ({ ...input(board, monsters, seed), stage })));
-        }),
-      ),
+      crests: hashFights(CRESTS.flatMap((crest) => crestFights(crest, true))),
+      monsters: hashFights(monsterFights()),
     };
     expect(hashes).toMatchInlineSnapshot(`
       {
-        "gifts": "8a2db844",
+        "crests": "78e6c4da",
+        "gifts": "3a4677cc",
         "itemsAgainstTraits": "e0a9aead",
         "mirrors": "a478804a",
-        "monsters": "53205603",
+        "monsters": "455ff409",
         "oneRing": "a839fa51",
         "ringsOfPower": "e47b81b7",
         "stackedItems": "726a5448",
