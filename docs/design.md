@@ -25,7 +25,7 @@ Status: early design. Numbers marked *(placeholder)* are starting points for tun
 | Roster | Sandbox: good and evil characters can share a board; 36 units in the first set |
 | Platform | Browser |
 | Rendering | Three.js |
-| Art style | Low-poly 3D models |
+| Art style | Low-poly 3D models in the Faceted style: flat-shaded facets, grounded heroic proportions, and a muted palette in which the team colour is the only saturated part ([`viewer-spec.md`](viewer-spec.md) section 4) |
 | Lobby size | 8 players |
 | Game length | About 30 minutes |
 | Max level | 9 |
@@ -607,6 +607,7 @@ Built from day one to:
 ## 12. Still to define
 
 1. **PvE enemies:** stats and loot tables (placeholders in [`game-spec.md`](game-spec.md) section 9)
+2. **Unit models:** how star levels show on a model, whether the team colour sits on clothing or on a ring round the base, and whether Large units are built at full size ([`viewer-spec.md`](viewer-spec.md) section 4)
 
 All numbers marked *(placeholder)* will be tuned during balancing.
 

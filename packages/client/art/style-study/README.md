@@ -2,6 +2,8 @@
 
 Gimli built in five art directions, to choose the look of the game's units before modelling the whole roster. Each style is one Blender script. The game doesn't use these models yet.
 
+**Chosen: Faceted**, on 30 October 2026. Its rules are in `docs/viewer-spec.md` section 4. The comparison of all five is kept in [`results/`](results/): open `results/index.html` in a browser for the full page with a 3D turntable, or read [`results/README.md`](results/README.md) on GitHub.
+
 | Style | Script | Triangles | Look |
 |---|---|---|---|
 | Faceted | `faceted.py` | 793 | Classic low-poly: hard-edged facets, grounded heroic proportions, a muted natural palette. |
@@ -12,6 +14,7 @@ Gimli built in five art directions, to choose the look of the game's units befor
 
 - `common.py`: what the style scripts share: materials from sRGB hex colours, primitives, and `finish()`, which joins, checks and exports a model.
 - `preview.py`: renders a model with Cycles for review, in both team colours and from every side. Single-sided materials, such as an inverted-hull outline, draw as three.js draws them.
+- `results/`: the comparison of the five styles as it stood when the choice was made: `index.html` with the models inside it, `README.md` with the same content, and the images.
 
 ## Building a style
 
