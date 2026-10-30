@@ -4,6 +4,7 @@ import { UNITS } from '../src/data/units.js';
 import { createGame, type Game } from '../src/game/game.js';
 import type { Player } from '../src/game/player.js';
 import { copiesIn, type Pool } from '../src/game/pool.js';
+import { BOARD_COLS } from '../src/hex.js';
 
 /** Plays bots until the given round's planning starts, without letting them plan it. */
 function botsUntil(seed: number, stage: number, round: number, players = 8): { game: Game; bots: Bot[] } {
@@ -44,12 +45,27 @@ describe('bots', () => {
   });
 
   it('show the state to a watcher once a round, after planning and before the fights', () => {
-    const watched: string[] = [];
+    const text = (units: readonly { unitId: string; star: number; col: number; row: number }[]) =>
+      units.map((u) => `${u.unitId} ${u.star} ${u.col},${u.row}`).join('; ');
+    const watched: { round: string; boards: Map<number, string> }[] = [];
     const { reports } = playBotGame(1, 8, (state) => {
       expect(state.phase).toBe('planning');
-      watched.push(`${state.stage}-${state.round}`);
+      const boards = new Map<number, string>();
+      for (const p of state.players) {
+        if (p.placement !== null) continue;
+        const units = p.board.flatMap((u, i) => (u === null ? [] : [{ ...u, col: i % BOARD_COLS, row: Math.floor(i / BOARD_COLS) }]));
+        boards.set(p.seat, text(units));
+      }
+      watched.push({ round: `${state.stage}-${state.round}`, boards });
     });
-    expect(watched).toEqual(reports.map((r) => `${r.stage}-${r.round}`));
+    expect(watched.map((w) => w.round)).toEqual(reports.map((r) => `${r.stage}-${r.round}`));
+    // Every player takes the board the watcher saw into the round's fight, so the bots had already planned.
+    reports.forEach((report, i) => {
+      for (const fight of report.fights) {
+        expect(text(fight.input.teams.A)).toBe(watched[i]!.boards.get(fight.home));
+        if (fight.away !== null) expect(text(fight.input.teams.B)).toBe(watched[i]!.boards.get(fight.away));
+      }
+    });
   });
 
   it('level towards their target and fill the board up to their level', () => {
