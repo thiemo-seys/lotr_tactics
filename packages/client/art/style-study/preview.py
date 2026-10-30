@@ -10,7 +10,8 @@ Writes one PNG per view and sheet.png, a 4 x 2 grid of them:
 `hero` is three-quarters on the model's left; `game-back` and `game-front` look down at the game
 camera's 45 degrees, from behind (how the near side is seen) and in front (the far side); the bottom
 row turns the model round. Every style is framed the same, so sizes compare. --quick renders only
-hero.png, smaller and with fewer samples.
+hero.png, smaller and with fewer samples. Single-sided materials, such as an inverted-hull outline,
+draw as three.js draws them.
 """
 
 import math
@@ -83,6 +84,40 @@ for o in scene.objects:
 team = next((m for m in bpy.data.materials if m.name == 'team'), None)
 if team is None:
     raise RuntimeError('the model has no "team" material')
+
+
+def single_sided(mat):
+    """Draws a single-sided material the way three.js does: seen by the camera on its front faces
+    only, and invisible to light. Cycles has no backface culling, and an inverted-hull outline
+    would otherwise cage the model in shadow."""
+    nodes, links = mat.node_tree.nodes, mat.node_tree.links
+    out = next(n for n in nodes if n.type == 'OUTPUT_MATERIAL' and n.is_active_output)
+    surface = out.inputs['Surface'].links[0].from_socket
+    geometry = nodes.new('ShaderNodeNewGeometry')
+    path = nodes.new('ShaderNodeLightPath')
+    front = nodes.new('ShaderNodeMath')
+    front.operation = 'SUBTRACT'
+    front.inputs[0].default_value = 1.0
+    links.new(geometry.outputs['Backfacing'], front.inputs[1])
+    seen = nodes.new('ShaderNodeMath')
+    seen.operation = 'MULTIPLY'
+    links.new(path.outputs['Is Camera Ray'], seen.inputs[0])
+    links.new(front.outputs['Value'], seen.inputs[1])
+    hidden = nodes.new('ShaderNodeMath')
+    hidden.operation = 'SUBTRACT'
+    hidden.inputs[0].default_value = 1.0
+    links.new(seen.outputs['Value'], hidden.inputs[1])
+    mix = nodes.new('ShaderNodeMixShader')
+    links.new(hidden.outputs['Value'], mix.inputs['Fac'])
+    links.new(surface, mix.inputs[1])
+    links.new(nodes.new('ShaderNodeBsdfTransparent').outputs['BSDF'], mix.inputs[2])
+    links.new(mix.outputs['Shader'], out.inputs['Surface'])
+
+
+# The glTF importer marks materials exported as single-sided with backface culling.
+for mat in bpy.data.materials:
+    if mat.use_backface_culling and mat.use_nodes:
+        single_sided(mat)
 
 bpy.ops.mesh.primitive_cylinder_add(vertices=6, radius=0.94, depth=0.12, location=(0, 0, -0.06), rotation=(0, 0, math.pi / 2))
 bpy.context.active_object.data.materials.append(flat_material('tile', TILE))
