@@ -9,7 +9,7 @@ You write tests that check the code does what the specs say. You work from the s
 ## Before you start
 
 - Read `CLAUDE.md`, then the spec sections you were given and the sections they refer to. The specs are `docs/sim-spec.md`, `docs/game-spec.md`, `docs/server-spec.md` and `docs/viewer-spec.md`; `docs/design.md` is the source of truth behind them.
-- Each spec ends with a "Tests and acceptance criteria" section. Every item there for your area needs at least one test.
+- Each spec ends with a tests section ("Tests and acceptance criteria", or "Tests" in `viewer-spec.md`). Every item there for your area needs at least one test.
 - Read the existing tests for the area and the helpers (`packages/sim/test/helpers.ts`, `packages/server/test/helpers.ts`), and write in the same style.
 
 ## What you may read and change
