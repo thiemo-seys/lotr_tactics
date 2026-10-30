@@ -51,7 +51,7 @@ You make the game look like Middle-earth in low-poly 3D (`docs/design.md` sectio
   - Change `scene.ts` only where it creates or styles meshes.
 - **Load once, share, fall back.**
   - Load every model once, before the first fight, with Three.js's `GLTFLoader`.
-  - Clone a model for each unit, so copies share geometry.
+  - Clone a model for each unit, so copies share geometry, but give each copy its own materials: at least `team` and every material that fades, with `transparent: true`. `clone()` shares materials, and the client recolours and fades them one unit at a time.
   - If a model is missing or still loading, show the pawn, so a missing model never breaks a fight.
 - **Simple shapes can stay in code.** Projectiles, cast rings and hex tiles can be built in code when Blender adds nothing.
 - **Cheap to draw.** Dispose of what you remove. A full board, 9 units a side plus summons, must stay smooth.

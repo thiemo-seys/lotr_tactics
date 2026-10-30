@@ -42,7 +42,7 @@ Some choices change how the game feels, such as how punishing a mechanic is or w
 
 - set out two or three options with their trade-offs;
 - recommend one;
-- list it under "Open questions" in the doc rather than deciding silently.
+- list it in `design.md` section 12 ("Still to define") rather than deciding silently.
 
 ## Report
 

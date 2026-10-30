@@ -53,7 +53,7 @@ Run `pnpm lint` and `pnpm typecheck` to confirm these still hold, then spend you
 
 - `pnpm --filter @lotr-tactics/sim test` runs the determinism tests and the mirror fairness test:
   - the same input gives the same event log hash;
-  - the same 8-bot game plays out the same twice.
+  - a bot game with 6 seats, and a 5-player game with random actions, play out the same for the same seed.
 - When you suspect a divergence, show it. Write a small script that runs the same input twice, or a board against its mirror, and compares the event logs. Run it with `pnpm --filter @lotr-tactics/sim exec tsx <script>`.
 - Keep scratch scripts in a temporary directory outside the repo.
 
