@@ -265,10 +265,10 @@ def face(eye, glint, blush, beard_mat, nose_mat):
         decal(f'cheek-{side}', blush, HEAD, HEAD_RADIUS, -12, 40 * side, (0.036, 0.024), lift=(0.001, 0.004), points=5)
         brow = Vector((0.09 * side, 0, 0.766))
         brow.y = -math.sqrt(HEAD_RADIUS**2 - brow.x**2 - (brow.z - HEAD.z) ** 2) - 0.014
-        # Inner ends a little low, for a determined look on a friendly face.
+        # Long and soft, the inner ends a little low for a determined look on a friendly face.
         ellipsoid(
-            f'brow-{side}', beard_mat, brow, (0.064, 0.033, 0.03), 5, [-90, -30, 30, 90],
-            z_axis=(0, -1, 0), x_hint=(1, 0, 0.2 * side),
+            f'brow-{side}', beard_mat, brow, (0.03, 0.034, 0.07), 5, [-90, -30, 30, 90],
+            z_axis=(1, 0, 0.2 * side), x_hint=(0, -1, 0),
         )
     ellipsoid('nose', nose_mat, (0, -0.262, 0.628), (0.062, 0.06, 0.058), 8, [-90, -30, 30, 90], z_axis=(0, -1, 0))
 
@@ -362,9 +362,9 @@ def axe(steel, wood):
     """An oversized war axe, upright in his right fist: one broad crescent blade facing outwards,
     so it shows face-on from the front and the back."""
     axis = Vector((-0.1, -0.2, 1)).normalized()
-    profile = [(0, -0.25), (0.04, -0.222), (0.03, -0.19), (0.03, 0.54), (0, 0.566)]
+    profile = [(0, -0.25), (0.04, -0.215), (0.03, 0.54), (0, 0.566)]
     verts, faces, bands, _ = lathe(profile, 5)
-    build('haft', place(verts, RIGHT_FIST, axis, (0, 1, 0)), faces, [(steel, steel, wood, wood)[b] for b in bands])
+    build('haft', place(verts, RIGHT_FIST, axis, (0, 1, 0)), faces, [(steel, wood, wood)[b] for b in bands])
 
     # The blade is a lens: thick along its middle, coming to an edge all round.
     outward = Vector((-1, 0, 0))
@@ -393,7 +393,7 @@ def shield(team, steel, leather):
     leather, so from behind it doesn't outshine the cape."""
     axis = Vector((0.42, -1, 0.3)).normalized()
     profile = [(0, -0.01), (0.272, 0.012), (0.242, 0.036), (0.075, 0.046), (0, 0.088)]
-    verts, faces, bands, rings = lathe(profile, 12)
+    verts, faces, bands, rings = lathe(profile, 14)
     verts = place(verts, (0.315, -0.205, 0.335), axis, (0, 0, 1))
     mats = [(leather, steel, team, steel)[b] for b in bands]
     build('shield', verts, faces, mats, sharp=ring_edges(rings[2]) + ring_edges(rings[3]))
