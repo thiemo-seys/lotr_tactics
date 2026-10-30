@@ -6,7 +6,6 @@ import {
   GIFTS,
   ITEMS,
   SHOP,
-  TRAITS,
   UNITS,
   XP,
   isRingOfPower,
@@ -15,20 +14,25 @@ import {
   unitAt,
   xpForNextLevel,
   type Action,
+  type GiftId,
+  type ItemId,
   type OwnedUnit,
   type Place,
   type PlayerView,
   type UnitId,
 } from '@lotr-tactics/sim';
-import type { RoundRecord, ServerMessage } from '@lotr-tactics/server';
+import type { PublicPlayer, RoundRecord, ServerMessage } from '@lotr-tactics/server';
 import { LocalConnection, SocketConnection, savedSeat, socketUrl, type Connection } from './connection.js';
 import { PlayFlow, ordinal, outcomeText, standings, type PlanningRing } from './flow.js';
 import { yourTeam } from './fights.js';
 import { TIER_NAMES, giftEffect, giftText } from './gifts.js';
+import { baseNumbers, ownedNumbers, traitNames, unitInfo, type UnitInfo } from './info.js';
 import { itemText } from './items.js';
 import { placeAtPoint } from './layout.js';
+import { oddsText, shopOdds } from './odds.js';
 import { ringText, ringTier } from './ring.js';
 import { FightScene, itemChip, ringChip } from './scene.js';
+import { traitRows, traitText } from './traits.js';
 import './style.css';
 
 const ROUND_NAMES = { council: 'Council of Elrond', pvp: 'PvP', pve: 'PvE' } as const;
@@ -45,6 +49,9 @@ const council = element('council');
 const giftPanel = element('gift-offer');
 const result = element('result');
 const banner = element('banner');
+const traitsPanel = element('traits');
+const scoutBar = element('scout');
+const infoCard = element('unit-info');
 const nameInput = element<HTMLInputElement>('name');
 const codeInput = element<HTMLInputElement>('code');
 const speedButton = element<HTMLButtonElement>('speed');
@@ -68,6 +75,8 @@ const flow = new PlayFlow({
 let dragging: { unit: OwnedUnit; from: Place } | null = null;
 /** One of the person's items, or the One Ring, being dragged onto a unit, with the chip that follows the mouse. */
 let draggingItem: { index: number | 'ring'; ghost: HTMLElement } | null = null;
+/** Where the mouse is, for the unit info card, or null once it leaves the page. */
+let pointer: { x: number; y: number } | null = null;
 
 // Menu and lobby
 
@@ -116,6 +125,7 @@ skipButton.addEventListener('click', () => {
   flow.skip(performance.now());
 });
 window.addEventListener('keydown', (event) => {
+  if (event.key === 'Escape') flow.scout(null);
   if (flow.show.kind !== 'planning' || event.target instanceof HTMLInputElement) return;
   if (event.key === 'd') flow.act({ type: 'reroll' });
   else if (event.key === 'f') flow.act({ type: 'buyXp' });
@@ -129,7 +139,7 @@ window.addEventListener('keydown', (event) => {
 view.addEventListener(
   'pointerdown',
   (event) => {
-    if (flow.show.kind !== 'planning' || event.button !== 0) return;
+    if (flow.show.kind !== 'planning' || flow.scouting !== null || event.button !== 0) return;
     const place = unitPlaceAt(event.clientX, event.clientY);
     const unit = place === null ? null : unitAt(flow.me(), place);
     if (place === null || unit === null) return;
@@ -141,6 +151,7 @@ view.addEventListener(
   { capture: true },
 );
 window.addEventListener('pointermove', (event) => {
+  pointer = { x: event.clientX, y: event.clientY };
   if (draggingItem !== null) moveGhost(draggingItem.ghost, event);
   if (dragging === null) return;
   const point = scene.groundPoint(event.clientX, event.clientY);
@@ -169,6 +180,7 @@ window.addEventListener('pointerup', (event) => {
   // Back where it was until the game says where it is now.
   scene.showPlanning(flow.me(), true, flow.planningRing());
 });
+document.documentElement.addEventListener('pointerleave', () => (pointer = null));
 
 startPage();
 
@@ -249,7 +261,7 @@ function allow(id: string, action: Action): void {
 
 /** Starts dragging one of the person's items or the Ring; dropping it on a unit gives it to that unit. */
 function dragItem(index: number | 'ring', event: PointerEvent): void {
-  if (flow.show.kind !== 'planning' || event.button !== 0) return;
+  if (flow.show.kind !== 'planning' || flow.scouting !== null || event.button !== 0) return;
   event.preventDefault();
   const ghost = index === 'ring' ? ringChip(flow.state!.ring.corruption) : itemChip(flow.me().items[index]!);
   ghost.classList.add('ghost');
@@ -277,20 +289,25 @@ function render(now: number): void {
   speedButton.hidden = skipButton.hidden = show.kind !== 'fight';
   element('leave-game').hidden = !inGame;
   element('players').hidden = !inGame;
+  traitsPanel.hidden = !inGame || show.kind === 'over';
+  scoutBar.hidden = !inGame || flow.scouting === null;
   banner.hidden = true;
 
   if (show.kind === 'menu') renderMenu();
   else if (show.kind === 'lobby') renderLobby();
   renderHud(now, inGame);
+  renderInfo();
   if (!inGame) return;
 
   const p = flow.me();
+  // The person's own board, or the board of the player they are scouting.
+  const shown = flow.shownPlayer();
   if (show.kind === 'planning') {
-    scene.showPlanning(p, false, flow.planningRing());
+    scene.showPlanning(shown, false, flow.ringOf(shown.seat));
     renderShop(p);
     renderGiftOffer(p);
   } else if (show.kind === 'council') {
-    scene.showPlanning(p, false, flow.planningRing());
+    scene.showPlanning(shown, false, flow.ringOf(shown.seat));
     renderCouncil();
   } else if (show.kind === 'fight' && show.playback.combat.isOver()) {
     banner.hidden = false;
@@ -301,6 +318,8 @@ function render(now: number): void {
     renderOver();
   }
   renderPlayers();
+  if (!traitsPanel.hidden) renderTraits(shown);
+  if (!scoutBar.hidden) renderScout(shown);
 }
 
 function renderHud(now: number, inGame: boolean): void {
@@ -370,14 +389,11 @@ function renderLobby(): void {
   text('lobby-message', flow.lobbyMessage === '' ? status : flow.lobbyMessage);
 }
 
-function traitNames(id: UnitId): string {
-  const def = UNITS[id];
-  return [def.origin, ...def.classes].map((t) => TRAITS[t].name).join(' · ');
-}
-
+/** A unit's card in the shop or a Council. Hovering it shows the unit's info card. */
 function unitCard(id: UnitId, extra: string, onClick: (() => void) | null): HTMLElement {
   const card = document.createElement('button');
   card.className = `card cost-${UNITS[id].cost}`;
+  card.dataset.unit = id;
   card.disabled = onClick === null;
   card.innerHTML = '<strong></strong><span class="traits"></span><span class="extra"></span>';
   card.querySelector('strong')!.textContent = `${UNITS[id].name} · ${UNITS[id].cost}`;
@@ -406,6 +422,10 @@ function renderShop(p: PlayerView): void {
   text('reroll', p.freeRerolls > 0 ? `Reroll · free${p.freeRerolls > 1 ? ` ×${p.freeRerolls}` : ''}` : `Reroll · ${SHOP.rerollCost}`);
   allow('buy-xp', { type: 'buyXp' });
   text('lock', p.shopLocked ? 'Unlock' : 'Lock');
+  const { odds } = shopOdds(p.level, p.gifts);
+  const oddsRow = element('odds');
+  rebuild(oddsRow, JSON.stringify(odds), () => odds.map((pct, i) => node('span', `cost-${i + 1}`, `${pct}%`)));
+  oddsRow.title = oddsText(p.level, p.gifts);
   const ring = flow.planningRing();
   rebuild(element('items'), JSON.stringify([p.items, ring]), () => [
     ...(ring === null ? [] : [ringItem(ring)]),
@@ -513,18 +533,20 @@ function renderOver(): void {
 
 function renderPlayers(): void {
   const s = flow.state!;
-  const key = JSON.stringify([s.players.map((p) => [p.hp, p.level, p.placement, p.gifts]), flow.lobby?.seats, s.ring]);
+  const key = JSON.stringify([s.players.map((p) => [p.hp, p.level, p.placement, p.gifts]), flow.lobby?.seats, s.ring, flow.scouting]);
   rebuild(element('players'), key, () => [
     ...standings(s.players).map((p) => {
         const seat = flow.lobby?.seats[p.seat];
         const row = document.createElement('div');
-        row.className = `player${p.seat === flow.you ? ' you' : ''}${p.placement !== null ? ' out' : ''}`;
+        row.className = `player${p.seat === flow.you ? ' you' : ''}${p.placement !== null ? ' out' : ''}${p.seat === flow.scouting ? ' scouted' : ''}`;
         const holds = s.ring.state === 'held' && s.ring.holder === p.seat;
         if (holds) row.classList.add('ring-holder');
         const notes = [
           ...(holds ? [`Holds the One Ring (Corruption ${s.ring.corruption})`] : []),
           ...(p.gifts.length > 0 ? [`Gifts: ${p.gifts.map((g) => GIFTS[g].name).join(', ')}`] : []),
+          ...(p.placement === null && p.seat !== flow.you ? ['Click to scout their board in a Council or planning.'] : []),
         ];
+        if (p.placement === null) row.addEventListener('click', () => flow.scout(p.seat));
         if (notes.length > 0) row.title = notes.join('\n');
         const name = document.createElement('span');
         const away = seat?.kind === 'person' && !seat.connected ? ' (away)' : '';
@@ -546,14 +568,149 @@ function yourGifts(p: PlayerView): HTMLElement[] {
   if (p.gifts.length === 0) return [];
   const list = document.createElement('div');
   list.className = 'your-gifts';
-  for (const id of p.gifts) {
-    const gift = document.createElement('div');
-    gift.className = `gift ${GIFTS[id].tier}`;
-    gift.textContent = GIFTS[id].name;
-    gift.title = giftText(id);
-    list.append(gift);
-  }
+  list.append(...p.gifts.map(giftTag));
   return [list];
+}
+
+/** The trait tracker for the board on screen: each trait's count and breakpoints, naming what it does when hovered. */
+function renderTraits(owner: PublicPlayer): void {
+  const rows = traitRows(owner.board, owner.gifts);
+  traitsPanel.hidden = rows.length === 0;
+  rebuild(traitsPanel, JSON.stringify(rows.map((r) => [r.trait, r.count])), () =>
+    rows.map((row) => {
+      const trait = node('div', `trait ${row.tier ?? 'inactive'}`);
+      trait.title = traitText(row.trait);
+      const steps = node('span', 'steps');
+      steps.append(...row.breakpoints.map((b, i) => node('span', i <= row.level ? 'reached' : '', String(b))));
+      trait.append(node('span', 'count', String(row.count)), node('span', 'name', row.name), steps);
+      return trait;
+    }),
+  );
+}
+
+/** The bar over a scouted board: whose it is, their level, gold and streak, their items and Gifts, and the way back. */
+function renderScout(owner: PublicPlayer): void {
+  const ring = flow.ringOf(owner.seat);
+  const name = flow.seatName(owner.seat);
+  rebuild(scoutBar, JSON.stringify([owner.seat, name, owner.level, owner.gold, owner.streak, owner.items, owner.gifts, ring]), () => {
+    const streak = Math.abs(owner.streak) < 2 ? '' : ` · ${Math.abs(owner.streak)} ${owner.streak > 0 ? 'wins' : 'losses'} in a row`;
+    const title = node('div', 'title');
+    title.append(node('strong', '', `${name}'s board`), node('span', '', ` · Level ${owner.level} · ${owner.gold} gold${streak}`));
+    const items = node('div', 'items');
+    // A Ring they hold but no unit wears; a worn one shows on its bearer.
+    items.append(...(ring !== null && ring.bearer === null ? [ringChip(ring.corruption)] : []), ...owner.items.map(itemChip));
+    const gifts = node('div', 'gifts');
+    gifts.append(...owner.gifts.map(giftTag));
+    const back = node('button', '', 'Back (Esc)');
+    back.addEventListener('click', () => flow.scout(null));
+    return [title, ...[items, gifts].filter((row) => row.childElementCount > 0), back];
+  });
+}
+
+/** A Gift's name in its tier's colour, naming its effect when hovered. */
+function giftTag(id: GiftId): HTMLElement {
+  const gift = node('span', `gift ${GIFTS[id].tier}`, GIFTS[id].name);
+  gift.title = giftText(id);
+  return gift;
+}
+
+/** What the unit info card shows. */
+interface Hovered {
+  readonly info: UnitInfo;
+  readonly items: readonly ItemId[];
+  /** The One Ring's Corruption, on its bearer. */
+  readonly ring: number | null;
+}
+
+/** The info card of the unit under the mouse, next to it. */
+function renderInfo(): void {
+  const hovered = flow.inGame && dragging === null && draggingItem === null ? hoveredUnit() : null;
+  infoCard.hidden = hovered === null;
+  if (hovered === null) return;
+  rebuild(infoCard, JSON.stringify(hovered), () => infoNodes(hovered));
+  infoCard.className = hovered.info.cost === null ? '' : `cost-${hovered.info.cost}`;
+  placeNear(infoCard, pointer!);
+}
+
+/** The unit under the mouse: on a shop or Council card, on the board or bench on screen, or in the person's fight. */
+function hoveredUnit(): Hovered | null {
+  if (pointer === null) return null;
+  const under = document.elementFromPoint(pointer.x, pointer.y);
+  const card = under?.closest<HTMLElement>('[data-unit]');
+  if (card !== null && card !== undefined) {
+    const id = card.dataset.unit as UnitId;
+    return { info: unitInfo(id, 1, [], baseNumbers(id, 1)), items: [], ring: null };
+  }
+  if (under === null || !view.contains(under)) return null;
+  const { show } = flow;
+  if (show.kind === 'planning' || show.kind === 'council') {
+    const owner = flow.shownPlayer();
+    const id = scene.planningUnitAt(pointer.x, pointer.y);
+    const place = id === null ? null : placeOf(owner, id);
+    const unit = place === null ? null : unitAt(owner, place);
+    if (unit === null) return null;
+    const ring = flow.ringOf(owner.seat);
+    return {
+      info: unitInfo(unit.unitId, unit.star, unit.items, ownedNumbers(owner.board, unit, owner.gifts, ring)),
+      items: unit.items,
+      ring: ring !== null && ring.bearer === unit.id ? ring.corruption : null,
+    };
+  }
+  if (show.kind === 'fight') {
+    const id = scene.fightUnitAt(pointer.x, pointer.y);
+    if (id === null) return null;
+    const u = show.playback.combat.state.units[id]!;
+    return { info: unitInfo(u.unitId, u.star, u.items, { base: u.base, stats: u.stats, mana: u.mana, health: u.health }), items: u.items, ring: u.ring };
+  }
+  return null;
+}
+
+function infoNodes({ info, items, ring }: Hovered): Node[] {
+  const title = node('div', 'title');
+  title.append(node('strong', '', info.name), node('span', 'stars', info.stars), ...(info.cost === null ? [] : [node('span', 'cost', `${info.cost} gold`)]));
+  const stats = node('dl', 'stats');
+  for (const line of info.stats) {
+    const stat = node('div');
+    stat.append(node('dt', '', line.name), node('dd', line.change ?? '', line.value));
+    stats.append(stat);
+  }
+  const nodes: Node[] = [title, node('div', 'traits', info.traits), stats];
+  if (info.ability !== null) {
+    const ability = node('div', 'ability');
+    const head = node('div', 'head');
+    head.append(node('strong', '', info.ability.name), ...(info.ability.mana > 0 ? [node('span', 'mana', `${info.ability.mana} mana`)] : []));
+    ability.append(head, ...info.ability.lines.map((line) => node('p', '', line)));
+    nodes.push(ability);
+  }
+  const held = [
+    ...(ring === null ? [] : [{ chip: ringChip(ring), name: `The One Ring · Corruption ${ring}` }]),
+    ...items.map((id) => ({ chip: itemChip(id), name: ITEMS[id].name })),
+  ];
+  if (held.length > 0) {
+    const list = node('div', 'held');
+    for (const { chip, name } of held) {
+      const line = node('div');
+      line.append(chip, node('span', '', name));
+      list.append(line);
+    }
+    nodes.push(list);
+  }
+  return nodes;
+}
+
+/** Puts a floating card next to the mouse, on whichever side keeps it on screen. */
+function placeNear(card: HTMLElement, at: { x: number; y: number }): void {
+  const gap = 16;
+  const { offsetWidth: width, offsetHeight: height } = card;
+  card.style.left = `${at.x + gap + width <= innerWidth ? at.x + gap : Math.max(4, at.x - gap - width)}px`;
+  card.style.top = `${at.y + gap + height <= innerHeight ? at.y + gap : Math.max(4, at.y - gap - height)}px`;
+}
+
+function node<K extends keyof HTMLElementTagNameMap>(tag: K, className = '', content = ''): HTMLElementTagNameMap[K] {
+  const element = document.createElement(tag);
+  if (className !== '') element.className = className;
+  if (content !== '') element.textContent = content;
+  return element;
 }
 
 function randomSeed(): number {

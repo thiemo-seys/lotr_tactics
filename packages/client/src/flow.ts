@@ -4,12 +4,24 @@
 // be tested.
 
 import { TICKS_PER_SECOND, checkAction, createCombat, type Action, type ActionResult, type Outcome, type PlayerView, type Team } from '@lotr-tactics/sim';
-import { TIMERS, type ClientMessage, type FightRecord, type LobbyView, type MatchView, type RoundRecord, type ServerMessage } from '@lotr-tactics/server';
+import {
+  TIMERS,
+  type ClientMessage,
+  type FightRecord,
+  type LobbyView,
+  type MatchView,
+  type PublicPlayer,
+  type RoundRecord,
+  type ServerMessage,
+} from '@lotr-tactics/server';
 import { yourFight, yourTeam } from './fights.js';
 import { Playback } from './playback.js';
 
 /** How long a finished fight stays on screen, in ticks of fight time, before the results. */
 const FIGHT_END_TICKS = TIMERS.fightHold * TICKS_PER_SECOND;
+
+/** Actions that move the person's units or give their items, which wait while they scout. */
+const PLACING: ReadonlySet<Action['type']> = new Set(['move', 'sell', 'equip', 'ring']);
 
 /** What the page shows. The game's own step comes from the server; fights and results are shown here. */
 export type Show =
@@ -49,6 +61,8 @@ export class PlayFlow {
   show: Show = { kind: 'menu' };
   menuMessage = '';
   lobbyMessage = '';
+  /** The seat whose board is on screen instead of the person's, while scouting. */
+  scouting: number | null = null;
   /** When `state` arrived, in milliseconds, to count down its step's time. */
   private stateAt = 0;
 
@@ -61,6 +75,7 @@ export class PlayFlow {
     this.show = { kind: 'menu' };
     this.menuMessage = menuMessage;
     this.lobbyMessage = '';
+    this.scouting = null;
   }
 
   /** A message from the game, arriving at `now` in milliseconds. */
@@ -108,9 +123,29 @@ export class PlayFlow {
     }
   }
 
-  /** Sends one of the person's actions: in planning, or a pick in a Council. */
+  /**
+   * Sends one of the person's actions: in planning, or a pick in a Council. While scouting, the
+   * person's own units and items stay where they are.
+   */
   act(action: Action): void {
+    if (this.scouting !== null && PLACING.has(action.type)) return;
     if (this.show.kind === 'planning' || (this.show.kind === 'council' && action.type === 'pick')) this.hooks.send({ type: 'act', action });
+  }
+
+  /**
+   * Shows another player's board in place of the person's, during a Council or planning. Scouting
+   * the same player again, the person's own seat, a player who is out, or null goes back.
+   */
+  scout(seat: number | null): void {
+    const player = seat === null ? undefined : this.state?.players[seat];
+    const allowed = (this.show.kind === 'council' || this.show.kind === 'planning') && player !== undefined && player.placement === null && seat !== this.you;
+    this.scouting = allowed && this.scouting !== seat ? seat : null;
+  }
+
+  /** The player whose board is on screen: the one being scouted, or the person. */
+  shownPlayer(): PublicPlayer {
+    const scouted = this.scouting === null ? undefined : this.state!.players[this.scouting];
+    return scouted !== undefined && scouted.placement === null ? scouted : this.state!.me;
   }
 
   /** The person is Ready to end planning. */
@@ -141,8 +176,13 @@ export class PlayFlow {
 
   /** The One Ring, if the person holds it: its bearer among their units and its Corruption. */
   planningRing(): PlanningRing | null {
+    return this.ringOf(this.you);
+  }
+
+  /** The One Ring, if a player holds it: its bearer among their units and its Corruption. */
+  ringOf(seat: number): PlanningRing | null {
     const ring = this.state?.ring;
-    return ring !== undefined && ring.state === 'held' && ring.holder === this.you ? { bearer: ring.bearer, corruption: ring.corruption } : null;
+    return ring !== undefined && ring.state === 'held' && ring.holder === seat ? { bearer: ring.bearer, corruption: ring.corruption } : null;
   }
 
   /** Connected people still in the game: the ones a step waits for. */
@@ -184,16 +224,19 @@ export class PlayFlow {
 
   // Steps
 
-  /** Moves to the server's step. A fight that is still playing is cut short. */
+  /** Moves to the server's step. A fight that is still playing is cut short, and a new step ends scouting. */
   private follow(next: MatchView): void {
     switch (next.step.kind) {
       case 'over':
         this.show = { kind: 'over' };
+        this.scouting = null;
         return;
       case 'council':
       case 'planning':
         if (next.me.placement !== null) this.show = { kind: 'over' };
         else if (this.show.kind !== next.step.kind) this.show = { kind: next.step.kind };
+        else return;
+        this.scouting = null;
         return;
       case 'fight':
         // The round arrived just before this step, and started the fight.
@@ -202,6 +245,7 @@ export class PlayFlow {
   }
 
   private startRound(round: RoundRecord, now: number): void {
+    this.scouting = null;
     const fight = yourFight(round, this.you);
     if (fight === null) {
       this.showResults(round, now);

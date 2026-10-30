@@ -64,7 +64,8 @@ const STATS: readonly { key: keyof ItemStats; name: string; pct: boolean }[] = [
   { key: 'critChancePct', name: 'Crit Chance', pct: true },
 ];
 
-function bonus(stat: BuffStat, amount: number): string {
+/** A stat bonus as text, such as "+30 Armor" or "+25% Attack Damage". */
+export function bonus(stat: BuffStat, amount: number): string {
   const { name, pct } = STATS.find((s) => s.key === stat)!;
   return `+${amount}${pct ? '%' : ''} ${name}`;
 }

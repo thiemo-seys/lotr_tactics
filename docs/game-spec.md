@@ -490,8 +490,17 @@ The play page, `play.html` in `packages/client`, next to the fight viewer (`view
 - **Planning view:** the person's half of the board and their bench, a row of 9 tiles in front of it, in 3D. An HTML overlay with the round, a timer, HP, gold, level, XP and the board count, the shop, the buy XP, reroll and lock buttons, the person's items and a Ready button.
 - **Drag and drop** moves units between the bench and the board, swapping with a unit already there; dropping a unit on the shop bar sells it. Dragging one of the person's items onto a unit gives it to that unit.
 - **Items** show on each unit's label, in planning and in fights, and each item names its effect when hovered.
-- **Keys:** D rerolls, F buys XP, Space is Ready.
-- **Players list:** every player's HP, level and place.
+- **Keys:** D rerolls, F buys XP, Space is Ready, Escape stops scouting.
+- **Players list:** every player's HP, level and place. Clicking a player scouts them.
+- **Trait tracker:** a list at the left of the board, while the person is in the game, of the traits of the board on screen: the person's, or the scouted player's. Traits are counted as fights count them: each distinct board unit once, plus crests and the Nazgûl of a Ring of the Nine's wearer (the sim's `teamTraits`). Bench units don't count. Each trait shows its count and its breakpoints, with the ones reached marked. Active traits come first, by tier and then by count: gold at the trait's top breakpoint, silver past its first, and bronze at its first. Then come the traits short of their first breakpoint, by count. Hovering a trait names its effect at each breakpoint and the units that have it.
+- **Unit info:** hovering a unit shows a card with its name, stars, cost, traits, stats, ability and items. This works for units on the board and bench, shop cards, Council options, and units in the person's fight.
+  - A board unit's stats are the ones it would start a fight with on that board: its trait, item and Gift bonuses and the One Ring's Burden (the sim's `startingStats`). Bench units, shop cards and Council options show base stats at their star. In a fight, the card shows the unit's stats at that moment, with its current Health.
+  - Stats above the unit's base stats are marked as bonuses, and stats below as penalties.
+  - The ability text is built from the ability's data, like item and Gift text, with its values at the unit's star and Ability Power.
+- **Shop odds:** under the shop buttons, the chance that a shop slot shows each cost, at the level the shop rolls with: the person's level, or higher with the Mirror of Galadriel (the sim's `shopLevel`).
+- **Scouting:** during a Council or planning, clicking another player who is still in the game shows their board and bench in place of the person's. A bar above the board names them, with their level, gold, streak, items and Gifts. The trait tracker and unit info follow the scouted board.
+  - Their units can't be moved, and the person's items can't be given while scouting. The shop and Ready still work.
+  - Clicking them again, clicking yourself or pressing Escape goes back to the person's own board. So does the next step.
 - **Council:** the options as cards with their components or Rings of Power and who took them; the person picks one when it's their group's turn.
 - **Rings of Power** show like other items, as chips in the ring's colours, each naming its effect when hovered.
 - **The One Ring:** the Ring's Council option shows the Ring instead of a component. The holder sees the Ring's Corruption and tier in the HUD, and a Destroy button when they can destroy it. The Ring is a chip among the person's items, which they drag onto a unit to make it the bearer. The bearer's label shows the Ring and its Corruption, in planning and in fights, and the players list marks the holder.

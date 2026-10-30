@@ -23,7 +23,7 @@ Implementation spec for online play: lobbies, a server that runs games authorita
 - Accounts, ranking, a public list of lobbies and a matchmaking queue.
 - Saving games. Lobbies live in memory, so a restart ends every game.
 - Several server processes, and hosting and deployment.
-- Watching other players' boards and fights in the client. Views already include their boards.
+- Watching other players' fights in the client. Their boards can be scouted during a Council or planning (`game-spec.md` section 12), since views already include them.
 - Chat and emotes.
 
 ---

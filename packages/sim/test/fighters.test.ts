@@ -1,10 +1,11 @@
 // Units as they start a fight (docs/sim-spec.md sections 6.2, 7 and 12), without running one.
 
 import { describe, expect, it } from 'vitest';
-import type { PlacedUnit } from '../src/combat/combat.js';
-import { createSummon, createUnit, effectsOf, giftAmpPct, originsOf, teamSetup, type Unit } from '../src/combat/fighters.js';
+import { Fight, type PlacedUnit } from '../src/combat/combat.js';
+import { createSummon, createUnit, effectsOf, giftAmpPct, originsOf, startingStats, teamSetup, teamTraits, type Unit } from '../src/combat/fighters.js';
 import { finalStats, gruntStats } from '../src/combat/stats.js';
 import { toTicks } from '../src/combat/time.js';
+import { levelsOf, traitLevel } from '../src/combat/traits.js';
 import { GIFTS, type GiftId } from '../src/data/gifts.js';
 import { RING } from '../src/data/ring.js';
 import { fromPlacement } from '../src/hex.js';
@@ -82,6 +83,50 @@ describe('starting units', () => {
     expect(effectsOf(elrond, 'healPulse')[0]!.pct).toBe(150);
     expect(effectsOf(unit(placed('gimli', 3, 3, 1, ['vilya'])), 'healPulse')[0]!.pct).toBe(100);
     expect(effectsOf(elrond, 'reflect')).toEqual([]);
+  });
+});
+
+describe('what the client shows of a board', () => {
+  it('counts each distinct unit once per trait, with the Nine and crests, as the fight does', () => {
+    const board = [
+      placed('frodo', 3, 3),
+      placed('frodo', 2, 3, 2),
+      placed('sam', 4, 3),
+      placed('boromir', 1, 3, 1, ['ring-of-the-nine']),
+      placed('ringwraith', 0, 3),
+    ];
+    const gifts: GiftId[] = ['burglars-contract', 'eorlingas'];
+    // Rohan's crest doesn't count without a Rohan unit.
+    expect(teamTraits(board, gifts)).toEqual({ hobbit: 2, burglar: 3, guardian: 1, gondor: 1, captain: 1, nazgul: 2 });
+    expect(levelsOf(teamTraits(board, gifts))).toEqual(teamSetup(board, gifts).traits);
+    expect(teamTraits([], gifts)).toEqual({});
+  });
+
+  it('gives the level reached at a count, or -1 below the first breakpoint', () => {
+    expect([0, 1, 2, 3, 4, 5, 6, 9].map((count) => traitLevel('hobbit', count))).toEqual([-1, -1, 0, 0, 1, 1, 2, 2]);
+    expect([0, 1].map((count) => traitLevel('ent', count))).toEqual([-1, 0]);
+  });
+
+  it('gives the stats and mana each unit starts a real fight with', () => {
+    const board = [
+      placed('frodo', 3, 3, 2, ['blade']),
+      placed('sam', 4, 3),
+      { ...placed('merry', 2, 3), ring: 6 },
+      placed('gimli', 1, 3),
+      placed('legolas', 3, 0, 1, ['bow', 'staff']),
+      placed('elrond', 4, 0),
+    ];
+    const gifts: GiftId[] = ['beorns-honey', 'high-ground', 'shield-wall', 'gandalfs-fireworks'];
+    const fight = new Fight({ seed: 1, stage: 2, teams: { A: board, B: [placed('beregond', 3, 3)] }, gifts: { A: gifts, B: [] } });
+    for (const p of board) {
+      const inFight = fight.state.units.find((u) => u.team === 'A' && u.unitId === p.unitId)!;
+      expect(startingStats(p, board, gifts)).toEqual({ base: inFight.base, stats: inFight.stats, mana: inFight.mana });
+    }
+    // Hobbit, Elf and Burglar bonuses, the Burden and the Gifts all show.
+    const frodo = startingStats(board[0]!, board, gifts);
+    expect(frodo.stats.maxHealth).toBeGreaterThan(frodo.base.maxHealth);
+    const merry = startingStats(board[2]!, board, gifts);
+    expect(merry.stats.maxHealth).toBeLessThan(startingStats({ ...board[2]!, ring: 0 }, board, gifts).stats.maxHealth);
   });
 });
 

@@ -82,6 +82,11 @@ export function baseIncome(stage: number, round: number): number {
   return INCOME.base[`${stage}-${round}`] ?? INCOME.standard;
 }
 
+/** The level whose odds a player's shop rolls with: their own, raised by any Mirror of Galadriel (section 6.2). */
+export function shopLevel(level: number, gifts: readonly GiftId[]): number {
+  return Math.min(level + giftBonus(gifts, 'shopLevels'), PLAYER.maxLevel);
+}
+
 /** Bonus gold for a streak of this many results. */
 export function streakGold(length: number): number {
   let gold = 0;
@@ -246,7 +251,7 @@ export class Player implements PlayerView {
 
   /** Fills every shop slot from the pool, with the odds of the level and any Mirror of Galadriel. The shop must be empty. */
   rollShop(): void {
-    const level = Math.min(this.level + giftBonus(this.gifts, 'shopLevels'), PLAYER.maxLevel);
+    const level = shopLevel(this.level, this.gifts);
     for (let slot = 0; slot < SHOP.size; slot++) this.shop[slot] = this.context.pool.rollShopSlot(level, this.shopRng);
   }
 

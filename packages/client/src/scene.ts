@@ -11,7 +11,7 @@ import {
   type FighterId,
   type ItemId,
   type OwnedUnit,
-  type PlayerView,
+  type Owner,
   type Star,
   type Team,
   type UnitState,
@@ -136,10 +136,11 @@ export class FightScene {
   }
 
   /**
-   * Shows a player's board and bench for planning, in their own perspective. `ring` marks the One
-   * Ring's bearer among them, if the player holds it.
+   * Shows a player's board and bench for planning, in their own perspective: the person's, or
+   * another player's while scouting. `ring` marks the One Ring's bearer among them, if the player
+   * holds it.
    */
-  showPlanning(player: PlayerView, force = false, ring: PlanningRing | null = null): void {
+  showPlanning(player: Owner, force = false, ring: PlanningRing | null = null): void {
     const key = JSON.stringify([player.board, player.bench, ring]);
     if (!force && this.playback === null && key === this.planningKey) return;
     const entering = this.playback !== null || this.planningKey === '';
@@ -182,6 +183,21 @@ export class FightScene {
     for (const hit of this.raycaster.intersectObjects([...this.planning.values()], true)) {
       for (let object: THREE.Object3D | null = hit.object; object !== null; object = object.parent) {
         if (typeof object.userData.unitId === 'number') return object.userData.unitId;
+      }
+    }
+    return null;
+  }
+
+  /** The fight id of the living unit whose pawn is under a screen position, if any. Dying units are seen through. */
+  fightUnitAt(clientX: number, clientY: number): number | null {
+    if (this.playback === null) return null;
+    const { units } = this.playback.combat.state;
+    this.aimRay(clientX, clientY);
+    const groups = this.units.map((u) => u.group);
+    for (const hit of this.raycaster.intersectObjects(groups.filter((g) => g.visible), true)) {
+      for (let object: THREE.Object3D | null = hit.object; object !== null; object = object.parent) {
+        const id = groups.indexOf(object as THREE.Group);
+        if (id >= 0 && units[id]!.alive) return id;
       }
     }
     return null;

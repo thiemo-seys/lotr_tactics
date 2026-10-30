@@ -134,6 +134,73 @@ describe('the play flow', () => {
   });
 });
 
+describe('scouting', () => {
+  it("shows another living player's board in a Council or planning, until the next step", async () => {
+    const host = fakeHost();
+    let connection: LocalConnection | null = null;
+    const { flow, calls } = recorded((message) => connection!.send(message));
+    connection = new LocalConnection(5, { message: (m) => flow.receive(m, host.time), closed: () => {} }, { host, autoUpdate: false });
+    await flush();
+    expect(flow.show.kind).toBe('council');
+
+    flow.scout(3);
+    expect([flow.scouting, flow.shownPlayer().seat]).toEqual([3, 3]);
+    expect(flow.shownPlayer()).toBe(flow.state!.players[3]);
+    // The same player again, yourself, or nobody: back to your own board.
+    flow.scout(3);
+    expect([flow.scouting, flow.shownPlayer()]).toEqual([null, flow.state!.me]);
+    flow.scout(3);
+    flow.scout(0);
+    expect(flow.scouting).toBeNull();
+    flow.scout(3);
+    flow.scout(null);
+    expect(flow.scouting).toBeNull();
+
+    // A new step goes back to your own board.
+    flow.scout(2);
+    host.time += flow.state!.step.ms!;
+    connection.update();
+    await flush();
+    expect([flow.show.kind, flow.scouting]).toEqual(['planning', null]);
+
+    // While scouting, your units and items stay put, but the shop works.
+    flow.scout(4);
+    const sent = calls.sent.length;
+    flow.act({ type: 'move', from: { bench: 0 }, to: { col: 3, row: 3 } });
+    flow.act({ type: 'sell', from: { bench: 0 } });
+    flow.act({ type: 'equip', item: 0, to: { bench: 0 } });
+    flow.act({ type: 'ring', to: { bench: 0 } });
+    expect(calls.sent.length).toBe(sent);
+    flow.act({ type: 'reroll' });
+    expect(calls.sent.slice(sent)).toEqual([{ type: 'act', action: { type: 'reroll' } }]);
+
+    // A fight ends scouting, and there is nothing to scout until the next Council or planning.
+    flow.ready();
+    await flush();
+    expect([flow.show.kind, flow.scouting]).toEqual(['fight', null]);
+    flow.scout(4);
+    expect(flow.scouting).toBeNull();
+    connection.close();
+  });
+
+  it("can't scout a player who is out, and goes back when the scouted player is knocked out", async () => {
+    const { flow } = recorded();
+    const connection = new LocalConnection(5, { message: (m) => flow.receive(m, 0), closed: () => {} }, { host: fakeHost(), autoUpdate: false });
+    await flush();
+    const knockOut = (seat: number) => {
+      flow.state = { ...flow.state!, players: flow.state!.players.map((p) => (p.seat === seat ? { ...p, placement: 8 } : p)) };
+    };
+    knockOut(6);
+    flow.scout(6);
+    expect(flow.scouting).toBeNull();
+    flow.scout(5);
+    knockOut(5);
+    expect(flow.shownPlayer()).toBe(flow.state!.me);
+    expect(flow.ringOf(5)).toBeNull();
+    connection.close();
+  });
+});
+
 describe('results', () => {
   it('name outcomes for the team played, order standings and write places', () => {
     expect([outcomeText('A', 'A'), outcomeText('B', 'A'), outcomeText('draw', 'B')]).toEqual(['Victory', 'Defeat', 'Draw']);

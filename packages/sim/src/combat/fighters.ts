@@ -16,7 +16,7 @@ import { itemEffects, itemModifiers } from './items.js';
 import { baseStats, combineModifiers, finalStats, monsterStats, type BaseStats, type StatModifiers } from './stats.js';
 import { Statuses } from './statuses.js';
 import { toTicks } from './time.js';
-import { traitLevels, traitModifiers, type TraitLevels } from './traits.js';
+import { levelsOf, traitCounts, traitModifiers, type TraitCounts, type TraitLevels } from './traits.js';
 
 /** Each team's half of the board is this many rows deep. */
 export const HALF_ROWS = BOARD_ROWS / 2;
@@ -85,17 +85,35 @@ export interface TeamSetup {
   readonly giftMana: number;
 }
 
-/** A team's active traits, counting crest Gifts and the Nine's Nazgûl, and its Gifts' fight effects. Monsters have no traits. */
+/**
+ * What counts towards a team's traits: each distinct unit, the Nazgûl of each Ring of the Nine's
+ * wearer, and crest Gifts (sections 12.3, 12.5 and 12.7). Monsters have no traits. The client
+ * shows these counts.
+ */
+export function teamTraits(units: readonly Pick<PlacedUnit, 'unitId' | 'items'>[], giftIds: readonly GiftId[]): TraitCounts {
+  const crests = giftIds.flatMap((id) => GIFTS[id].combat?.crest ?? []);
+  const unitIds = units.map((p) => p.unitId).filter(isUnitId);
+  const nine = units.flatMap((p) => (isUnitId(p.unitId) && wearsNine(p.items) ? [{ unitId: p.unitId, trait: 'nazgul' as const }] : []));
+  return traitCounts(unitIds, crests, nine);
+}
+
+/** A team's active traits, counted by `teamTraits`, and its Gifts' fight effects. */
 export function teamSetup(placements: readonly PlacedUnit[], giftIds: readonly GiftId[]): TeamSetup {
   const gifts = giftIds.flatMap((id) => GIFTS[id].combat ?? []);
-  const crests = gifts.flatMap((g) => g.crest ?? []);
-  const unitIds = placements.map((p) => p.unitId).filter(isUnitId);
-  const nine = placements.flatMap((p) => (isUnitId(p.unitId) && wearsNine(p.items) ? [{ unitId: p.unitId, trait: 'nazgul' as const }] : []));
   return {
-    traits: traitLevels(unitIds, crests, nine),
+    traits: levelsOf(teamTraits(placements, giftIds)),
     gifts,
     giftMana: gifts.reduce((mana, g) => mana + (g.startMana ?? 0), 0),
   };
+}
+
+/**
+ * A unit's stats and mana as it would start a fight among these placements, with these Gifts: made
+ * by `createUnit`, as in the fight, before anything happens at combat start. The client shows them.
+ */
+export function startingStats(p: PlacedUnit, placements: readonly PlacedUnit[], giftIds: readonly GiftId[]): Pick<Unit, 'base' | 'stats' | 'mana'> {
+  const { base, stats, mana } = createUnit(p, { id: 0, team: 'A', slot: 0, stage: 1, setup: teamSetup(placements, giftIds), placements });
+  return { base, stats, mana };
 }
 
 /** A team's damage amp from its Gifts, counting the distinct origins among its starting units (section 12.5). */

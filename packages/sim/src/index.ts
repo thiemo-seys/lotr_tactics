@@ -16,6 +16,9 @@ export * from './combat/stats.js';
 export * from './combat/time.js';
 export * from './combat/items.js';
 export { createCombat, simulateCombat } from './combat/combat.js';
+export { startingStats, teamTraits } from './combat/fighters.js';
+export { traitLevel } from './combat/traits.js';
+export type { TraitCounts } from './combat/traits.js';
 export type {
   Combat,
   CombatInput,
@@ -31,7 +34,7 @@ export type * from './combat/events.js';
 export { UNIT_IDS, copiesIn } from './game/pool.js';
 export { TEAM_ROWS, boardPlace, boardSlot, isPlace, ownedUnits, placeOf, samePlace, unitAt } from './game/places.js';
 export type { BoardPlace, OwnedUnit, Owner, Place } from './game/places.js';
-export { baseIncome, streakGold, xpForNextLevel } from './game/player.js';
+export { baseIncome, shopLevel, streakGold, xpForNextLevel } from './game/player.js';
 export type { PlayerView } from './game/player.js';
 export { addItem, checkAction } from './game/rules.js';
 export type { ActionContext, ActionResult } from './game/rules.js';

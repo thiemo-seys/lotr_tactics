@@ -20,7 +20,9 @@
     </header>
     <main>
       <div id="view"></div>
+      <aside id="traits" hidden></aside>
       <aside id="players"></aside>
+      <div id="scout" hidden></div>
       <section id="menu" class="panel" hidden>
         <h2>LOTR Tactics</h2>
         <p id="menu-message" class="message"></p>
@@ -64,6 +66,7 @@
         <button id="buy-xp" title="Buy 4 XP (F)">Buy XP · 4</button>
         <button id="reroll" title="Reroll the shop (D)">Reroll · 2</button>
         <button id="lock">Lock</button>
+        <div id="odds"></div>
       </div>
       <div id="shop"></div>
       <div class="buttons">
@@ -71,6 +74,7 @@
         <button id="ready" title="End planning (Space)">Ready</button>
       </div>
     </footer>
+    <div id="unit-info" hidden></div>
     <script type="module" src="/src/play.ts"></script>
   </body>
 </html>

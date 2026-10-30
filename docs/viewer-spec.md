@@ -41,6 +41,9 @@ packages/client/
     playback.ts    stepping the fight and what to draw at a moment (no Three.js, no DOM)
     scene.ts       Three.js scene, units, overlays, and the planning view
     units.ts       names and sizes of units, monsters and summons
+    traits.ts      the trait tracker's rows, and trait descriptions from the trait data (no Three.js, no DOM)
+    info.ts        unit info cards: stats, and ability text from the ability data (no Three.js, no DOM)
+    odds.ts        the shop's odds at the level it rolls with
     items.ts       item and Ring of Power tags, colours and descriptions from the item data
     gifts.ts       Gift tiers and descriptions from the Gift data
     ring.ts        the One Ring's tier and description at a Corruption
