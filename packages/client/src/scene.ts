@@ -22,6 +22,7 @@ import { CSS2DObject, CSS2DRenderer } from 'three/addons/renderers/CSS2DRenderer
 import { itemColours, itemTag, itemText } from './items.js';
 import { ringText } from './ring.js';
 import { benchToWorld, hexToWorld, type Point } from './layout.js';
+import type { PlanningRing } from './flow.js';
 import { EFFECT_TICKS, facing, type CastRing, type FloatingText, type Playback, type Projectile } from './playback.js';
 import { displayName, isLarge } from './units.js';
 
@@ -431,12 +432,6 @@ export class FightScene {
       (ring.material as THREE.MeshBasicMaterial).opacity = 1 - progress;
     }
   }
-}
-
-/** Where the One Ring is among a planning board's units. */
-export interface PlanningRing {
-  readonly bearer: number | null;
-  readonly corruption: number;
 }
 
 /** The One Ring with its Corruption, naming what it does when hovered. */
