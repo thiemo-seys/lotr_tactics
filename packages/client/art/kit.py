@@ -10,14 +10,17 @@ Coordinates are Blender's: z up, and the model faces -Y, which is +Z in the game
 right hand is at -X. 1 Blender unit is 1 game unit, and the origin is the centre of the model's
 base, on the ground.
 
-Forms are built from hand-placed vertices: rings of points (`ellipse()`, `segment()`) joined into
-bands of quads by `loft()`, and made into a mesh by `part()`, which winds every face to point
-outwards. Gimli (units/gimli.py) is the reference for how they are used.
+Forms are built from hand-placed vertices: rings of points (`ellipse()`, `segment()`, or
+`path_rings()` along a bent line) joined into bands of quads by `loft()`, and made into a mesh by
+`part()`, which winds every face to point outwards. `lean()`, `turn()` and `stoop()` pose parts
+built upright. Gimli (units/gimli.py) is the reference for how they are used.
 """
 
 import math
 import os
+import random
 import sys
+from itertools import pairwise
 
 import bpy
 from mathutils import Matrix, Vector
@@ -240,11 +243,105 @@ def nearest_on_line(a, b):
     return lambda p: a + d * (p - a).dot(d)
 
 
+def nearest_on_polyline(points):
+    """A function giving the point on the polyline through `points` nearest to a point: the inside
+    of a bent form, to wind its faces round."""
+    points = [Vector(p) for p in points]
+
+    def nearest(c):
+        best = None
+        for a, b in pairwise(points):
+            ab = b - a
+            t = max(0.0, min(1.0, (c - a).dot(ab) / ab.length_squared))
+            q = a + t * ab
+            if best is None or (c - q).length < (c - best).length:
+                best = q
+        return best
+
+    return nearest
+
+
 def tube(name, start, end, stations, mats, band_mats=None, n=6, phase=0.0, squash=1.0):
     """A faceted tube along a straight line, open at both ends (they hide inside other parts)."""
     verts, faces, bands = loft(segment(start, end, stations, n, phase, squash))
     face_mats = [band_mats[b] for b in bands] if band_mats else None
     return part(name, verts, faces, mats, face_mats, inside=nearest_on_line(start, end))
+
+
+def path_rings(points, radii, n=6, phase=0.0, side=None, level_end=False):
+    """Rings of n points round the bent line through `points`, one at each point with its radius,
+    square to the line there (to the bisector at a bend). A radius is a number, or (across, deep) for
+    a flattened ring. `side` is the way `across` points, kept square to the line; without it the
+    first ring's is carried down the line without twisting. `level_end` lays the last ring level,
+    for a foot or hoof on the ground."""
+    points = [Vector(p) for p in points]
+    rings, axis, across = [], None, None
+    for k, p in enumerate(points):
+        dirs = []
+        if k > 0:
+            dirs.append((p - points[k - 1]).normalized())
+        if k < len(points) - 1:
+            dirs.append((points[k + 1] - p).normalized())
+        previous, axis = axis, sum(dirs, Vector()).normalized()
+        if level_end and k == len(points) - 1:
+            axis = V(0, 0, math.copysign(1.0, axis.z))
+        if side is not None:
+            guide = Vector(side)
+        elif across is None:
+            guide = frame(axis)[0]
+        else:
+            guide = previous.rotation_difference(axis) @ across
+        across = (guide - guide.dot(axis) * axis).normalized()
+        deep = axis.cross(across)
+        ra, rd = (radii[k], radii[k]) if isinstance(radii[k], (int, float)) else radii[k]
+        ring = []
+        for i in range(n):
+            a = math.radians(phase) + math.tau * i / n
+            ring.append(p + ra * math.cos(a) * across + rd * math.sin(a) * deep)
+        rings.append(ring)
+    return rings
+
+
+def bent_tube(name, points, radii, mats, band_mats=None, n=6, phase=0.0, side=None, level_end=False,
+              start=None, end=None):
+    """A faceted tube along the bent line through `points`, on path_rings(): limbs, tails, staves,
+    branches, horns, braids and bows. Each end is left open (None) where it hides inside another
+    part, closed by a flat cap ('cap'), or drawn to the point given as `start` or `end`."""
+    points = [Vector(p) for p in points]
+    rings = path_rings(points, radii, n, phase, side, level_end)
+    verts, faces, bands = loft(rings)
+    face_mats = [band_mats[b] for b in bands] if band_mats else [0] * len(faces)
+    faces = wind(verts, faces, inside=nearest_on_polyline(points))
+    ends = [  # how it closes, its ring's first vertex, centre and outward direction, and material
+        (start, 0, points[0], points[0] - points[1], face_mats[0]),
+        (end, (len(rings) - 1) * n, points[-1], points[-1] - points[-2], face_mats[-1]),
+    ]
+    for close, first, centre, ahead, mat in ends:
+        if close == 'cap':
+            faces += wind(verts, [tuple(range(first, first + n))], outward=ahead)
+            face_mats.append(mat)
+        elif close is not None:
+            verts.append(Vector(close))
+            fan = [(first + i, first + (i + 1) % n, len(verts) - 1) for i in range(n)]
+            faces += wind(verts, fan, inside=centre - 0.01 * ahead.normalized())
+            face_mats += [mat] * n
+    return part(name, verts, faces, mats, face_mats)
+
+
+def cone(name, base, apex, radius, mat, n=6, phase=0.0, squash=1.0, back='cap'):
+    """A closed point: a ring of n round `base`, square to the line to `apex`, drawn to `apex`, for
+    spikes, claws, crown tines, horns and pommels. `back` closes the base with a flat cap ('cap'),
+    draws it to a second point given (a pommel or a gem), or leaves it open (None) where it hides
+    inside another part."""
+    base, apex = Vector(base), Vector(apex)
+    verts = segment(base, apex, [(0, radius)], n, phase, squash)[0] + [apex]
+    faces = [(i, (i + 1) % n, n) for i in range(n)]
+    if back == 'cap':
+        faces.append(tuple(range(n)))
+    elif back is not None:
+        verts.append(Vector(back))
+        faces += [(i, (i + 1) % n, n + 1) for i in range(n)]
+    return part(name, verts, faces, mat, inside=base.lerp(apex, 0.01))
 
 
 def box(name, centre, axes, half, mat, taper=1.0):
@@ -260,12 +357,98 @@ def box(name, centre, axes, half, mat, taper=1.0):
     return part(name, verts, faces, mat, inside=centre)
 
 
+# An icosahedron's corners and faces, for icosphere().
+GOLDEN = (1 + 5**0.5) / 2
+ICOSAHEDRON = [
+    (-1, GOLDEN, 0), (1, GOLDEN, 0), (-1, -GOLDEN, 0), (1, -GOLDEN, 0),
+    (0, -1, GOLDEN), (0, 1, GOLDEN), (0, -1, -GOLDEN), (0, 1, -GOLDEN),
+    (GOLDEN, 0, -1), (GOLDEN, 0, 1), (-GOLDEN, 0, -1), (-GOLDEN, 0, 1),
+]
+ICOSAHEDRON_FACES = [
+    (0, 11, 5), (0, 5, 1), (0, 1, 7), (0, 7, 10), (0, 10, 11), (1, 5, 9), (5, 11, 4), (11, 10, 2),
+    (10, 7, 6), (7, 1, 8), (3, 9, 4), (3, 4, 2), (3, 2, 6), (3, 6, 8), (3, 8, 9), (4, 9, 5),
+    (2, 4, 11), (6, 2, 10), (8, 6, 7), (9, 8, 1),
+]
+
+
+def icosphere(subdivisions=0):
+    """Points on the unit sphere and its triangles: an icosahedron, each triangle split in four
+    `subdivisions` times (20, 80 or 320 triangles)."""
+    verts = [Vector(p).normalized() for p in ICOSAHEDRON]
+    faces = list(ICOSAHEDRON_FACES)
+    middle = {}  # the new point on each edge, by the edge's ends
+
+    def midpoint(a, b):
+        key = (min(a, b), max(a, b))
+        if key not in middle:
+            middle[key] = len(verts)
+            verts.append(((verts[a] + verts[b]) / 2).normalized())
+        return middle[key]
+
+    for _ in range(subdivisions):
+        middle.clear()
+        split = []
+        for a, b, c in faces:
+            ab, bc, ca = midpoint(a, b), midpoint(b, c), midpoint(c, a)
+            split += [(a, ab, ca), (b, bc, ab), (c, ca, bc), (ab, bc, ca)]
+        faces = split
+    return verts, faces
+
+
+def lump(name, centre, radii, mat, seed, rough=0.1, subdivisions=0, angles=(0, 0, 0)):
+    """A rough ball for boulders, stones and clumps of leaves: an icosphere() scaled to `radii`
+    (half-sizes along x, y and z, or one radius), each point pushed in or out by up to `rough` of
+    it, the same every build for the same `seed`, and turned by `angles` (degrees about x, y, z)."""
+    rx, ry, rz = (radii,) * 3 if isinstance(radii, (int, float)) else radii
+    rotation = (
+        Matrix.Rotation(math.radians(angles[2]), 3, 'Z')
+        @ Matrix.Rotation(math.radians(angles[1]), 3, 'Y')
+        @ Matrix.Rotation(math.radians(angles[0]), 3, 'X')
+    )
+    centre = Vector(centre)
+    unit, faces = icosphere(subdivisions)
+    jitter = random.Random(seed)
+    verts = []
+    for p in unit:
+        k = 1 + jitter.uniform(-rough, rough)
+        verts.append(centre + rotation @ V(k * p.x * rx, k * p.y * ry, k * p.z * rz))
+    return part(name, verts, faces, mat, inside=centre)
+
+
 def lean(objects, pivot, degrees):
     """Tips objects forward (towards -Y) about a horizontal axis through `pivot`."""
     tip = Matrix.Rotation(math.radians(degrees), 4, 'X')
     turn = Matrix.Translation(pivot) @ tip @ Matrix.Translation(-pivot)
     for obj in objects:
         obj.data.transform(turn)
+
+
+def turn(objects, pivot, degrees):
+    """Turns objects about an upright axis through `pivot`, to the model's left (+X) for positive
+    degrees: the sideways counterpart of lean(), for twisted poses."""
+    pivot = Vector(pivot)
+    spin = Matrix.Rotation(math.radians(degrees), 4, 'Z')
+    turning = Matrix.Translation(pivot) @ spin @ Matrix.Translation(-pivot)
+    for obj in objects:
+        obj.data.transform(turning)
+
+
+def stooped(point, low, high, forward, drop=0.0):
+    """Where stoop() carries a point: for placing a part on a body after it stoops."""
+    p = Vector(point)
+    t = min(max((p.z - low) / (high - low), 0.0), 1.0)
+    s = t * t * (3 - 2 * t)  # rises smoothly from 0 at `low` to 1 at `high`
+    return p + V(0, -forward * s, -drop * s)
+
+
+def stoop(objects, low, high, forward, drop=0.0):
+    """Bends objects built upright forward, as hunched Orcs, Gollum and old figures stoop: nothing
+    below height `low` moves, and above it each point is carried forward (towards -Y) and down,
+    smoothly more the higher it is, by the whole of `forward` and `drop` from height `high` up.
+    Unlike lean() it bends rather than tips, so parts that meet still meet: give it the whole body."""
+    for obj in objects:
+        for v in obj.data.vertices:
+            v.co = stooped(v.co, low, high, forward, drop)
 
 
 # Export ----------------------------------------------------------------------------------------

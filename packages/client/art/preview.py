@@ -1,6 +1,6 @@
 """Renders a model for review with Cycles on the CPU (README.md).
 
-    blender --background --factory-startup --python-exit-code 1 --python preview.py -- <model.glb> <out dir> [--quick] [--fit]
+    blender --background --factory-startup --python-exit-code 1 --python preview.py -- <model.glb> <out dir> [--quick] [--fit] [--culled]
 
 Writes one PNG per view and sheet.png, a 4 x 2 grid of them:
 
@@ -11,7 +11,9 @@ Writes one PNG per view and sheet.png, a 4 x 2 grid of them:
 camera's 45 degrees, from behind (how the near side is seen) and in front (the far side); the bottom
 row turns the model round. Every model is framed the same, so sizes compare, unless --fit frames the
 model alone for a closer look at a small one. --quick renders only hero.png, smaller and with fewer
-samples. Single-sided materials draw as three.js draws them.
+samples. Single-sided materials draw as three.js draws them. --culled draws every material
+single-sided, as three.js would if the client culled back faces, so a face wound inside out, which
+the double-sided export hides, shows as a hole (and the model casts no shadow).
 """
 
 import math
@@ -25,6 +27,7 @@ from mathutils import Vector
 args = sys.argv[sys.argv.index('--') + 1 :]
 quick = '--quick' in args
 fit = '--fit' in args
+culled = '--culled' in args
 model_path, out_dir = [a for a in args if not a.startswith('--')][:2]
 os.makedirs(out_dir, exist_ok=True)
 
@@ -115,9 +118,10 @@ def single_sided(mat):
     links.new(mix.outputs['Shader'], out.inputs['Surface'])
 
 
-# The glTF importer marks materials exported as single-sided with backface culling.
+# The glTF importer marks materials exported as single-sided with backface culling; --culled makes
+# every material single-sided.
 for mat in bpy.data.materials:
-    if mat.use_backface_culling and mat.use_nodes:
+    if (mat.use_backface_culling or culled) and mat.use_nodes:
         single_sided(mat)
 
 bpy.ops.mesh.primitive_cylinder_add(vertices=6, radius=0.94, depth=0.12, location=(0, 0, -0.06), rotation=(0, 0, math.pi / 2))
