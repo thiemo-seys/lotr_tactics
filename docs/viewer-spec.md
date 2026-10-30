@@ -72,6 +72,18 @@ packages/client/
 - **Untargetable:** the unit is drawn faded.
 - **Death:** the unit sinks and fades out over half a second of fight time.
 
+### Models
+
+The pawns are placeholders. Each unit, monster and summon will get its own model in the **Faceted** art style. It was chosen from a study that built Gimli in five styles (`packages/client/art/style-study/`, with the comparison in its `results/`), and Gimli in `faceted.py` there is the reference model.
+
+- **Look:** classic low-poly. Every form is built from low-segment shapes and hand-placed vertices and shaded flat, so the facets show. No smooth shading, bevels or textures.
+- **Proportions:** grounded and heroic, with each people's own build: Hobbits short and round, Dwarves stocky, Elves tall and slim, Orcs hunched, Nazgûl hooded and faceless, Istari robed. Treebeard and Sauron are Large and look it.
+- **Colour:** a muted, earthy palette in which the team colour is the only saturated part. Steel is a light grey with a metalness of 0.15 or less, because the scene has no environment map and metal would draw dark.
+- **Team colour:** on parts every model has, seen from the front, from behind and from above, in a material named `team` that the viewer recolours. Gimli's are his hood, cape and shield face.
+- **Role:** shows in the silhouette: shields for Guardians, bows for Archers, staffs for Sorcerers, mounts or spears for Riders, hoods and daggers for Burglars, banners or capes for Captains.
+- **Budget** *(placeholder)*: about 800 triangles for a unit and 2,000 for a Large unit or monster.
+- **Build:** Blender 4.5 LTS, one Python script per model in `packages/client/art/`, exported as glTF binary. 1 Blender unit is 1 game unit, the origin is the centre of the model's base on the ground, and a model faces +Z in the game (−Y in Blender). One object per model, with colour from materials named after what they are.
+
 ---
 
 ## 5. Playback
