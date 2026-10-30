@@ -12,11 +12,7 @@ rounded layers that sit on one another rather than shapes that meet in a crease.
     blender --background --factory-startup --python-exit-code 1 --python storybook.py -- <out.glb> [--flat]
 
 --flat shades every face flat instead of smooth with sharp creases, to compare the two under toon
-shading (smooth won). preview.py renders with Cycles, which has no backface culling and so would draw
-the hull as a solid shell over the model; to preview, run preview.py through this script, which makes
-the outline material clear wherever it faces the camera and changes nothing else:
-
-    blender --background --factory-startup --python-exit-code 1 --python storybook.py -- --preview <model.glb> <out dir> [--quick]
+shading (smooth won).
 """
 
 import math
@@ -414,38 +410,7 @@ def triangles(objs) -> int:
     return total
 
 
-@bpy.app.handlers.persistent
-def cull_outline(*_):
-    """Cycles has no backface culling, so the hull would hide the model in preview.py's renders:
-    make the outline material transparent wherever it faces the camera, as three.js culls it."""
-    mat = bpy.data.materials.get('outline')
-    if mat is None or not mat.use_nodes or 'Backfacing' in mat.node_tree.nodes:
-        return
-    nodes, links = mat.node_tree.nodes, mat.node_tree.links
-    out = next(n for n in nodes if n.type == 'OUTPUT_MATERIAL' and n.is_active_output)
-    surface = out.inputs['Surface'].links[0].from_socket
-    facing = nodes.new('ShaderNodeNewGeometry')
-    facing.name = 'Backfacing'
-    clear = nodes.new('ShaderNodeBsdfTransparent')
-    mix = nodes.new('ShaderNodeMixShader')
-    links.new(facing.outputs['Backfacing'], mix.inputs['Fac'])
-    links.new(surface, mix.inputs[1])
-    links.new(clear.outputs['BSDF'], mix.inputs[2])
-    links.new(mix.outputs['Shader'], out.inputs['Surface'])
-
-
-def preview():
-    """Runs preview.py unchanged, with the ink line drawn the way the game will draw it."""
-    bpy.app.handlers.render_pre.append(cull_outline)
-    path = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'preview.py')
-    with open(path) as source:
-        exec(compile(source.read(), path, 'exec'), {'__name__': '__main__', '__file__': path})
-
-
 def main():
-    if '--preview' in sys.argv:
-        preview()
-        return
     reset()
     m = {
         'team': team_material(),
