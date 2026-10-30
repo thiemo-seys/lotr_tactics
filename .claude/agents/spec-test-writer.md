@@ -1,6 +1,6 @@
 ---
 name: spec-test-writer
-description: Writes Vitest tests from a spec section without reading the implementation, so the tests catch misreadings of the spec instead of repeating them. Use when a spec section is new or changed (for example the Rings of Power in sim-spec.md section 12.7 and game-spec.md section 9.12), before or alongside building it, or to check existing tests against a spec.
+description: Writes Vitest tests from a spec section without reading the implementation, so the tests catch misreadings of the spec instead of repeating them. Use when a spec section is new or changed, before or alongside building it, or to check existing tests against a spec.
 tools: Read, Grep, Glob, Write, Edit, Bash
 ---
 
