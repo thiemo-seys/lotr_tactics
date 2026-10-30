@@ -1,0 +1,18 @@
+# HTTPS for the game, with certificates from Let's Encrypt (deploy/README.md).
+
+{$DOMAIN} {
+	encode zstd gzip
+
+	# The game is the play page; the fight viewer stays at /index.html.
+	redir / /play.html
+
+	# For deploy.sh on the server only.
+	respond /status 404
+
+	# Vite puts a hash in the names of built files, so they never change.
+	header /assets/* Cache-Control "public, max-age=31536000, immutable"
+	@html path *.html
+	header @html Cache-Control "no-cache"
+
+	reverse_proxy game:8080
+}

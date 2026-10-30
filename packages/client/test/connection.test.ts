@@ -1,6 +1,6 @@
 import type { Host, MatchView, ServerMessage } from '@lotr-tactics/server';
 import { describe, expect, it } from 'vitest';
-import { LocalConnection } from '../src/connection.js';
+import { GAME_VERSION, LocalConnection, withVersion } from '../src/connection.js';
 import { yourFight, yourTeam } from '../src/fights.js';
 
 /** A host whose clock only moves when the test moves it. */
@@ -60,5 +60,14 @@ describe('LocalConnection', () => {
     expect(over.players.map((p) => p.placement).sort()).toEqual([1, 2, 3, 4, 5, 6, 7, 8]);
     expect(fights).toBeGreaterThan(5);
     connection.close();
+  });
+});
+
+describe('withVersion', () => {
+  it('adds the build to the messages that enter a lobby, and to no others', () => {
+    expect(withVersion({ type: 'create', name: 'Frodo' })).toEqual({ type: 'create', name: 'Frodo', version: GAME_VERSION });
+    expect(withVersion({ type: 'join', code: 'ABCDE', name: 'Sam' })).toMatchObject({ version: GAME_VERSION });
+    expect(withVersion({ type: 'rejoin', code: 'ABCDE', token: 't' })).toMatchObject({ version: GAME_VERSION });
+    expect(withVersion({ type: 'ready' })).toEqual({ type: 'ready' });
   });
 });

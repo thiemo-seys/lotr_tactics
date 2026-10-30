@@ -68,6 +68,15 @@ export interface Seat {
   readonly token: string;
 }
 
+/** The build this page is, set by Vite from GAME_VERSION; empty without one. */
+declare const __GAME_VERSION__: string;
+export const GAME_VERSION = __GAME_VERSION__;
+
+/** Adds the build to the messages that enter a lobby, so the server can ask an outdated page to reload. */
+export function withVersion(message: ClientMessage): ClientMessage {
+  return message.type === 'create' || message.type === 'join' || message.type === 'rejoin' ? { ...message, version: GAME_VERSION } : message;
+}
+
 const SEAT_KEY = 'lotr-tactics-seat';
 
 /** Seconds to wait before each attempt to reconnect. */
@@ -115,7 +124,7 @@ export class SocketConnection implements Connection {
   }
 
   send(message: ClientMessage): void {
-    const text = JSON.stringify(message);
+    const text = JSON.stringify(withVersion(message));
     if (this.socket?.readyState === WebSocket.OPEN) this.socket.send(text);
     else this.queue.push(text);
   }
@@ -131,7 +140,7 @@ export class SocketConnection implements Connection {
     this.socket = socket;
     socket.addEventListener('open', () => {
       this.connected = true;
-      if (rejoin && this.seat !== null) socket.send(JSON.stringify({ type: 'rejoin', ...this.seat }));
+      if (rejoin && this.seat !== null) socket.send(JSON.stringify(withVersion({ type: 'rejoin', ...this.seat })));
       for (const text of this.queue.splice(0)) socket.send(text);
     });
     socket.addEventListener('message', (event) => {

@@ -3,6 +3,8 @@ import { defineConfig } from 'vite';
 export default defineConfig({
   // Relative asset paths, so the built client works from any folder.
   base: './',
+  // The build, which the server checks when someone enters a lobby (docs/server-spec.md section 8).
+  define: { __GAME_VERSION__: JSON.stringify(process.env.GAME_VERSION ?? '') },
   // pnpm dev runs the game server next to Vite (docs/server-spec.md section 3).
   server: { proxy: { '/ws': { target: 'ws://localhost:8080', ws: true } } },
   build: {

@@ -62,6 +62,12 @@ describe('the Node server', () => {
     expect((await fetch(`${base()}/..%2F..%2Fpackage.json`)).status).toBe(404);
   });
 
+  it('reports its lobbies and games at /status', async () => {
+    const response = await fetch(`${base()}/status`);
+    expect(response.headers.get('content-type')).toBe('application/json');
+    expect(await response.json()).toMatchObject({ version: null, games: 0 });
+  });
+
   it('lets two people join one lobby, start, and see the same Council', async () => {
     const frodo = await connect();
     const sam = await connect();

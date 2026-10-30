@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { LOBBY, TIMERS } from '../src/config.js';
-import { Lobbies } from '../src/lobbies.js';
+import { Lobbies, OUTDATED, type LobbiesOptions } from '../src/lobbies.js';
 import { cleanName, type Client } from '../src/lobby.js';
 import type { ServerMessage } from '../src/protocol.js';
 import { FakeHost, last } from './helpers.js';
@@ -18,9 +18,9 @@ class FakeClient implements Client {
   }
 }
 
-function setup() {
+function setup(options: LobbiesOptions = {}) {
   const host = new FakeHost();
-  const lobbies = new Lobbies(host);
+  const lobbies = new Lobbies(host, options);
   const say = (client: Client, message: object | string) =>
     lobbies.receive(client, typeof message === 'string' ? message : JSON.stringify(message));
   return { host, lobbies, say };
@@ -168,6 +168,55 @@ describe('rejoining', () => {
   });
 });
 
+describe('versions', () => {
+  it('lets clients of the same build in, and asks others to reload', () => {
+    const { lobbies, say } = setup({ version: 'abc' });
+    const old = new FakeClient();
+    say(old, { type: 'create', name: 'Old' });
+    expect(old.inbox).toEqual([{ type: 'refused', request: 'create', reason: OUTDATED }]);
+    say(old, { type: 'create', name: 'Old', version: 'xyz' });
+    expect(old.last('refused')!.reason).toBe(OUTDATED);
+    expect(lobbies.count).toBe(0);
+
+    const frodo = new FakeClient();
+    say(frodo, { type: 'create', name: 'Frodo', version: 'abc' });
+    const { code, token } = frodo.last('joined')!;
+    say(old, { type: 'join', code, name: 'Old', version: 'xyz' });
+    expect(old.last('refused')).toEqual({ type: 'refused', request: 'join', reason: OUTDATED });
+    lobbies.disconnect(frodo);
+    say(old, { type: 'rejoin', code, token, version: 'xyz' });
+    expect(old.last('refused')).toEqual({ type: 'refused', request: 'rejoin', reason: OUTDATED });
+    expect(old.last('joined')).toBeUndefined();
+    const back = new FakeClient();
+    say(back, { type: 'rejoin', code, token, version: 'abc' });
+    expect(back.last('joined')!.seat).toBe(0);
+  });
+
+  it('lets any client in when it has no version of its own', () => {
+    const { clients } = lobbyOf(['Frodo']);
+    expect(clients[0]!.last('joined')).toBeDefined();
+    const t = setup();
+    const other = new FakeClient();
+    t.say(other, { type: 'create', name: 'Sam', version: 'anything' });
+    expect(other.last('joined')).toBeDefined();
+  });
+});
+
+describe('status', () => {
+  it('counts lobbies, games that are running and people in lobbies', () => {
+    const { clients, lobbies, say } = lobbyOf(['Frodo', 'Sam']);
+    expect(lobbies.status).toEqual({ version: null, lobbies: 1, games: 0, people: 2 });
+    say(new FakeClient(), { type: 'create', name: 'Merry' });
+    say(clients[0]!, { type: 'start' });
+    expect(lobbies.status).toEqual({ version: null, lobbies: 2, games: 1, people: 3 });
+    // Once both leave, the bots finish the game at once.
+    say(clients[1]!, { type: 'leave' });
+    say(clients[0]!, { type: 'leave' });
+    expect(lobbies.status).toMatchObject({ games: 0, people: 1 });
+    expect(setup({ version: 'abc' }).lobbies.status.version).toBe('abc');
+  });
+});
+
 describe('closing lobbies', () => {
   it('closes a lobby 60 seconds after its last person disconnects', () => {
     const { clients, lobbies, host, say } = lobbyOf(['Frodo']);
@@ -231,6 +280,7 @@ describe('messages', () => {
       { type: 'join' },
       { type: 'join', code: 5, name: 'x' },
       { type: 'create', name: 'x'.repeat(201) },
+      { type: 'create', name: 'x', version: 5 },
       { type: 'act' },
       { type: 'act', action: 5 },
       { type: 'act', action: { slot: 0 } },

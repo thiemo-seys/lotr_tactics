@@ -1,0 +1,28 @@
+# The game behind Caddy, which serves HTTPS (deploy/README.md). Settings come from .env next to this file.
+
+services:
+  game:
+    image: ${IMAGE:-ghcr.io/thiemo-seys/lotr_tactics:latest}
+    restart: unless-stopped
+    init: true
+    # No ports: only Caddy reaches the game, over the compose network.
+
+  caddy:
+    image: caddy:2
+    restart: unless-stopped
+    ports:
+      - "80:80"
+      - "443:443"
+      - "443:443/udp"
+    environment:
+      DOMAIN: ${DOMAIN:?Set DOMAIN in deploy/.env}
+    volumes:
+      - ./Caddyfile:/etc/caddy/Caddyfile:ro
+      - caddy_data:/data
+      - caddy_config:/config
+    depends_on:
+      - game
+
+volumes:
+  caddy_data:
+  caddy_config:

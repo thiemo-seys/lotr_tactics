@@ -26,6 +26,8 @@ export interface ServerOptions {
   readonly port: number;
   /** The built client to serve, or null to serve no files. */
   readonly clientDir: string | null;
+  /** The client build to accept, or null to accept any (protocol.ts). */
+  readonly version?: string | null;
 }
 
 export interface RunningServer {
@@ -48,11 +50,15 @@ const CONTENT_TYPES: Readonly<Record<string, string>> = {
 };
 
 export function startServer(options: ServerOptions): Promise<RunningServer> {
-  const lobbies = new Lobbies(nodeHost);
+  const lobbies = new Lobbies(nodeHost, options.version == null ? {} : { version: options.version });
   const root = options.clientDir === null ? null : resolve(options.clientDir);
   const http = createServer((request, response) => {
     if (request.method !== 'GET' && request.method !== 'HEAD') {
       response.writeHead(405).end();
+      return;
+    }
+    if (new URL(request.url ?? '/', 'http://host').pathname === '/status') {
+      response.writeHead(200, { 'content-type': 'application/json', 'cache-control': 'no-store' }).end(JSON.stringify(lobbies.status));
       return;
     }
     serveFile(root, request.url ?? '/', response);

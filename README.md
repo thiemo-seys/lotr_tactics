@@ -11,6 +11,10 @@ Early design. The rules and content are written up; no code exists yet. The firs
 - [`docs/design.md`](docs/design.md): game design, the source of truth for rules and content.
 - [`docs/sim-spec.md`](docs/sim-spec.md): implementation spec for the combat simulation.
 
+## Deploying
+
+[`deploy/README.md`](deploy/README.md): running the game on a server with Docker and Caddy, and updating it without ending games.
+
 ## Pull requests
 
 Claude reviews each non-draft pull request automatically and posts its findings as inline comments. The workflow is in [`.github/workflows/claude-code-review.yml`](.github/workflows/claude-code-review.yml).

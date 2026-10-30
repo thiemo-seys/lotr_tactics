@@ -16,13 +16,14 @@ Implementation spec for online play: lobbies, a server that runs games authorita
 - What each player is allowed to see, and the messages between client and server.
 - Disconnecting and rejoining. A bot plays the seat while its person is away.
 - A Node server: WebSockets, plus the built client served from the same port.
+- Deploying to one server: a Docker image and the files in `deploy/` (section 9.1).
 - The play page gains a menu, a lobby screen and online games. Offline games against 7 bots run the same match runner in the browser.
 
 **Out of scope (later)**
 
 - Accounts, ranking, a public list of lobbies and a matchmaking queue.
 - Saving games. Lobbies live in memory, so a restart ends every game.
-- Several server processes, and hosting and deployment.
+- Several server processes, and keeping games running over a restart.
 - Watching other players' boards and fights in the client. Views already include their boards.
 - Chat and emotes.
 
@@ -187,9 +188,9 @@ JSON text messages over one WebSocket.
 
 ```ts
 type ClientMessage =
-  | { type: 'create'; name: string }
-  | { type: 'join'; code: string; name: string }
-  | { type: 'rejoin'; code: string; token: string }
+  | { type: 'create'; name: string; version?: string }
+  | { type: 'join'; code: string; name: string; version?: string }
+  | { type: 'rejoin'; code: string; token: string; version?: string }
   | { type: 'start' }
   | { type: 'leave' }
   | { type: 'act'; action: Action }      // game-spec.md section 10
@@ -225,6 +226,7 @@ interface SeatView {
 - `act` is refused outside the `council` and `planning` steps, and from seats that are out.
 - After `joined`, the server sends `lobby`. Once the game has started, it also sends `state`, and during a fight step, the `round` first. A person who rejoins mid-fight can therefore play the fight from the start.
 - `left` is sent after `leave`, when the lobby closes, and when the same seat rejoins from another connection.
+- **Versions:** `version` is the client's build. A server started with a version refuses `create`, `join` and `rejoin` whose `version` differs or is missing, with the reason "The game has been updated. Reload the page to play." A server without a version, and the offline lobbies in the page, accept any. Only these three messages carry it: once a connection is in a lobby, it is the build that was let in.
 
 ---
 
@@ -238,6 +240,15 @@ interface SeatView {
   - Connections are pinged every 30 seconds and dropped if they don't answer.
 - A dropped connection counts as a disconnect (section 5.2).
 - SIGINT and SIGTERM close the server, which ends every game.
+- `GET /status` answers with JSON: `{ version, lobbies, games, people }`. `version` is the build the server accepts, or null; `games` counts games that have started and aren't over; `people` counts connections in a lobby.
+- `GAME_VERSION`, if set, is the server's version (section 8). The client build takes it from the same variable when Vite builds it, and is empty without it.
+
+### 9.1 Deploying
+
+- The `Dockerfile` builds the client and runs the server with production dependencies only. Its version is a hash of the source under `packages/`, so the server and the client it serves always share one.
+- `.github/workflows/docker.yml` pushes the image to the GitHub container registry when CI passes on `main`, tagged `latest` and with the commit SHA. CI also checks that the image builds.
+- `deploy/` runs the image behind Caddy, which serves HTTPS, compresses, sends `/` to `/play.html` and hides `/status`. `deploy/README.md` has the steps for a server.
+- `deploy/deploy.sh` pulls the new image, then waits until `/status` shows no running games before restarting, for at most `WAIT_MINUTES` (default 60). After that it gives up; `--now` restarts at once.
 
 ---
 
@@ -269,6 +280,7 @@ The play page (`game-spec.md` section 12) talks to a `Connection`. The connectio
   - If the WebSocket closes during a game, the client reconnects after 1, 2, 4 and 8 seconds and rejoins.
   - Reloading the page rejoins too.
   - If the lobby is gone, the client returns to the menu with a message.
+- **Versions:** the WebSocket connection adds the build's version to `create`, `join` and `rejoin`. A refusal because of the version returns to the menu with its reason, like any refused `create`, `join` or `rejoin`.
 - **Game over:** the final standings with names, and Back to menu. A person who is out sees their place and the live standings until the game ends.
 
 ---
@@ -298,12 +310,16 @@ The play page (`game-spec.md` section 12) talks to a `Connection`. The connectio
 - Creating, joining, the lowest free seat, a full lobby, unknown codes, joining after the start, and codes that ignore case.
 - The host passing on, starting by the host only, and bots taking the empty seats.
 - Rejoining with a token, a wrong token, and dropping the older connection.
+- With a version, `create`, `join` and `rejoin` from another build or with none are refused; without one, any are let in.
+- The status: lobbies, running games and people in lobbies.
 - Idle lobbies closing.
 - Malformed messages are refused without changing anything.
 
 **Server**
 - Two WebSocket clients on a real server join one lobby, start, and see the same Council.
+- `/status` answers with JSON.
 
 **Client**
 - An offline game through `LocalConnection` reaches its end.
+- The WebSocket connection adds the version to `create`, `join` and `rejoin` only.
 - In a browser, two pages play the first rounds of a game in one lobby with no console errors.

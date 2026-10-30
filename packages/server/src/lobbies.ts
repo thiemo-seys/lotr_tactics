@@ -4,12 +4,16 @@
 import { LOBBY } from './config.js';
 import type { Host } from './host.js';
 import { Lobby, type Client } from './lobby.js';
-import { parseClientMessage, type ClientMessage } from './protocol.js';
+import { parseClientMessage, type ClientMessage, type ServerStatus } from './protocol.js';
 
 export interface LobbiesOptions {
   /** The seed for each new lobby's game. By default, a random one from the host. */
   readonly seed?: () => number;
+  /** The client build to accept create, join and rejoin from. By default, any. */
+  readonly version?: string;
 }
+
+export const OUTDATED = 'The game has been updated. Reload the page to play.';
 
 export class Lobbies {
   private readonly lobbies = new Map<string, Lobby>();
@@ -24,6 +28,12 @@ export class Lobbies {
   /** Open lobbies. */
   get count(): number {
     return this.lobbies.size;
+  }
+
+  get status(): ServerStatus {
+    let games = 0;
+    for (const lobby of this.lobbies.values()) if (lobby.started && !lobby.over) games++;
+    return { version: this.options.version ?? null, lobbies: this.lobbies.size, games, people: this.places.size };
   }
 
   /** Handles a message from a connection. Anything that isn't allowed is refused with a reason. */
@@ -58,6 +68,7 @@ export class Lobbies {
     const place = this.places.get(client) ?? null;
     if (message.type === 'create' || message.type === 'join' || message.type === 'rejoin') {
       if (place !== null) return 'Leave your lobby first.';
+      if (this.options.version !== undefined && message.version !== this.options.version) return OUTDATED;
     } else if (place === null) {
       return "You aren't in a lobby.";
     }

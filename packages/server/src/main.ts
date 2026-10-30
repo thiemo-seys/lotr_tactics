@@ -7,8 +7,12 @@ import { startServer } from './server.js';
 
 const clientDir = fileURLToPath(new URL('../../client/dist', import.meta.url));
 const built = existsSync(clientDir);
-const server = await startServer({ port: Number(process.env.PORT ?? SERVER.port), clientDir: built ? clientDir : null });
-console.log(`LOTR Tactics server on http://localhost:${server.port}${built ? '' : ' (no client build to serve: run pnpm build)'}`);
+// The client build to accept, set by the Docker image (deploy/). Without it, any client may play.
+const version = process.env.GAME_VERSION || null;
+const server = await startServer({ port: Number(process.env.PORT ?? SERVER.port), clientDir: built ? clientDir : null, version });
+console.log(
+  `LOTR Tactics server on http://localhost:${server.port}${built ? '' : ' (no client build to serve: run pnpm build)'}${version === null ? '' : `, version ${version}`}`,
+);
 
 for (const signal of ['SIGINT', 'SIGTERM'] as const) {
   process.on(signal, () => void server.close().then(() => process.exit(0)));
