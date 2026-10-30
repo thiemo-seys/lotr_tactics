@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
-import { Bot, playBotGame } from '../src/bots/bot.js';
+import { Autopilot, playBotGame } from '../src/bots/autopilot.js';
+import { Bot } from '../src/bots/bot.js';
 import { UNITS } from '../src/data/units.js';
 import { createGame, type Game } from '../src/game/game.js';
 import { boardPlace } from '../src/game/places.js';
@@ -7,19 +8,11 @@ import { copiesIn } from '../src/game/pool.js';
 import { playerOf, poolOf } from './fixtures.js';
 
 /** Plays bots until the given round's planning starts, without letting them plan it. */
-function botsUntil(seed: number, stage: number, round: number, players = 8): { game: Game; bots: Bot[] } {
+function botsUntil(seed: number, stage: number, round: number, players = 8): { game: Game; bots: readonly Bot[] } {
   const game = createGame({ seed, players });
-  const bots = Array.from({ length: players }, (_, seat) => new Bot(seat, seed));
-  while (!(game.state.stage === stage && game.state.round === round && game.state.phase === 'planning')) {
-    if (game.state.phase === 'council') {
-      for (const bot of bots) bot.pick(game);
-      if (game.state.phase === 'council') game.advance();
-    } else {
-      for (const bot of bots) bot.plan(game);
-      game.advance();
-    }
-  }
-  return { game, bots };
+  const autopilot = new Autopilot(game, seed);
+  autopilot.playUntil(() => game.state.stage === stage && game.state.round === round && game.state.phase === 'planning');
+  return { game, bots: autopilot.bots };
 }
 
 /** The board's units with their rows. */

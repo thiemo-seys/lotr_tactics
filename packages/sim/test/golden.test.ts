@@ -3,7 +3,7 @@
 // updates the hashes (vitest -u), and the diff shows which kinds of fight it altered.
 
 import { describe, expect, it } from 'vitest';
-import { playBotGame } from '../src/bots/bot.js';
+import { playBotGame } from '../src/bots/autopilot.js';
 import { simulateCombat, type CombatInput, type PlacedUnit } from '../src/combat/combat.js';
 import { RING_OF_POWER_IDS } from '../src/combat/items.js';
 import { hasTrait } from '../src/combat/traits.js';
