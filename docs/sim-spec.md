@@ -74,6 +74,8 @@ packages/sim/
       ring.ts         the One Ring's numbers
     combat/
       combat.ts       createCombat / step / result
+      fighters.ts     units as they start a fight: stats with static bonuses, origins, item effects
+      modifiers.ts    damage amps and reductions, crit immunity, auras and the Ring's grip
       stats.ts        stat derivation and modifiers
       targeting.ts
       movement.ts

@@ -2,49 +2,36 @@
 
 import { ABILITIES, ATTACKS, MANA, MOVEMENT, TICKS_PER_SECOND } from '../data/rules.js';
 import { GIFTS, type GiftCombat, type GiftId } from '../data/gifts.js';
-import { ITEMS, MAX_ITEMS, type ItemEffect, type ItemId } from '../data/items.js';
+import { MAX_ITEMS, type ItemEffect, type ItemId } from '../data/items.js';
 import { RING } from '../data/ring.js';
-import { MONSTERS, type FighterId, type MonsterId } from '../data/monsters.js';
-import type { ClassId, OriginId } from '../data/traits.js';
+import { MONSTERS, type FighterId } from '../data/monsters.js';
+import type { OriginId } from '../data/traits.js';
 import {
-  SUMMONS,
   UNITS,
   type AbilityDef,
   type AbilityStep,
   type BuffStat,
-  type Cost,
   type DamageType,
   type Effect,
   type Selector,
   type SummonId,
-  type UnitDef,
-  type UnitId,
 } from '../data/units.js';
-import { BOARD_COLS, BOARD_ROWS, boardIndex, distance, fromPlacement, hexEquals, type Hex } from '../hex.js';
+import { BOARD_COLS, boardIndex, distance, hexEquals, type Hex } from '../hex.js';
 import { createRng, type Rng } from '../rng.js';
 import type { Star, Team } from '../types.js';
 import { dashHex, lineDashHex, select, summonHex, type Selection } from './abilities.js';
 import { finalDamage, manaFromDamage, overtimePct, rollAttack } from './damage.js';
 import type { CombatEvent, DamageEvent, Outcome } from './events.js';
-import { isItemId, isRingOfPower, itemEffects, itemModifiers } from './items.js';
+import { HALF_ROWS, createSummon, createUnit, effectsOf, giftAmpPct, hasOrigin, isSummonId, isUnitId, teamSetup, type Unit } from './fighters.js';
+import { isItemId, isRingOfPower } from './items.js';
+import { auraField, damageAmpPct, damageReductionPct, isCritImmune, isGripped, type AmpContext, type Auras } from './modifiers.js';
 import { MOVE_TICKS, planMove } from './movement.js';
 import { actionOrder, firstTeam, startingSlots } from './order.js';
-import {
-  abilityValue,
-  baseStats,
-  combineModifiers,
-  eyeStats,
-  finalStats,
-  gruntStats,
-  monsterStats,
-  type BaseStats,
-  type StatModifiers,
-  type Stats,
-} from './stats.js';
-import { Statuses, type StatusKind, type StatusState } from './statuses.js';
+import { abilityValue, combineModifiers, eyeStats, finalStats, gruntStats, type BaseStats, type Stats } from './stats.js';
+import type { StatusKind, StatusState } from './statuses.js';
 import { chooseTarget, type TargetingRules } from './targeting.js';
 import { LAST_TICK, toTicks } from './time.js';
-import { activeTrait, traitLevels, traitModifiers, type TraitLevels } from './traits.js';
+import { activeTrait, type TraitLevels } from './traits.js';
 
 export interface PlacedUnit {
   /** A unit, or a PvE monster (always 1★). */
@@ -136,9 +123,6 @@ export interface Combat {
 
 const TEAMS: readonly Team[] = ['A', 'B'];
 
-/** Each team's half of the board is this many rows deep. */
-const HALF_ROWS = BOARD_ROWS / 2;
-
 /** How long a cast keeps the caster busy (section 10.1). */
 const CAST_TICKS = toTicks(ABILITIES.castSeconds);
 
@@ -147,56 +131,6 @@ const DASH_TICKS = toTicks(MOVEMENT.dashBusySeconds);
 
 /** The holder and its adjacent allies, for items at combat start (section 12.4). */
 const NEARBY_ALLIES: Selector = { kind: 'alliesWithin', radius: 1 };
-
-/**
- * An item's effect on one unit, and how often it has acted: low-Health triggers and stacks are
- * limited. `pct` is the percent of its listed numbers it has, more for a Ring of Power on its kin.
- */
-interface ItemEffectState {
-  readonly effect: ItemEffect;
-  readonly pct: number;
-  uses: number;
-}
-
-type Unit = { -readonly [K in Exclude<keyof UnitState, 'statuses'>]: UnitState[K] } & {
-  readonly statuses: Statuses;
-  /** The unit can't act before this tick. */
-  busyUntil: number;
-  /** A Burglar with its team's Burglar trait active, so it targets the farthest enemy. */
-  targetsFarthest: boolean;
-  /** The first tick the next basic attack can fire. Can be a fraction. */
-  nextAttackTick: number;
-  /** Null for summons, which have no ability. */
-  readonly ability: AbilityDef | null;
-  /** Ability values scale with it (section 10.2). */
-  readonly cost: Cost;
-  /** The unit gains no mana before this tick (section 9.1). */
-  castingUntil: number;
-  /** Empty for summons and monsters. */
-  readonly classes: readonly ClassId[];
-  /** Treebeard, Sauron and the big monsters (design.md section 4). */
-  readonly large: boolean;
-  /** Bonuses from traits and items that hold for the whole fight (sections 12.3 and 12.4). */
-  readonly staticBonus: Partial<StatModifiers>;
-  /** The effects of the unit's items, in the order it holds them. */
-  readonly effects: readonly ItemEffectState[];
-  /** The Nazgûl slow on this unit, updated at the start of each tick. */
-  auraSlowPct: number;
-  /** The Phial of Galadriel's Magic Resist reduction on this unit, updated with the Nazgûl slow. */
-  auraShredPct: number;
-  /** Narya's Attack Speed on this unit, updated with the Nazgûl slow. */
-  auraHastePct: number;
-  /** Wears a Ring of the Nine, so it is a Nazgûl as well as its own origin (section 12.7). */
-  readonly wraith: boolean;
-  /** Attack Speed stacks from the Archer trait. */
-  archerStacks: number;
-  /** The level the Ring's drawbacks use on its bearer: its Corruption, less Sam's relief (section 12.6). */
-  readonly drawback: number;
-  /** Betrayal: the bearer attacks its own team before this tick. */
-  readonly betrayUntil: number;
-  /** The Eye's Nazgûl targets the Ring's bearer while it lives, even while untargetable. */
-  hunts: Unit | null;
-};
 
 /** Something due on a later tick (section 6.4, step 2). */
 type QueueEntry =
@@ -216,8 +150,8 @@ export class Fight implements Combat {
   private readonly traits: Record<Team, TraitLevels> = { A: {}, B: {} };
   /** The fight effects of each team's Gifts (section 12.5). */
   private readonly gifts: Record<Team, readonly GiftCombat[]> = { A: [], B: [] };
-  /** Each team's damage amp from its Gifts, set at tick 0. */
-  private readonly giftAmpPct: Record<Team, number> = { A: 0, B: 0 };
+  /** What each team's damage amps depend on beyond the source and the target, set at tick 0. */
+  private readonly ampContexts = {} as Record<Team, AmpContext>;
   /** The One Ring's Corruption while a player holds it, for the Nine; 0 otherwise. */
   private readonly oneRingCorruption: number;
   private readonly rng: Rng;
@@ -282,72 +216,20 @@ export class Fight implements Combat {
     // 1–2. Units, with their static trait, item and Gift bonuses and the Gondor front-row bonus.
     for (const team of TEAMS) {
       const placements = input.teams[team];
-      const gifts = (input.gifts?.[team] ?? []).flatMap((id) => GIFTS[id].combat ?? []);
-      this.gifts[team] = gifts;
-      // Monsters have no traits.
-      const crests = gifts.flatMap((g) => g.crest ?? []);
-      const unitIds = placements.map((p) => p.unitId).filter(isUnitId);
-      const nine = placements.flatMap((p) => (isUnitId(p.unitId) && wearsNine(p.items) ? [{ unitId: p.unitId, trait: 'nazgul' as const }] : []));
-      const levels = traitLevels(unitIds, crests, nine);
-      this.traits[team] = levels;
-      const giftMana = gifts.reduce((mana, g) => mana + (g.startMana ?? 0), 0);
+      const setup = teamSetup(placements, input.gifts?.[team] ?? []);
+      this.traits[team] = setup.traits;
+      this.gifts[team] = setup.gifts;
       const slots = startingSlots(placements);
       const bySlot = placements.map((p, i) => ({ p, slot: slots[i]! })).sort((a, b) => a.slot - b.slot);
       for (const { p, slot } of bySlot) {
-        const fighter = isUnitId(p.unitId)
-          ? unitFighter(UNITS[p.unitId], p.star, levels, p.row === HALF_ROWS - 1, p.items)
-          : monsterFighter(p.unitId, input.stage);
-        const { base } = fighter;
-        const ring = p.ring ?? null;
-        const drawback = ring === null ? 0 : ring - (samNextTo(placements, p) ? RING.samRelief : 0);
-        let staticBonus = combineModifiers(fighter.staticBonus, giftModifiers(gifts, p.row));
-        // Burden: the bearer loses a share of its max Health, after every other bonus.
-        if (ring !== null && drawback >= RING.burden.from) {
-          const pct = RING.burden.healthPctPerPoint * (drawback - RING.burden.from + 1);
-          const lost = Math.round((finalStats(base, staticBonus).maxHealth * pct) / 100);
-          staticBonus = combineModifiers(staticBonus, { health: -lost });
-        }
-        const stats = finalStats(base, staticBonus);
-        this.addUnit({
-          id: this.units.length,
-          unitId: p.unitId,
-          team,
-          origin: fighter.origin,
-          star: p.star,
-          summon: false,
-          slot,
-          hex: fromPlacement(team, p),
-          target: null,
-          alive: true,
-          health: stats.maxHealth,
-          mana: Math.min(base.startMana + giftMana, base.maxMana),
-          base,
-          stats,
-          statuses: new Statuses(),
-          busyUntil: 0,
-          targetsFarthest: levels.burglar !== undefined && fighter.classes.includes('burglar'),
-          nextAttackTick: 1,
-          ability: fighter.ability,
-          cost: fighter.cost,
-          castingUntil: 0,
-          classes: fighter.classes,
-          large: fighter.large,
-          staticBonus,
-          items: [...p.items],
-          effects: itemEffects(p.items, fighter.origin).map(({ effect, pct }) => ({ effect, pct, uses: 0 })),
-          auraSlowPct: 0,
-          auraShredPct: 0,
-          auraHastePct: 0,
-          wraith: wearsNine(p.items),
-          archerStacks: 0,
-          ring,
-          drawback,
-          betrayUntil: ring !== null && drawback >= RING.betrayal.at ? 1 + toTicks(RING.betrayal.seconds) : 0,
-          hunts: null,
-        });
+        this.addUnit(createUnit(p, { id: this.units.length, team, slot, stage: input.stage, setup, placements }));
       }
-      const origins = new Set(this.units.filter((u) => u.team === team).flatMap(originsOf)).size;
-      this.giftAmpPct[team] = gifts.reduce((pct, g) => pct + (g.damageAmpPct ?? 0) + (g.damageAmpPctPerOrigin ?? 0) * origins, 0);
+      this.ampContexts[team] = {
+        traits: setup.traits,
+        giftAmpPct: giftAmpPct(setup.gifts, this.units.filter((u) => u.team === team)),
+        oneRingCorruption: this.oneRingCorruption,
+        units: this.units,
+      };
     }
 
     // 3. Guardian shields.
@@ -358,7 +240,8 @@ export class Fight implements Combat {
       }
     }
 
-    // 4. Gifts and items at combat start, unit by unit in slot order, team A's first.
+    // 4. Gifts and items at combat start, unit by unit in slot order, team A's first. The unit's
+    // items act in the order it holds them, whatever their kind.
     for (const unit of this.units) {
       for (const { startShield } of this.gifts[unit.team]) {
         if (startShield !== undefined) this.addShield(unit.id, unit.id, startShield.amount, startShield.seconds);
@@ -408,9 +291,8 @@ export class Fight implements Combat {
     if (this.outcome !== null) return;
 
     // 8. Elven Rope stuns, in action order.
-    for (const unit of actionOrder(this.units.filter((u) => u.alive && hasEffect(u, 'startStun')), first)) {
-      for (const { effect } of unit.effects) {
-        if (effect.kind !== 'startStun') continue;
+    for (const unit of actionOrder(this.units.filter((u) => u.alive && effectsOf(u, 'startStun').length > 0), first)) {
+      for (const { effect } of effectsOf(unit, 'startStun')) {
         const enemy = this.selectFor(unit, { kind: 'farthestEnemy' }).units[0];
         if (enemy !== undefined) this.applyStatus(unit.id, enemy.id, { kind: 'stun', seconds: effect.seconds });
       }
@@ -464,6 +346,7 @@ export class Fight implements Combat {
       if (istari !== undefined && unit.origin === 'istari') this.gainMana(unit, istari.manaPerSecond);
       const ent = activeTrait(this.traits[unit.team], 'ent');
       if (ent !== undefined && unit.origin === 'ent') this.heal(unit, unit, (unit.stats.maxHealth * ent.regenPctPerSecond) / 100);
+      // The unit's items act in the order it holds them, whatever their kind.
       for (const { effect, pct } of unit.effects) {
         if (effect.kind === 'regen') this.heal(unit, unit, (unit.stats.maxHealth * effect.maxHealthPct) / 100);
         if (effect.kind === 'shieldPulse' && this.tick % toTicks(effect.everySeconds) === 0) this.pulseShield(unit, effect, pct);
@@ -490,32 +373,13 @@ export class Fight implements Combat {
    * bearer (sections 12.3, 12.4 and 12.7).
    */
   private updateAuras(): void {
-    for (const team of TEAMS) {
-      const nazgul = activeTrait(this.traits[team], 'nazgul');
-      const wraiths = nazgul === undefined ? [] : this.living(team).filter((u) => isNazgul(u));
-      const auras = (kind: 'magicResistAura' | 'attackSpeedAura') =>
-        this.living(team).flatMap((u) =>
-          u.effects.flatMap(({ effect, pct }) =>
-            (effect.kind === 'magicResistAura' || effect.kind === 'attackSpeedAura') && effect.kind === kind
-              ? [{ hex: u.hex, radius: effect.radius, pct: (effect.pct * pct) / 100 }]
-              : [],
-          ),
-        );
-      const strongest = (list: readonly { hex: Hex; radius: number; pct: number }[], unit: Unit) =>
-        list.reduce((max, a) => (distance(a.hex, unit.hex) <= a.radius ? Math.max(max, a.pct) : max), 0);
-      const phials = auras('magicResistAura');
-      const naryas = auras('attackSpeedAura');
-      for (const unit of this.living(enemyOf(team))) {
-        const slowPct = nazgul !== undefined && wraiths.some((w) => distance(w.hex, unit.hex) <= nazgul.radius) ? nazgul.slowPct : 0;
-        this.setAuras(unit, { slowPct, shredPct: strongest(phials, unit) });
-      }
-      for (const unit of this.living(team)) this.setAuras(unit, { hastePct: strongest(naryas, unit) });
-    }
+    const living = this.living();
+    const aurasOn = auraField(living, this.traits);
+    for (const unit of living) this.setAuras(unit, aurasOn(unit));
   }
 
-  /** Sets the auras on a unit that are given, and refreshes its stats if any changed. */
-  private setAuras(unit: Unit, auras: { slowPct?: number; shredPct?: number; hastePct?: number }): void {
-    const { slowPct = unit.auraSlowPct, shredPct = unit.auraShredPct, hastePct = unit.auraHastePct } = auras;
+  /** Sets the auras on a unit, and refreshes its stats if any changed. */
+  private setAuras(unit: Unit, { slowPct, shredPct, hastePct }: Auras): void {
     if (slowPct === unit.auraSlowPct && shredPct === unit.auraShredPct && hastePct === unit.auraHastePct) return;
     unit.auraSlowPct = slowPct;
     unit.auraShredPct = shredPct;
@@ -544,37 +408,6 @@ export class Fight implements Combat {
       expiresTick: null,
     });
     this.refreshStats(target);
-  }
-
-  /** The sum of the damage amps on a source against a target (section 9.1). */
-  private damageAmpPct(source: Unit, target: Unit): number {
-    const levels = this.traits[source.team];
-    const captain = activeTrait(levels, 'captain');
-    const darkLord = activeTrait(levels, 'dark-lord');
-    const dwarf = activeTrait(levels, 'dwarf');
-    const nextToCaptain =
-      captain !== undefined &&
-      this.units.some(
-        (u) => u.alive && u.team === source.team && u !== source && u.classes.includes('captain') && distance(u.hex, source.hex) === 1,
-      );
-    const blackArrows = source.effects.reduce(
-      (pct, { effect }) => pct + (effect.kind === 'ampVsHealthier' && target.stats.maxHealth > source.stats.maxHealth ? effect.pct : 0),
-      0,
-    );
-    // The Nine grow with the One Ring's Corruption.
-    const ninePct = source.effects.reduce(
-      (pct, { effect }) => pct + (effect.kind === 'nazgul' ? effect.damagePctPerCorruption * this.oneRingCorruption : 0),
-      0,
-    );
-    return (
-      (nextToCaptain ? captain.damageAmpPct : 0) +
-      (darkLord !== undefined && (source.origin === 'orc' || isNazgul(source)) ? darkLord.damageAmpPct : 0) +
-      (dwarf !== undefined && source.origin === 'dwarf' && target.large ? dwarf.damageVsLargePct : 0) +
-      blackArrows +
-      this.giftAmpPct[source.team] +
-      (source.ring ?? 0) * RING.damagePctPerCorruption +
-      ninePct
-    );
   }
 
   /**
@@ -722,8 +555,8 @@ export class Fight implements Combat {
     this.events.push({ type: 'cast', tick: this.tick, unit: unit.id, ability: ability.name });
     this.runSteps(unit, ability.steps);
     // Athelas, once the ability has resolved.
-    for (const { effect } of unit.effects) {
-      if (effect.kind !== 'healOnCast' || this.outcome !== null) continue;
+    for (const { effect } of effectsOf(unit, 'healOnCast')) {
+      if (this.outcome !== null) continue;
       const ally = this.selectFor(unit, { kind: 'lowestHealthPctAllies', count: 1 }).units[0];
       if (ally !== undefined) this.heal(unit, ally, effect.amount);
     }
@@ -804,7 +637,7 @@ export class Fight implements Combat {
   private abilityDamage(caster: Unit, target: Unit, effect: Extract<Effect, { kind: 'damage' }>): number {
     const value = abilityValue('D', effect.pct, caster.cost, caster.star, caster.stats.abilityPower);
     const bonusPct = effect.bonusVs !== undefined && hasOrigin(target, effect.bonusVs.origin) ? effect.bonusVs.multiplierPct : 100;
-    const canCrit = effect.canCrit === true || hasEffect(caster, 'abilityCrit');
+    const canCrit = effect.canCrit === true || effectsOf(caster, 'abilityCrit').length > 0;
     let dealt = 0;
     for (let hit = 0; hit < (effect.hits ?? 1); hit++) {
       if (!target.alive || this.outcome !== null) break;
@@ -840,44 +673,9 @@ export class Fight implements Combat {
   private summon(team: Team, near: Hex, unitId: SummonId, base: BaseStats): Unit | null {
     const hex = summonHex(team, near, this.isFreeFor(null));
     if (hex === null) return null;
-    const unit: Unit = {
-      id: this.units.length,
-      unitId,
-      team,
-      origin: SUMMONS[unitId].origin,
-      star: 1,
-      summon: true,
-      // The next free slot: slots run from 0 with no gaps, dead units keeping theirs.
-      slot: this.units.filter((u) => u.team === team).length,
-      hex,
-      target: null,
-      alive: true,
-      health: base.maxHealth,
-      mana: 0,
-      base,
-      stats: finalStats(base, {}),
-      statuses: new Statuses(),
-      busyUntil: 0,
-      targetsFarthest: false,
-      nextAttackTick: 1,
-      ability: null,
-      cost: 1,
-      castingUntil: 0,
-      classes: [],
-      large: false,
-      staticBonus: {},
-      items: [],
-      effects: [],
-      auraSlowPct: 0,
-      auraShredPct: 0,
-      auraHastePct: 0,
-      wraith: false,
-      archerStacks: 0,
-      ring: null,
-      drawback: 0,
-      betrayUntil: 0,
-      hunts: null,
-    };
+    // The next free slot: slots run from 0 with no gaps, dead units keeping theirs.
+    const slot = this.units.filter((u) => u.team === team).length;
+    const unit = createSummon(this.units.length, team, slot, unitId, hex, base);
     this.addUnit(unit);
     return unit;
   }
@@ -891,7 +689,7 @@ export class Fight implements Combat {
   /** Fires a basic attack (section 9), and the extra ones from Bows of the Galadhrim (section 12.4). */
   private attack(unit: Unit, target: Unit): void {
     const hitTick = this.announceAttack(unit, target);
-    const manaPerAttack = unit.effects.reduce((mana, { effect }) => mana + (effect.kind === 'manaOnAttack' ? effect.amount : 0), 0);
+    const manaPerAttack = effectsOf(unit, 'manaOnAttack').reduce((mana, { effect }) => mana + effect.amount, 0);
     this.gainMana(unit, MANA.perAttack + manaPerAttack);
     // The cooldown after this attack already counts its Archer and Grond stacks.
     const archer = activeTrait(this.traits[unit.team], 'archer');
@@ -899,15 +697,15 @@ export class Fight implements Combat {
       unit.archerStacks++;
       this.addPermanentBuff(unit, unit, 'attackSpeedPct', archer.attackSpeedPctPerStack);
     }
-    for (const state of unit.effects) {
+    for (const state of effectsOf(unit, 'stackOnAttack')) {
       const { effect } = state;
-      if (effect.kind !== 'stackOnAttack' || state.uses >= effect.maxStacks) continue;
+      if (state.uses >= effect.maxStacks) continue;
       state.uses++;
       this.addPermanentBuff(unit, unit, effect.stat, effect.amount);
     }
     unit.nextAttackTick = this.tick + TICKS_PER_SECOND / unit.stats.attackSpeed;
     // Extra attacks go at the nearest other enemies in range, chosen as the attack fires.
-    const bows = unit.effects.flatMap(({ effect }) => (effect.kind === 'extraAttack' ? [effect.damagePct] : []));
+    const bows = effectsOf(unit, 'extraAttack').map(({ effect }) => effect.damagePct);
     const others =
       bows.length === 0
         ? []
@@ -952,8 +750,8 @@ export class Fight implements Combat {
     const crit = rolled && !isCritImmune(target);
     const raw = (source.stats.attackDamage * (crit ? source.stats.critDamagePct : 100) * damagePct) / 10_000;
     const dealt = this.dealDamage(source, target, raw, 'physical', crit, 'attack');
-    for (const { effect } of target.effects) {
-      if (effect.kind !== 'reflect' || dealt <= 0 || !source.alive || this.outcome !== null) continue;
+    for (const { effect } of effectsOf(target, 'reflect')) {
+      if (dealt <= 0 || !source.alive || this.outcome !== null) continue;
       this.dealDamage(target, source, (dealt * effect.pct) / 100, 'magic', false, 'item');
     }
   }
@@ -961,7 +759,7 @@ export class Fight implements Combat {
   /** Runs the damage pipeline (section 9.1) and returns the final damage. */
   private dealDamage(source: Unit, target: Unit, raw: number, damageType: DamageType, crit: boolean, kind: DamageEvent['kind']): number {
     const amount = finalDamage(raw, damageType, target.stats, {
-      ampPct: this.damageAmpPct(source, target),
+      ampPct: damageAmpPct(source, target, this.ampContexts[source.team]),
       overtimePct: overtimePct(this.tick),
       reductionPct: damageReductionPct(source, target),
     });
@@ -983,17 +781,17 @@ export class Fight implements Combat {
     if (target.health <= 0) this.kill(target, source);
     else if (this.outcome === null) this.checkLowHealth(target);
     // Glamdring.
-    for (const { effect } of source.effects) {
-      if (effect.kind === 'healOnDamage' && this.outcome === null) this.heal(source, source, (amount * effect.pct) / 100);
+    for (const { effect } of effectsOf(source, 'healOnDamage')) {
+      if (this.outcome === null) this.heal(source, source, (amount * effect.pct) / 100);
     }
     return amount;
   }
 
   /** Orcrist and Herugrim: once each, after damage leaves the holder below a share of its max Health (section 12.4). */
   private checkLowHealth(unit: Unit): void {
-    for (const state of unit.effects) {
+    for (const state of effectsOf(unit, 'lowHealth')) {
       const { effect } = state;
-      if (effect.kind !== 'lowHealth' || state.uses > 0 || unit.health * 100 >= unit.stats.maxHealth * effect.belowPct) continue;
+      if (state.uses > 0 || unit.health * 100 >= unit.stats.maxHealth * effect.belowPct) continue;
       state.uses = 1;
       if (effect.untargetableSeconds !== undefined) {
         this.applyStatus(unit.id, unit.id, { kind: 'untargetable', seconds: effect.untargetableSeconds });
@@ -1018,8 +816,8 @@ export class Fight implements Combat {
       }
     }
     // Andúril.
-    for (const { effect } of killer.effects) {
-      if (effect.kind === 'buffOnKill' && killer.alive) this.addPermanentBuff(killer, killer, effect.stat, effect.amount);
+    for (const { effect } of effectsOf(killer, 'buffOnKill')) {
+      if (killer.alive) this.addPermanentBuff(killer, killer, effect.stat, effect.amount);
     }
     this.checkWipe();
   }
@@ -1110,105 +908,8 @@ export function simulateCombat(input: CombatInput): CombatResult {
   return combat.result();
 }
 
-function isUnitId(id: FighterId | SummonId): id is UnitId {
-  return Object.hasOwn(UNITS, id);
-}
-
-function isSummonId(id: FighterId | SummonId): id is SummonId {
-  return Object.hasOwn(SUMMONS, id);
-}
-
-/** What a starting unit or monster brings to the fight, before statuses. */
-interface Fighter {
-  readonly base: BaseStats;
-  readonly staticBonus: Partial<StatModifiers>;
-  readonly origin: OriginId | null;
-  readonly classes: readonly ClassId[];
-  readonly ability: AbilityDef | null;
-  readonly cost: Cost;
-  readonly large: boolean;
-}
-
-function unitFighter(def: UnitDef, star: Star, levels: TraitLevels, inFrontRow: boolean, items: readonly ItemId[]): Fighter {
-  return {
-    base: baseStats(def, star),
-    staticBonus: combineModifiers(traitModifiers(def, levels, inFrontRow), itemModifiers(items)),
-    origin: def.origin,
-    classes: def.classes,
-    ability: def.ability,
-    cost: def.cost,
-    large: def.large === true,
-  };
-}
-
-/** Monsters have no traits (game-spec.md section 9.8). */
-function monsterFighter(id: MonsterId, stage: number): Fighter {
-  const def = MONSTERS[id];
-  return {
-    base: monsterStats(def, stage),
-    staticBonus: {},
-    origin: null,
-    classes: [],
-    ability: def.ability ?? null,
-    cost: def.cost,
-    large: def.large === true,
-  };
-}
-
-/** The stats a team's Gifts give a unit placed in `row`, in the team's own perspective (section 12.5). */
-function giftModifiers(gifts: readonly GiftCombat[], row: number): Partial<StatModifiers> {
-  const applies = ({ who }: GiftCombat) => who === undefined || who === 'all' || row === (who === 'front' ? HALF_ROWS - 1 : 0);
-  return combineModifiers(...gifts.flatMap((g) => (g.stats !== undefined && applies(g) ? [g.stats] : [])));
-}
-
 function enemyOf(team: Team): Team {
   return team === 'A' ? 'B' : 'A';
-}
-
-/** The target's damage reductions against this source, which add up (section 9.1): the Witch-king's passive and Mithril Shirts. */
-function damageReductionPct(source: Unit, target: Unit): number {
-  const passive = target.ability?.passive;
-  const exempt = passive !== undefined && (passive.exceptUnits as readonly string[]).includes(source.unitId);
-  const fromPassive = passive !== undefined && source.origin !== null && passive.fromOrigins.includes(source.origin) && !exempt ? passive.pct : 0;
-  const fromItems = target.effects.reduce((pct, { effect }) => pct + (effect.kind === 'damageReduction' ? effect.pct : 0), 0);
-  return Math.min(100, fromPassive + fromItems);
-}
-
-/** Crits against a Mithril Shirt holder deal normal damage. */
-function isCritImmune(unit: Unit): boolean {
-  return unit.effects.some(({ effect }) => effect.kind === 'damageReduction' && effect.critImmune);
-}
-
-function hasEffect(unit: Unit, kind: ItemEffect['kind']): boolean {
-  return unit.effects.some(({ effect }) => effect.kind === kind);
-}
-
-/** A unit's origins: its own, and Nazgûl from a Ring of the Nine (section 12.7). Monsters have none. */
-function originsOf(unit: Unit): OriginId[] {
-  return [...(unit.origin === null ? [] : [unit.origin]), ...(unit.wraith ? (['nazgul'] as const) : [])];
-}
-
-function hasOrigin(unit: Unit, origin: OriginId): boolean {
-  return originsOf(unit).includes(origin);
-}
-
-function isNazgul(unit: Unit): boolean {
-  return hasOrigin(unit, 'nazgul');
-}
-
-/** Whether a unit's items include a Ring of the Nine. */
-function wearsNine(items: readonly ItemId[]): boolean {
-  return items.some((id) => ITEMS[id].effect?.kind === 'nazgul');
-}
-
-/** Whether a unit is placed next to Sam on its own team. */
-function samNextTo(placements: readonly PlacedUnit[], p: PlacedUnit): boolean {
-  return placements.some((q) => q.unitId === 'sam' && q !== p && distance(fromPlacement('A', q), fromPlacement('A', p)) === 1);
-}
-
-/** "Mine!": the Ring's bearer at the Grip level (section 12.6). */
-function isGripped(unit: Unit): boolean {
-  return unit.ring !== null && unit.drawback >= RING.gripFrom;
 }
 
 function isTargetable(unit: Unit): boolean {
