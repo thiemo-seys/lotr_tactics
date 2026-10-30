@@ -14,7 +14,7 @@ import sys
 from mathutils import Matrix, Vector
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
-from common import finish, material, mesh, reset, team_material  # noqa: E402
+from common import finish, material, mesh, reset, team_material
 
 # Soft, slightly desaturated colours, so the team colour is always the boldest block.
 STONE = 0xA9AEB2  # steel and mail: a light grey, which three.js lights better than metal
@@ -49,16 +49,14 @@ def transform(verts, matrix):
 def ring(radius, z, sides=SIDES, spin=FLAT, centre=(0.0, 0.0)):
     """A regular polygon at height z, counter-clockwise seen from above."""
     step = math.tau / sides
-    return [
-        (centre[0] + radius * math.cos(spin + k * step), centre[1] + radius * math.sin(spin + k * step), z)
-        for k in range(sides)
-    ]
+    angles = [spin + k * step for k in range(sides)]
+    return [(centre[0] + radius * math.cos(a), centre[1] + radius * math.sin(a), z) for a in angles]
 
 
 def loft(sections, cap_start=True, cap_end=True):
     """Joins rings of points into a tube. Every ring runs counter-clockwise seen from the end the
     rings stack towards, and has the same length, or one point for a pole. Returns vertices, faces
-    and, for each face, which gap between rings it spans (a cap counts with its neighbouring gap)."""
+    and, for each face, the gap between rings it spans (a cap counts with the gap next to it)."""
     verts, faces, gaps, starts = [], [], [], []
     for section in sections:
         starts.append(len(verts))
@@ -98,7 +96,7 @@ def lathe(name, profile, mats, gap_mats=None, sides=SIDES, spin=FLAT, centre=(0.
           cap_start=True, cap_end=True, matrix=None):
     """A solid of revolution from (radius, height) points, bottom to top; radius 0 is a pole.
     `gap_mats` picks a material for each band between profile points."""
-    sections = [ring(r, z, sides, spin, centre) if r > 0 else [(centre[0], centre[1], z)] for r, z in profile]
+    sections = [ring(r, z, sides, spin, centre) if r > 0 else [(*centre, z)] for r, z in profile]
     verts, faces, gaps = loft(sections, cap_start, cap_end)
     if matrix is not None:
         verts = transform(verts, matrix)
@@ -167,7 +165,8 @@ def beard(rust):
     # point tucked under the belt. It stays in front of the hood, which shows on both sides of it. A
     # ridge down the middle splits its front into two planes that catch the light differently.
     def section(z, half_width, front, ridge, back):
-        return [(-half_width, back, z), (-half_width, front, z), (0, ridge, z), (half_width, front, z), (half_width, back, z)]
+        w = half_width
+        return [(-w, back, z), (-w, front, z), (0, ridge, z), (w, front, z), (w, back, z)]
 
     verts, faces, _ = loft([
         section(WAIST, 0.045, -0.29, -0.31, -0.2),
@@ -178,9 +177,9 @@ def beard(rust):
 
 
 def hood(team):
-    # The hood thrown back lies on the shoulders as a mantle, which rings the helmet seen from above.
-    # At the back its hem hangs in a wide V, the point of the hood: a chevron on the back that
-    # answers the beard's on the front. The hem has a point in the middle of each side of the
+    # The hood thrown back lies on the shoulders as a mantle, which rings the helmet seen from
+    # above. At the back its hem hangs in a wide V, the point of the hood: a chevron on the back
+    # that answers the beard's on the front. The hem has a point in the middle of each side of the
     # octagon, so the V can reach its tip at the centre of the back.
     hem_z = SHOULDER - 0.01
     tip_z, tip_reach = 0.42, 0.37  # the V's point, and how far out to the sides it starts
@@ -217,18 +216,18 @@ def hood(team):
 
 
 def cape(team):
-    # The back half of the body, one layer out, from under the hood to the knees, flaring a little as
-    # it falls. It follows the barrel instead of hanging free, so from behind he stays one clean
-    # shape, with his boots showing below. A single sheet: the material is double-sided, and nothing
-    # ever sees its inside.
+    # The back half of the body, one layer out, from under the hood to the knees, flaring a little
+    # as it falls. It follows the barrel instead of hanging free, so from behind he stays one clean
+    # shape, with his boots showing below. A single sheet: the material is double-sided, and
+    # nothing ever sees its inside.
     knee, top = 0.17, SHOULDER + 0.01
     angles = [0.0] + [FLAT + k * math.tau / SIDES for k in range(4)] + [math.pi]
 
     def edge(z):
         r = body_radius(z) + 0.025 + 0.04 * (top - z) / (top - knee)
         # Its ends lie on the flat sides (0 and 180 degrees), not out at a corner.
-        return [(r * (math.cos(FLAT) if a in (0.0, math.pi) else 1.0) * math.cos(a),
-                 r * (math.cos(FLAT) if a in (0.0, math.pi) else 1.0) * math.sin(a), z) for a in angles]
+        reach = [r * math.cos(FLAT) if a in (0.0, math.pi) else r for a in angles]
+        return [(d * math.cos(a), d * math.sin(a), z) for d, a in zip(reach, angles)]
 
     n = len(angles)
     faces = [(k, k + 1, n + k + 1, n + k) for k in range(n - 1)]
@@ -240,7 +239,8 @@ def helmet(steel):
     lathe('helmet.rim', [(0.235, CHIN), (0.235, CHIN + 0.07)], steel, centre=HEAD, cap_start=False)
     r = 0.212
     base = CHIN + 0.065
-    lathe('helmet.dome', [(r, base), (r * 0.71, base + r * 0.71), (0, base + r)], steel, centre=HEAD, cap_start=False)
+    dome = [(r, base), (r * 0.71, base + r * 0.71), (0, base + r)]
+    lathe('helmet.dome', dome, steel, centre=HEAD, cap_start=False)
 
 
 def shield(team, steel):
@@ -249,19 +249,22 @@ def shield(team, steel):
     radius, centre = 0.26, (0.43, -0.12, 0.44)
     profile = [(radius, 0.0), (radius, 0.045), (radius - 0.045, 0.05), (0.075, 0.07), (0, 0.125)]
     gap_mats = [1, 1, 0, 1]  # edge, rim and boss in steel; the face between rim and boss in team
-    matrix = Matrix.Translation(centre) @ Matrix.Rotation(math.radians(20), 4, 'Z') @ Matrix.Rotation(math.radians(78), 4, 'X')
+    turn_out = Matrix.Rotation(math.radians(20), 4, 'Z')
+    tip_up = Matrix.Rotation(math.radians(78), 4, 'X')  # 90 degrees would face straight ahead
+    matrix = Matrix.Translation(centre) @ turn_out @ tip_up
     lathe('shield', profile, [team, steel], gap_mats, matrix=matrix)
 
 
 def axe(leather, steel):
     # Raised a little in the right fist (-X), the head beside the helmet. No arm: the fist says
-    # enough. The head is a half disc set a little out from the haft and tapering into it, so it reads
-    # as an axe from any side and never as a flag on a pole. It faces front and back, where the
-    # game's camera sees it whole.
+    # enough. The head is a half disc set a little out from the haft and tapering into it, so it
+    # reads as an axe from any side and never as a flag on a pole. It faces front and back, where
+    # the game's camera sees it whole.
     hand = Vector((-0.39, -0.17, 0.47))
     up = Vector((-0.1, -0.15, 1.0)).normalized()
     beam('haft', hand - 0.22 * up, hand + 0.64 * up, 0.03, leather)
-    arc = [(0.06 + 0.17 * math.cos(a), 0.23 * math.sin(a)) for a in (math.radians(d) for d in (-90, -45, 0, 45, 90))]
+    angles = [math.radians(d) for d in (-90, -45, 0, 45, 90)]
+    arc = [(0.06 + 0.17 * math.cos(a), 0.23 * math.sin(a)) for a in angles]
     head = [(0.0, -0.07)] + arc + [(0.0, 0.07)]
     slab('blade', head, 0.035, steel, frame(hand + 0.48 * up, up, (-1, 0, 0)))
     fist = [(-0.07, -0.07), (0.07, -0.07), (0.07, 0.07), (-0.07, 0.07)]
