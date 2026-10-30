@@ -1,20 +1,32 @@
 // One player's bench, board, shop, gold and XP (docs/game-spec.md sections 5–8).
 
 import type { PlacedUnit } from '../combat/combat.js';
-import { COMBINED_ITEM_IDS, combine, isComponent, isRingOfPower, itemEffects } from '../combat/items.js';
+import { COMBINED_ITEM_IDS, isRingOfPower, itemEffects } from '../combat/items.js';
 import { INCOME, PLAYER, SHOP, STREAK_GOLD, XP } from '../data/economy.js';
 import { GIFTS, type GiftId, type GiftTier } from '../data/gifts.js';
-import { COMPONENTS, MAX_ITEMS, type ComponentId, type ItemId } from '../data/items.js';
+import { COMPONENTS, type ItemId } from '../data/items.js';
 import { UNITS, type Cost, type UnitId } from '../data/units.js';
 import { BOARD_COLS } from '../hex.js';
 import { randomInt, type Rng } from '../rng.js';
 import type { Star } from '../types.js';
 import { giftBonus, rollGiftOffer } from './gifts.js';
-import { TEAM_ROWS, boardPlace, boardSlot, isIndex, isPlace, placeOf, unitAt, type BoardPlace, type OwnedUnit, type Place } from './places.js';
+import { TEAM_ROWS, boardPlace, boardSlot, placeOf, unitAt, type BoardPlace, type OwnedUnit, type Place } from './places.js';
 import { copiesIn, type Pool } from './pool.js';
 import type { Ring } from './ring.js';
-
-export type ActionResult = { readonly ok: true } | { readonly ok: false; readonly reason: string };
+import {
+  OK,
+  addItem,
+  checkBuy,
+  checkBuyXp,
+  checkEquip,
+  checkGift,
+  checkLock,
+  checkMove,
+  checkReroll,
+  checkRerollGifts,
+  checkSell,
+  type ActionResult,
+} from './rules.js';
 
 /** What a player shares with the rest of the game. */
 export interface PlayerContext {
@@ -55,12 +67,6 @@ export interface PlayerView {
   readonly placement: number | null;
 }
 
-const OK: ActionResult = { ok: true };
-
-function fail(reason: string): ActionResult {
-  return { ok: false, reason };
-}
-
 /** The order free board places are filled in before a fight (section 7.6). */
 const FILL_ORDER: readonly BoardPlace[] = [3, 2, 1, 0].flatMap((row) =>
   [3, 2, 4, 1, 5, 0, 6].map((col) => ({ col, row })),
@@ -74,22 +80,6 @@ export function xpForNextLevel(level: number): number | null {
 /** Base income at the start of a PvP or PvE round (section 8.1). */
 export function baseIncome(stage: number, round: number): number {
   return INCOME.base[`${stage}-${round}`] ?? INCOME.standard;
-}
-
-/**
- * A unit's items after it is given one (section 7.7): a component combines with a lone component
- * the unit holds, taking its place; otherwise the item goes at the end, if the unit holds fewer
- * than 3. Null if the unit can't take it, which includes a second Ring of Power (section 9.12).
- */
-export function addItem(held: readonly ItemId[], item: ItemId): ItemId[] | null {
-  if (isRingOfPower(item) && held.some(isRingOfPower)) return null;
-  const lone = held.findIndex(isComponent);
-  if (isComponent(item) && lone >= 0) {
-    const items = [...held];
-    items[lone] = combine(held[lone] as ComponentId, item);
-    return items;
-  }
-  return held.length < MAX_ITEMS ? [...held, item] : null;
 }
 
 /** Bonus gold for a streak of this many results. */
@@ -134,25 +124,23 @@ export class Player implements PlayerView {
     return this.board.filter((u) => u !== null).length;
   }
 
-  // Actions (section 9.3). Each returns ok: false and changes nothing when it isn't allowed.
+  // Actions (section 9.3). Each checks its rules in rules.ts, and returns ok: false and changes
+  // nothing when it isn't allowed.
 
   buy(slot: number): ActionResult {
-    if (!Number.isInteger(slot) || slot < 0 || slot >= SHOP.size) return fail('There is no such shop slot.');
-    const unitId = this.shop[slot];
-    if (unitId === null || unitId === undefined) return fail('That shop slot is empty.');
-    const cost = UNITS[unitId].cost;
-    if (this.gold < cost) return fail('Not enough gold.');
-    if (!this.bench.includes(null) && this.find(unitId, 1).length < 2) return fail('The bench is full.');
-    this.gold -= cost;
+    const check = checkBuy(this, slot);
+    if (!check.ok) return check;
+    const unitId = this.shop[slot]!;
+    this.gold -= UNITS[unitId].cost;
     this.shop[slot] = null;
     this.gain(unitId);
     return OK;
   }
 
   sell(from: Place): ActionResult {
-    if (!isPlace(from)) return fail('There is no such place.');
-    const unit = unitAt(this, from);
-    if (unit === null) return fail('There is no unit there.');
+    const check = checkSell(this, from);
+    if (!check.ok) return check;
+    const unit = unitAt(this, from)!;
     this.setAt(from, null);
     this.release(unit);
     this.gold += UNITS[unit.unitId].cost * copiesIn(unit.star);
@@ -164,21 +152,18 @@ export class Player implements PlayerView {
   }
 
   move(from: Place, to: Place): ActionResult {
-    if (!isPlace(from) || !isPlace(to)) return fail('There is no such place.');
-    const unit = unitAt(this, from);
-    if (unit === null) return fail('There is no unit there.');
-    const other = unitAt(this, to);
-    if (other === null && 'bench' in from && !('bench' in to) && this.boardCount() >= this.level) {
-      return fail('The board is full for this level.');
-    }
-    this.setAt(from, other);
+    const check = checkMove(this, from, to);
+    if (!check.ok) return check;
+    const unit = unitAt(this, from)!;
+    this.setAt(from, unitAt(this, to));
     this.setAt(to, unit);
     return OK;
   }
 
   reroll(): ActionResult {
+    const check = checkReroll(this);
+    if (!check.ok) return check;
     if (this.freeRerolls > 0) this.freeRerolls--;
-    else if (this.gold < SHOP.rerollCost) return fail('Not enough gold.');
     else this.gold -= SHOP.rerollCost;
     this.returnShop();
     this.rollShop();
@@ -186,9 +171,8 @@ export class Player implements PlayerView {
   }
 
   buyXp(): ActionResult {
-    if (this.level < XP.buyFromLevel) return fail(`XP can be bought from level ${XP.buyFromLevel}.`);
-    if (this.level >= PLAYER.maxLevel) return fail('Already at the top level.');
-    if (this.gold < XP.buyCost) return fail('Not enough gold.');
+    const check = checkBuyXp(this);
+    if (!check.ok) return check;
     this.gold -= XP.buyCost;
     this.addXp(XP.buyAmount);
     return OK;
@@ -196,13 +180,10 @@ export class Player implements PlayerView {
 
   /** Gives one of the player's items to a unit on the bench or the board (section 7.7). */
   equip(item: number, to: Place): ActionResult {
-    if (!isIndex(item, this.items.length)) return fail('There is no such item.');
-    if (!isPlace(to)) return fail('There is no such place.');
-    const unit = unitAt(this, to);
-    if (unit === null) return fail('There is no unit there.');
-    if (isRingOfPower(this.items[item]!) && unit.items.some(isRingOfPower)) return fail('A unit can wear only one Ring of Power.');
-    const items = addItem(unit.items, this.items[item]!);
-    if (items === null) return fail(`A unit can hold at most ${MAX_ITEMS} items.`);
+    const check = checkEquip(this, item, to);
+    if (!check.ok) return check;
+    const unit = unitAt(this, to)!;
+    const items = addItem(unit.items, this.items[item]!)!;
     this.items.splice(item, 1);
     this.setAt(to, { ...unit, items });
     return OK;
@@ -210,10 +191,9 @@ export class Player implements PlayerView {
 
   /** Takes one of the Gifts on offer, and anything it gives right away (section 9.10). */
   pickGift(option: number): ActionResult {
-    const offer = this.giftOffer;
-    if (offer === null) return fail('There is no Gift to pick.');
-    const gift = Number.isInteger(option) ? offer[option] : undefined;
-    if (gift === undefined) return fail('There is no such Gift.');
+    const check = checkGift(this, option);
+    if (!check.ok) return check;
+    const gift = this.giftOffer![option]!;
     this.giftOffer = null;
     this.giftTier = null;
     this.gifts.push(gift);
@@ -223,15 +203,17 @@ export class Player implements PlayerView {
 
   /** Replaces the Gifts on offer with new ones, once per offer. */
   rerollGifts(): ActionResult {
-    if (this.giftOffer === null || this.giftTier === null) return fail('There is no Gift to reroll.');
-    if (this.giftRerolled) return fail('This offer has been rerolled already.');
+    const check = checkRerollGifts(this);
+    if (!check.ok) return check;
     this.giftRerolled = true;
-    this.giftOffer = rollGiftOffer(this.giftTier, new Set([...this.gifts, ...this.giftOffer]), this.giftRng);
+    // An offer always has its tier.
+    this.giftOffer = rollGiftOffer(this.giftTier!, new Set([...this.gifts, ...this.giftOffer!]), this.giftRng);
     return OK;
   }
 
   setLock(locked: boolean): ActionResult {
-    if (typeof locked !== 'boolean') return fail('The lock must be on or off.');
+    const check = checkLock(locked);
+    if (!check.ok) return check;
     this.shopLocked = locked;
     return OK;
   }

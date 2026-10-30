@@ -83,6 +83,7 @@ packages/sim/src/
     ring.ts         the One Ring
   game/
     game.ts         createGame, actions, advancing rounds
+    rules.ts        whether a player may take an action now, and why not
     pool.ts         the shared pool and shop rolls
     player.ts       bench, board, merging, gold and XP for one player
     places.ts       bench slots and board places, and finding units by place or id

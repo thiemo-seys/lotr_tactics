@@ -5,12 +5,12 @@
 import {
   GIFTS,
   ITEMS,
-  RING,
   SHOP,
   TICKS_PER_SECOND,
   TRAITS,
   UNITS,
   XP,
+  checkAction,
   createCombat,
   isRingOfPower,
   placeOf,
@@ -18,6 +18,7 @@ import {
   unitAt,
   xpForNextLevel,
   type Action,
+  type ActionResult,
   type OwnedUnit,
   type Place,
   type PlayerView,
@@ -318,12 +319,17 @@ function planningRing(): PlanningRing | null {
   return ring !== undefined && ring.state === 'held' && ring.holder === you ? { bearer: ring.bearer, corruption: ring.corruption } : null;
 }
 
-/** Whether the person can throw the Ring into Mount Doom now: a Hobbit bears it after enough Hobbit fights. */
-function canDestroyRing(): boolean {
-  const ring = planningRing();
-  if (ring === null || ring.bearer === null || state!.ring.hobbitFights < RING.destroy.hobbitFights) return false;
-  const bearer = [...me().board, ...me().bench].find((u) => u?.id === ring.bearer);
-  return bearer !== undefined && bearer !== null && UNITS[bearer.unitId].origin === 'hobbit';
+/** Whether the game's rules let the person take an action now, and why not. */
+function check(action: Action): ActionResult {
+  return checkAction(me(), state!, action);
+}
+
+/** Enables a button if its action is allowed, and otherwise says why when hovered. */
+function allow(id: string, action: Action): void {
+  const button = element<HTMLButtonElement>(id);
+  const result = check(action);
+  button.disabled = !result.ok;
+  button.title = result.ok ? '' : result.reason;
 }
 
 /** Starts dragging one of the person's items or the Ring; dropping it on a unit gives it to that unit. */
@@ -349,11 +355,6 @@ function act(action: Action): void {
 
 function ready(): void {
   if (show.kind === 'planning' && !state!.ready.includes(you)) connection?.send({ type: 'ready' });
-}
-
-function yourPick(): boolean {
-  const c = state?.council ?? null;
-  return c !== null && me().placement === null && c.groups[c.group]!.includes(you) && !c.options.some((o) => o.pickedBy === you);
 }
 
 function startRound(round: RoundRecord): void {
@@ -449,7 +450,7 @@ function renderHud(now: number, inGame: boolean): void {
     text('ring-status', `The One Ring · ${ring.corruption} (${ringTier(ring.corruption)})${ring.bearer === null ? ' · unworn' : ''}`);
     status.title = ringText(ring.corruption);
   }
-  element('mount-doom').hidden = show.kind !== 'planning' || !canDestroyRing();
+  element('mount-doom').hidden = show.kind !== 'planning' || !check({ type: 'destroyRing' }).ok;
 }
 
 function text(id: string, value: string): void {
@@ -511,19 +512,23 @@ function unitCard(id: UnitId, extra: string, onClick: (() => void) | null): HTML
 }
 
 function renderShop(p: PlayerView): void {
-  rebuild(shop, JSON.stringify([p.shop, p.gold]), () =>
+  const buys = p.shop.map((_, slot) => check({ type: 'buy', slot }));
+  rebuild(shop, JSON.stringify([p.shop, buys]), () =>
     p.shop.map((id, slot) => {
       if (id === null) {
         const empty = document.createElement('div');
         empty.className = 'card empty';
         return empty;
       }
-      return unitCard(id, '', p.gold >= UNITS[id].cost ? () => act({ type: 'buy', slot }) : null);
+      const buy = buys[slot]!;
+      const card = unitCard(id, '', buy.ok ? () => act({ type: 'buy', slot }) : null);
+      if (!buy.ok) card.title = buy.reason;
+      return card;
     }),
   );
-  element<HTMLButtonElement>('reroll').disabled = p.gold < SHOP.rerollCost && p.freeRerolls === 0;
+  allow('reroll', { type: 'reroll' });
   text('reroll', p.freeRerolls > 0 ? `Reroll · free${p.freeRerolls > 1 ? ` ×${p.freeRerolls}` : ''}` : `Reroll · ${SHOP.rerollCost}`);
-  element<HTMLButtonElement>('buy-xp').disabled = p.gold < XP.buyCost || p.level < XP.buyFromLevel || xpForNextLevel(p.level) === null;
+  allow('buy-xp', { type: 'buyXp' });
   text('lock', p.shopLocked ? 'Unlock' : 'Lock');
   const ring = planningRing();
   rebuild(element('items'), JSON.stringify([p.items, ring]), () => [
@@ -555,14 +560,15 @@ function seatName(seat: number): string {
 function renderCouncil(): void {
   const c = state!.council;
   if (c === null) return;
-  const picking = yourPick();
+  const picks = c.options.map((_, option) => check({ type: 'pick', option }).ok);
+  const picking = picks.includes(true);
   text('council-status', picking ? 'Your turn: pick a unit and what it brings.' : 'Waiting for the others to pick…');
-  rebuild(element('options'), JSON.stringify([c.options, picking]), () =>
+  rebuild(element('options'), JSON.stringify([c.options, picks]), () =>
     c.options.map((option, i) => {
       const card = unitCard(
         option.unitId,
         `${option.item === null ? 'The One Ring' : ITEMS[option.item].name}${option.pickedBy === null ? '' : ` · ${seatName(option.pickedBy)}`}`,
-        picking && option.pickedBy === null ? () => act({ type: 'pick', option: i }) : null,
+        picks[i] ? () => act({ type: 'pick', option: i }) : null,
       );
       if (option.ring) {
         card.classList.add('ring');
