@@ -1,6 +1,6 @@
 // One game on the server: steps, timers, bots and Ready votes (docs/server-spec.md section 5).
 
-import { Bot, TICKS_PER_SECOND, createGame, type Action, type ActionResult, type Game } from '@lotr-tactics/sim';
+import { Autopilot, TICKS_PER_SECOND, createGame, type Action, type ActionResult, type Game } from '@lotr-tactics/sim';
 import { TIMERS } from './config.js';
 import type { Host } from './host.js';
 import type { ServerMessage } from './protocol.js';
@@ -32,7 +32,7 @@ function fail(reason: string): ActionResult {
 export class Match {
   readonly game: Game;
   /** Each seat's bot, which plays it while no connected person does. */
-  private readonly bots: Bot[];
+  private readonly autopilot: Autopilot;
   /** Seats with a person who hasn't left. */
   private readonly people: boolean[];
   private readonly connected: boolean[];
@@ -40,13 +40,11 @@ export class Match {
   /** The round shown during a fight step. */
   private record: RoundRecord | null = null;
   private readonly readySeats = new Set<number>();
-  /** Planning phases so far, so bots take turns at planning first. */
-  private plannings = 0;
 
   constructor(private readonly options: MatchOptions) {
     const seats = options.people.length;
     this.game = createGame({ seed: options.seed, players: seats });
-    this.bots = Array.from({ length: seats }, (_, seat) => new Bot(seat, options.seed));
+    this.autopilot = new Autopilot(this.game, options.seed);
     this.people = [...options.people];
     this.connected = options.people.map((person, seat) => person && options.connected[seat] === true);
   }
@@ -75,11 +73,11 @@ export class Match {
   act(seat: number, action: Action): ActionResult {
     if (this.step.kind === 'over') return fail('The game is over.');
     if (this.step.kind === 'fight') return fail('Wait for the fights to finish.');
-    const before = this.position();
+    const before = this.game.state.turn;
     const result = this.game.act(seat, action);
     if (!result.ok) return result;
     // The last pick of a group moves the Council on.
-    if (this.position() !== before) this.enter();
+    if (this.game.state.turn !== before) this.enter();
     this.broadcast();
     return OK;
   }
@@ -149,10 +147,8 @@ export class Match {
         return;
       }
       if (this.game.state.phase === 'council') {
-        const before = this.position();
-        for (const seat of this.botSeats()) this.bots[seat]!.pick(this.game);
         // Bots completed the group, so the next group or planning starts.
-        if (this.position() !== before) continue;
+        if (this.autopilot.pick((seat) => this.botControlled(seat))) continue;
         this.step = { kind: 'council', endsAt: this.after(TIMERS.councilPick) };
         return;
       }
@@ -198,16 +194,7 @@ export class Match {
 
   /** Plays the rest of the game at once, with bots in every seat. */
   private finish(): void {
-    while (!this.game.isOver()) {
-      if (this.game.state.phase === 'council') {
-        const before = this.position();
-        for (const bot of this.bots) bot.pick(this.game);
-        if (this.position() === before) this.game.advance();
-      } else {
-        this.plan();
-        this.game.advance();
-      }
-    }
+    this.autopilot.playUntil();
     this.record = null;
     this.step = { kind: 'over', endsAt: null };
   }
@@ -217,22 +204,15 @@ export class Match {
   /** A seat's bot acts at once when it takes over in planning or in the seat's Council turn. */
   private takeOver(seat: number): void {
     if (this.step.kind === 'planning') {
-      this.bots[seat]!.plan(this.game);
-    } else if (this.step.kind === 'council') {
-      const before = this.position();
-      this.bots[seat]!.pick(this.game);
-      if (this.position() !== before) this.enter();
+      this.autopilot.bots[seat]!.plan(this.game);
+    } else if (this.step.kind === 'council' && this.autopilot.pick((s) => s === seat)) {
+      this.enter();
     }
   }
 
   /** Bots plan in an order that starts one seat later each round. */
   private plan(): void {
-    this.plannings++;
-    const n = this.bots.length;
-    for (let i = 0; i < n; i++) {
-      const seat = (this.plannings + i) % n;
-      if (this.botControlled(seat)) this.bots[seat]!.plan(this.game);
-    }
+    this.autopilot.plan((seat) => this.botControlled(seat));
   }
 
   private seats(): number[] {
@@ -241,10 +221,6 @@ export class Match {
 
   private botControlled(seat: number): boolean {
     return !this.people[seat] || !this.connected[seat];
-  }
-
-  private botSeats(): number[] {
-    return this.seats().filter((seat) => this.botControlled(seat));
   }
 
   private inGame(seat: number): boolean {
@@ -262,12 +238,6 @@ export class Match {
 
   private broadcast(): void {
     for (const seat of this.audience()) this.options.send(seat, { type: 'state', state: this.view(seat) });
-  }
-
-  /** Where the game is, to tell whether an action or a bot moved it on. */
-  private position(): string {
-    const { stage, round, phase, council } = this.game.state;
-    return `${stage}-${round}-${phase}-${council?.group ?? ''}`;
   }
 
   /** A time some seconds from now, in whole milliseconds. */

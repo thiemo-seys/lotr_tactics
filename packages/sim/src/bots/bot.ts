@@ -7,7 +7,7 @@ import { GIFTS, type GiftId } from '../data/gifts.js';
 import { ITEMS, type ItemId } from '../data/items.js';
 import { TRAITS, type ClassId, type TraitId } from '../data/traits.js';
 import { UNITS, type UnitId } from '../data/units.js';
-import { createGame, type Game, type GameState, type RoundReport } from '../game/game.js';
+import type { Game } from '../game/game.js';
 import { TEAM_ROWS, ownedUnits, placeOf, samePlace, unitAt, type BoardPlace, type OwnedUnit } from '../game/places.js';
 import type { PlayerView } from '../game/player.js';
 import { copiesIn } from '../game/pool.js';
@@ -333,32 +333,4 @@ function layout(units: readonly OwnedUnit[]): Map<number, BoardPlace> {
 
 function preferredRow(unit: OwnedUnit): number {
   return Math.min(TEAM_ROWS - 1, PREFERRED_ROW[UNITS[unit.unitId].classes[0]]);
-}
-
-/**
- * Plays a whole game with a bot in every seat. Bots plan in a rotating order, so no seat always shops first.
- * `afterPlanning`, if given, sees the state each round once every bot has planned, before the fights.
- */
-export function playBotGame(
-  seed: number,
-  players = 8,
-  afterPlanning?: (state: GameState) => void,
-): { game: Game; bots: Bot[]; reports: RoundReport[] } {
-  const game = createGame({ seed, players });
-  const bots = Array.from({ length: players }, (_, seat) => new Bot(seat, seed));
-  const reports: RoundReport[] = [];
-  let rounds = 0;
-  while (!game.isOver()) {
-    if (game.state.phase === 'council') {
-      const group = game.state.council!.group;
-      for (const bot of bots) bot.pick(game);
-      if (game.state.phase === 'council' && game.state.council!.group === group) game.advance();
-      continue;
-    }
-    rounds++;
-    for (let i = 0; i < players; i++) bots[(rounds + i) % players]!.plan(game);
-    afterPlanning?.(game.state);
-    reports.push(game.advance()!);
-  }
-  return { game, bots, reports };
 }

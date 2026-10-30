@@ -72,6 +72,8 @@ export interface GameState {
   readonly round: number;
   readonly type: RoundType;
   readonly phase: Phase;
+  /** Goes up whenever the game moves on: to a new Council group, to planning, or to the end. */
+  readonly turn: number;
   readonly players: readonly PlayerView[];
   /** Set during a Council. */
   readonly council: CouncilState | null;
@@ -122,6 +124,7 @@ class GameImpl implements Game, GameState {
   round = 1;
   type: RoundType = 'council';
   phase: Phase = 'council';
+  turn = 0;
   council: { options: CouncilOption[]; groups: number[][]; group: number } | null = null;
   readonly pool = new Pool();
   readonly ring = new Ring();
@@ -215,6 +218,7 @@ class GameImpl implements Game, GameState {
 
   /** Section 9.2. */
   private startRound(): void {
+    this.turn++;
     this.type = roundType(this.stage, this.round);
     if (this.type === 'council') {
       this.phase = 'council';
@@ -268,7 +272,10 @@ class GameImpl implements Game, GameState {
   private nextCouncilGroup(): void {
     const council = this.council!;
     council.group++;
-    if (council.group < council.groups.length) return;
+    if (council.group < council.groups.length) {
+      this.turn++;
+      return;
+    }
     for (const option of council.options) {
       if (option.pickedBy !== null) continue;
       this.pool.put(option.unitId);
@@ -426,6 +433,7 @@ class GameImpl implements Game, GameState {
     if (left <= 1) {
       for (const player of this.living()) player.placement = 1;
       this.phase = 'over';
+      this.turn++;
     }
     return out;
   }

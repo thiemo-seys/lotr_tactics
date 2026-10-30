@@ -2,7 +2,7 @@
 //
 //   pnpm balance [games] [first seed]
 
-import { playBotGame } from '../src/bots/bot.js';
+import { playBotGame } from '../src/bots/autopilot.js';
 import { traitLevels } from '../src/combat/traits.js';
 import type { PlacedUnit } from '../src/combat/combat.js';
 import { GIFTS, type GiftId } from '../src/data/gifts.js';

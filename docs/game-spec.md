@@ -93,6 +93,7 @@ packages/sim/src/
     ring-supply.ts  the Rings of Power not in anyone's hands
   bots/
     bot.ts          a bot that plays one seat
+    autopilot.ts    bots driving a game: Council picks, planning in a rotating order, whole games
   test/
 packages/sim/scripts/
   balance.ts        runs many bot games and prints statistics

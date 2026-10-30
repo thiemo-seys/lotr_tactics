@@ -51,4 +51,5 @@ export type {
   PoolView,
   RoundReport,
 } from './game/game.js';
-export { Bot, playBotGame } from './bots/bot.js';
+export { Bot } from './bots/bot.js';
+export { Autopilot, playBotGame } from './bots/autopilot.js';
