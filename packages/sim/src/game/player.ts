@@ -4,7 +4,7 @@ import type { PlacedUnit } from '../combat/combat.js';
 import { COMBINED_ITEM_IDS, isRingOfPower, itemEffects } from '../combat/items.js';
 import { INCOME, PLAYER, SHOP, STREAK_GOLD, XP } from '../data/economy.js';
 import { GIFTS, type GiftId, type GiftTier } from '../data/gifts.js';
-import { COMPONENTS, type ItemId } from '../data/items.js';
+import { COMPONENTS, type ItemId, type RingOfPowerId } from '../data/items.js';
 import { UNITS, type Cost, type UnitId } from '../data/units.js';
 import { BOARD_COLS } from '../hex.js';
 import { randomInt, type Rng } from '../rng.js';
@@ -146,8 +146,7 @@ export class Player implements PlayerView {
     this.gold += UNITS[unit.unitId].cost * copiesIn(unit.star);
     this.items.push(...unit.items);
     // Selling the bearer leaves the Ring with the player, unworn.
-    const ring = this.context.ring;
-    if (ring?.isBorneBy(this.seat, unit.id) === true) ring.bearer = null;
+    this.context.ring?.unitSold(this.seat, unit.id);
     return OK;
   }
 
@@ -341,7 +340,7 @@ export class Player implements PlayerView {
   }
 
   /** The Rings of Power the player has, in their items and on their units (section 9.12). */
-  ringsOfPower(): ItemId[] {
+  ringsOfPower(): RingOfPowerId[] {
     const units = [...this.board, ...this.bench].filter((u) => u !== null);
     return [...this.items, ...units.flatMap((u) => u.items)].filter(isRingOfPower);
   }
@@ -454,10 +453,9 @@ export class Player implements PlayerView {
     const [keep, ...others] = places;
     const kept = unitAt(this, keep!)!;
     let items: readonly ItemId[] = kept.items;
-    const ring = this.context.ring;
     for (const place of others) {
       // The merged unit bears the Ring if one of the copies did.
-      if (ring?.isBorneBy(this.seat, unitAt(this, place)!.id) === true) ring.bearer = kept.id;
+      this.context.ring?.unitsMerged(this.seat, unitAt(this, place)!.id, kept.id);
       for (const item of unitAt(this, place)!.items) {
         const next = addItem(items, item);
         if (next === null) this.items.push(item);

@@ -1,6 +1,6 @@
 // A bot that plays one seat through the same actions as a person (docs/game-spec.md section 11).
 
-import { isRingOfPower } from '../combat/items.js';
+import { isBoundToTheOne, isRingOfPower } from '../combat/items.js';
 import { BOT, type ItemRole } from '../data/bots.js';
 import { SHOP, XP } from '../data/economy.js';
 import { GIFTS, type GiftId } from '../data/gifts.js';
@@ -262,7 +262,7 @@ export class Bot {
     const bound = ownedUnits(me)
       .flatMap((o) => o.unit.items)
       .concat(me.items)
-      .some((item) => ITEMS[item].ringOfPower !== undefined && ITEMS[item].ringOfPower.family !== 'seven');
+      .some(isBoundToTheOne);
     if (!bound && game.act(this.seat, { type: 'destroyRing' }).ok) return;
     const board = ownedUnits(me)
       .filter((o) => !('bench' in o.place))

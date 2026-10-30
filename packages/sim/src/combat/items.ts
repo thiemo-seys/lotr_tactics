@@ -32,6 +32,11 @@ export function isRingOfPower(id: ItemId): id is RingOfPowerId {
   return ITEMS[id].ringOfPower !== undefined;
 }
 
+/** The Three and the Nine, which the One Ring's destruction takes out of the game (game-spec.md section 9.12). */
+export function isBoundToTheOne(id: ItemId): boolean {
+  return isRingOfPower(id) && ITEMS[id].ringOfPower!.family !== 'seven';
+}
+
 /** The 21 combined items, which some rewards give at random. */
 export const COMBINED_ITEM_IDS = ITEM_IDS.filter(isCombined);
 

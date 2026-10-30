@@ -38,6 +38,7 @@ export type { ActionContext, ActionResult } from './game/rules.js';
 export { councilCosts, nextRound, playerDamage, pveRound, roundType, roundsInStage, stageDamage } from './game/schedule.js';
 export { createGame } from './game/game.js';
 export type { RingState, RingView } from './game/ring.js';
+export type { RingSupplyView } from './game/ring-supply.js';
 export type {
   Action,
   CouncilOptionView,

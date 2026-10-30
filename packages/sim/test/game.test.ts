@@ -3,30 +3,13 @@ import { POOL_COPIES } from '../src/data/economy.js';
 import { PVE_ROUNDS } from '../src/data/pve.js';
 import { UNITS, type UnitId } from '../src/data/units.js';
 import { createGame, type Action, type Game, type RoundReport } from '../src/game/game.js';
-import { boardSlot } from '../src/game/places.js';
-import type { Player } from '../src/game/player.js';
-import { UNIT_IDS, copiesIn, type Pool } from '../src/game/pool.js';
+import { UNIT_IDS, copiesIn } from '../src/game/pool.js';
 import { createRng, randomInt } from '../src/rng.js';
-import type { Star } from '../src/types.js';
-
-const player = (game: Game, seat: number) => game.state.players[seat] as Player;
-const pool = (game: Game) => game.state.pool as Pool;
-
-/** Advances until the given round's planning starts. */
-function skipTo(game: Game, stage: number, round: number): void {
-  while (!(game.state.stage === stage && game.state.round === round && game.state.phase === 'planning')) game.advance();
-}
+import { field, playerOf, poolOf, skipTo } from './fixtures.js';
 
 /** Empties a player's bench, board and shop into the pool. */
 function clear(game: Game, seat: number): void {
-  player(game, seat).returnEverything();
-}
-
-/** Gives a player a unit on the board, taking its copies from the pool. */
-function field(game: Game, seat: number, unitId: UnitId, col: number, row: number, star: Star = 1): void {
-  pool(game).take(unitId, copiesIn(star));
-  const slot = boardSlot({ col, row });
-  player(game, seat).board[slot] = { id: 1000 + slot, unitId, star, items: [] };
+  playerOf(game, seat).returnEverything();
 }
 
 /** Copies of each unit anywhere: pool, shops, Council options and owned units. */
@@ -107,8 +90,8 @@ describe('the first Council', () => {
     expect(game.act(1, { type: 'pick', option: 0 }).ok).toBe(false);
     expect(game.act(1, { type: 'pick', option: 9 }).ok).toBe(false);
     expect(game.act(1, { type: 'buy', slot: 0 }).ok).toBe(false);
-    expect(player(game, 0).bench[0]).toMatchObject({ unitId: option.unitId, star: 1 });
-    expect(player(game, 0).items).toEqual([option.item]);
+    expect(playerOf(game, 0).bench[0]).toMatchObject({ unitId: option.unitId, star: 1 });
+    expect(playerOf(game, 0).items).toEqual([option.item]);
   });
 
   it('gives random options to those who haven, t picked when time is up, then starts 1-2', () => {
@@ -193,7 +176,7 @@ describe('PvP rounds', () => {
     expect(report.fights).toHaveLength(4);
     expect(report.fights.flatMap((f) => [f.home, f.away]).sort()).toEqual([0, 1, 2, 3, 4, 5, 6, 7]);
     for (const fight of report.fights) {
-      const [home, away] = [player(game, fight.home), player(game, fight.away!)];
+      const [home, away] = [playerOf(game, fight.home), playerOf(game, fight.away!)];
       expect(home.recentOpponents).toEqual([away.seat]);
       expect(away.recentOpponents).toEqual([home.seat]);
       const outcome = fight.result.outcome;
@@ -214,14 +197,14 @@ describe('PvP rounds', () => {
     skipTo(game, 2, 1);
     clear(game, 0);
     clear(game, 1);
-    field(game, 0, 'gimli', 3, 3, 2);
-    field(game, 0, 'legolas', 3, 0, 1);
-    const hp = player(game, 1).hp;
+    field(game, 0, 'gimli', { col: 3, row: 3 }, { star: 2 });
+    field(game, 0, 'legolas', { col: 3, row: 0 }, { star: 1 });
+    const hp = playerOf(game, 1).hp;
     const report = game.advance()!;
     expect(report.fights[0]!.result.outcome).toBe(report.fights[0]!.home === 0 ? 'A' : 'B');
     // Stage 2 deals 2, plus 2 for the 2★ Gimli and 1 for Legolas.
     expect(report.damage).toEqual([{ seat: 1, amount: 2 + 2 + 1 }]);
-    expect(player(game, 1).hp).toBe(hp - 5);
+    expect(playerOf(game, 1).hp).toBe(hp - 5);
   });
 
   it('hurt both players in a draw, as a loss', () => {
@@ -248,7 +231,7 @@ describe('PvP rounds', () => {
     const report = game.advance()!;
     expect(report.fights.map((f) => f.kind)).toEqual(['pvp', 'ghost']);
     const ghost = report.fights[1]!;
-    expect(player(game, ghost.away!).recentOpponents).not.toContain(ghost.home);
+    expect(playerOf(game, ghost.away!).recentOpponents).not.toContain(ghost.home);
     // Every fight is a draw between empty boards, and each player fought once.
     expect(game.state.players.map((p) => p.hp)).toEqual(hp.map((h) => h! - 2));
   });
@@ -260,8 +243,8 @@ describe('eliminations', () => {
     skipTo(game, 2, 1);
     clear(game, 0);
     clear(game, 1);
-    field(game, 0, 'gimli', 3, 3);
-    player(game, 1).hp = 1;
+    field(game, 0, 'gimli', { col: 3, row: 3 });
+    playerOf(game, 1).hp = 1;
     const report = game.advance()!;
     expect(report.eliminated).toEqual([1]);
     expect(game.state.players.map((p) => p.placement)).toEqual([1, 2]);
@@ -275,16 +258,16 @@ describe('eliminations', () => {
     const game = createGame({ seed: 12, players: 4 });
     skipTo(game, 2, 1);
     for (const seat of [0, 1, 2, 3]) clear(game, seat);
-    for (const seat of [0, 1, 2, 3]) player(game, seat).rollShop();
-    for (const [seat, hp] of [[0, 1], [1, 2], [2, 1], [3, 50]] as const) player(game, seat).hp = hp;
+    for (const seat of [0, 1, 2, 3]) playerOf(game, seat).rollShop();
+    for (const [seat, hp] of [[0, 1], [1, 2], [2, 1], [3, 50]] as const) playerOf(game, seat).hp = hp;
     const report = game.advance()!;
     // Every fight is a draw between empty boards, so everyone takes 2: 0, 1 and 2 are out
     // together, and 1 has the most HP left. 0 and 2 tie, so the seed orders them.
     expect(report.eliminated).toHaveLength(3);
     expect(report.eliminated[0]).toBe(1);
-    expect(player(game, 1).placement).toBe(2);
-    expect([player(game, 0).placement, player(game, 2).placement].sort()).toEqual([3, 4]);
-    expect(player(game, 3).placement).toBe(1);
+    expect(playerOf(game, 1).placement).toBe(2);
+    expect([playerOf(game, 0).placement, playerOf(game, 2).placement].sort()).toEqual([3, 4]);
+    expect(playerOf(game, 3).placement).toBe(1);
     expect(game.isOver()).toBe(true);
     expect(game.state.players[0]!.shop.every((id) => id === null)).toBe(true);
     expect(copies(game)).toEqual(STARTING_COPIES);
@@ -293,12 +276,12 @@ describe('eliminations', () => {
   it("refuse actions from players who are out, and leave them out of later rounds", () => {
     const game = createGame({ seed: 13, players: 3 });
     skipTo(game, 2, 1);
-    player(game, 2).hp = 1;
+    playerOf(game, 2).hp = 1;
     clear(game, 2);
-    field(game, 0, 'gimli', 3, 3, 3);
-    field(game, 1, 'dain', 3, 3, 3);
+    field(game, 0, 'gimli', { col: 3, row: 3 }, { star: 3 });
+    field(game, 1, 'dain', { col: 3, row: 3 }, { star: 3 });
     game.advance();
-    expect(player(game, 2).placement).toBe(3);
+    expect(playerOf(game, 2).placement).toBe(3);
     expect(game.act(2, { type: 'reroll' })).toEqual({ ok: false, reason: 'That player is out of the game.' });
     const report = game.advance()!;
     expect(report.fights.flatMap((f) => [f.home, f.away])).not.toContain(2);
@@ -309,9 +292,9 @@ describe('later Councils', () => {
   it('let players pick in pairs, lowest HP first', () => {
     const game = createGame({ seed: 14, players: 4 });
     skipTo(game, 2, 3);
-    for (const [seat, hp] of [[0, 90], [1, 30], [2, 60], [3, 10]] as const) player(game, seat).hp = hp;
+    for (const [seat, hp] of [[0, 90], [1, 30], [2, 60], [3, 10]] as const) playerOf(game, seat).hp = hp;
     for (const seat of [0, 1, 2, 3]) clear(game, seat);
-    for (const seat of [0, 1, 2, 3]) field(game, seat, 'sam', 3, 3);
+    for (const seat of [0, 1, 2, 3]) field(game, seat, 'sam', { col: 3, row: 3 });
     game.advance();
     expect([game.state.round, game.state.phase]).toEqual([4, 'council']);
     const hp = game.state.players.map((p) => p.hp);
@@ -336,16 +319,16 @@ describe('later Councils', () => {
     const filler = UNIT_IDS.filter((id) => id !== option.unitId).slice(0, 9);
     clear(game, 0);
     filler.forEach((id, slot) => {
-      pool(game).take(id);
-      player(game, 0).bench[slot] = { id: 2000 + slot, unitId: id, star: 1, items: [] };
+      poolOf(game).take(id);
+      playerOf(game, 0).bench[slot] = { id: 2000 + slot, unitId: id, star: 1, items: [] };
     });
     const before = game.state.players[0]!.gold;
     const groups = game.state.council!.groups;
     // Let the other player pick first if they are ahead in the order.
     if (groups[0]!.includes(1) && !groups[0]!.includes(0)) game.act(1, { type: 'pick', option: 1 });
     expect(game.act(0, { type: 'pick', option: 0 }).ok).toBe(true);
-    expect(player(game, 0).gold).toBe(before + UNITS[option.unitId].cost);
-    expect(player(game, 0).items).toContain(option.item);
+    expect(playerOf(game, 0).gold).toBe(before + UNITS[option.unitId].cost);
+    expect(playerOf(game, 0).items).toContain(option.item);
     expect(copies(game)).toEqual(STARTING_COPIES);
   });
 });

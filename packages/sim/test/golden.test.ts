@@ -160,7 +160,7 @@ describe('golden hashes', () => {
       }));
       const { state, holder, bearer, corruption, hobbitFights } = game.state.ring;
       const ring = { state, holder, bearer, corruption, hobbitFights };
-      const ringSupply = RING_OF_POWER_IDS.map((id) => game.state.ringSupply[id]);
+      const ringSupply = RING_OF_POWER_IDS.map((id) => game.state.ringSupply.count(id));
       return hash(JSON.stringify({ rounds, players, ring, ringSupply }));
     });
     expect(games).toMatchInlineSnapshot(`
