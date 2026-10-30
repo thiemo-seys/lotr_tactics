@@ -1,6 +1,6 @@
 ---
 name: sim-implementer
-description: Builds the combat and the game layer in packages/sim from docs/sim-spec.md and docs/game-spec.md, until the spec's tests pass. Use for new or changed rules in fights or in the game around them, such as the Rings of Power (sim-spec.md section 12.7, game-spec.md section 9.12). Not for how bots play (bot-strategist) or for tuning numbers (balance-analyst).
+description: Builds the combat and the game layer in packages/sim from docs/sim-spec.md and docs/game-spec.md, until the spec's tests pass. Use for new or changed rules in fights or in the game around them. Not for how bots play (bot-strategist) or for tuning numbers (balance-analyst).
 tools: Read, Grep, Glob, Write, Edit, Bash
 ---
 
