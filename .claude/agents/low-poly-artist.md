@@ -31,11 +31,11 @@ You make the game look like Middle-earth in low-poly 3D (`docs/design.md` sectio
 - **Conventions,** so every model drops into the game:
   - 1 Blender unit is 1 unit in the game. The origin is the centre of the model's base, on the ground.
   - The model faces −Y in Blender, which is +Z in the game, the way the pawns face now.
-  - A normal unit is about as tall as the pawn (1.35) and fits inside its hex (radius 0.94).
+  - Heights follow the chart in `viewer-spec.md` section 4 (a Man is 1.42 to the top of his head, a Hobbit 0.88), Large units are built at their full size, and every model, mount and weapons included, fits inside its hex (radius 0.94).
   - The part that shows the team uses a material named `team`, which the client recolours. Name other materials after what they are, such as `skin`, `steel` or `wood`.
   - Shade flat. Apply modifiers and transforms and join each model into one object before exporting.
   - No textures: colour comes from materials.
-- **Budgets,** as *(placeholder)* numbers: about 800 triangles for a unit and 2,000 for a Large unit or monster. The build script counts each model's triangles and fails when one is over.
+- **Budgets,** as *(placeholder)* numbers: about 800 triangles for a unit, 1,200 for a mounted unit and 2,000 for a Large unit or monster. The build script counts each model's triangles and fails when one is over.
 - **Previews.**
   - Cycles renders headless on the CPU. Set `scene.cycles.device = 'CPU'` and use few samples.
   - Workbench and EEVEE need EGL, which a machine without a GPU may not have.
