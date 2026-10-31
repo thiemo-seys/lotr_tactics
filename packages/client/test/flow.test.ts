@@ -1,4 +1,4 @@
-import { TIMERS, type ClientMessage, type FightRecord, type Host, type LobbyView, type RoundRecord } from '@lotr-tactics/server';
+import { TIMERS, type ClientMessage, type FightRecord, type Host, type LobbyView, type MatchView, type RoundRecord } from '@lotr-tactics/server';
 import type { Team } from '@lotr-tactics/sim';
 import { describe, expect, it } from 'vitest';
 import { LocalConnection } from '../src/connection.js';
@@ -110,7 +110,10 @@ describe('the play flow', () => {
         flow.update(1000, host.time);
         expect(flow.show.kind).toBe('results');
       } else if (show.kind === 'results') {
-        expect(flow.resultLines(show.round, false)[0]).toMatch(new RegExp(`^${show.round.stage}-${show.round.round}: (Victory|Defeat|Draw|No fight)`));
+        const results = flow.results(show.round, false);
+        expect([results.stage, results.round]).toEqual([show.round.stage, show.round.round]);
+        expect(['Victory', 'Defeat', 'Draw', 'No fight']).toContain(results.outcome);
+        expect(results.taken).toBe(show.round.damage.find((d) => d.seat === 0)?.amount ?? 0);
         const before = calls.sent.length;
         flow.update(0, show.until - 1);
         expect(flow.show.kind).toBe('results');
@@ -131,6 +134,77 @@ describe('the play flow', () => {
     expect(rounds).toBeGreaterThan(5);
     expect(readies).toBeGreaterThan(5);
     connection.close();
+  });
+});
+
+describe('round results', () => {
+  const fight = (home: number, away: number, outcome: 'A' | 'B' | 'draw'): FightRecord => ({
+    kind: 'pvp',
+    home,
+    away,
+    input: { seed: 1, stage: 3, teams: { A: [], B: [] } },
+    result: { outcome, survivors: { A: [], B: [] }, finalTick: 0 },
+  });
+
+  /** A flow in seat 1 of a game whose players have these placements. */
+  function inGame(placements: (number | null)[], mePlacement: number | null = null) {
+    const { flow } = recorded();
+    flow.you = 1;
+    flow.lobby = { code: 'ABCDE', host: 0, started: true, seats: placements.map((_, i) => ({ kind: 'bot', name: `Bot ${i}`, connected: false })) };
+    flow.state = {
+      players: placements.map((placement, seat) => ({ seat, placement })),
+      me: { placement: mePlacement },
+    } as unknown as MatchView;
+    return flow;
+  }
+
+  it('list the person first, then by damage, with knockouts and their places', () => {
+    const flow = inGame([null, null, 7, null, 8]);
+    const round: RoundRecord = {
+      stage: 3,
+      round: 2,
+      fights: [fight(0, 1, 'A'), fight(2, 3, 'B')],
+      damage: [
+        { seat: 4, amount: 9 },
+        { seat: 2, amount: 12 },
+        { seat: 1, amount: 6 },
+        { seat: 0, amount: 6 },
+      ],
+      eliminated: [4, 2],
+    };
+    const results = flow.results(round, false);
+    expect(results).toMatchObject({ stage: 3, round: 2, type: 'pvp', outcome: 'Defeat', taken: 6, waiting: false });
+    expect(results.rows).toEqual([
+      { seat: 1, name: 'You', you: true, damage: 6, knockedOut: null },
+      { seat: 2, name: 'Bot 2', you: false, damage: 12, knockedOut: 7 },
+      { seat: 4, name: 'Bot 4', you: false, damage: 9, knockedOut: 8 },
+      { seat: 0, name: 'Bot 0', you: false, damage: 6, knockedOut: null },
+    ]);
+  });
+
+  it('say when there was no fight of yours, and wait only while you are in', () => {
+    const round: RoundRecord = { stage: 3, round: 2, fights: [fight(2, 3, 'draw')], damage: [], eliminated: [] };
+    expect(inGame([null, null, null, null]).results(round, true)).toMatchObject({ outcome: 'No fight', taken: 0, rows: [], waiting: true });
+    expect(inGame([null, 4, null, null], 4).results(round, true).waiting).toBe(false);
+    expect(inGame([null, null, null, null]).results({ ...round, fights: [fight(1, 3, 'draw')] }, false).outcome).toBe('Draw');
+  });
+});
+
+describe('the timer', () => {
+  it('counts down from the time its step started with, and starts again with each step and Council group', () => {
+    const { flow } = recorded();
+    const state = (kind: 'council' | 'planning', ms: number, group = 0) =>
+      ({ stage: 2, round: 1, step: { kind, ms }, council: kind === 'council' ? { group } : null, me: { placement: null } }) as unknown as MatchView;
+    flow.receive({ type: 'state', state: state('council', 15000) }, 0);
+    expect([flow.secondsLeft(0), flow.timerShare(0)]).toEqual([15, 1]);
+    expect([flow.secondsLeft(5000), flow.timerShare(6000)]).toEqual([10, 0.6]);
+    // A later state of the same turn keeps the turn's length.
+    flow.receive({ type: 'state', state: state('council', 9000) }, 6000);
+    expect(flow.timerShare(6000)).toBe(0.6);
+    flow.receive({ type: 'state', state: state('council', 15000, 1) }, 7000);
+    expect(flow.timerShare(7000)).toBe(1);
+    flow.receive({ type: 'state', state: state('planning', 45000) }, 8000);
+    expect([flow.secondsLeft(8000 + 44001), flow.timerShare(8000 + 22500), flow.timerShare(8000 + 60000)]).toEqual([1, 0.5, 0]);
   });
 });
 

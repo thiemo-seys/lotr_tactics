@@ -1,55 +1,44 @@
 // The play page: a menu, lobbies, and games online or against bots (docs/game-spec.md section 12,
 // docs/server-spec.md section 10). It shows what the game's messages tell it, and sends the
-// person's actions back.
+// person's actions back. The HUD, shop bar, panels and dragging are drawn by the modules in play/.
 
-import {
-  GIFTS,
-  ITEMS,
-  SHOP,
-  TRAITS,
-  UNITS,
-  XP,
-  isRingOfPower,
-  placeOf,
-  roundType,
-  unitAt,
-  xpForNextLevel,
-  type Action,
-  type OwnedUnit,
-  type Place,
-  type PlayerView,
-  type UnitId,
-} from '@lotr-tactics/sim';
-import type { RoundRecord, ServerMessage } from '@lotr-tactics/server';
+import type { ServerMessage } from '@lotr-tactics/server';
 import { LocalConnection, SocketConnection, savedSeat, socketUrl, type Connection } from './connection.js';
-import { PlayFlow, ordinal, outcomeText, standings, type PlanningRing } from './flow.js';
+import { PlayFlow } from './flow.js';
 import { yourTeam } from './fights.js';
-import { TIER_NAMES, giftEffect, giftText } from './gifts.js';
-import { itemText } from './items.js';
-import { placeAtPoint } from './layout.js';
-import { ringText, ringTier } from './ring.js';
-import { FightScene, itemChip, ringChip } from './scene.js';
+import { DragAndDrop } from './play/drag.js';
+import { HudBar } from './play/hud-bar.js';
+import { renderLobby, renderMenu } from './play/menu.js';
+import { renderBanner, renderCouncil, renderGiftOffer, renderOver, renderResults } from './play/panels.js';
+import { ShopBar } from './play/shop-bar.js';
+import { renderPlayers, renderTraits } from './play/side-panels.js';
+import { FightScene } from './scene.js';
+import { blockDisabledClicks, fillIcons, isEnabled, setText, show, toggle } from './ui/dom.js';
+import { tipCard } from './ui/tip-card.js';
+import { initTooltips, updateTip } from './ui/tooltip.js';
 import './style.css';
-
-const ROUND_NAMES = { council: 'Council of Elrond', pvp: 'PvP', pve: 'PvE' } as const;
 
 const NAME_KEY = 'lotr-tactics-name';
 
 const element = <T extends HTMLElement>(id: string) => document.getElementById(id) as T;
+fillIcons(document);
+initTooltips(tipCard);
+blockDisabledClicks();
+
 const view = element('view');
-const shopBar = element('shop-bar');
-const shop = element('shop');
 const menu = element('menu');
 const lobbyPanel = element('lobby');
 const council = element('council');
 const giftPanel = element('gift-offer');
 const result = element('result');
 const banner = element('banner');
+const backdrop = element('backdrop');
+const traitsPanel = element('traits');
+const playersPanel = element('players');
 const nameInput = element<HTMLInputElement>('name');
 const codeInput = element<HTMLInputElement>('code');
 const speedButton = element<HTMLButtonElement>('speed');
 const skipButton = element<HTMLButtonElement>('skip');
-const readyButton = element<HTMLButtonElement>('ready');
 
 const scene = new FightScene(view);
 let connection: Connection | null = null;
@@ -58,16 +47,16 @@ const flow = new PlayFlow({
   send: (message) => connection?.send(message),
   fight: (playback, team) => {
     scene.show(playback, team);
-    speedButton.textContent = '1×';
+    setText(speedButton.querySelector('.label')!, '1×');
   },
   menu: backToMenu,
   joined: (code) => {
     if (!offline) history.replaceState(null, '', `#lobby=${code}`);
   },
 });
-let dragging: { unit: OwnedUnit; from: Place } | null = null;
-/** One of the person's items, or the One Ring, being dragged onto a unit, with the chip that follows the mouse. */
-let draggingItem: { index: number | 'ring'; ghost: HTMLElement } | null = null;
+const hud = new HudBar(flow);
+const shop = new ShopBar(flow, (item, event) => drag.startItem(item, event));
+const drag = new DragAndDrop(flow, scene, view, shop, element('drag-hint'));
 
 // Menu and lobby
 
@@ -79,6 +68,7 @@ element('join').addEventListener('click', () => {
   const code = codeInput.value.trim();
   if (code === '') {
     flow.menuMessage = 'Enter the code of the lobby to join.';
+    codeInput.focus();
     return;
   }
   goOnline().send({ type: 'join', code, name: nameInput.value });
@@ -106,68 +96,25 @@ element('reroll-gifts').addEventListener('click', () => flow.act({ type: 'reroll
 element('mount-doom').addEventListener('click', () => flow.act({ type: 'destroyRing' }));
 element('buy-xp').addEventListener('click', () => flow.act({ type: 'buyXp' }));
 element('lock').addEventListener('click', () => flow.act({ type: 'lock', locked: !flow.me().shopLocked }));
-readyButton.addEventListener('click', () => flow.ready());
+element('ready').addEventListener('click', () => flow.ready());
 speedButton.addEventListener('click', () => {
   if (flow.show.kind !== 'fight') return;
   flow.show.playback.speed = flow.show.playback.speed >= 4 ? 1 : flow.show.playback.speed * 2;
-  speedButton.textContent = `${flow.show.playback.speed}×`;
+  setText(speedButton.querySelector('.label')!, `${flow.show.playback.speed}×`);
 });
-skipButton.addEventListener('click', () => {
-  flow.skip(performance.now());
-});
+skipButton.addEventListener('click', () => flow.skip(performance.now()));
 window.addEventListener('keydown', (event) => {
   if (flow.show.kind !== 'planning' || event.target instanceof HTMLInputElement) return;
-  if (event.key === 'd') flow.act({ type: 'reroll' });
-  else if (event.key === 'f') flow.act({ type: 'buyXp' });
+  const press = (id: string, action: () => void) => {
+    // The key does what its button does, and only when the button can.
+    if (isEnabled(element(id))) action();
+  };
+  if (event.key === 'd' || event.key === 'D') press('reroll', () => flow.act({ type: 'reroll' }));
+  else if (event.key === 'f' || event.key === 'F') press('buy-xp', () => flow.act({ type: 'buyXp' }));
   else if (event.key === ' ') {
     event.preventDefault();
     flow.ready();
   }
-});
-
-// Dragging units. Capturing on the view runs before the camera controls see the press.
-view.addEventListener(
-  'pointerdown',
-  (event) => {
-    if (flow.show.kind !== 'planning' || event.button !== 0) return;
-    const place = unitPlaceAt(event.clientX, event.clientY);
-    const unit = place === null ? null : unitAt(flow.me(), place);
-    if (place === null || unit === null) return;
-    // No text selection while dragging.
-    event.preventDefault();
-    dragging = { unit, from: place };
-    scene.cameraControls = false;
-  },
-  { capture: true },
-);
-window.addEventListener('pointermove', (event) => {
-  if (draggingItem !== null) moveGhost(draggingItem.ghost, event);
-  if (dragging === null) return;
-  const point = scene.groundPoint(event.clientX, event.clientY);
-  if (point !== null) scene.drag(dragging.unit.id, point);
-});
-window.addEventListener('pointerup', (event) => {
-  if (draggingItem !== null) {
-    const { index, ghost } = draggingItem;
-    draggingItem = null;
-    ghost.remove();
-    scene.cameraControls = true;
-    const to = view.contains(document.elementFromPoint(event.clientX, event.clientY)) ? unitPlaceAt(event.clientX, event.clientY) : null;
-    if (to !== null) flow.act(index === 'ring' ? { type: 'ring', to } : { type: 'equip', item: index, to });
-  }
-  if (dragging === null) return;
-  const { from } = dragging;
-  dragging = null;
-  scene.cameraControls = true;
-  if (shopBar.contains(document.elementFromPoint(event.clientX, event.clientY))) {
-    flow.act({ type: 'sell', from });
-  } else {
-    const point = scene.groundPoint(event.clientX, event.clientY);
-    const to = point === null ? null : placeAtPoint(point);
-    if (to !== null) flow.act({ type: 'move', from, to });
-  }
-  // Back where it was until the game says where it is now.
-  scene.showPlanning(flow.me(), true, flow.planningRing());
 });
 
 startPage();
@@ -179,6 +126,7 @@ requestAnimationFrame(function frame(now) {
   flow.update(seconds, now);
   render(now);
   scene.render();
+  updateTip();
   requestAnimationFrame(frame);
 });
 
@@ -226,334 +174,60 @@ function receive(message: ServerMessage): void {
   flow.receive(message, performance.now());
 }
 
-// Steps
-
-/** The place of the person's unit under the mouse: its pawn, or else the hex or bench tile. */
-function unitPlaceAt(clientX: number, clientY: number): Place | null {
-  const id = scene.planningUnitAt(clientX, clientY);
-  const p = flow.me();
-  const pawn = id === null ? null : placeOf(p, id);
-  if (pawn !== null) return pawn;
-  const point = scene.groundPoint(clientX, clientY);
-  const place = point === null ? null : placeAtPoint(point);
-  return place !== null && unitAt(p, place) !== null ? place : null;
-}
-
-/** Enables a button if its action is allowed, and otherwise says why when hovered. */
-function allow(id: string, action: Action): void {
-  const button = element<HTMLButtonElement>(id);
-  const result = flow.check(action);
-  button.disabled = !result.ok;
-  button.title = result.ok ? '' : result.reason;
-}
-
-/** Starts dragging one of the person's items or the Ring; dropping it on a unit gives it to that unit. */
-function dragItem(index: number | 'ring', event: PointerEvent): void {
-  if (flow.show.kind !== 'planning' || event.button !== 0) return;
-  event.preventDefault();
-  const ghost = index === 'ring' ? ringChip(flow.state!.ring.corruption) : itemChip(flow.me().items[index]!);
-  ghost.classList.add('ghost');
-  document.body.append(ghost);
-  moveGhost(ghost, event);
-  draggingItem = { index, ghost };
-  scene.cameraControls = false;
-}
-
-function moveGhost(ghost: HTMLElement, event: PointerEvent): void {
-  ghost.style.left = `${event.clientX}px`;
-  ghost.style.top = `${event.clientY}px`;
-}
-
 // Drawing
 
 function render(now: number): void {
-  const { inGame, show } = flow;
-  menu.hidden = show.kind !== 'menu';
-  lobbyPanel.hidden = show.kind !== 'lobby';
-  shopBar.hidden = show.kind !== 'planning';
-  council.hidden = show.kind !== 'council';
-  giftPanel.hidden = !(inGame && show.kind === 'planning' && flow.state!.me.giftOffer !== null);
-  result.hidden = show.kind !== 'results' && show.kind !== 'waiting' && show.kind !== 'over';
-  speedButton.hidden = skipButton.hidden = show.kind !== 'fight';
-  element('leave-game').hidden = !inGame;
-  element('players').hidden = !inGame;
-  banner.hidden = true;
+  const { inGame, show: step } = flow;
+  const planning = step.kind === 'planning';
+  show(menu, step.kind === 'menu');
+  show(lobbyPanel, step.kind === 'lobby');
+  show(backdrop, step.kind === 'menu' || step.kind === 'lobby');
+  show(shop.bar, planning);
+  show(council, step.kind === 'council');
+  show(giftPanel, inGame && planning && flow.state!.me.giftOffer !== null);
+  show(result, step.kind === 'results' || step.kind === 'waiting' || step.kind === 'over');
+  show(speedButton, step.kind === 'fight');
+  show(skipButton, step.kind === 'fight');
+  show(element('leave-game'), inGame);
+  show(playersPanel, inGame);
+  show(traitsPanel, inGame && (planning || step.kind === 'council' || step.kind === 'fight'));
+  toggle(document.body, 'in-game', inGame);
+  if (!planning) drag.cancel();
+  let bannerShown = false;
 
-  if (show.kind === 'menu') renderMenu();
-  else if (show.kind === 'lobby') renderLobby();
-  renderHud(now, inGame);
-  if (!inGame) return;
-
-  const p = flow.me();
-  if (show.kind === 'planning') {
-    scene.showPlanning(p, false, flow.planningRing());
-    renderShop(p);
-    renderGiftOffer(p);
-  } else if (show.kind === 'council') {
-    scene.showPlanning(p, false, flow.planningRing());
-    renderCouncil();
-  } else if (show.kind === 'fight' && show.playback.combat.isOver()) {
-    banner.hidden = false;
-    banner.textContent = outcomeText(show.playback.combat.result().outcome, yourTeam(show.fight, flow.you));
-  } else if (show.kind === 'results' || show.kind === 'waiting') {
-    renderResults(show.round, show.kind === 'waiting');
-  } else if (show.kind === 'over') {
-    renderOver();
-  }
-  renderPlayers();
-}
-
-function renderHud(now: number, inGame: boolean): void {
+  if (step.kind === 'menu') renderMenu(flow);
+  else if (step.kind === 'lobby') renderLobby(flow);
+  hud.render(now);
   if (!inGame) {
-    text('round', 'LOTR Tactics');
-    text('timer', '');
-    text('stats', '');
+    show(banner, false);
     return;
   }
-  const { stage, round } = flow.shownRound();
-  text('round', `${stage}-${round} · ${ROUND_NAMES[roundType(stage, round)]}`);
-  const seconds = flow.secondsLeft(now);
-  text('timer', seconds === null ? '' : `${seconds} s`);
+
   const p = flow.me();
-  const need = xpForNextLevel(p.level);
-  const xp = p.level < XP.buyFromLevel ? '' : need === null ? ' · max level' : ` · XP ${p.xp}/${need}`;
-  const fielded = p.board.filter((u) => u !== null).length;
-  text('stats', `${p.hp} HP · ${p.gold} gold · Level ${p.level}${xp} · Board ${fielded}/${p.level}`);
-  const ring = flow.planningRing();
-  const status = element('ring-status');
-  status.hidden = ring === null;
-  if (ring !== null) {
-    text('ring-status', `The One Ring · ${ring.corruption} (${ringTier(ring.corruption)})${ring.bearer === null ? ' · unworn' : ''}`);
-    status.title = ringText(ring.corruption);
-  }
-  element('mount-doom').hidden = flow.show.kind !== 'planning' || !flow.check({ type: 'destroyRing' }).ok;
-}
-
-function text(id: string, value: string): void {
-  const el = element(id);
-  if (el.textContent !== value) el.textContent = value;
-}
-
-/** Replaces an element's children only when what they show has changed, so clicks aren't lost. */
-function rebuild(target: HTMLElement, key: string, build: () => Node[]): void {
-  if (target.dataset.key === key) return;
-  target.dataset.key = key;
-  target.replaceChildren(...build());
-}
-
-function paragraph(line: string): HTMLElement {
-  const p = document.createElement('p');
-  p.textContent = line;
-  return p;
-}
-
-function renderMenu(): void {
-  text('menu-message', flow.menuMessage);
-}
-
-function renderLobby(): void {
-  if (flow.lobby === null) return;
-  const l = flow.lobby;
-  text('lobby-code', l.code);
-  rebuild(element('seats'), JSON.stringify([l, flow.you]), () =>
-    l.seats.map((seat, i) => {
-      const item = document.createElement('li');
-      const notes = [i === l.host ? 'host' : '', i === flow.you ? 'you' : '', seat.kind === 'person' && !seat.connected ? 'away' : ''].filter((n) => n !== '');
-      item.textContent = seat.kind === 'empty' ? 'Empty seat' : `${seat.name}${notes.length > 0 ? ` (${notes.join(', ')})` : ''}`;
-      item.className = seat.kind;
-      return item;
-    }),
-  );
-  element('start').hidden = l.host !== flow.you;
-  const people = l.seats.filter((s) => s.kind === 'person').length;
-  const status = l.host === flow.you ? (people < l.seats.length ? 'Bots will take the empty seats.' : 'The lobby is full.') : 'Waiting for the host to start.';
-  text('lobby-message', flow.lobbyMessage === '' ? status : flow.lobbyMessage);
-}
-
-function traitNames(id: UnitId): string {
-  const def = UNITS[id];
-  return [def.origin, ...def.classes].map((t) => TRAITS[t].name).join(' · ');
-}
-
-function unitCard(id: UnitId, extra: string, onClick: (() => void) | null): HTMLElement {
-  const card = document.createElement('button');
-  card.className = `card cost-${UNITS[id].cost}`;
-  card.disabled = onClick === null;
-  card.innerHTML = '<strong></strong><span class="traits"></span><span class="extra"></span>';
-  card.querySelector('strong')!.textContent = `${UNITS[id].name} · ${UNITS[id].cost}`;
-  card.querySelector('.traits')!.textContent = traitNames(id);
-  card.querySelector('.extra')!.textContent = extra;
-  if (onClick !== null) card.addEventListener('click', onClick);
-  return card;
-}
-
-function renderShop(p: PlayerView): void {
-  const buys = p.shop.map((_, slot) => flow.check({ type: 'buy', slot }));
-  rebuild(shop, JSON.stringify([p.shop, buys]), () =>
-    p.shop.map((id, slot) => {
-      if (id === null) {
-        const empty = document.createElement('div');
-        empty.className = 'card empty';
-        return empty;
-      }
-      const buy = buys[slot]!;
-      const card = unitCard(id, '', buy.ok ? () => flow.act({ type: 'buy', slot }) : null);
-      if (!buy.ok) card.title = buy.reason;
-      return card;
-    }),
-  );
-  allow('reroll', { type: 'reroll' });
-  text('reroll', p.freeRerolls > 0 ? `Reroll · free${p.freeRerolls > 1 ? ` ×${p.freeRerolls}` : ''}` : `Reroll · ${SHOP.rerollCost}`);
-  allow('buy-xp', { type: 'buyXp' });
-  text('lock', p.shopLocked ? 'Unlock' : 'Lock');
-  const ring = flow.planningRing();
-  rebuild(element('items'), JSON.stringify([p.items, ring]), () => [
-    ...(ring === null ? [] : [ringItem(ring)]),
-    ...p.items.map((id, index) => {
-      const chip = itemChip(id);
-      chip.title += '\nDrag onto a unit to give it this item.';
-      chip.addEventListener('pointerdown', (event) => dragItem(index, event));
-      return chip;
-    }),
-  ]);
-  const isReady = flow.state!.ready.includes(flow.you);
-  readyButton.disabled = isReady;
-  const others = flow.planners().filter((seat) => seat !== flow.you && !flow.state!.ready.includes(seat)).length;
-  text('ready', isReady ? (others > 0 ? `Waiting for ${others}` : 'Ready ✓') : 'Ready');
-}
-
-function renderCouncil(): void {
-  const c = flow.state!.council;
-  if (c === null) return;
-  const picks = c.options.map((_, option) => flow.check({ type: 'pick', option }).ok);
-  const picking = picks.includes(true);
-  text('council-status', picking ? 'Your turn: pick a unit and what it brings.' : 'Waiting for the others to pick…');
-  rebuild(element('options'), JSON.stringify([c.options, picks]), () =>
-    c.options.map((option, i) => {
-      const card = unitCard(
-        option.unitId,
-        `${option.item === null ? 'The One Ring' : ITEMS[option.item].name}${option.pickedBy === null ? '' : ` · ${flow.seatName(option.pickedBy)}`}`,
-        picks[i] ? () => flow.act({ type: 'pick', option: i }) : null,
-      );
-      if (option.ring) {
-        card.classList.add('ring');
-        card.title = `${ringText(flow.state!.ring.corruption)}\nNobody is made to take it.`;
-      } else if (option.item !== null && isRingOfPower(option.item)) {
-        card.classList.add('ring-of-power');
-        card.title = itemText(option.item);
-      }
-      return card;
-    }),
-  );
-}
-
-/** The Ring in the person's items, to drag onto the unit that should bear it. */
-function ringItem(ring: PlanningRing): HTMLElement {
-  const chip = ringChip(ring.corruption);
-  chip.title += `\nDrag onto a unit to ${ring.bearer === null ? 'give it' : 'move'} the Ring.`;
-  chip.addEventListener('pointerdown', (event) => dragItem('ring', event));
-  return chip;
-}
-
-function renderGiftOffer(p: PlayerView): void {
-  const offer = p.giftOffer;
-  if (offer === null) return;
-  text('gift-tier', offer.length > 0 ? `· ${TIER_NAMES[GIFTS[offer[0]!].tier]}` : '');
-  rebuild(element('gift-options'), JSON.stringify(offer), () =>
-    offer.map((id, option) => {
-      const card = document.createElement('button');
-      card.className = `card gift ${GIFTS[id].tier}`;
-      card.innerHTML = '<strong></strong><span class="extra"></span>';
-      card.querySelector('strong')!.textContent = GIFTS[id].name;
-      card.querySelector('.extra')!.textContent = giftEffect(id);
-      card.addEventListener('click', () => flow.act({ type: 'gift', option }));
-      return card;
-    }),
-  );
-  element<HTMLButtonElement>('reroll-gifts').disabled = p.giftRerolled;
-}
-
-function renderResults(round: RoundRecord, waiting: boolean): void {
-  const lines = flow.resultLines(round, waiting);
-  rebuild(result, JSON.stringify(lines), () => lines.map(paragraph));
-}
-
-function renderOver(): void {
-  const s = flow.state!;
-  const placement = s.me.placement!;
-  const finished = s.step.kind === 'over';
-  const order = standings(s.players);
-  rebuild(result, JSON.stringify([placement, finished, offline, order.map((p) => [p.seat, p.placement, p.hp]), flow.lobby?.seats]), () => {
-    const title = document.createElement('h2');
-    title.textContent = placement === 1 ? 'You win!' : `You placed ${ordinal(placement)}`;
-    const list = document.createElement('ol');
-    for (const p of order) {
-      const item = document.createElement('li');
-      item.textContent = p.placement === null ? `${flow.seatName(p.seat)} · ${p.hp} HP` : flow.seatName(p.seat);
-      list.append(item);
-    }
-    const buttons = document.createElement('div');
-    buttons.className = 'actions';
-    if (offline) {
-      const again = document.createElement('button');
-      again.textContent = 'New game';
-      again.addEventListener('click', () => {
+  if (planning) {
+    scene.showPlanning(p, false, flow.planningRing());
+    shop.render(p);
+    renderGiftOffer(flow);
+  } else if (step.kind === 'council') {
+    scene.showPlanning(p, false, flow.planningRing());
+    renderCouncil(flow, now);
+  } else if (step.kind === 'fight' && step.playback.combat.isOver()) {
+    bannerShown = true;
+    renderBanner(banner, step.playback.combat.result().outcome, yourTeam(step.fight, flow.you));
+  } else if (step.kind === 'results' || step.kind === 'waiting') {
+    renderResults(result, flow, step.round, step.kind === 'waiting');
+  } else if (step.kind === 'over') {
+    renderOver(result, flow, offline, {
+      newGame: () => {
         history.replaceState(null, '', location.pathname);
         playOffline(randomSeed());
-      });
-      buttons.append(again);
-    }
-    const back = document.createElement('button');
-    back.textContent = 'Back to menu';
-    back.addEventListener('click', leave);
-    buttons.append(back);
-    return [title, ...(finished ? [] : [paragraph('The game goes on without you.')]), list, buttons];
-  });
-}
-
-function renderPlayers(): void {
-  const s = flow.state!;
-  const key = JSON.stringify([s.players.map((p) => [p.hp, p.level, p.placement, p.gifts]), flow.lobby?.seats, s.ring]);
-  rebuild(element('players'), key, () => [
-    ...standings(s.players).map((p) => {
-        const seat = flow.lobby?.seats[p.seat];
-        const row = document.createElement('div');
-        row.className = `player${p.seat === flow.you ? ' you' : ''}${p.placement !== null ? ' out' : ''}`;
-        const holds = s.ring.state === 'held' && s.ring.holder === p.seat;
-        if (holds) row.classList.add('ring-holder');
-        const notes = [
-          ...(holds ? [`Holds the One Ring (Corruption ${s.ring.corruption})`] : []),
-          ...(p.gifts.length > 0 ? [`Gifts: ${p.gifts.map((g) => GIFTS[g].name).join(', ')}`] : []),
-        ];
-        if (notes.length > 0) row.title = notes.join('\n');
-        const name = document.createElement('span');
-        const away = seat?.kind === 'person' && !seat.connected ? ' (away)' : '';
-        name.textContent = `${flow.seatName(p.seat)}${away} · ${p.level}`;
-        const hp = document.createElement('span');
-        hp.textContent = p.placement !== null ? ordinal(p.placement) : String(p.hp);
-        const bar = document.createElement('div');
-        bar.className = 'hp';
-        bar.style.width = `${Math.max(0, p.hp)}%`;
-        row.append(name, hp, bar);
-        return row;
-      }),
-    ...yourGifts(s.me),
-  ]);
-}
-
-/** The person's Gifts under the players list, each naming its effect when hovered. */
-function yourGifts(p: PlayerView): HTMLElement[] {
-  if (p.gifts.length === 0) return [];
-  const list = document.createElement('div');
-  list.className = 'your-gifts';
-  for (const id of p.gifts) {
-    const gift = document.createElement('div');
-    gift.className = `gift ${GIFTS[id].tier}`;
-    gift.textContent = GIFTS[id].name;
-    gift.title = giftText(id);
-    list.append(gift);
+      },
+      menu: leave,
+    });
   }
-  return [list];
+  show(banner, bannerShown);
+  if (!traitsPanel.hidden) renderTraits(traitsPanel, p);
+  renderPlayers(playersPanel, flow);
 }
 
 function randomSeed(): number {

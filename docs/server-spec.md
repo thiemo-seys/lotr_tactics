@@ -245,17 +245,17 @@ interface SeatView {
 
 The play page (`game-spec.md` section 12) talks to a `Connection`. The connection sends `ClientMessage`s and delivers `ServerMessage`s, either from a WebSocket or from a match running in the page. The page shows only what the messages tell it. `session.ts` is replaced by the connections.
 
-- **Menu**, shown when `play.html` opens without a hash:
+- **Menu**, shown when `play.html` opens without a hash, over the board dimmed and blurred, under the game's title:
   - a name field, remembered in local storage;
-  - Play against bots;
+  - Play against bots, the main button;
   - Create lobby;
   - Join, with a code field.
 - **Links:**
   - `play.html#seed=7` starts an offline game with that seed straight away, as before.
   - `play.html#lobby=CODE` opens the menu with the code filled in.
 - **Lobby screen:**
-  - the code, and a button that copies the join link;
-  - the 8 seats, with names, the host and who is connected;
+  - the code, large, and an icon button that copies the join link;
+  - the 8 seats as cards, with names and icons for people, bots and empty seats, the host, and whether each person is connected or away;
   - Start, for the host only;
   - Leave.
 - **The game** works as it does offline, but it follows the server's steps and timers:

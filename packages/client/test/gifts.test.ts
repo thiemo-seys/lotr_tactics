@@ -1,6 +1,6 @@
 import { GIFT_IDS } from '@lotr-tactics/sim';
 import { describe, expect, it } from 'vitest';
-import { giftEffect, giftText } from '../src/gifts.js';
+import { giftEffect, giftEffects, giftText } from '../src/gifts.js';
 
 describe('gift text', () => {
   it('describes every Gift from its data', () => {
@@ -22,5 +22,12 @@ describe('gift text', () => {
     expect(giftEffect('second-breakfast')).toBe('Your first reroll each round is free.');
     expect(giftEffect('mirror-of-galadriel')).toBe('Your shop rolls with the odds of one level higher.');
     expect(giftEffect('horse-lords')).toBe('Crest: counts one more Rider, if you have one.');
+  });
+});
+
+describe('gift effects', () => {
+  it('list one sentence per effect, the same sentences giftEffect joins', () => {
+    expect(giftEffects('wisdom-of-the-istari')).toEqual(['Your units gain +30 Ability Power.', 'Your units start combat with 20 more mana.']);
+    for (const id of GIFT_IDS) expect(giftEffects(id).join(' ')).toBe(giftEffect(id));
   });
 });

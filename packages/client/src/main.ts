@@ -5,6 +5,9 @@ import { BOARD_CHOICES, fightBoards, isBoardChoice, type BoardChoice } from './b
 import { describe } from './log.js';
 import { Playback } from './playback.js';
 import { FightScene } from './scene.js';
+import { el, fillIcons, icon, rebuild, setText, show, toggle } from './ui/dom.js';
+import { tipCard } from './ui/tip-card.js';
+import { initTooltips, updateTip } from './ui/tooltip.js';
 import './style.css';
 
 interface Settings {
@@ -20,15 +23,21 @@ const DEFAULTS: Settings = { a: 'full', b: 'traits', seed: 1, stage: 2 };
 const LOG_LIMIT = 1000;
 
 const element = <T extends HTMLElement>(id: string) => document.getElementById(id) as T;
+fillIcons(document);
+initTooltips(tipCard);
 const boardA = element<HTMLSelectElement>('board-a');
 const boardB = element<HTMLSelectElement>('board-b');
 const seedInput = element<HTMLInputElement>('seed');
 const stageInput = element<HTMLInputElement>('stage');
 const playButton = element<HTMLButtonElement>('play');
-const speedSelect = element<HTMLSelectElement>('speed');
+const speedControl = element<HTMLFieldSetElement>('speed');
 const clock = element('clock');
+const tickText = clock.querySelector('.tick .value') as HTMLElement;
+const timeText = clock.querySelector('.time') as HTMLElement;
+const overtime = clock.querySelector('.overtime') as HTMLElement;
 const banner = element('banner');
 const log = element('log');
+const logButton = element('toggle-log');
 
 for (const select of [boardA, boardB]) {
   for (const choice of BOARD_CHOICES) select.add(new Option(choice, choice));
@@ -52,8 +61,11 @@ element('new-fight').addEventListener('click', () => {
 element('restart').addEventListener('click', () => (playback = start()));
 playButton.addEventListener('click', togglePlay);
 element('step').addEventListener('click', stepOnce);
-speedSelect.addEventListener('change', () => (playback.speed = Number(speedSelect.value)));
-element('toggle-log').addEventListener('click', () => (log.hidden = !log.hidden));
+speedControl.addEventListener('change', () => (playback.speed = speed()));
+logButton.addEventListener('click', () => {
+  log.hidden = !log.hidden;
+  logButton.setAttribute('aria-pressed', String(!log.hidden));
+});
 window.addEventListener('keydown', (event) => {
   if (event.target instanceof HTMLInputElement || event.target instanceof HTMLSelectElement) return;
   if (event.key === ' ') {
@@ -72,6 +84,7 @@ requestAnimationFrame(function frame(now) {
   appendLog(playback, playback.advance(seconds));
   showClock();
   scene.render();
+  updateTip();
   requestAnimationFrame(frame);
 });
 
@@ -83,8 +96,8 @@ function start(): Playback {
       teams: fightBoards(settings.a, settings.b, settings.seed),
     }),
   );
-  next.speed = Number(speedSelect.value);
-  playButton.textContent = 'Pause';
+  next.speed = speed();
+  showPlaying(true);
   scene.show(next);
   log.replaceChildren();
   appendLog(next, next.combat.events);
@@ -93,24 +106,47 @@ function start(): Playback {
 
 function togglePlay(): void {
   playback.playing = !playback.playing;
-  playButton.textContent = playback.playing ? 'Pause' : 'Play';
+  showPlaying(playback.playing);
 }
 
 function stepOnce(): void {
   playback.playing = false;
-  playButton.textContent = 'Play';
+  showPlaying(false);
   appendLog(playback, playback.step());
   showClock();
 }
 
+/** The play button shows pause while playing, and play while paused. */
+function showPlaying(playing: boolean): void {
+  toggle(playButton, 'playing', playing);
+  playButton.setAttribute('aria-label', playing ? 'Pause' : 'Play');
+}
+
+/** The speed picked in the speed control. */
+function speed(): number {
+  const checked = speedControl.querySelector<HTMLInputElement>('input:checked');
+  return checked === null ? 1 : Number(checked.value);
+}
+
 function showClock(): void {
   const { tick } = playback.combat;
-  const overtime = tick >= OVERTIME_START_TICK ? ' · overtime' : '';
-  clock.textContent = `Tick ${tick} / ${LAST_TICK} · ${(tick / TICKS_PER_SECOND).toFixed(1)} s${overtime}`;
-  banner.hidden = !playback.combat.isOver();
-  if (playback.combat.isOver()) {
+  setText(tickText, `Tick ${tick} / ${LAST_TICK}`);
+  setText(timeText, `${(tick / TICKS_PER_SECOND).toFixed(1)} s`);
+  show(overtime, tick >= OVERTIME_START_TICK);
+  const over = playback.combat.isOver();
+  show(banner, over);
+  if (over) {
     const { outcome, finalTick } = playback.combat.result();
-    banner.textContent = `${outcome === 'draw' ? 'Draw' : `Team ${outcome} wins`} at tick ${finalTick}`;
+    rebuild(banner, `${outcome}-${finalTick}`, () => {
+      banner.className = `outcome-banner ${outcome === 'draw' ? 'draw' : outcome === 'A' ? 'victory' : 'defeat'}`;
+      return [
+        el('span', 'banner-line'),
+        icon(outcome === 'draw' ? 'pvp' : 'trophy'),
+        el('span', 'banner-text', outcome === 'draw' ? 'Draw' : `Team ${outcome} wins`),
+        el('span', 'sub', `tick ${finalTick}`),
+        el('span', 'banner-line'),
+      ];
+    });
   }
 }
 

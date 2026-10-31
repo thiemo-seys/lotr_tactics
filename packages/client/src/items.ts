@@ -1,6 +1,6 @@
 // How items look and read in the client (docs/game-spec.md section 12, docs/viewer-spec.md
-// section 4): a short tag and colours for each item and Ring of Power, and a description built
-// from the item data, so the numbers shown are always the sim's. No Three.js or DOM, so it can be
+// section 4): colours for each item and Ring of Power, and what each item is and does, built from
+// the item data, so the numbers shown are always the sim's. No Three.js or DOM, so it can be
 // tested.
 
 import {
@@ -35,15 +35,6 @@ export const RING_COLOURS: Readonly<Record<RingOfPowerId, readonly [string, stri
   'ring-of-the-seven': ['#eab308', '#92400e'],
   'ring-of-the-nine': ['#eab308', '#111827'],
 };
-
-/** Words left out of tags. */
-const SMALL_WORDS = new Set(['of', 'the']);
-
-/** Two letters for an item: the initials of a name of several words, otherwise its first two letters. */
-export function itemTag(id: ItemId): string {
-  const words = ITEMS[id].name.split(' ').filter((w) => !SMALL_WORDS.has(w));
-  return words.length > 1 ? words.map((w) => w[0]).join('').slice(0, 2) : words[0]!.slice(0, 2);
-}
 
 /** A component's colour twice, a combined item's two components' colours, or a Ring of Power's gold and stone. */
 export function itemColours(id: ItemId): readonly [string, string] {
@@ -126,12 +117,17 @@ function effectText(effect: ItemEffect): string {
   }
 }
 
-/** Stat bonuses as text, such as "+15% Attack Damage, +20 Armor". */
-export function statsText(stats: ItemStats): string {
+/** Stat bonuses, one each, such as ["+15% Attack Damage", "+20 Armor"]. */
+export function statLines(stats: ItemStats): string[] {
   return STATS.flatMap(({ key, name, pct }) => {
     const value = stats[key] ?? 0;
     return value === 0 ? [] : [`+${value}${pct ? '%' : ''} ${name}`];
-  }).join(', ');
+  });
+}
+
+/** Stat bonuses as text, such as "+15% Attack Damage, +20 Armor". */
+export function statsText(stats: ItemStats): string {
+  return statLines(stats).join(', ');
 }
 
 const FAMILY_NAMES: Readonly<Record<RingFamily, string>> = { three: 'the Three', seven: 'the Seven', nine: 'the Nine' };
@@ -142,21 +138,50 @@ function kinText(kin: NonNullable<RingOfPowerDef['kin']>): string {
   return kin.pct === 200 ? `Double ${bearers}.` : `${kin.pct - 100}% stronger ${bearers}.`;
 }
 
-function title(id: ItemId): string {
-  const { name, recipe, ringOfPower } = ITEMS[id];
-  if (ringOfPower !== undefined) return `${name} (Ring of Power: ${FAMILY_NAMES[ringOfPower.family]})`;
-  return recipe === null ? `${name} (component)` : `${name} (${ITEMS[recipe[0]].name} + ${ITEMS[recipe[1]].name})`;
+export type ItemKind = 'component' | 'combined' | 'ring-of-power';
+
+/** What an item is and does, from the item data, in parts a tooltip can lay out. */
+export interface ItemInfo {
+  readonly name: string;
+  readonly kind: ItemKind;
+  /** "Component", the recipe such as "Blade + Cloak", or the ring's family such as "Ring of Power: the Three". */
+  readonly kindText: string;
+  /** A combined item's two components. */
+  readonly recipe: readonly [ComponentId, ComponentId] | null;
+  /** Stat bonuses, one each. A Ring of Power has none. */
+  readonly stats: readonly string[];
+  readonly effect: string | null;
+  /** A Ring of Power's bonus on its kin. */
+  readonly kin: string | null;
 }
 
-/** An item's name, recipe, stats and effect, for a tooltip. A Ring of Power has no stats, and may have a kin bonus. */
+export function itemInfo(id: ItemId): ItemInfo {
+  const { name, recipe, effect, ringOfPower } = ITEMS[id];
+  const kind: ItemKind = ringOfPower !== undefined ? 'ring-of-power' : recipe === null ? 'component' : 'combined';
+  return {
+    name,
+    kind,
+    kindText:
+      ringOfPower !== undefined
+        ? `Ring of Power: ${FAMILY_NAMES[ringOfPower.family]}`
+        : recipe === null
+          ? 'Component'
+          : `${ITEMS[recipe[0]].name} + ${ITEMS[recipe[1]].name}`,
+    recipe: recipe === null ? null : [recipe[0], recipe[1]],
+    stats: statLines(itemStats(id)),
+    effect: effect === null ? null : effectText(effect),
+    kin: ringOfPower?.kin === undefined ? null : kinText(ringOfPower.kin),
+  };
+}
+
+/** An item's name, recipe, stats and effect as text. A Ring of Power has no stats, and may have a kin bonus. */
 export function itemText(id: ItemId): string {
-  const { effect, ringOfPower } = ITEMS[id];
-  const statText = statsText(itemStats(id));
-  const kin = ringOfPower?.kin;
+  const info = itemInfo(id);
+  const kind = info.kind === 'component' ? 'component' : info.kindText;
   return [
-    title(id),
-    ...(statText === '' ? [] : [statText]),
-    ...(effect === null ? [] : [effectText(effect)]),
-    ...(kin === undefined ? [] : [kinText(kin)]),
+    `${info.name} (${kind})`,
+    ...(info.stats.length === 0 ? [] : [info.stats.join(', ')]),
+    ...(info.effect === null ? [] : [info.effect]),
+    ...(info.kin === null ? [] : [info.kin]),
   ].join('\n');
 }
