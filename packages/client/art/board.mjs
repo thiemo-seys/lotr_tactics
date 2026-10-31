@@ -18,7 +18,7 @@
 // stars from left to right, blue in rows 1 to 3 seen from behind and red in rows 4 to 6 seen from the
 // front, each with the game's label (name, stars and a health bar). The JSON file says how each star
 // shows; model paths in it are relative to the file. --unit=N shows only the Nth unit, close up, in
-// rows 2 and 5. Also writes board-far.png, the red side from the front, and the scale, reach and
+// rows 2 and 5. Also writes board-far.png, from behind the red side, and the scale, reach and
 // height of each model in labels.json:
 //
 //   { "units": [{ "name": "Frodo", "models": ["frodo.glb", "frodo.glb", "frodo-3.glb"], "rider": false }],
