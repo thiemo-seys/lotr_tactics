@@ -3,13 +3,14 @@
 import { describe, expect, it } from 'vitest';
 import type { PlacedUnit } from '../src/combat/combat.js';
 import { createSummon, createUnit, effectsOf, giftAmpPct, originsOf, teamSetup, type Unit } from '../src/combat/fighters.js';
+import { teamTraitCounts, traitLevelsOf } from '../src/index.js';
 import { finalStats, gruntStats } from '../src/combat/stats.js';
 import { toTicks } from '../src/combat/time.js';
 import { GIFTS, type GiftId } from '../src/data/gifts.js';
 import { RING } from '../src/data/ring.js';
 import { fromPlacement } from '../src/hex.js';
 import type { Team } from '../src/types.js';
-import { placed } from './helpers.js';
+import { BOARDS, placed } from './helpers.js';
 
 let nextId = 0;
 
@@ -82,6 +83,41 @@ describe('starting units', () => {
     expect(effectsOf(elrond, 'healPulse')[0]!.pct).toBe(150);
     expect(effectsOf(unit(placed('gimli', 3, 3, 1, ['vilya'])), 'healPulse')[0]!.pct).toBe(100);
     expect(effectsOf(elrond, 'reflect')).toEqual([]);
+  });
+});
+
+describe('team trait counts', () => {
+  it('count distinct units, the Nine as Nazgûl and crests only for traits the team has, and never monsters', () => {
+    const board = [
+      placed('sam', 2, 3),
+      placed('sam', 3, 3, 2),
+      placed('merry', 4, 3),
+      placed('ringwraith', 3, 2),
+      placed('boromir', 1, 3, 1, ['ring-of-the-nine']),
+    ];
+    expect(teamTraitCounts(board, [])).toEqual({ hobbit: 2, guardian: 1, burglar: 2, nazgul: 2, gondor: 1, captain: 1 });
+    expect(teamTraitCounts(board, ['shire-folk', 'burglars-contract', 'horse-lords'])).toEqual({
+      hobbit: 3,
+      guardian: 1,
+      burglar: 3,
+      nazgul: 2,
+      gondor: 1,
+      captain: 1,
+    });
+    // The fight's own placements and a player's owned units count the same way.
+    const owned = board.map((p, id) => ({ id, unitId: p.unitId, star: p.star, items: p.items }));
+    expect(teamTraitCounts(owned, ['shire-folk'])).toEqual(teamTraitCounts(board, ['shire-folk']));
+    const monsters = [{ ...placed('sam', 3, 3), unitId: 'goblin' as const }, { ...placed('sam', 2, 3), unitId: 'cave-troll' as const }];
+    expect(teamTraitCounts(monsters, ['shire-folk'])).toEqual({});
+  });
+
+  it("give exactly the levels a fight's teams start with", () => {
+    const gifts: GiftId[][] = [[], ['shire-folk'], ['captains-horn', 'guard-of-the-citadel'], ['wizards-hat', 'burglars-contract', 'horse-lords']];
+    const boards = [...Object.values(BOARDS), [placed('ringwraith', 3, 2), placed('theoden', 4, 3, 1, ['ring-of-the-nine']), placed('gimli', 2, 3, 1, ['ring-of-the-nine'])]];
+    for (const board of boards) {
+      for (const g of gifts) expect(traitLevelsOf(teamTraitCounts(board, g))).toEqual(teamSetup(board, g).traits);
+    }
+    expect(traitLevelsOf({ hobbit: 1, elf: 4, dwarf: 3, ent: 1 })).toEqual({ elf: 1, dwarf: 1, ent: 0 });
   });
 });
 

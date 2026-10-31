@@ -27,6 +27,10 @@ export type {
   UnitState,
 } from './combat/combat.js';
 export type { ReducibleStat, StatusKind, StatusState, TimedStatus } from './combat/statuses.js';
+export { teamTraitCounts } from './combat/fighters.js';
+export type { TraitHolder } from './combat/fighters.js';
+export { traitLevelsOf } from './combat/traits.js';
+export type { TraitCounts } from './combat/traits.js';
 export type * from './combat/events.js';
 export { UNIT_IDS, copiesIn } from './game/pool.js';
 export { TEAM_ROWS, boardPlace, boardSlot, isPlace, ownedUnits, placeOf, samePlace, unitAt } from './game/places.js';

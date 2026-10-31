@@ -1,16 +1,16 @@
-// The Three.js scene: board, units, overlays and effects (docs/viewer-spec.md sections 3–5).
+// The Three.js scene: board, units, overlays and effects (docs/viewer-spec.md sections 3–5), and
+// the marker that shows where a dragged unit or item would go while planning.
 
 import {
   BOARD_HEXES,
   PLAYER,
   boardPlace,
   fromPlacement,
-  isComponent,
-  isRingOfPower,
   toOffset,
   type FighterId,
   type ItemId,
   type OwnedUnit,
+  type Place,
   type PlayerView,
   type Star,
   type Team,
@@ -19,11 +19,10 @@ import {
 import * as THREE from 'three';
 import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
 import { CSS2DObject, CSS2DRenderer } from 'three/addons/renderers/CSS2DRenderer.js';
-import { itemColours, itemTag, itemText } from './items.js';
-import { ringText } from './ring.js';
 import { benchToWorld, hexToWorld, type Point } from './layout.js';
 import type { PlanningRing } from './flow.js';
 import { EFFECT_TICKS, facing, type CastRing, type FloatingText, type Playback, type Projectile } from './playback.js';
+import { UnitLabel } from './ui/labels.js';
 import { displayName, isLarge } from './units.js';
 
 /** Units on the side the camera looks from are drawn as team A: blue, with green health. */
@@ -45,14 +44,14 @@ const TEXT_RISE = 0.9;
 /** Opacity of an untargetable unit. */
 const UNTARGETABLE_OPACITY = 0.35;
 
+/** The drop marker's colours: where a drag can go, and where it can't. */
+const MARKER_COLOURS = { ok: 0xf3d27a, no: 0xe35d5b } as const;
+
 interface UnitView {
   readonly group: THREE.Group;
   readonly material: THREE.MeshStandardMaterial;
   readonly label: CSS2DObject;
-  readonly health: HTMLElement;
-  readonly shield: HTMLElement;
-  readonly mana: HTMLElement | null;
-  readonly tags: HTMLElement;
+  readonly overlay: UnitLabel;
 }
 
 const geometry = {
@@ -62,6 +61,11 @@ const geometry = {
   nose: new THREE.ConeGeometry(0.09, 0.28, 4),
   projectile: new THREE.IcosahedronGeometry(0.11, 0),
   ring: new THREE.RingGeometry(0.5, 0.62, 24),
+  // Drop markers: a hex outline and fill matching the board's pointy-top hexes, and a square for bench tiles.
+  hexOutline: new THREE.RingGeometry(0.78, 0.94, 6, 1, Math.PI / 2),
+  hexFill: new THREE.CircleGeometry(0.78, 6, Math.PI / 2),
+  tileOutline: new THREE.RingGeometry(0.84, 0.99, 4, 1, Math.PI / 4),
+  tileFill: new THREE.CircleGeometry(0.84, 4, Math.PI / 4),
 };
 
 /** The size of a bench tile. */
@@ -90,6 +94,14 @@ export class FightScene {
   /** Planning pawns by owned unit id. */
   private planning = new Map<number, THREE.Group>();
   private planningKey = '';
+  /** Where a dragged unit or item would go while planning. */
+  private readonly marker = new THREE.Group();
+  private readonly markerOutline = new THREE.MeshBasicMaterial({ color: MARKER_COLOURS.ok, transparent: true, opacity: 0.95, depthWrite: false });
+  private readonly markerFill = new THREE.MeshBasicMaterial({ color: MARKER_COLOURS.ok, transparent: true, opacity: 0.22, depthWrite: false });
+  private readonly hexMarker = new THREE.Group();
+  private readonly tileMarker = new THREE.Group();
+  /** The planning unit whose label is marked as where a dragged item would go. */
+  private marked: number | null = null;
   private readonly ground = new THREE.Plane(new THREE.Vector3(0, 1, 0), 0);
   private readonly raycaster = new THREE.Raycaster();
 
@@ -111,6 +123,7 @@ export class FightScene {
     this.scene.add(sun);
     this.buildBoard();
     this.buildBench();
+    this.buildMarker();
     this.scene.add(this.fightLayer);
     this.resize();
     // Panels such as the shop bar change the container's size without resizing the window.
@@ -169,6 +182,33 @@ export class FightScene {
     this.planning.get(unitId)?.position.set(point.x, 0.4, point.z);
   }
 
+  /** Marks the hex or bench tile a drag would go to, in gold if it can go there and in red if not; null hides the marker. */
+  markPlace(place: Place | null, ok = true): void {
+    this.marker.visible = place !== null;
+    if (place === null) return;
+    const bench = 'bench' in place;
+    this.hexMarker.visible = !bench;
+    this.tileMarker.visible = bench;
+    const { x, z } = bench ? benchToWorld(place.bench) : hexToWorld(fromPlacement('A', place));
+    this.marker.position.set(x, 0.015, z);
+    const colour = ok ? MARKER_COLOURS.ok : MARKER_COLOURS.no;
+    this.markerOutline.color.setHex(colour);
+    this.markerFill.color.setHex(colour);
+  }
+
+  /** Marks the label of the planning unit a dragged item would go to, or none. */
+  markUnit(unitId: number | null): void {
+    if (unitId === this.marked) return;
+    const label = (id: number | null) => {
+      const pawn = id === null ? undefined : this.planning.get(id);
+      const object = pawn?.children.find((c) => c instanceof CSS2DObject);
+      return object instanceof CSS2DObject ? object.element : null;
+    };
+    label(this.marked)?.classList.remove('drop-target');
+    label(unitId)?.classList.add('drop-target');
+    this.marked = unitId;
+  }
+
   /** The point on the ground under a screen position, or null if the ray misses it. */
   groundPoint(clientX: number, clientY: number): Point | null {
     this.aimRay(clientX, clientY);
@@ -217,6 +257,7 @@ export class FightScene {
     this.rings.clear();
     this.planning = new Map();
     this.planningKey = '';
+    this.marked = null;
     this.bench.visible = false;
   }
 
@@ -266,6 +307,20 @@ export class FightScene {
     this.scene.add(this.bench);
   }
 
+  private buildMarker(): void {
+    const flat = (shape: THREE.BufferGeometry, material: THREE.Material) => {
+      const mesh = new THREE.Mesh(shape, material);
+      mesh.rotation.x = -Math.PI / 2;
+      mesh.renderOrder = 1;
+      return mesh;
+    };
+    this.hexMarker.add(flat(geometry.hexFill, this.markerFill), flat(geometry.hexOutline, this.markerOutline));
+    this.tileMarker.add(flat(geometry.tileFill, this.markerFill), flat(geometry.tileOutline, this.markerOutline));
+    this.marker.add(this.hexMarker, this.tileMarker);
+    this.marker.visible = false;
+    this.scene.add(this.marker);
+  }
+
   private updateUnits(playback: Playback): void {
     const units = playback.combat.state.units;
     // Summons appear during the fight.
@@ -287,45 +342,21 @@ export class FightScene {
       view.material.opacity = opacity * (1 - death);
 
       view.label.visible = unit.alive;
-      this.updateBars(view, unit);
+      if (unit.alive) view.overlay.update(unit);
     });
-  }
-
-  private updateBars(view: UnitView, unit: UnitState): void {
-    const shield = unit.statuses.shield;
-    const total = Math.max(unit.stats.maxHealth, unit.health + shield);
-    view.health.style.width = `${(100 * unit.health) / total}%`;
-    view.shield.style.width = `${(100 * shield) / total}%`;
-    if (view.mana !== null) view.mana.style.width = `${(100 * unit.mana) / unit.base.maxMana}%`;
-    const tags = [
-      unit.statuses.has('stun') ? 'Stun' : null,
-      unit.statuses.has('stunImmune') ? 'Immune' : null,
-      unit.statuses.has('untargetable') ? 'Untargetable' : null,
-    ]
-      .filter((t) => t !== null)
-      .join(' · ');
-    if (view.tags.textContent !== tags) view.tags.textContent = tags;
   }
 
   private createUnit(unit: UnitState): UnitView {
     const look = unit.team === this.side ? 'A' : 'B';
-    const { group, material, label } = this.createPawn(unit.unitId, unit.star, unit.team, look, unit.summon, unit.items, unit.ring);
-    const element = label.element;
-    const healthBar = bar('health');
-    const shield = document.createElement('div');
-    shield.className = 'shield';
-    healthBar.bar.append(shield);
-    const manaBar = unit.base.maxMana > 0 ? bar('mana') : null;
-    const tags = document.createElement('div');
-    tags.className = 'tags';
-    element.append(healthBar.bar, ...(manaBar === null ? [] : [manaBar.bar]), tags);
-    this.fightLayer.add(group);
-    return { group, material, label, health: healthBar.fill, shield, mana: manaBar?.fill ?? null, tags };
+    const view = this.createPawn(unit.unitId, unit.star, unit.team, look, unit.summon, unit.items, unit.ring, true, unit.base.maxMana > 0);
+    this.fightLayer.add(view.group);
+    return view;
   }
 
   /**
-   * A pawn with its name, stars, items and the One Ring above it, facing the other team, coloured
-   * as the near (`look` A) or far team. Summons are smaller and unnamed, apart from the Eye's Nazgûl.
+   * A pawn with its label above it, facing the other team, coloured as the near (`look` A) or far
+   * team. Summons are smaller and unnamed, apart from the Eye's Nazgûl. `bars` adds health, mana
+   * and statuses for fights.
    */
   private createPawn(
     unitId: FighterId | UnitState['unitId'],
@@ -335,7 +366,9 @@ export class FightScene {
     summon: boolean,
     items: readonly ItemId[],
     ring: number | null,
-  ) {
+    bars = false,
+    mana = false,
+  ): UnitView {
     const minor = summon && unitId !== 'eye-nazgul';
     const material = new THREE.MeshStandardMaterial({ color: TEAM_COLOURS[look], flatShading: true, transparent: true });
     const body = new THREE.Mesh(geometry.body, material);
@@ -347,19 +380,16 @@ export class FightScene {
     nose.rotation.x = Math.PI / 2;
     nose.position.set(0, 1.1, 0.3);
 
-    const element = document.createElement('div');
-    element.className = `unit-label team-${look}`;
-    const name = document.createElement('div');
-    name.className = 'name';
-    name.textContent = minor ? '' : summon ? displayName(unitId) : `${displayName(unitId)} ${'★'.repeat(star)}`;
-    element.append(name);
-    if (items.length > 0 || ring !== null) {
-      const row = document.createElement('div');
-      row.className = 'items';
-      row.append(...(ring === null ? [] : [ringChip(ring)]), ...items.map(itemChip));
-      element.append(row);
-    }
-    const label = new CSS2DObject(element);
+    const overlay = new UnitLabel({
+      name: minor ? null : displayName(unitId),
+      star: summon ? null : star,
+      look,
+      items,
+      ring,
+      bars,
+      mana,
+    });
+    const label = new CSS2DObject(overlay.element);
     label.position.set(0, 1.8, 0);
 
     const group = new THREE.Group();
@@ -367,7 +397,7 @@ export class FightScene {
     group.scale.setScalar(isLarge(unitId) ? 1.35 : minor ? 0.75 : 1);
     // Team A's half is at +z, so it faces −z.
     group.rotation.y = team === 'A' ? Math.PI : 0;
-    return { group, material, label };
+    return { group, material, label, overlay };
   }
 
   private updateProjectiles(playback: Playback): void {
@@ -432,35 +462,6 @@ export class FightScene {
       (ring.material as THREE.MeshBasicMaterial).opacity = 1 - progress;
     }
   }
-}
-
-/** The One Ring with its Corruption, naming what it does when hovered. */
-export function ringChip(corruption: number): HTMLElement {
-  const chip = document.createElement('span');
-  chip.className = 'item ring';
-  chip.textContent = `R${corruption}`;
-  chip.title = ringText(corruption);
-  return chip;
-}
-
-/** An item's tag in its components' or ring's colours, naming the item and its effect when hovered. */
-export function itemChip(id: ItemId): HTMLElement {
-  const chip = document.createElement('span');
-  chip.className = isRingOfPower(id) ? 'item ring-of-power' : isComponent(id) ? 'item component' : 'item';
-  chip.textContent = itemTag(id);
-  chip.title = itemText(id);
-  const [a, b] = itemColours(id);
-  chip.style.background = `linear-gradient(135deg, ${a} 50%, ${b} 50%)`;
-  return chip;
-}
-
-function bar(kind: string): { bar: HTMLElement; fill: HTMLElement } {
-  const element = document.createElement('div');
-  element.className = `bar ${kind}`;
-  const fill = document.createElement('div');
-  fill.className = 'fill';
-  element.append(fill);
-  return { bar: element, fill };
 }
 
 /** Adds a view for each new item and removes the views of items that are gone. */

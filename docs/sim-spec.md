@@ -612,6 +612,7 @@ The same numbers as `design.md` section 5, written as selectors and effects.
 - A unit id also counts towards Nazgûl if a copy of it on the board wears a Ring of the Nine (section 12.7).
 - The highest breakpoint reached is active.
 - Trait values do not scale with Ability Power.
+- `teamTraitCounts(units, gifts)` gives these counts for a team's units (anything with a `unitId` and `items`, so placements or a player's owned units) and Gifts, and `traitLevelsOf(counts)` the active level of each trait. A fight takes its teams' traits from them (`teamSetup` in `combat/fighters.ts`), and the client's trait tracker shows them (`game-spec.md` section 12), so the two always agree. Both are exported from the package.
 
 ### 12.3 Trait behaviour
 
@@ -783,6 +784,10 @@ interface Combat {
 
 function createCombat(input: CombatInput): Combat;           // throws on invalid input
 function simulateCombat(input: CombatInput): CombatResult;   // runs to the end
+
+// Trait counts and levels as a fight works them out (section 12.2), for showing a board's traits.
+function teamTraitCounts(units: { unitId: string; items: ItemId[] }[], gifts: GiftId[]): Partial<Record<TraitId, number>>;
+function traitLevelsOf(counts: Partial<Record<TraitId, number>>): Partial<Record<TraitId, number>>;   // 0 at a trait's first breakpoint
 ```
 
 The client creates the same combat, plays tick 0's events from `events`, then calls `step()` once per tick, reading `state` for health and mana bars and using events for animations.
@@ -853,6 +858,7 @@ Every event has a `tick`.
 **Traits**
 - Each trait at each breakpoint.
 - Duplicate units count once; summons don't count.
+- `teamTraitCounts` counts crests and the Nine's Nazgûl, never monsters, and with `traitLevelsOf` gives exactly the levels a fight's teams start with.
 
 **Abilities**
 - Ability values for a sample unit at each star level match section 10.2, and extra Ability Power scales them once (+80 Ability Power → ×1.8).

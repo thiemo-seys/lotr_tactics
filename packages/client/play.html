@@ -3,74 +3,118 @@
   <head>
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <meta name="color-scheme" content="dark" />
     <title>LOTR Tactics</title>
   </head>
   <body class="play">
-    <header id="hud">
-      <span id="round"></span>
-      <span id="timer"></span>
-      <span id="stats"></span>
-      <span id="ring-status" hidden></span>
-      <button id="mount-doom" title="Throw the One Ring into Mount Doom. Every ring of the Three and the Nine goes with it, yours included." hidden>Mount Doom</button>
+    <header id="hud" class="topbar">
+      <div class="hud-group">
+        <div id="round" class="round-chip"></div>
+        <div id="timer" class="timer" role="timer" hidden>
+          <span data-icon="timer"></span>
+          <span class="seconds"></span>
+          <span class="drain" aria-hidden="true"><i></i></span>
+        </div>
+      </div>
+      <div id="stats" class="hud-group stats" hidden>
+        <span class="pill stat hp"><span data-icon="hp"></span><span class="value"></span></span>
+        <span class="pill stat gold"><span data-icon="gold"></span><span class="value"></span></span>
+        <span class="pill stat level">
+          <span class="level-badge"><span class="value"></span></span>
+          <span class="xp">
+            <span class="xp-text"></span>
+            <span class="xp-bar" aria-hidden="true"><i></i></span>
+          </span>
+        </span>
+        <span class="pill stat board"><span data-icon="board"></span><span class="value"></span></span>
+        <span class="pill stat streak" hidden><span data-icon="streak-win" class="win"></span><span data-icon="streak-loss" class="loss"></span><span class="value"></span></span>
+        <span id="ring-status" class="pill stat ring-status" hidden><span data-icon="one-ring"></span><span class="value"></span></span>
+        <button id="mount-doom" class="btn btn-danger btn-sm" hidden><span data-icon="volcano"></span>Mount Doom</button>
+      </div>
       <span class="spacer"></span>
-      <button id="speed" hidden>1×</button>
-      <button id="skip" hidden>Skip fight</button>
-      <button id="leave-game" hidden>Leave</button>
-      <a href="./index.html">Fight viewer</a>
+      <div class="hud-group">
+        <button id="speed" class="btn btn-secondary btn-sm" hidden><span data-icon="speed"></span><span class="label">1×</span></button>
+        <button id="skip" class="btn btn-secondary btn-sm" hidden><span data-icon="skip"></span>Skip fight</button>
+        <button id="leave-game" class="btn btn-ghost btn-sm" hidden><span data-icon="leave"></span>Leave</button>
+        <a href="./index.html" class="btn btn-ghost btn-sm"><span data-icon="viewer"></span>Fight viewer</a>
+      </div>
     </header>
     <main>
       <div id="view"></div>
-      <aside id="players"></aside>
-      <section id="menu" class="panel" hidden>
-        <h2>LOTR Tactics</h2>
-        <p id="menu-message" class="message"></p>
-        <label class="field">Name <input id="name" maxlength="20" autocomplete="nickname" /></label>
-        <div class="actions">
-          <button id="play-bots">Play against bots</button>
-          <button id="create">Create lobby</button>
+      <aside id="traits" class="side-panel" aria-label="Traits on your board" hidden></aside>
+      <aside id="players" class="side-panel" aria-label="Players" hidden></aside>
+      <div id="backdrop" hidden></div>
+      <section id="menu" class="panel" aria-labelledby="menu-title" hidden>
+        <div class="title-block">
+          <p class="eyebrow">An auto battler of Middle-earth</p>
+          <h1 id="menu-title" class="game-title">LOTR Tactics</h1>
+          <div class="flourish" aria-hidden="true"><i></i><span data-icon="one-ring"></span><i></i></div>
         </div>
-        <div class="actions">
-          <input id="code" maxlength="5" placeholder="Code" autocomplete="off" />
-          <button id="join">Join lobby</button>
+        <p id="menu-message" class="message" role="status"></p>
+        <label class="field">
+          <span class="field-label">Your name</span>
+          <input id="name" class="input" maxlength="20" autocomplete="nickname" placeholder="Wanderer" />
+        </label>
+        <button id="play-bots" class="btn btn-primary btn-lg btn-block"><span data-icon="pvp"></span>Play against bots</button>
+        <div class="divider"><span>or play online</span></div>
+        <div class="online">
+          <button id="create" class="btn btn-secondary"><span data-icon="host"></span>Create lobby</button>
+          <div class="join">
+            <input id="code" class="input code-input" maxlength="5" placeholder="CODE" autocomplete="off" aria-label="Lobby code" />
+            <button id="join" class="btn btn-secondary"><span data-icon="link"></span>Join</button>
+          </div>
         </div>
       </section>
-      <section id="lobby" class="panel" hidden>
-        <h2>Lobby <span id="lobby-code"></span></h2>
+      <section id="lobby" class="panel" aria-labelledby="lobby-title" hidden>
+        <div class="lobby-head">
+          <div>
+            <p class="eyebrow">Lobby code</p>
+            <h2 id="lobby-title" class="lobby-code"><span id="lobby-code"></span></h2>
+          </div>
+          <button id="copy-link" class="btn btn-secondary btn-icon" aria-label="Copy the join link"><span data-icon="link"></span></button>
+        </div>
         <ol id="seats"></ol>
-        <p id="lobby-message" class="message"></p>
+        <p id="lobby-message" class="message" role="status"></p>
         <div class="actions">
-          <button id="start">Start game</button>
-          <button id="copy-link">Copy link</button>
-          <button id="leave-lobby">Leave</button>
+          <button id="leave-lobby" class="btn btn-ghost"><span data-icon="leave"></span>Leave</button>
+          <button id="start" class="btn btn-primary"><span data-icon="play"></span>Start game</button>
         </div>
       </section>
-      <section id="council" class="panel" hidden>
-        <h2>Council of Elrond</h2>
-        <p id="council-status"></p>
+      <section id="council" class="panel" aria-labelledby="council-title" hidden>
+        <div class="panel-head">
+          <h2 id="council-title"><span data-icon="council"></span>Council of Elrond</h2>
+          <span id="council-timer" class="timer small" hidden><span data-icon="timer"></span><span class="seconds"></span></span>
+        </div>
+        <p id="council-status" class="turn-banner" role="status"></p>
         <div id="options"></div>
       </section>
-      <section id="gift-offer" class="panel" hidden>
-        <h2>Gifts of Lothlórien <span id="gift-tier"></span></h2>
-        <div id="gift-options"></div>
-        <div class="actions">
-          <button id="reroll-gifts">Reroll the Gifts</button>
+      <section id="gift-offer" class="panel" aria-labelledby="gift-title" hidden>
+        <div class="panel-head">
+          <h2 id="gift-title"><span data-icon="brooch"></span>Gifts of Lothlórien <span id="gift-tier"></span></h2>
+          <button id="reroll-gifts" class="btn btn-secondary btn-sm"><span data-icon="reroll"></span>Reroll</button>
         </div>
+        <div id="gift-options"></div>
       </section>
-      <section id="result" class="panel" hidden></section>
-      <div id="banner" hidden></div>
+      <section id="result" class="panel" aria-live="polite" hidden></section>
+      <div id="banner" role="status" hidden></div>
     </main>
     <footer id="shop-bar" hidden>
-      <div class="buttons">
-        <button id="buy-xp" title="Buy 4 XP (F)">Buy XP · 4</button>
-        <button id="reroll" title="Reroll the shop (D)">Reroll · 2</button>
-        <button id="lock">Lock</button>
+      <div class="shop-actions">
+        <button id="buy-xp" class="btn btn-secondary shop-button"><span data-icon="level-up"></span><span class="label">Buy XP</span><span class="cost"></span><kbd>F</kbd></button>
+        <button id="reroll" class="btn btn-secondary shop-button"><span data-icon="reroll"></span><span class="label">Reroll</span><span class="cost"></span><kbd>D</kbd></button>
+        <button id="lock" class="btn btn-secondary shop-button" aria-pressed="false"><span data-icon="unlock" class="unlocked"></span><span data-icon="lock" class="locked"></span><span class="label">Lock</span></button>
       </div>
       <div id="shop"></div>
-      <div class="buttons">
-        <div id="items"></div>
-        <button id="ready" title="End planning (Space)">Ready</button>
+      <div class="shop-side">
+        <div class="tray">
+          <span class="tray-label">Items</span>
+          <div id="items"></div>
+        </div>
+        <button id="ready" class="btn btn-primary btn-lg ready-button"><span data-icon="ready"></span><span class="label">Ready</span><kbd>Space</kbd></button>
       </div>
+      <div class="sell-zone" aria-hidden="true"><span data-icon="coin"></span><span class="sell-text">Drop to sell</span></div>
     </footer>
+    <div id="drag-hint" class="drag-hint" hidden></div>
     <script type="module" src="/src/play.ts"></script>
   </body>
 </html>

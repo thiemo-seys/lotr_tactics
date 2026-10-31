@@ -1,6 +1,6 @@
-// How Gifts of Lothlórien read in the client (docs/game-spec.md section 12): tier names and a
-// description built from the Gift data, so the numbers shown are always the sim's. No Three.js or
-// DOM, so it can be tested.
+// How Gifts of Lothlórien read in the client (docs/game-spec.md section 12): tier names and what
+// each Gift does, built from the Gift data, so the numbers shown are always the sim's. No Three.js
+// or DOM, so it can be tested.
 
 import { GIFTS, TRAITS, type GiftId, type GiftTier } from '@lotr-tactics/sim';
 import { statsText } from './items.js';
@@ -12,7 +12,7 @@ const WHO = { all: 'Your units', front: 'Your front-row units', back: 'Your back
 const plural = (n: number, one: string, many: string) => (n === 1 ? one : `${n} ${many}`);
 
 /** What a Gift does, one sentence per effect. */
-export function giftEffect(id: GiftId): string {
+export function giftEffects(id: GiftId): string[] {
   const { combat, economy } = GIFTS[id];
   const lines: string[] = [];
   if (combat !== undefined) {
@@ -45,10 +45,15 @@ export function giftEffect(id: GiftId): string {
     if (economy.maxInterest !== undefined) lines.push(`Interest can reach ${economy.maxInterest} gold more.`);
     if (economy.shopLevels !== undefined) lines.push(`Your shop rolls with the odds of ${plural(economy.shopLevels, 'one level', 'levels')} higher.`);
   }
-  return lines.join(' ');
+  return lines;
 }
 
-/** A Gift's name, tier and effect, for a tooltip. */
+/** What a Gift does, in one line. */
+export function giftEffect(id: GiftId): string {
+  return giftEffects(id).join(' ');
+}
+
+/** A Gift's name, tier and effect. */
 export function giftText(id: GiftId): string {
   return `${GIFTS[id].name} (${TIER_NAMES[GIFTS[id].tier]})\n${giftEffect(id)}`;
 }

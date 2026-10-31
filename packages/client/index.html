@@ -3,40 +3,47 @@
   <head>
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <meta name="color-scheme" content="dark" />
     <title>LOTR Tactics fight viewer</title>
   </head>
-  <body>
-    <header id="controls">
+  <body class="viewer">
+    <header id="controls" class="topbar">
+      <span class="brand"><span data-icon="viewer"></span><span class="brand-text">Fight viewer</span></span>
       <div class="group">
-        <label>Team A <select id="board-a"></select></label>
-        <label>Team B <select id="board-b"></select></label>
-        <label>Seed <input id="seed" type="number" step="1" /></label>
-        <label>Stage <input id="stage" type="number" min="1" step="1" /></label>
-        <button id="new-fight">New fight</button>
+        <label>Team A <select id="board-a" class="select"></select></label>
+        <span class="versus">vs</span>
+        <label>Team B <select id="board-b" class="select"></select></label>
+        <label>Seed <input id="seed" class="input" type="number" step="1" /></label>
+        <label>Stage <input id="stage" class="input" type="number" min="1" step="1" /></label>
+        <button id="new-fight" class="btn btn-primary btn-sm new-fight"><span data-icon="pvp"></span>New fight</button>
       </div>
       <div class="group">
-        <button id="play">Pause</button>
-        <button id="step">Step</button>
-        <button id="restart">Restart</button>
-        <label
-          >Speed
-          <select id="speed">
-            <option value="0.25">0.25×</option>
-            <option value="0.5">0.5×</option>
-            <option value="1" selected>1×</option>
-            <option value="2">2×</option>
-            <option value="4">4×</option>
-          </select>
-        </label>
-        <span id="clock"></span>
-        <button id="toggle-log">Log</button>
-        <a href="./play.html">Play a game</a>
+        <button id="play" class="btn btn-secondary btn-sm btn-icon playing" aria-label="Pause"><span data-icon="pause" class="when-playing"></span><span data-icon="play" class="when-paused"></span></button>
+        <button id="step" class="btn btn-secondary btn-sm btn-icon" aria-label="Step one tick"><span data-icon="step"></span></button>
+        <button id="restart" class="btn btn-secondary btn-sm btn-icon" aria-label="Restart"><span data-icon="restart"></span></button>
+        <fieldset id="speed" class="segmented">
+          <legend>Speed</legend>
+          <label><input type="radio" name="speed" value="0.25" /><span>0.25×</span></label>
+          <label><input type="radio" name="speed" value="0.5" /><span>0.5×</span></label>
+          <label><input type="radio" name="speed" value="1" checked /><span>1×</span></label>
+          <label><input type="radio" name="speed" value="2" /><span>2×</span></label>
+          <label><input type="radio" name="speed" value="4" /><span>4×</span></label>
+        </fieldset>
+        <span id="clock" class="clock">
+          <span class="pill tick"><span data-icon="timer"></span><span class="value"></span><span class="time"></span></span>
+          <span class="pill overtime" hidden>Overtime</span>
+        </span>
+      </div>
+      <span class="spacer"></span>
+      <div class="group">
+        <button id="toggle-log" class="btn btn-ghost btn-sm" aria-pressed="false"><span data-icon="log"></span>Log</button>
+        <a href="./play.html" class="btn btn-secondary btn-sm"><span data-icon="pvp"></span>Play a game</a>
       </div>
     </header>
     <main>
       <div id="view"></div>
-      <div id="banner" hidden></div>
-      <aside id="log" hidden></aside>
+      <div id="banner" role="status" hidden></div>
+      <aside id="log" aria-label="Event log" hidden></aside>
     </main>
     <script type="module" src="/src/main.ts"></script>
   </body>

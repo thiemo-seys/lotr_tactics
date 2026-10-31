@@ -3,7 +3,18 @@
 // sends back. play.ts draws it and passes the person's clicks on. No Three.js or DOM, so it can
 // be tested.
 
-import { TICKS_PER_SECOND, checkAction, createCombat, type Action, type ActionResult, type Outcome, type PlayerView, type Team } from '@lotr-tactics/sim';
+import {
+  TICKS_PER_SECOND,
+  checkAction,
+  createCombat,
+  roundType,
+  type Action,
+  type ActionResult,
+  type Outcome,
+  type PlayerView,
+  type RoundType,
+  type Team,
+} from '@lotr-tactics/sim';
 import { TIMERS, type ClientMessage, type FightRecord, type LobbyView, type MatchView, type RoundRecord, type ServerMessage } from '@lotr-tactics/server';
 import { yourFight, yourTeam } from './fights.js';
 import { Playback } from './playback.js';
@@ -29,6 +40,31 @@ export interface PlanningRing {
   readonly corruption: number;
 }
 
+/** One player in a round's results. */
+export interface ResultRow {
+  readonly seat: number;
+  readonly name: string;
+  readonly you: boolean;
+  /** HP lost this round. */
+  readonly damage: number;
+  /** The place of a player knocked out this round, or null. */
+  readonly knockedOut: number | null;
+}
+
+/** A round's results: the person's fight, and everyone who took damage or was knocked out. */
+export interface RoundResults {
+  readonly stage: number;
+  readonly round: number;
+  readonly type: RoundType;
+  readonly outcome: 'Victory' | 'Defeat' | 'Draw' | 'No fight';
+  /** Damage the person took. */
+  readonly taken: number;
+  /** The person first if they are listed, then by damage taken, then by seat. */
+  readonly rows: readonly ResultRow[];
+  /** The results have been shown and the page waits for the others. */
+  readonly waiting: boolean;
+}
+
 /** What the flow asks of the page. */
 export interface FlowHooks {
   /** Sends a message to the game. */
@@ -51,6 +87,9 @@ export class PlayFlow {
   lobbyMessage = '';
   /** When `state` arrived, in milliseconds, to count down its step's time. */
   private stateAt = 0;
+  /** The step the timer belongs to, and its time when first seen, to show how much is left. */
+  private timerKey = '';
+  private timerMs = 0;
 
   constructor(private readonly hooks: FlowHooks) {}
 
@@ -61,6 +100,8 @@ export class PlayFlow {
     this.show = { kind: 'menu' };
     this.menuMessage = menuMessage;
     this.lobbyMessage = '';
+    this.timerKey = '';
+    this.timerMs = 0;
   }
 
   /** A message from the game, arriving at `now` in milliseconds. */
@@ -78,6 +119,7 @@ export class PlayFlow {
       case 'state':
         this.state = message.state;
         this.stateAt = now;
+        this.startTimer(message.state);
         this.follow(message.state);
         return;
       case 'round':
@@ -157,9 +199,28 @@ export class PlayFlow {
 
   /** Whole seconds left in a Council turn or planning, or null when no timer is shown. */
   secondsLeft(now: number): number | null {
+    const ms = this.msLeft(now);
+    return ms === null ? null : Math.ceil(ms / 1000);
+  }
+
+  /** How much of a Council turn's or planning's time is left, from 1 to 0, or null when no timer is shown. */
+  timerShare(now: number): number | null {
+    const ms = this.msLeft(now);
+    return ms === null || this.timerMs <= 0 ? null : Math.min(1, ms / this.timerMs);
+  }
+
+  private msLeft(now: number): number | null {
     const ms = this.state?.step.ms ?? null;
     if ((this.show.kind !== 'council' && this.show.kind !== 'planning') || ms === null) return null;
-    return Math.max(0, Math.ceil((ms - (now - this.stateAt)) / 1000));
+    return Math.max(0, ms - (now - this.stateAt));
+  }
+
+  /** A new step, or a new group's turn in a Council, starts its timer; later states of the same step count it down. */
+  private startTimer(state: MatchView): void {
+    const key = `${state.stage}-${state.round}-${state.step.kind}-${state.council?.group ?? ''}`;
+    const ms = state.step.ms ?? 0;
+    this.timerMs = key === this.timerKey ? Math.max(this.timerMs, ms) : ms;
+    this.timerKey = key;
   }
 
   /** The round on screen: a fight's or its results', otherwise the game's own. */
@@ -168,18 +229,29 @@ export class PlayFlow {
     return show.kind === 'fight' || show.kind === 'results' || show.kind === 'waiting' ? show.round : this.state!;
   }
 
-  /** The results of a round, one line each: the person's fight and damage, others' damage, and eliminations. */
-  resultLines(round: RoundRecord, waiting: boolean): string[] {
+  /** A round's results: the person's fight and damage, and everyone who took damage or was knocked out. */
+  results(round: RoundRecord, waiting: boolean): RoundResults {
     const { you, state } = this;
-    const taken = round.damage.find((d) => d.seat === you)?.amount ?? 0;
     const fight = yourFight(round, you);
-    const outcome = fight === null ? 'No fight' : outcomeText(fight.result.outcome, yourTeam(fight, you));
-    return [
-      `${round.stage}-${round.round}: ${outcome}${taken > 0 ? `, you take ${taken} damage` : ''}`,
-      ...round.damage.filter((d) => d.seat !== you).map((d) => `${this.seatName(d.seat)} takes ${d.amount}`),
-      ...round.eliminated.map((seat) => `${this.seatName(seat)} ${seat === you ? 'are' : 'is'} out in place ${state!.players[seat]!.placement}`),
-      ...(waiting && state!.me.placement === null ? ['Waiting for the others…'] : []),
-    ];
+    const damage = new Map(round.damage.map((d) => [d.seat, d.amount]));
+    const seats = [...new Set([...round.damage.map((d) => d.seat), ...round.eliminated])];
+    const rows = seats.map((seat) => ({
+      seat,
+      name: this.seatName(seat),
+      you: seat === you,
+      damage: damage.get(seat) ?? 0,
+      knockedOut: round.eliminated.includes(seat) ? (state!.players[seat]?.placement ?? null) : null,
+    }));
+    rows.sort((a, b) => Number(b.you) - Number(a.you) || b.damage - a.damage || a.seat - b.seat);
+    return {
+      stage: round.stage,
+      round: round.round,
+      type: roundType(round.stage, round.round),
+      outcome: fight === null ? 'No fight' : outcomeText(fight.result.outcome, yourTeam(fight, you)),
+      taken: damage.get(you) ?? 0,
+      rows,
+      waiting: waiting && state!.me.placement === null,
+    };
   }
 
   // Steps
