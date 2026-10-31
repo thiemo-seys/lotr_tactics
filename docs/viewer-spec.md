@@ -74,15 +74,19 @@ packages/client/
 
 ### Models
 
-The pawns are placeholders. Each unit, monster and summon will get its own model in the **Faceted** art style. It was chosen from a study that built Gimli in five styles (`packages/client/art/style-study/`, with the comparison in its `results/`), and Gimli in `faceted.py` there is the reference model.
+The pawns are placeholders. Each unit, monster and summon gets its own model in the **Faceted** art style, chosen from a study that built Gimli in five styles (`packages/client/art/style-study/`, with the comparison in its `results/`). The roster's 36 units have their models (`packages/client/art/`, whose README lists them), with Gimli (`art/units/gimli.py`) as the reference model. The viewer doesn't load them yet, and monsters and summons have none.
 
 - **Look:** classic low-poly. Every form is built from low-segment shapes and hand-placed vertices and shaded flat, so the facets show. No smooth shading, bevels or textures.
-- **Proportions:** grounded and heroic, with each people's own build: Hobbits short and round, Dwarves stocky, Elves tall and slim, Orcs hunched, Nazgûl hooded and faceless, Istari robed. Treebeard and Sauron are Large and look it.
+- **Proportions:** grounded and heroic, with each people's own build: Hobbits short and round, Dwarves stocky, Elves tall and slim, Orcs hunched, Nazgûl hooded and faceless, Istari robed. Heads and hands are a little big, so they read at game size.
+- **Heights,** to the top of the head, hood, helm or hat brim (weapons, crests and a hat's point go higher): Hobbits 0.88, Dwarves 1.15, Orcs about 1.2 as they stoop and Uruk-hai about 1.4, Men 1.42, Istari 1.45, Elves 1.48 and Nazgûl 1.55.
+- **Large units** are built at their full size, Treebeard and Sauron about 2.1 to 2.4 tall, so the viewer draws their models unscaled, unlike their pawns.
+- **Riders** ride: the Rohirrim and the Nazgûl on horses, and Sharku on a warg. The horse is shared (`art/mounts.py`); its back is at about 0.72 and its rider's head at about 1.6.
+- **Size:** a model, with its weapons and mount, stays within 0.94 of its centre, the radius the hexes are drawn with.
 - **Colour:** a muted, earthy palette in which the team colour is the only saturated part. Steel is a light grey with a metalness of 0.15 or less, because the scene has no environment map and metal would draw dark.
 - **Team colour:** on parts every model has, seen from the front, from behind and from above, in a material named `team` that the viewer recolours. Gimli's are his hood, cape and shield face.
-- **Role:** shows in the silhouette: shields for Guardians, bows for Archers, staffs for Sorcerers, mounts or spears for Riders, hoods and daggers for Burglars, banners or capes for Captains.
-- **Budget** *(placeholder)*: about 800 triangles for a unit and 2,000 for a Large unit or monster.
-- **Build:** Blender 4.5 LTS, one Python script per model in `packages/client/art/`, exported as glTF binary. 1 Blender unit is 1 game unit, the origin is the centre of the model's base on the ground, and a model faces +Z in the game (−Y in Blender). One object per model, with colour from materials named after what they are.
+- **Role:** shows in the silhouette: shields for Guardians, bows for Archers, staffs for Sorcerers, mounts for Riders, hoods and daggers for Burglars, banners or capes for Captains.
+- **Budget** *(placeholder)*: about 800 triangles for a unit, 1,200 for a mounted unit and 2,000 for a Large unit or monster.
+- **Build:** Blender 4.5 LTS, one Python script per model in `packages/client/art/`, exported as glTF binary. 1 Blender unit is 1 game unit, the origin is the centre of the model's base on the ground, and a model faces +Z in the game (−Y in Blender). One object per model, with colour from materials named after what they are. No model shows the One Ring or a Ring of Power, since any unit can carry them.
 
 ---
 

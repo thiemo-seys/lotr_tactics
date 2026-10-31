@@ -607,7 +607,7 @@ Built from day one to:
 ## 12. Still to define
 
 1. **PvE enemies:** stats and loot tables (placeholders in [`game-spec.md`](game-spec.md) section 9)
-2. **Unit models:** how star levels show on a model, whether the team colour sits on clothing or on a ring round the base, and whether Large units are built at full size ([`viewer-spec.md`](viewer-spec.md) section 4)
+2. **Unit models:** how star levels show on a model, whether the team colour sits on clothing (as on the models so far) or on a ring round the base, and whether Riders stay mounted, as their models are, at a larger triangle budget ([`viewer-spec.md`](viewer-spec.md) section 4)
 
 All numbers marked *(placeholder)* will be tuned during balancing.
 

@@ -16,7 +16,7 @@ Design is done for combat, units, traits, items, Gifts of Lothlórien, the One R
 
 `packages/client` is the fight viewer (`docs/viewer-spec.md`): Vite and Three.js, running a fight with the sim and playing it back. Its play page (`play.html`, `docs/game-spec.md` section 12, `docs/server-spec.md` section 10) has a menu, lobbies, and whole games online or against 7 bots offline, through a connection (`connection.ts`) to the server or to a match running in the page.
 
-The art style is chosen: Faceted low-poly (`docs/viewer-spec.md` section 4), from a study that built Gimli in five styles in Blender (`packages/client/art/style-study/`). The roster's models aren't built yet, so the client still draws pawns.
+The art style is chosen: Faceted low-poly (`docs/viewer-spec.md` section 4), from a study that built Gimli in five styles in Blender (`packages/client/art/style-study/`). The roster's 36 units have models (`packages/client/art/`, one Blender script each, exported to `packages/client/public/models/`), but the client doesn't load them yet and still draws pawns. Monsters and summons have no models yet.
 
 The game around the fights (`docs/game-spec.md`), the shop, economy, rounds and bots, is in `packages/sim`: the pool and shop rolls (`game/pool.ts`), and each player's bench, board, merging, items, Gifts, gold and XP (`game/player.ts`, with Gift offers in `game/gifts.ts`), with the numbers in `data/economy.ts` and `data/gifts.ts`; PvE monsters in the combat (`data/monsters.ts`, `sim-spec.md` section 7.6); and the rounds (`game/game.ts`: `createGame`, actions, fights, damage, eliminations; `game/matchmaking.ts`, `game/council.ts`, `game/schedule.ts`; data in `data/rounds.ts` and `data/pve.ts`); the One Ring (`game/ring.ts`, run by `game/game.ts`, numbers in `data/ring.ts`); the Rings of Power (their supply, Council offers and fate with the One in `game/game.ts`, the Seven's gold in `game/player.ts`, numbers in `data/items.ts` and `data/rounds.ts`); bots (`bots/bot.ts`, tuned in `data/bots.ts`) with a balance runner (`scripts/balance.ts`); and the client's play page. That covers it apart from tuning.
 
@@ -29,6 +29,7 @@ Online play (`docs/server-spec.md`), lobbies with bots in the empty seats, is in
 - `pnpm start`: build the client, then serve it and the game server on one port (`PORT`, default 8080)
 - `pnpm check`: lint, typecheck, tests and build, the same checks CI runs
 - `pnpm balance [games] [first seed]`: play 8-bot games and print balance statistics
+- `pnpm models [ids]`: rebuild the models' `.glb` files from their scripts with Blender 4.5 LTS, which CI doesn't have
 - `pnpm lint`, `pnpm typecheck`, `pnpm test`, `pnpm build`: one at a time
 
 ## Conventions
