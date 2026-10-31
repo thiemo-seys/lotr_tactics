@@ -16,7 +16,7 @@ import { itemEffects, itemModifiers } from './items.js';
 import { baseStats, combineModifiers, finalStats, monsterStats, type BaseStats, type StatModifiers } from './stats.js';
 import { Statuses } from './statuses.js';
 import { toTicks } from './time.js';
-import { traitLevels, traitModifiers, type TraitLevels } from './traits.js';
+import { traitCounts, traitLevelsOf, traitModifiers, type TraitCounts, type TraitLevels } from './traits.js';
 
 /** Each team's half of the board is this many rows deep. */
 export const HALF_ROWS = BOARD_ROWS / 2;
@@ -85,14 +85,29 @@ export interface TeamSetup {
   readonly giftMana: number;
 }
 
+/** What a unit brings to its team's trait counts: what it is and the items it holds. */
+export interface TraitHolder {
+  readonly unitId: FighterId;
+  readonly items: readonly ItemId[];
+}
+
+/**
+ * How many count towards each of a team's traits, as its fights count them (section 12.2): its
+ * distinct units, the Nazgûl a Ring of the Nine makes, and its crest Gifts. Monsters have no
+ * traits. `teamSetup` takes its traits from here, and the client's trait tracker shows them.
+ */
+export function teamTraitCounts(units: readonly TraitHolder[], giftIds: readonly GiftId[]): TraitCounts {
+  const crests = giftIds.flatMap((id) => GIFTS[id].combat?.crest ?? []);
+  const unitIds = units.map((u) => u.unitId).filter(isUnitId);
+  const nine = units.flatMap((u) => (isUnitId(u.unitId) && wearsNine(u.items) ? [{ unitId: u.unitId, trait: 'nazgul' as const }] : []));
+  return traitCounts(unitIds, crests, nine);
+}
+
 /** A team's active traits, counting crest Gifts and the Nine's Nazgûl, and its Gifts' fight effects. Monsters have no traits. */
 export function teamSetup(placements: readonly PlacedUnit[], giftIds: readonly GiftId[]): TeamSetup {
   const gifts = giftIds.flatMap((id) => GIFTS[id].combat ?? []);
-  const crests = gifts.flatMap((g) => g.crest ?? []);
-  const unitIds = placements.map((p) => p.unitId).filter(isUnitId);
-  const nine = placements.flatMap((p) => (isUnitId(p.unitId) && wearsNine(p.items) ? [{ unitId: p.unitId, trait: 'nazgul' as const }] : []));
   return {
-    traits: traitLevels(unitIds, crests, nine),
+    traits: traitLevelsOf(teamTraitCounts(placements, giftIds)),
     gifts,
     giftMana: gifts.reduce((mana, g) => mana + (g.startMana ?? 0), 0),
   };

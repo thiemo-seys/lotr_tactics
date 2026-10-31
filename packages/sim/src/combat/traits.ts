@@ -8,6 +8,9 @@ import type { StatModifiers } from './stats.js';
 /** Each active trait's level: 0 at its first breakpoint, 1 at its second, and so on. Inactive traits are left out. */
 export type TraitLevels = Partial<Record<TraitId, number>>;
 
+/** How many count towards each trait a team has, active or not. Traits nobody counts towards are left out. */
+export type TraitCounts = Partial<Record<TraitId, number>>;
+
 /** A trait a unit has from an item, such as the Nazgûl origin from a Ring of the Nine (sim-spec.md section 12.7). */
 export interface Emblem {
   readonly unitId: UnitId;
@@ -15,25 +18,36 @@ export interface Emblem {
 }
 
 /**
- * The active traits for a team's non-summon units. Each distinct unit counts once per trait, its
- * emblems included, and each crest Gift adds one to a trait the team has (sim-spec.md section 12.5).
+ * How many count towards each trait among a team's non-summon units (sim-spec.md section 12.2).
+ * Each distinct unit counts once per trait, its emblems included, and each crest Gift adds one to
+ * a trait the team has (section 12.5).
  */
-export function traitLevels(unitIds: readonly UnitId[], crests: readonly TraitId[] = [], emblems: readonly Emblem[] = []): TraitLevels {
+export function traitCounts(unitIds: readonly UnitId[], crests: readonly TraitId[] = [], emblems: readonly Emblem[] = []): TraitCounts {
   const traitsOf = new Map<UnitId, Set<TraitId>>();
   for (const id of unitIds) if (!traitsOf.has(id)) traitsOf.set(id, new Set([UNITS[id].origin, ...UNITS[id].classes]));
   for (const { unitId, trait } of emblems) traitsOf.get(unitId)?.add(trait);
-  const counts = new Map<TraitId, number>();
-  for (const traits of traitsOf.values()) for (const trait of traits) counts.set(trait, (counts.get(trait) ?? 0) + 1);
+  const counts: TraitCounts = {};
+  for (const traits of traitsOf.values()) for (const trait of traits) counts[trait] = (counts[trait] ?? 0) + 1;
   for (const trait of crests) {
-    const count = counts.get(trait);
-    if (count !== undefined) counts.set(trait, count + 1);
+    const count = counts[trait];
+    if (count !== undefined) counts[trait] = count + 1;
   }
+  return counts;
+}
+
+/** The active traits from their counts: each trait's highest breakpoint reached. */
+export function traitLevelsOf(counts: TraitCounts): TraitLevels {
   const levels: TraitLevels = {};
-  for (const [trait, count] of counts) {
+  for (const [trait, count] of Object.entries(counts) as [TraitId, number][]) {
     const level = TRAITS[trait].breakpoints.findLastIndex((breakpoint) => breakpoint <= count);
     if (level >= 0) levels[trait] = level;
   }
   return levels;
+}
+
+/** The active traits for a team's non-summon units, counted as `traitCounts` counts them. */
+export function traitLevels(unitIds: readonly UnitId[], crests: readonly TraitId[] = [], emblems: readonly Emblem[] = []): TraitLevels {
+  return traitLevelsOf(traitCounts(unitIds, crests, emblems));
 }
 
 /** The values of a trait at the team's active level, or undefined if the trait isn't active. */

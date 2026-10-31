@@ -11,6 +11,8 @@
     "test": "vitest run"
   },
   "dependencies": {
+    "@fontsource-variable/inter": "^5.3.0",
+    "@fontsource/cinzel": "^5.3.0",
     "@lotr-tactics/server": "workspace:*",
     "@lotr-tactics/sim": "workspace:*",
     "three": "^0.186.1"

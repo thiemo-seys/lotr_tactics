@@ -1,22 +1,9 @@
-import { COMBINED_ITEM_IDS, COMPONENTS, ITEM_IDS, RING_OF_POWER_IDS } from '@lotr-tactics/sim';
+import { COMBINED_ITEM_IDS, COMPONENTS, ITEM_IDS, ITEMS, RING_OF_POWER_IDS } from '@lotr-tactics/sim';
 import { describe, expect, it } from 'vitest';
-import { COMPONENT_COLOURS, RING_COLOURS, itemColours, itemTag, itemText } from '../src/items.js';
+import { COMPONENT_COLOURS, RING_COLOURS, itemColours, itemInfo, itemText } from '../src/items.js';
 
 describe('item display', () => {
-  it('gives components and combined items distinct two-letter tags', () => {
-    const components = COMPONENTS.map(itemTag);
-    const combined = COMBINED_ITEM_IDS.map(itemTag);
-    for (const tags of [components, combined]) {
-      expect(new Set(tags).size).toBe(tags.length);
-      for (const tag of tags) expect(tag).toHaveLength(2);
-    }
-    expect(itemTag('black-arrow')).toBe('BA');
-    expect(itemTag('galadhrim-bow')).toBe('BG');
-    expect(itemTag('anduril')).toBe('An');
-  });
-
-  it('gives Rings of Power their own tags, in gold and their stone', () => {
-    expect(RING_OF_POWER_IDS.map(itemTag)).toEqual(['Na', 'Ne', 'Vi', 'RS', 'RN']);
+  it('gives Rings of Power their gold and their stone', () => {
     for (const id of RING_OF_POWER_IDS) expect(itemColours(id)).toEqual(RING_COLOURS[id]);
   });
 
@@ -37,5 +24,23 @@ describe('item display', () => {
       expect(lines.length).toBeGreaterThanOrEqual(2);
       expect(lines.every((line) => line.length > 0 && !line.includes('undefined'))).toBe(true);
     }
+  });
+
+  it('splits each item into the parts a tooltip lays out', () => {
+    expect(itemInfo('sting')).toEqual({
+      name: 'Sting',
+      kind: 'combined',
+      kindText: 'Blade + Cloak',
+      recipe: ['blade', 'cloak'],
+      stats: ['+15% Attack Damage', '+20 Magic Resist', '+25% Crit Chance'],
+      effect: "The holder's abilities can crit.",
+      kin: null,
+    });
+    expect(itemInfo('blade')).toMatchObject({ kind: 'component', kindText: 'Component', recipe: null, effect: null });
+    expect(itemInfo('vilya')).toMatchObject({ kind: 'ring-of-power', kindText: 'Ring of Power: the Three', recipe: null, stats: [] });
+    expect(itemInfo('vilya').kin).toMatch(/stronger on .* bearers\.$|^Double on/);
+    for (const id of COMPONENTS) expect(itemInfo(id).stats.length).toBeGreaterThan(0);
+    for (const id of COMBINED_ITEM_IDS) expect(itemInfo(id).recipe).toEqual(ITEMS[id].recipe);
+    for (const id of RING_OF_POWER_IDS) expect(itemInfo(id).effect).not.toBeNull();
   });
 });
