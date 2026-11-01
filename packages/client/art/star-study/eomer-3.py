@@ -432,17 +432,17 @@ def crown():
 # The white horse running, in (u, v) on the banner: u from the pole out to the fly, v from the
 # bottom edge up. He runs towards the pole, a foreleg reaching, mane and tail streaming behind.
 HORSE = [
-    (0.10, 0.66), (0.13, 0.59), (0.25, 0.55), (0.29, 0.43),  # muzzle, jaw, throat, chest
-    (0.17, 0.40), (0.12, 0.31), (0.16, 0.29), (0.23, 0.35), (0.33, 0.35),  # the reaching foreleg
-    (0.36, 0.16), (0.41, 0.16), (0.42, 0.33),  # the other foreleg, down
-    (0.60, 0.33), (0.67, 0.17), (0.75, 0.10), (0.79, 0.13), (0.72, 0.22), (0.76, 0.36),  # hind leg
-    (0.86, 0.33), (0.93, 0.31), (0.84, 0.46),  # the tail streaming back
-    (0.76, 0.53), (0.48, 0.53), (0.34, 0.66),  # croup, back, withers
-    (0.26, 0.80), (0.23, 0.88), (0.19, 0.78), (0.13, 0.73),  # mane, ear and brow
+    (0.04, 0.63), (0.07, 0.57), (0.16, 0.62), (0.25, 0.56), (0.33, 0.44),  # muzzle, chin, jaw, throat, chest
+    (0.25, 0.41), (0.20, 0.30), (0.14, 0.25), (0.18, 0.22), (0.25, 0.29), (0.31, 0.35),  # the reaching foreleg
+    (0.39, 0.34), (0.42, 0.10), (0.47, 0.10), (0.46, 0.33),  # the other foreleg, down
+    (0.63, 0.34), (0.75, 0.19), (0.85, 0.10), (0.89, 0.13), (0.80, 0.24), (0.80, 0.40),  # the hind leg, back
+    (0.86, 0.42), (0.95, 0.26), (0.94, 0.47),  # the tail streaming back
+    (0.81, 0.58), (0.55, 0.56), (0.43, 0.61),  # croup, back, withers
+    (0.29, 0.80), (0.23, 0.86), (0.22, 0.95), (0.18, 0.86), (0.11, 0.78),  # crest, ear, poll and brow
 ]
-BANNER_WIDE, BANNER_HIGH = 0.36, 0.34
-BANNER_OUT = V(-0.78, 0.62, 0).normalized()  # out to his right and back, so it stays in the hex
-BANNER_FROM = 0.5  # how far up the lance from his fist the banner's bottom edge is fixed
+BANNER_WIDE, BANNER_HIGH = 0.5, 0.42
+BANNER_OUT = V(-0.86, 0.5, 0).normalized()  # out to his right and back, so it stays in the hex
+BANNER_FROM = 0.42  # how far up the lance from his fist the banner's bottom edge is fixed
 WAVE = 0.03  # how deep the cloth ripples
 
 
