@@ -4,8 +4,8 @@ Drawn from the books, not the films: the head of the Istari and lord of Orthanc,
 with a long face, a high forehead and deep dark eyes under black brows; his hair and long beard white,
 with strands of black still about his lips. He wears no hat, and holds his head high. His robe is
 white to the ground. A straight black staff with a pale stone at its head is planted at his right
-side, and in his left hand he weighs the palantir of Orthanc, a dark globe of crystal. He stands
-upright, where Gandalf stoops.
+side, and in his left hand he weighs the palantir of Orthanc, a dark globe of crystal, set in a
+footed cup. He stands upright, where Gandalf stoops.
 
 Gandalf's people (gandalf.py): about 1.48 to the top of his head, a Man's proportions in a robe;
 the staff goes higher. The team colour is a short cape over his shoulders, open at the front, seen
@@ -13,6 +13,11 @@ from every side and from above, and the long ends of a stole hanging from under 
 of his robe on either side of the beard. His long white hair falls over the cape at his back, so
 from behind he is a white-haired wizard in a white robe as much as the team's colour. Everything
 else is white, black and skin.
+
+His fittings, the clasps on the cape's front edges, the cup and knop at the staff's head and the
+ferrule at its foot, and the cup the palantir sits in, use `trim`, which the client colours iron,
+silver or gold by star level (docs/viewer-spec.md section 4, "Star levels"). His 2★ model is
+saruman-2.py and his 3★ model saruman-3.py.
 
     blender --background --factory-startup --python-exit-code 1 --python saruman.py [-- <out.glb>]
 
@@ -44,6 +49,7 @@ from kit import (  # noqa: E402
     segment,
     stoop,
     team_material,
+    trim_material,
     tube,
 )
 
@@ -55,7 +61,6 @@ STREAK = 0x2E2A27
 SKIN = 0xD6A88C
 LEATHER = 0x37312C  # his girdle and shoes, black leather
 BLACK = 0x33302D  # the staff
-IRON = 0x4B4743
 STONE = 0xEFEEE8  # a pale white, neither blue nor warm
 GLOBE = 0x353331  # the palantir's dark crystal, lifted so its facets show
 
@@ -72,7 +77,7 @@ def make_materials():
         eyes=material('eyes', EYES, roughness=0.6),
         leather=material('leather', LEATHER, roughness=0.8),
         staff=material('staff', BLACK, roughness=0.55, metallic=0.1),
-        iron=material('iron', IRON, roughness=0.45, metallic=0.15),
+        trim=trim_material(),  # fittings, recoloured by star
         stone=material('stone', STONE, roughness=0.4, emission=STONE, emission_strength=1.0),
         palantir=material('palantir', GLOBE, roughness=0.25),
     )
@@ -172,10 +177,26 @@ def cape_ring(front, back, rx, ry, cy, fold, opening):
     return ring
 
 
+CLASP = (0.026, 0.034, 0.012)  # the clasps on the cape's front edges: half-width, half-height, depth
+
+
 def cape():
     rings = [cape_ring(*level) for level in CAPE]
     verts, faces, _ = loft(rings, closed=False)
     part('cape', verts, faces, M['team'], inside=lambda c: V(0, 0.01, c.z))
+
+    # A clasp on each front edge of the cape over his chest, beside the beard, where the cape lies
+    # over the stole: a low lozenge on the cape's face, square to it.
+    _, _, rx, ry, cy, _, _ = CAPE[1]
+    w, h, d = CLASP
+    for k, edge in enumerate((rings[1][0], rings[1][-1])):
+        out = V(edge.x / rx**2, (edge.y - cy) / ry**2, 0).normalized()
+        across = V(0, 0, 1).cross(out)
+        centre = edge + V(0, 0, -0.03) + 0.004 * out
+        verts = [centre + w * across, centre + h * V(0, 0, 1), centre - w * across, centre - h * V(0, 0, 1),
+                 centre + d * out, centre - 0.006 * out]
+        faces = [(i, (i + 1) % 4, 4) for i in range(4)] + [(i, (i + 1) % 4, 5) for i in range(4)]
+        part(f'clasp-{k}', verts, faces, M['trim'], inside=centre)
 
 
 # The stole's ends hang from under the cape down his front on either side of the beard, to his
@@ -404,8 +425,11 @@ def fist(side, at, ahead, grip, thumb=False):
 
 STAFF_GRIP = V(-0.40, -0.125, 1.005)  # in his fist
 STAFF_UP = V(-0.035, -0.012, 1.0).normalized()  # upright, leaning out from him a little
-STAFF = [  # distance along the staff from his fist (None for the foot, on the ground) and radius
-    (None, 0.021),
+FERRULE = 0.075  # how far the shod foot runs up the staff
+STAFF = [  # distance along the staff from his fist (None for the foot, on the ground, and 'ferrule'
+    # for the top of the ferrule above it) and radius
+    (None, 0.024),
+    ('ferrule', 0.024),
     (0.0, 0.025),
     (0.64, 0.027),  # under the head
     (0.675, 0.046),  # the knop
@@ -413,24 +437,27 @@ STAFF = [  # distance along the staff from his fist (None for the foot, on the g
     (0.735, 0.03),
     (0.79, 0.054),  # the lip of the cup
 ]
-STAFF_BANDS = [0, 0, 1, 1, 1, 1]  # the black shaft, then its iron head
+STAFF_BANDS = [1, 0, 0, 1, 1, 1, 1]  # the ferrule, the black shaft, then its head
 STONE_AT, STONE_R, STONE_H = 0.83, 0.05, 0.075  # the stone's middle along the staff, radius, half-height
 
 
 def staff():
     points, radii = [], []
+    foot = -STAFF_GRIP.z / STAFF_UP.z
     for t, r in STAFF:
         if t is None:
-            t = -STAFF_GRIP.z / STAFF_UP.z
+            t = foot
+        elif t == 'ferrule':
+            t = foot + FERRULE
         points.append(STAFF_GRIP + t * STAFF_UP)
         radii.append(r)
     rings = [segment(p, p + STAFF_UP, [(0, r)], 6, 0)[0] for p, r in zip(points, radii)]
     rings[0] = [V(p.x, p.y, 0.0) for p in rings[0]]  # the foot flat on the ground
     verts, faces, bands = loft(rings)
     face_mats = [STAFF_BANDS[b] for b in bands]
-    part('staff', verts, faces, [M['staff'], M['iron']], face_mats, inside=nearest_on_polyline(points))
+    part('staff', verts, faces, [M['staff'], M['trim']], face_mats, inside=nearest_on_polyline(points))
     # The floor of the cup, under the stone: on the staff's line, so wound by the way up it faces.
-    part('cup', rings[-1], [tuple(range(6))], M['iron'], outward=STAFF_UP)
+    part('cup', rings[-1], [tuple(range(6))], M['trim'], outward=STAFF_UP)
 
     centre = STAFF_GRIP + STONE_AT * STAFF_UP
     lump('stone', centre, (STONE_R, STONE_R, STONE_H), M['stone'], seed=7, rough=0.0, angles=(0, 0, 18))
@@ -442,6 +469,10 @@ def staff():
 # The palantir, weighed in his left hand ------------------------------------------------------------
 
 GLOBE_R = 0.066
+# The cup the globe sits in, on his palm: (height over the palm, radius) from its foot, up a short
+# stem, to its lip, which stands just clear of the globe; the globe rests CUP_SEAT above the foot.
+CUP = [(0.0, 0.034), (0.018, 0.022), (0.036, 0.046), (0.054, 0.062)]
+CUP_SEAT = 0.028
 
 
 def palantir():
@@ -452,12 +483,16 @@ def palantir():
     palm = L_WRIST + 0.045 * ahead
     sleeve('left', L_SHOULDER, L_ELBOW, L_WRIST, palm)
     box('palm', palm, [ahead, up, across], (0.052, 0.022, 0.05), M['skin'], 0.9)
-    # The fingers curl up round the far side of the globe, the thumb round its near side.
-    fingers = palm + 0.05 * ahead + 0.035 * up
-    box('fingers', fingers, [up, -ahead, across], (0.036, 0.018, 0.046), M['skin'], 0.85)
-    thumb = palm - 0.02 * ahead + 0.03 * up - 0.05 * across
+    # He holds it out on his open hand: the fingers lie flat ahead of the palm, and the thumb rests
+    # against the cup's foot.
+    fingers = palm + 0.064 * ahead + 0.002 * up
+    box('fingers', fingers, [ahead, up, across], (0.03, 0.017, 0.046), M['skin'], 0.8)
+    thumb = palm - 0.012 * ahead + 0.03 * up - 0.05 * across
     box('thumb-left', thumb, [up, ahead, across], (0.03, 0.02, 0.016), M['skin'], 0.8)
-    globe = palm + (0.022 + GLOBE_R) * up  # resting on the palm
+    foot = palm + 0.022 * up  # on the palm
+    height = CUP[-1][0]
+    tube('palantir-cup', foot, foot + height * up, [(h / height, r) for h, r in CUP], M['trim'], phase=30)
+    globe = foot + (CUP_SEAT + GLOBE_R) * up
     lump('palantir', globe, GLOBE_R, M['palantir'], seed=3, rough=0.0, angles=(10, 20, 0))
 
 
