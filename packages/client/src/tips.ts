@@ -80,13 +80,17 @@ export function giftTip(id: GiftId): Tip {
   };
 }
 
-/** A trait, and how many of the person's units count towards it if it is on their board. */
-export function traitTip(trait: TraitId, counted?: { readonly count: number; readonly level: number | null; readonly tone: TraitTone | null }): Tip {
+/** A trait, and how many of a player's units count towards it if it is on their board: the person's, or `owner`'s. */
+export function traitTip(
+  trait: TraitId,
+  counted?: { readonly count: number; readonly level: number | null; readonly tone: TraitTone | null },
+  owner: string | null = null,
+): Tip {
   const info = traitInfo(trait);
   return {
     icon: { kind: 'trait', trait, tone: counted?.tone ?? null },
     title: info.name,
-    subtitle: counted === undefined ? info.kind : `${info.kind} · ${counted.count} on your board`,
+    subtitle: counted === undefined ? info.kind : `${info.kind} · ${counted.count} on ${owner === null ? 'your' : `${owner}'s`} board`,
     ...(counted === undefined || counted.tone === null ? {} : { tone: `trait-${counted.tone}` }),
     body: info.rule === null ? [] : [{ text: info.rule }],
     levels: info.levels.map((l, i) => ({ count: l.count, text: l.text, active: counted?.level === i })),

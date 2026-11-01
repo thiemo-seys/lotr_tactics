@@ -35,7 +35,7 @@ export class DragAndDrop {
 
   /** Starts dragging one of the person's items or the Ring from the tray. */
   startItem(item: TrayItem, event: PointerEvent): void {
-    if (this.flow.show.kind !== 'planning' || event.button !== 0 || this.unit !== null) return;
+    if (!this.canDrag() || event.button !== 0 || this.unit !== null) return;
     event.preventDefault();
     const chip = item === 'ring' ? ringChip(this.flow.state!.ring.corruption, 'lg', false) : itemChip(this.flow.me().items[item]!, 'lg', false);
     const caption = el('span', 'ghost-caption');
@@ -57,8 +57,13 @@ export class DragAndDrop {
     if (wasUnit && this.flow.inGame) this.scene.showPlanning(this.flow.me(), true, this.flow.planningRing());
   }
 
+  /** Dragging is for planning on the person's own board, not while they look at another player's. */
+  private canDrag(): boolean {
+    return this.flow.show.kind === 'planning' && this.flow.viewed() === null;
+  }
+
   private pressUnit(event: PointerEvent): void {
-    if (this.flow.show.kind !== 'planning' || event.button !== 0 || this.item !== null) return;
+    if (!this.canDrag() || event.button !== 0 || this.item !== null) return;
     const place = this.unitPlaceAt(event.clientX, event.clientY);
     const unit = place === null ? null : unitAt(this.flow.me(), place);
     if (place === null || unit === null) return;
@@ -144,7 +149,7 @@ export class DragAndDrop {
 
   /** The grab cursor over the person's own units while planning. */
   private hover(x: number, y: number): void {
-    const canGrab = this.flow.show.kind === 'planning' && this.overView(x, y) && this.unitPlaceAt(x, y) !== null;
+    const canGrab = this.canDrag() && this.overView(x, y) && this.unitPlaceAt(x, y) !== null;
     toggle(this.view, 'can-grab', canGrab);
   }
 

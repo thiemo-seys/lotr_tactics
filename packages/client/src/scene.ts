@@ -11,7 +11,6 @@ import {
   type ItemId,
   type OwnedUnit,
   type Place,
-  type PlayerView,
   type Star,
   type Team,
   type UnitState,
@@ -46,6 +45,12 @@ const UNTARGETABLE_OPACITY = 0.35;
 
 /** The drop marker's colours: where a drag can go, and where it can't. */
 const MARKER_COLOURS = { ok: 0xf3d27a, no: 0xe35d5b } as const;
+
+/** A player's board and bench, as their view gives them. */
+export interface PlanningBoard {
+  readonly board: readonly (OwnedUnit | null)[];
+  readonly bench: readonly (OwnedUnit | null)[];
+}
 
 interface UnitView {
   readonly group: THREE.Group;
@@ -150,10 +155,11 @@ export class FightScene {
 
   /**
    * Shows a player's board and bench for planning, in their own perspective. `ring` marks the One
-   * Ring's bearer among them, if the player holds it.
+   * Ring's bearer among them, if the player holds it. `look` is A for the person's own units, in
+   * blue, and B for another player's, in red.
    */
-  showPlanning(player: PlayerView, force = false, ring: PlanningRing | null = null): void {
-    const key = JSON.stringify([player.board, player.bench, ring]);
+  showPlanning(player: PlanningBoard, force = false, ring: PlanningRing | null = null, look: Team = 'A'): void {
+    const key = JSON.stringify([player.board, player.bench, ring, look]);
     if (!force && this.playback === null && key === this.planningKey) return;
     const entering = this.playback !== null || this.planningKey === '';
     this.clear();
@@ -163,7 +169,7 @@ export class FightScene {
     if (entering) this.aim('planning');
     const add = (unit: OwnedUnit, at: Point) => {
       const corruption = ring !== null && ring.bearer === unit.id ? ring.corruption : null;
-      const pawn = this.createPawn(unit.unitId, unit.star, 'A', 'A', false, unit.items, corruption).group;
+      const pawn = this.createPawn(unit.unitId, unit.star, 'A', look, false, unit.items, corruption).group;
       pawn.userData.unitId = unit.id;
       pawn.position.set(at.x, 0, at.z);
       this.fightLayer.add(pawn);

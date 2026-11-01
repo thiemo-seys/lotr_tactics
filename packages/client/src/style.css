@@ -2240,6 +2240,168 @@ body.play input {
   visibility: hidden;
 }
 
+/* Another player's board: their rows can be clicked to see it, and the one on screen is marked in
+   the far team's red, as their units are. */
+.player-row.viewable {
+  cursor: pointer;
+  transition:
+    background-color var(--fast) var(--ease),
+    border-color var(--fast) var(--ease);
+}
+
+.player-row.viewable:hover {
+  background-color: rgba(30, 38, 52, 0.94);
+  border-color: var(--border-strong);
+}
+
+.player-row.shown:not(.you) {
+  background: linear-gradient(90deg, rgba(217, 83, 79, 0.22), rgba(14, 18, 25, 0.9) 70%);
+  border-color: color-mix(in srgb, var(--team-far) 60%, var(--border));
+  box-shadow: inset 3px 0 0 var(--team-far), var(--shadow-1);
+}
+
+.player-row .badge.viewing {
+  color: #ff9a92;
+}
+
+.side-owner {
+  display: inline-flex;
+  gap: 4px;
+  align-items: center;
+  min-width: 0;
+  padding: 3px 7px;
+  overflow: hidden;
+  font: 700 10.5px/1 var(--font-body);
+  color: #ffc2bd;
+  letter-spacing: 0.02em;
+  text-transform: none;
+  white-space: nowrap;
+  background: rgba(217, 83, 79, 0.16);
+  border: 1px solid rgba(217, 83, 79, 0.45);
+  border-radius: var(--radius-pill);
+}
+
+.side-owner span {
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.side-title .side-owner .icon {
+  flex: none;
+  width: 12px;
+  height: 12px;
+  color: currentColor;
+}
+
+.viewing-bar {
+  position: absolute;
+  top: 12px;
+  left: 50%;
+  z-index: var(--z-panel);
+  display: flex;
+  gap: 12px;
+  align-items: center;
+  max-width: calc(100% - 500px);
+  padding: 6px 6px 6px 14px;
+  font: 600 13px/1 var(--font-body);
+  color: var(--text);
+  white-space: nowrap;
+  background: linear-gradient(90deg, rgba(46, 16, 16, 0.94), rgba(14, 18, 25, 0.92) 60%);
+  border: 1px solid color-mix(in srgb, var(--team-far) 55%, var(--border));
+  border-radius: var(--radius-pill);
+  box-shadow: var(--shadow-2), 0 0 22px rgba(217, 83, 79, 0.18);
+  transform: translateX(-50%);
+  animation: banner-in var(--normal) var(--ease);
+}
+
+.viewing-eyebrow {
+  display: inline-flex;
+  gap: 6px;
+  align-items: center;
+  font: 700 11px/1 var(--font-display);
+  color: #ff9a92;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+}
+
+.viewing-eyebrow .icon {
+  width: 16px;
+  height: 16px;
+}
+
+.viewing-name {
+  display: inline-flex;
+  gap: 6px;
+  align-items: center;
+  min-width: 0;
+  font: 700 15px/1 var(--font-body);
+  color: var(--text-strong);
+}
+
+.viewing-name span {
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.viewing-name .icon {
+  flex: none;
+  width: 15px;
+  height: 15px;
+  color: var(--text-muted);
+}
+
+.viewing-stats {
+  display: inline-flex;
+  gap: 10px;
+  align-items: center;
+}
+
+.viewing-stat {
+  display: inline-flex;
+  gap: 5px;
+  align-items: center;
+  font: 700 13px/1 var(--font-body);
+  font-variant-numeric: tabular-nums;
+  color: var(--text-strong);
+  cursor: help;
+}
+
+.viewing-stat .icon {
+  width: 15px;
+  height: 15px;
+}
+
+.viewing-stat.hp .icon {
+  color: #f0716b;
+}
+
+.viewing-stat.gold .icon {
+  color: var(--gold-bright);
+}
+
+.viewing-stat .level-badge {
+  width: 20px;
+  height: 20px;
+  font-size: 11px;
+}
+
+.viewing-items {
+  display: inline-flex;
+  flex-wrap: wrap;
+  gap: 3px;
+  align-items: center;
+  max-width: 180px;
+}
+
+.viewing-back {
+  flex: none;
+  border-radius: var(--radius-pill);
+}
+
+.viewing-back kbd {
+  margin-left: 2px;
+}
+
 .gift-list {
   display: flex;
   flex-direction: column;
@@ -3374,6 +3536,14 @@ body.play input {
   #gift-offer {
     width: calc(100% - 430px);
     min-width: 480px;
+  }
+
+  .viewing-bar {
+    max-width: calc(100% - 430px);
+  }
+
+  .viewing-items {
+    display: none;
   }
 
   #shop-bar {

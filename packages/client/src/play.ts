@@ -12,6 +12,7 @@ import { renderLobby, renderMenu } from './play/menu.js';
 import { renderBanner, renderCouncil, renderGiftOffer, renderOver, renderResults } from './play/panels.js';
 import { ShopBar } from './play/shop-bar.js';
 import { renderPlayers, renderTraits } from './play/side-panels.js';
+import { renderViewingBar } from './play/viewing-bar.js';
 import { FightScene } from './scene.js';
 import { blockDisabledClicks, fillIcons, isEnabled, setText, show, toggle } from './ui/dom.js';
 import { tipCard } from './ui/tip-card.js';
@@ -30,6 +31,7 @@ const menu = element('menu');
 const lobbyPanel = element('lobby');
 const council = element('council');
 const giftPanel = element('gift-offer');
+const viewingBar = element('viewing');
 const result = element('result');
 const banner = element('banner');
 const backdrop = element('backdrop');
@@ -104,7 +106,13 @@ speedButton.addEventListener('click', () => {
 });
 skipButton.addEventListener('click', () => flow.skip(performance.now()));
 window.addEventListener('keydown', (event) => {
-  if (flow.show.kind !== 'planning' || event.target instanceof HTMLInputElement) return;
+  if (event.target instanceof HTMLInputElement) return;
+  // Escape goes back to the person's own board from another player's.
+  if (event.key === 'Escape' && flow.viewed() !== null) {
+    flow.viewBoard(null);
+    return;
+  }
+  if (flow.show.kind !== 'planning') return;
   const press = (id: string, action: () => void) => {
     // The key does what its button does, and only when the button can.
     if (isEnabled(element(id))) action();
@@ -179,12 +187,15 @@ function receive(message: ServerMessage): void {
 function render(now: number): void {
   const { inGame, show: step } = flow;
   const planning = step.kind === 'planning';
+  // Another player's board, when the person is looking at one instead of their own.
+  const viewed = inGame ? flow.viewed() : null;
   show(menu, step.kind === 'menu');
   show(lobbyPanel, step.kind === 'lobby');
   show(backdrop, step.kind === 'menu' || step.kind === 'lobby');
   show(shop.bar, planning);
   show(council, step.kind === 'council');
-  show(giftPanel, inGame && planning && flow.state!.me.giftOffer !== null);
+  show(giftPanel, inGame && planning && flow.state!.me.giftOffer !== null && viewed === null);
+  show(viewingBar, viewed !== null);
   show(result, step.kind === 'results' || step.kind === 'waiting' || step.kind === 'over');
   show(speedButton, step.kind === 'fight');
   show(skipButton, step.kind === 'fight');
@@ -192,7 +203,7 @@ function render(now: number): void {
   show(playersPanel, inGame);
   show(traitsPanel, inGame && (planning || step.kind === 'council' || step.kind === 'fight'));
   toggle(document.body, 'in-game', inGame);
-  if (!planning) drag.cancel();
+  if (!planning || viewed !== null) drag.cancel();
   let bannerShown = false;
 
   if (step.kind === 'menu') renderMenu(flow);
@@ -204,12 +215,18 @@ function render(now: number): void {
   }
 
   const p = flow.me();
+  // The board on screen: the person's own in blue, or the one they are looking at in red.
+  const showBoard = () => {
+    if (viewed === null) scene.showPlanning(p, false, flow.planningRing());
+    else scene.showPlanning(viewed, false, flow.ringOf(viewed.seat), 'B');
+  };
+  if (viewed !== null) renderViewingBar(viewingBar, flow);
   if (planning) {
-    scene.showPlanning(p, false, flow.planningRing());
+    showBoard();
     shop.render(p);
     renderGiftOffer(flow);
   } else if (step.kind === 'council') {
-    scene.showPlanning(p, false, flow.planningRing());
+    showBoard();
     renderCouncil(flow, now);
   } else if (step.kind === 'fight' && step.playback.combat.isOver()) {
     bannerShown = true;
@@ -226,7 +243,7 @@ function render(now: number): void {
     });
   }
   show(banner, bannerShown);
-  if (!traitsPanel.hidden) renderTraits(traitsPanel, p);
+  if (!traitsPanel.hidden) renderTraits(traitsPanel, viewed ?? p, viewed === null ? null : flow.seatName(viewed.seat));
   renderPlayers(playersPanel, flow);
 }
 
