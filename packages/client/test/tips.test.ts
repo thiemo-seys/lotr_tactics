@@ -39,6 +39,7 @@ describe('tooltips', () => {
   it('show each trait breakpoint and mark the active one', () => {
     const tip = traitTip('guardian', { count: 4, level: 1, tone: 'silver' });
     expect(tip.subtitle).toBe('Class · 4 on your board');
+    expect(traitTip('guardian', { count: 2, level: 0, tone: 'bronze' }, 'Bot 3').subtitle).toBe('Class · 2 on Bot 3\'s board');
     expect(tip.tone).toBe('trait-silver');
     expect(tip.levels!.map((l) => [l.count, l.active])).toEqual([
       [2, false],

@@ -15,7 +15,16 @@ import {
   type RoundType,
   type Team,
 } from '@lotr-tactics/sim';
-import { TIMERS, type ClientMessage, type FightRecord, type LobbyView, type MatchView, type RoundRecord, type ServerMessage } from '@lotr-tactics/server';
+import {
+  TIMERS,
+  type ClientMessage,
+  type FightRecord,
+  type LobbyView,
+  type MatchView,
+  type PublicPlayer,
+  type RoundRecord,
+  type ServerMessage,
+} from '@lotr-tactics/server';
 import { yourFight, yourTeam } from './fights.js';
 import { Playback } from './playback.js';
 
@@ -34,7 +43,7 @@ export type Show =
   | { kind: 'waiting'; round: RoundRecord }
   | { kind: 'over' };
 
-/** Where the One Ring is among the person's units, while they hold it. */
+/** Where the One Ring is among a player's units, while they hold it. */
 export interface PlanningRing {
   readonly bearer: number | null;
   readonly corruption: number;
@@ -85,6 +94,8 @@ export class PlayFlow {
   show: Show = { kind: 'menu' };
   menuMessage = '';
   lobbyMessage = '';
+  /** The other player whose board the person is looking at, or null for their own. */
+  private boardSeat: number | null = null;
   /** When `state` arrived, in milliseconds, to count down its step's time. */
   private stateAt = 0;
   /** The step the timer belongs to, and its time when first seen, to show how much is left. */
@@ -100,6 +111,7 @@ export class PlayFlow {
     this.show = { kind: 'menu' };
     this.menuMessage = menuMessage;
     this.lobbyMessage = '';
+    this.boardSeat = null;
     this.timerKey = '';
     this.timerMs = 0;
   }
@@ -183,8 +195,42 @@ export class PlayFlow {
 
   /** The One Ring, if the person holds it: its bearer among their units and its Corruption. */
   planningRing(): PlanningRing | null {
+    return this.ringOf(this.you);
+  }
+
+  /** The One Ring, if this seat holds it: its bearer among their units and its Corruption. */
+  ringOf(seat: number): PlanningRing | null {
     const ring = this.state?.ring;
-    return ring !== undefined && ring.state === 'held' && ring.holder === this.you ? { bearer: ring.bearer, corruption: ring.corruption } : null;
+    return ring !== undefined && ring.state === 'held' && ring.holder === seat ? { bearer: ring.bearer, corruption: ring.corruption } : null;
+  }
+
+  // Other players' boards
+
+  /** Whether the person can look at other players' boards now: while a board is on screen, in a Council or planning. */
+  get canViewBoards(): boolean {
+    return this.inGame && (this.show.kind === 'council' || this.show.kind === 'planning');
+  }
+
+  /** Whether a seat's board can be looked at: a player still in the game, while boards can be viewed. */
+  canViewBoard(seat: number): boolean {
+    return this.canViewBoards && this.state!.players[seat]?.placement === null;
+  }
+
+  /**
+   * Shows another player's board, bench and traits in place of the person's, or the person's own
+   * again with their seat or null. Looking changes nothing in the game.
+   */
+  viewBoard(seat: number | null): void {
+    if (seat === null || seat === this.you) this.boardSeat = null;
+    else if (this.canViewBoard(seat)) this.boardSeat = seat;
+  }
+
+  /**
+   * The other player whose board is on screen, or null when it is the person's own. Only while
+   * boards can be viewed and that player is still in; a fight brings the person's own board back.
+   */
+  viewed(): PublicPlayer | null {
+    return this.boardSeat !== null && this.canViewBoard(this.boardSeat) ? this.state!.players[this.boardSeat]! : null;
   }
 
   /** Connected people still in the game: the ones a step waits for. */
@@ -268,6 +314,7 @@ export class PlayFlow {
     switch (next.step.kind) {
       case 'over':
         this.show = { kind: 'over' };
+        this.boardSeat = null;
         return;
       case 'council':
       case 'planning':
@@ -281,6 +328,8 @@ export class PlayFlow {
   }
 
   private startRound(round: RoundRecord, now: number): void {
+    // After the fights, the next Council or planning starts on the person's own board.
+    this.boardSeat = null;
     const fight = yourFight(round, this.you);
     if (fight === null) {
       this.showResults(round, now);

@@ -1,8 +1,9 @@
 // The play page's side panels (docs/game-spec.md section 12): the trait tracker on the left, from
-// the sim's count of the person's board, and the players list on the right with the person's
-// Gifts under it.
+// the sim's count of the board on screen, the person's or another player's they are looking at,
+// and the players list on the right with the person's Gifts under it. A player's row shows their
+// board when clicked.
 
-import { GIFTS, type PlayerView } from '@lotr-tactics/sim';
+import { GIFTS, type OwnedUnit, type GiftId, type PlayerView } from '@lotr-tactics/sim';
 import { ordinal, type PlayFlow } from '../flow.js';
 import { plural } from '../hud.js';
 import { GIFT_TIER_ICONS } from '../icons.js';
@@ -13,21 +14,33 @@ import { traitBadge } from '../ui/chips.js';
 import { el, icon, rebuild } from '../ui/dom.js';
 import { setTip } from '../ui/tooltip.js';
 
-/** The view the trait tracker last showed: a new one comes with each state from the game. */
-let tracked: PlayerView | null = null;
+/** A board whose traits are tracked: its units and the Gifts of its player, whose crests count. */
+interface TrackedBoard {
+  readonly board: readonly (OwnedUnit | null)[];
+  readonly gifts: readonly GiftId[];
+}
 
-/** The trait tracker: every trait on the person's board, active ones first. */
-export function renderTraits(panel: HTMLElement, p: PlayerView): void {
-  if (p === tracked) return;
-  tracked = p;
+/** What the trait tracker last showed: a new view comes with each state from the game. */
+let tracked: { board: TrackedBoard | null; owner: string | null } = { board: null, owner: null };
+
+/**
+ * The trait tracker: every trait on a board, active ones first. `owner` names the player whose
+ * board it is when it isn't the person's own.
+ */
+export function renderTraits(panel: HTMLElement, p: TrackedBoard, owner: string | null = null): void {
+  if (p === tracked.board && owner === tracked.owner) return;
+  tracked = { board: p, owner };
   const rows = traitRows(p.board, p.gifts);
-  rebuild(panel, JSON.stringify(rows), () => [
-    el('h3', 'side-title', icon('board'), 'Traits'),
-    ...(rows.length === 0 ? [el('p', 'side-empty', 'Place units on the board to start traits.')] : rows.map(traitRow)),
+  panel.setAttribute('aria-label', owner === null ? 'Traits on your board' : `Traits on ${owner}'s board`);
+  rebuild(panel, JSON.stringify([rows, owner]), () => [
+    el('h3', 'side-title', icon('board'), 'Traits', owner === null ? null : el('span', 'side-owner', icon('viewer'), el('span', '', owner))),
+    ...(rows.length === 0
+      ? [el('p', 'side-empty', owner === null ? 'Place units on the board to start traits.' : `${owner} has no units on the board.`)]
+      : rows.map((row) => traitRow(row, owner))),
   ]);
 }
 
-function traitRow(row: TraitRow): HTMLElement {
+function traitRow(row: TraitRow, owner: string | null): HTMLElement {
   const steps = el(
     'span',
     'trait-steps',
@@ -45,26 +58,45 @@ function traitRow(row: TraitRow): HTMLElement {
   );
   item.tabIndex = 0;
   item.setAttribute('aria-label', `${row.name}: ${row.count}${row.level === null ? ', not active' : `, active at ${row.breakpoints[row.level]}`}`);
-  setTip(item, traitTip(row.trait, row));
+  setTip(item, traitTip(row.trait, row, owner));
   return item;
 }
 
-let listed: { state: unknown; lobby: unknown } = { state: null, lobby: null };
+let listed: { state: unknown; lobby: unknown; viewing: string } = { state: null, lobby: null, viewing: '' };
 
-/** The players list, in standings order, with the person's Gifts under it. */
+/** The players list, in standings order, with the person's Gifts under it. Clicking a player shows their board. */
 export function renderPlayers(panel: HTMLElement, flow: PlayFlow): void {
   const s = flow.state!;
-  if (listed.state === s && listed.lobby === flow.lobby) return;
-  listed = { state: s, lobby: flow.lobby };
+  // Which boards can be looked at, and whose is on screen.
+  const viewing = `${flow.canViewBoards}-${flow.viewed()?.seat ?? flow.you}`;
+  if (listed.state === s && listed.lobby === flow.lobby && listed.viewing === viewing) return;
+  listed = { state: s, lobby: flow.lobby, viewing };
   const rows = playerRows(s.players, flow.lobby?.seats, flow.you, s.ring, (seat) => flow.seatName(seat));
-  rebuild(panel, JSON.stringify([rows, s.ring.corruption, s.me.gifts]), () => [
+  const shown = flow.viewed()?.seat ?? flow.you;
+  // Rebuilding the rows would lose the keyboard's place in the list, so it is given back after.
+  const focused = panel.contains(document.activeElement) ? (document.activeElement as HTMLElement).dataset.seat : undefined;
+  rebuild(panel, JSON.stringify([rows, s.ring.corruption, s.me.gifts, viewing]), () => [
     el('h3', 'side-title', icon('person'), 'Players'),
-    el('div', 'player-list', ...rows.map((row) => playerRow(row, s.ring.corruption))),
+    el(
+      'div',
+      'player-list',
+      ...rows.map((row) => {
+        const view = flow.canViewBoard(row.seat) ? { shown: row.seat === shown, open: () => flow.viewBoard(row.seat) } : null;
+        return playerRow(row, s.ring.corruption, view);
+      }),
+    ),
     ...yourGifts(s.me),
   ]);
+  if (focused !== undefined) panel.querySelector<HTMLElement>(`.player-row[data-seat="${focused}"]`)?.focus();
 }
 
-function playerRow(row: PlayerRow, corruption: number): HTMLElement {
+/** A row's board: whether it is the one on screen, and how to show it. */
+interface RowBoard {
+  readonly shown: boolean;
+  readonly open: () => void;
+}
+
+function playerRow(row: PlayerRow, corruption: number, board: RowBoard | null): HTMLElement {
   // The winner has a place too, but isn't out.
   const out = row.placement !== null && row.placement > 1;
   const badges = el(
@@ -73,10 +105,11 @@ function playerRow(row: PlayerRow, corruption: number): HTMLElement {
     row.ringHolder ? el('span', 'badge ring', icon('one-ring')) : null,
     row.streak === null || row.streak.length < 2 ? null : el('span', `badge streak ${row.streak.kind}`, icon(row.streak.kind === 'win' ? 'streak-win' : 'streak-loss'), String(row.streak.length)),
     row.away ? el('span', 'badge away', icon('away')) : null,
+    board?.shown === true && !row.you ? el('span', 'badge viewing', icon('viewer')) : null,
   );
   const item = el(
     'div',
-    `player-row hp-${row.hpBand}${row.you ? ' you' : ''}${out ? ' out' : ''}${row.placement === 1 ? ' winner' : ''}`,
+    `player-row hp-${row.hpBand}${row.you ? ' you' : ''}${out ? ' out' : ''}${row.placement === 1 ? ' winner' : ''}${board === null ? '' : ' viewable'}${board?.shown === true ? ' shown' : ''}`,
     el('span', 'who', icon(row.bot ? 'bot' : 'person')),
     el('span', 'pname', row.name),
     badges,
@@ -86,6 +119,19 @@ function playerRow(row: PlayerRow, corruption: number): HTMLElement {
   );
   (item.querySelector('.hp-bar i') as HTMLElement).style.width = `${Math.round(row.hpShare * 100)}%`;
   item.tabIndex = 0;
+  item.dataset.seat = String(row.seat);
+  if (board !== null) {
+    item.setAttribute('role', 'button');
+    item.setAttribute('aria-pressed', String(board.shown));
+    item.addEventListener('click', board.open);
+    item.addEventListener('keydown', (event) => {
+      if (event.key !== 'Enter') return;
+      event.preventDefault();
+      board.open();
+    });
+  }
+  const look =
+    board === null ? [] : board.shown ? [row.you ? 'Your board is on screen.' : 'Their board is on screen.'] : [row.you ? 'Click to go back to your board.' : 'Click to see their board and traits.'];
   setTip(
     item,
     textTip(
@@ -95,6 +141,7 @@ function playerRow(row: PlayerRow, corruption: number): HTMLElement {
       ...(row.streak === null ? [] : [`${plural(row.streak.length, row.streak.kind === 'win' ? 'win' : 'loss', row.streak.kind === 'win' ? 'wins' : 'losses')} in a row.`]),
       ...(row.ringHolder ? [`Holds the One Ring, at Corruption ${corruption}.`] : []),
       ...(row.gifts.length > 0 ? [`Gifts: ${row.gifts.map((g) => GIFTS[g].name).join(', ')}.`] : []),
+      ...look,
     ),
   );
   return item;

@@ -4,6 +4,7 @@ import { describe, expect, it } from 'vitest';
 import { LocalConnection } from '../src/connection.js';
 import { yourFight, yourTeam } from '../src/fights.js';
 import { PlayFlow, ordinal, outcomeText, standings, type FlowHooks } from '../src/flow.js';
+import { traitRows } from '../src/traits.js';
 
 /** A host whose clock only moves when the test moves it. */
 function fakeHost(): Host & { time: number } {
@@ -223,6 +224,112 @@ describe('the Council', () => {
     expect(flow.councilWaiting()).toEqual([6, 7]);
     flow.state = { council: null } as unknown as MatchView;
     expect(flow.councilWaiting()).toEqual([]);
+  });
+});
+
+describe("other players' boards", () => {
+  /** A flow in seat 1, in a step of this kind, with players whose placements are these. */
+  function viewing(kind: 'council' | 'planning' | 'over', placements: (number | null)[]) {
+    const { flow } = recorded();
+    flow.you = 1;
+    flow.state = {
+      step: { kind, ms: 30000 },
+      players: placements.map((placement, seat) => ({ seat, placement, board: [], bench: [] })),
+      me: { placement: placements[1] },
+      ring: { state: 'held', holder: 3, bearer: 42, corruption: 5, hobbitFights: 0 },
+    } as unknown as MatchView;
+    flow.show = { kind };
+    return flow;
+  }
+
+  it('shows another player still in, and the person\'s own again with their seat, null or a fight', () => {
+    const flow = viewing('planning', [null, null, null, 8]);
+    expect([flow.canViewBoards, flow.viewed()]).toEqual([true, null]);
+    flow.viewBoard(2);
+    expect(flow.viewed()).toBe(flow.state!.players[2]);
+    // Someone who is out has nothing left to show, so the view stays where it was.
+    expect(flow.canViewBoard(3)).toBe(false);
+    flow.viewBoard(3);
+    expect(flow.viewed()?.seat).toBe(2);
+    flow.viewBoard(0);
+    expect(flow.viewed()?.seat).toBe(0);
+    flow.viewBoard(1);
+    expect(flow.viewed()).toBeNull();
+    flow.viewBoard(2);
+    flow.viewBoard(null);
+    expect(flow.viewed()).toBeNull();
+    // A seat that isn't in the game.
+    flow.viewBoard(9);
+    expect(flow.viewed()).toBeNull();
+
+    // The round's fights bring the person's own board back for the next step.
+    flow.viewBoard(2);
+    const round: RoundRecord = { stage: 2, round: 1, fights: [], damage: [], eliminated: [] };
+    flow.receive({ type: 'round', round }, 0);
+    expect([flow.canViewBoards, flow.viewed()]).toEqual([false, null]);
+    flow.show = { kind: 'planning' };
+    expect(flow.viewed()).toBeNull();
+  });
+
+  it('can be looked at in a Council too, but not once the game is over for the person', () => {
+    const council = viewing('council', [null, null, null]);
+    council.viewBoard(2);
+    expect(council.viewed()?.seat).toBe(2);
+    const over = viewing('over', [null, 3, null]);
+    over.viewBoard(2);
+    expect([over.canViewBoards, over.viewed()]).toEqual([false, null]);
+  });
+
+  it('goes back to the person\'s board when the player looked at is knocked out', () => {
+    const flow = viewing('planning', [null, null, null]);
+    flow.viewBoard(2);
+    flow.state = { ...flow.state!, players: flow.state!.players.map((p) => (p.seat === 2 ? { ...p, placement: 3 } : p)) };
+    expect(flow.viewed()).toBeNull();
+  });
+
+  it("knows where the One Ring is on any player's board", () => {
+    const flow = viewing('planning', [null, null, null, null]);
+    expect(flow.ringOf(3)).toEqual({ bearer: 42, corruption: 5 });
+    expect([flow.ringOf(2), flow.planningRing()]).toEqual([null, null]);
+  });
+
+  it('shows the boards and traits of the bots in an offline game, as the game has them', async () => {
+    const host = fakeHost();
+    let connection: LocalConnection | null = null;
+    const { flow } = recorded((message) => connection!.send(message));
+    connection = new LocalConnection(7, { message: (m) => flow.receive(m, host.time), closed: () => {} }, { host, autoUpdate: false });
+    await flush();
+    let looked = 0;
+    let activeTraits = 0;
+    for (let i = 0; i < 3000 && flow.show.kind !== 'over' && looked < 6; i++) {
+      const { show } = flow;
+      if (show.kind === 'planning') {
+        looked++;
+        for (const p of flow.state!.players) {
+          flow.viewBoard(p.seat);
+          const viewed = flow.viewed();
+          if (p.seat === flow.you || p.placement !== null) {
+            expect(viewed).toBeNull();
+            continue;
+          }
+          expect(viewed).toEqual(p);
+          activeTraits += traitRows(viewed!.board, viewed!.gifts).filter((row) => row.level !== null).length;
+        }
+        flow.ready();
+      } else if (show.kind === 'fight') {
+        expect(flow.viewed()).toBeNull();
+        flow.update(1000, host.time);
+      } else if (show.kind === 'results') {
+        flow.update(0, show.until);
+      } else {
+        host.time += flow.state!.step.ms ?? 0;
+        connection.update();
+      }
+      await flush();
+    }
+    expect(looked).toBe(6);
+    expect(activeTraits).toBeGreaterThan(0);
+    connection.close();
   });
 });
 
