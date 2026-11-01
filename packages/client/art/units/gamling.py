@@ -7,12 +7,18 @@ From the books: an old Rider, a captain of the men of the Westfold at Helm's Dee
 horn of Helm sounds. His horse is a dark bay, a dark brown body with black mane, tail and legs and a
 small white star, standing square on all four hooves. He sits upright in a green tunic with mail
 sleeves, a long grey beard down his chest and long grey hair down his back under a tall pointed
-helm, and holds up a great ivory horn bound in brass in his left fist, ready to sound, its bell
+helm, and holds up a great ivory horn bound in metal in his left fist, ready to sound, its bell
 above his helm. The team colour is his cloak, a mantle over the shoulders and a cape down his back,
 and the horse's saddle-cloth and breast strap; everything else is muted green, grey, gold and earth.
 Beside the other mounted Rohirrim he is the horn on his left, the iron-grey hair, the spike on his
 helm and the dark horse: Éomer has a spear, a white plume and a dun, Théoden a sword in his right
 hand, white hair, a crowned helm and a grey.
+
+His fittings, the helm's band and spike, the horn's bands, the two round brooches that pin his cloak
+on his shoulders and the horse's browband, use `trim`, which the client colours iron, silver or gold
+by star level (docs/viewer-spec.md section 4, "Star levels"); the helm's and the horn's show from in
+front, from behind and from above, and the brooches from behind and above. His 2★ model is
+gamling-2.py and his 3★ model gamling-3.py.
 
     blender --background --factory-startup --python-exit-code 1 --python gamling.py [-- <out.glb>]
 
@@ -29,7 +35,6 @@ from mathutils import Matrix, Vector
 sys.path.insert(0, os.path.join(os.path.dirname(os.path.abspath(__file__)), '..'))
 from kit import (  # noqa: E402
     BOOTS,
-    BRASS,
     EYES,
     LEATHER,
     MAIL,
@@ -48,6 +53,7 @@ from kit import (  # noqa: E402
     path_rings,
     reset,
     team_material,
+    trim_material,
     tube,
     wind,
 )
@@ -75,10 +81,11 @@ def make_materials():
         tunic=material('tunic', TUNIC, roughness=0.9),
         leather=material('leather', LEATHER, roughness=0.85),
         boots=material('boots', BOOTS, roughness=0.9),
-        brass=material('brass', BRASS, roughness=0.55, metallic=0.1),
         horn=material('horn', IVORY, roughness=0.6),
         hollow=material('hollow', EYES, roughness=0.9),  # the dark inside of the horn's bell
         eyes=material('eyes', EYES, roughness=0.6),
+        # Fittings: the renderer recolours this iron, silver or gold by star level.
+        trim=trim_material(),
     )
 
 
@@ -89,16 +96,16 @@ PIVOT = V(0, 0.05, 0.80)
 LEANING = Matrix.Translation(PIVOT) @ Matrix.Rotation(math.radians(LEAN), 4, 'X') @ Matrix.Translation(-PIVOT)
 
 # The body as a barrel of octagons: z, half-width, half-depth and centre y. The belt is the band
-# between the second and third rings.
+# between the second and third rings. Above the chest the body is hidden under the mantle, so it
+# runs straight to the neck.
 TORSO = [
     (0.75, 0.165, 0.125, 0.06),  # in the saddle, round the hips
     (0.915, 0.172, 0.12, 0.05),  # belt, lower edge
     (0.965, 0.18, 0.124, 0.05),  # belt, upper edge
-    (1.08, 0.205, 0.132, 0.04),  # chest
-    (1.175, 0.20, 0.118, 0.05),  # shoulders
+    (1.08, 0.205, 0.132, 0.04),  # chest, inside the mantle's hem
     (1.245, 0.072, 0.068, 0.06),  # neck
 ]
-TORSO_BANDS = [0, 1, 0, 0, 0]  # the tunic, except the belt
+TORSO_BANDS = [0, 1, 0, 0]  # the tunic, except the belt
 
 
 def torso():
@@ -248,8 +255,7 @@ def hair():
     part('hair', verts, faces, M['hair'], inside=lambda c: V(0, 0.0, c.z))
 
 
-# A tall pointed helm of eight facets on a brass band, with a brass spike on top: z and radius from
-# the brim up.
+# A tall pointed helm of eight facets on a band, with a spike on top: z and radius from the brim up.
 HELM = [(1.398, 0.124), (1.445, 0.124), (1.45, 0.114), (1.535, 0.094), (1.60, 0.05)]
 HELM_TOP = V(0, HEAD_Y, 1.642)
 
@@ -262,11 +268,20 @@ def helm():
     verts.append(HELM_TOP)
     faces += [(last + i, last + (i + 1) % 8, len(verts) - 1) for i in range(8)]
     face_mats += [1] * 8
-    part('helm', verts, faces, [M['brass'], M['steel']], face_mats, inside=V(0, HEAD_Y, 1.42))
-    cone('helm-spike', HELM_TOP - V(0, 0, 0.02), HELM_TOP + V(0, 0, 0.06), 0.02, M['brass'], n=4, back=None)
+    part('helm', verts, faces, [M['trim'], M['steel']], face_mats, inside=V(0, HEAD_Y, 1.42))
+    cone('helm-spike', HELM_TOP - V(0, 0, 0.02), HELM_TOP + V(0, 0, 0.06), 0.02, M['trim'], n=4, back=None)
 
 
 # Team colour: his cloak, a mantle over the shoulders and a cape down his back ---------------------
+
+BROOCHES = [(1, 30), (-1, 180)]  # each brooch's side, and its angle round the mantle from +X
+
+
+def mantle_point(ring, angle):
+    """The point of an eight-point mantle ring at `angle` degrees round from +X."""
+    k = angle / 45
+    i = int(k) % 8
+    return ring[i].lerp(ring[(i + 1) % 8], k - int(k))
 
 
 def mantle():
@@ -279,6 +294,16 @@ def mantle():
     hem = ellipse(0, 0.05, 0, 0.30, 0.195, 8, 0, [z - 0.05 for z in shoulder_z])
     verts, faces, _ = loft([hem, shoulder, dome, neck])
     part('mantle', verts, faces, M['team'], inside=V(0, 0.05, 1.05))
+
+    # A round brooch on top of each shoulder, pinning the cape to the mantle: a low six-sided boss
+    # on the slope between the dome and the shoulder, facing up and out, so it shows from in front,
+    # from behind and from above. The left one sits back a little, behind his raised arm.
+    for s, angle in BROOCHES:
+        top, edge = mantle_point(dome, angle), mantle_point(shoulder, angle)
+        out = V(edge.x, edge.y - 0.05, 0).normalized()
+        normal = (out * (top.z - edge.z) + V(0, 0, (edge - top).to_2d().length)).normalized()
+        at = top.lerp(edge, 0.45)
+        cone(f'brooch-{s}', at - 0.004 * normal, at + 0.018 * normal, 0.036, M['trim'], n=6, back=None)
 
 
 def cape():
@@ -309,7 +334,7 @@ def cape():
 # up to the bell above his helm, which opens upwards, outwards and a little back, so the curve shows
 # from the side too: the control points of a cubic.
 HORN_CURVE = [V(0.22, -0.14, 1.37), V(0.42, -0.13, 1.27), V(0.58, -0.05, 1.43), V(0.65, 0.09, 1.73)]
-HORN = [  # how far along the curve, the radius, and whether the band from there is brass
+HORN = [  # how far along the curve, the radius, and whether the band from there is a metal fitting
     (0.0, 0.018, True),  # the mouthpiece
     (0.07, 0.02, False),
     (0.33, 0.03, False),
@@ -333,8 +358,8 @@ def horn_at(t):
 def great_horn():
     points = [horn_at(t)[0] for t, _, _ in HORN]
     radii = [r for _, r, _ in HORN]
-    band_mats = [0 if brass else 1 for _, _, brass in HORN[:-1]]
-    bent_tube('horn', points, radii, [M['brass'], M['horn']], band_mats, n=6, start='cap')
+    band_mats = [0 if fitting else 1 for _, _, fitting in HORN[:-1]]
+    bent_tube('horn', points, radii, [M['trim'], M['horn']], band_mats, n=6, start='cap')
 
     # The dark hollow of the bell: a shallow funnel inside the rim.
     bell, ahead = horn_at(1.0)
