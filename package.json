@@ -14,7 +14,8 @@
     "test": "pnpm -r test",
     "build": "pnpm -r --if-present build",
     "check": "pnpm lint && pnpm typecheck && pnpm test && pnpm build",
-    "balance": "pnpm --filter @lotr-tactics/sim balance"
+    "balance": "pnpm --filter @lotr-tactics/sim balance",
+    "models": "pnpm --filter @lotr-tactics/client models"
   },
   "devDependencies": {
     "@eslint/js": "^10.0.1",
