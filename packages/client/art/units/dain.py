@@ -3,11 +3,16 @@
 Built in the Faceted style of the reference, Gimli (gimli.py, docs/viewer-spec.md section 4): every
 form is a low-segment shape or a hand-placed set of vertices, shaded flat. A Dwarf of Gimli's build,
 1.15 to the top of his helm, but heavier and older: a knee-length hauberk of steel mail, a hood of
-iron mail under a crowned iron helm, and an iron-grey beard forked into two locks clasped with
-gold. As the Dwarves of the Iron Hills do, he slings his round shield on his back and fights with a
-great two-handed mattock, held across his body ready to slam, its head high over his left
-shoulder. The team colour is his shield's face, seen from behind, and the tabard over his hauberk,
-seen from the front.
+iron mail under a crowned iron helm, and an iron-grey beard forked into two clasped locks. As the
+Dwarves of the Iron Hills do, he slings his round shield on his back and fights with a great
+two-handed mattock, held across his body ready to slam, its head high over his left shoulder. The
+team colour is his shield's face, seen from behind, and the tabard over his hauberk, seen from the
+front.
+
+His fittings, the clasps on his beard's locks, the belt buckle, the shield's rim and boss and the
+mattock's socket and butt cap, use `trim`, which the client colours iron, silver or gold by star
+level (docs/viewer-spec.md section 4, "Star levels"); the crown on his helm is a crown, not a
+fitting, and stays gold. His 2★ model is dain-2.py and his 3★ model dain-3.py.
 
     blender --background --factory-startup --python-exit-code 1 --python dain.py [-- <out.glb>]
 
@@ -43,6 +48,7 @@ from kit import (  # noqa: E402
     part,
     reset,
     team_material,
+    trim_material,
     tube,
 )
 
@@ -60,7 +66,8 @@ def make_materials():
         mail=material('mail', MAIL, roughness=0.8, metallic=0.05),
         iron=material('iron', IRON, roughness=0.55, metallic=0.12),
         steel=material('steel', STEEL, roughness=0.5, metallic=0.1),
-        gold=material('gold', BRASS, roughness=0.55, metallic=0.1),
+        gold=material('gold', BRASS, roughness=0.55, metallic=0.1),  # the crown
+        trim=trim_material(),
         beard=material('beard', BEARD, roughness=0.9),
         skin=material('skin', SKIN, roughness=0.85),
         leather=material('leather', LEATHER, roughness=0.85),
@@ -165,7 +172,7 @@ def torso():
     part('torso', verts, faces, [M['mail'], M['leather'], M['team']], face_mats,
          inside=lambda c: V(0, 0, max(c.z, 0.2)))
     axes = [V(0, -1, 0), V(1, 0, 0), V(0, 0, 1)]
-    box('buckle', V(0, -0.248, 0.465), axes, (0.02, 0.05, 0.042), M['gold'], 0.8)
+    box('buckle', V(0, -0.248, 0.465), axes, (0.02, 0.05, 0.042), M['trim'], 0.8)
 
 
 # Head --------------------------------------------------------------------------------------------
@@ -285,13 +292,13 @@ def beard():
     verts, faces, _ = loft(rings, closed=False)
     part('beard', verts, faces, M['beard'], inside=lambda c: V(0, -0.05, c.z))
 
-    # The two locks, splayed a little, ending in points below gold clasps.
+    # The two locks, splayed a little, ending in points below their clasps.
     for s in (-1, 1):
         points = [V(s * 0.072, -0.262, 0.73), V(s * 0.088, -0.29, 0.6), V(s * 0.1, -0.29, 0.47)]
         bent_tube(f'fork-{s}', points, [(0.068, 0.042), (0.058, 0.038), (0.042, 0.03)], M['beard'], n=5,
                   phase=90, end=V(s * 0.108, -0.278, 0.37))
         clasp = [V(s * 0.097, -0.29, 0.5), V(s * 0.1, -0.29, 0.455)]
-        bent_tube(f'clasp-{s}', clasp, [(0.05, 0.036), (0.048, 0.034)], M['gold'], n=5, phase=90)
+        bent_tube(f'clasp-{s}', clasp, [(0.05, 0.036), (0.048, 0.034)], M['trim'], n=5, phase=90)
 
     # A moustache in two sweeps from under the nose down into the locks.
     for s in (-1, 1):
@@ -322,7 +329,7 @@ def shield():
         (0.09, -0.046),  # foot of the boss
         (0.066, -0.094),  # shoulder of the boss
     ]
-    band_mats = [1, 1, 0, 1]  # team, steel
+    band_mats = [1, 1, 0, 1]  # team, trim
 
     def ring(r, y):
         angles = (math.tau * (i + 0.5) / n for i in range(n))
@@ -339,7 +346,7 @@ def shield():
     if newell([verts[i] for i in faces[-2]]).y > 0:  # the boss's tip must face outwards
         faces = [tuple(reversed(f)) for f in faces]
     verts = [SHIELD_CENTRE + SHIELD_TURN @ v for v in verts]
-    part('shield', verts, faces, [M['team'], M['steel'], M['wood']], face_mats)
+    part('shield', verts, faces, [M['team'], M['trim'], M['wood']], face_mats)
 
 
 # Mattock, held across his body in both hands, ready to slam ----------------------------------------
@@ -370,7 +377,7 @@ def mattock():
     along = HAFT
     butt, top = R_FIST + BUTT_AT * along, R_FIST + (HEAD_AT + 0.08) * along
     tube('haft', butt, top, [(0, 0.032), (1, 0.029)], M['wood'])
-    tube('butt', butt - 0.035 * along, butt + 0.05 * along, [(0, 0.042), (1, 0.038)], M['iron'], n=6)
+    tube('butt', butt - 0.035 * along, butt + 0.05 * along, [(0, 0.042), (1, 0.038)], M['trim'], n=6)
 
     # The head, square across the haft in the plane of his front, its blade turned a little forward
     # (HEAD_TURN): a broad blade out and down to his left, a heavy hammer up towards his head, which
@@ -380,7 +387,7 @@ def mattock():
     out = (Matrix.Rotation(math.radians(HEAD_TURN), 3, along) @ out).normalized()
     depth = along.cross(out)
     block('socket', centre - 0.085 * along, centre + 0.085 * along, out, depth,
-          (0.055, 0.052), (0.055, 0.052), M['iron'])
+          (0.055, 0.052), (0.055, 0.052), M['trim'])
     block('blade', centre + 0.045 * out, centre + 0.27 * out, along, depth,
           (0.06, 0.042), (0.125, 0.01), M['steel'])
     block('hammer', centre - 0.045 * out, centre - 0.2 * out, along, depth,
