@@ -16,6 +16,12 @@ The team colour is the shield's face and his short cloak, a mantle over the shou
 down his back to the hips. From behind, his crested helm, his hair falling over the mantle, the
 spear and the shield's rim show round and above it.
 
+His fittings, the helm's band, the shield's boss, the belt buckle, the spear's socket and the two
+round brooches that pin his cloak on his shoulders, use `trim`, which the client colours iron,
+silver or gold by star level (docs/viewer-spec.md section 4, "Star levels"); from behind, the band,
+the brooches and the socket show it. The sun on his shield stays gilt. His 2★ model is hama-2.py and
+his 3★ model hama-3.py.
+
     blender --background --factory-startup --python-exit-code 1 --python hama.py [-- <out.glb>]
 
 Coordinates are Blender's: z up, the model faces -Y, so his right hand, on the spear, is at -X.
@@ -52,6 +58,7 @@ from kit import (  # noqa: E402
     part,
     reset,
     team_material,
+    trim_material,
     tube,
     wind,
 )
@@ -76,9 +83,11 @@ def make_materials():
         tunic=material('tunic', TUNIC, roughness=0.9),
         leather=material('leather', LEATHER, roughness=0.85),
         boots=material('boots', BOOTS, roughness=0.9),
-        brass=material('brass', BRASS, roughness=0.55, metallic=0.1),
+        gilt=material('gilt', BRASS, roughness=0.55, metallic=0.1),  # the sun blazoned on his shield
         wood=material('wood', WOOD, roughness=0.85),
         eyes=material('eyes', EYES, roughness=0.6),
+        # Fittings: the renderer recolours this iron, silver or gold by star level.
+        trim=trim_material(),
     )
 
 
@@ -147,17 +156,18 @@ def legs():
 # Body --------------------------------------------------------------------------------------------
 
 # The long mail coat as a barrel of octagons from the hem at his knees to the neck: z, half-width,
-# half-depth and centre y. The belt is the band between the third and fourth rings.
+# half-depth and centre y. The belt is the band between the third and fourth rings. Above the chest
+# the coat is hidden under the mantle, so it runs straight to the neck.
 COAT = [
     (0.40, 0.262, 0.228, 0.01),  # the hem, flared round the knees
     (0.665, 0.208, 0.156, 0.0),  # hips
     (0.705, 0.2, 0.15, -0.004),  # belt, lower edge
     (0.765, 0.206, 0.154, -0.004),  # belt, upper edge
-    (0.885, 0.248, 0.17, -0.008),  # chest
-    (0.965, 0.238, 0.15, 0.0),  # shoulders
+    (0.885, 0.248, 0.17, -0.008),  # chest, inside the mantle's hem
     (1.0, 0.08, 0.074, 0.01),  # neck
 ]
-COAT_BANDS = [0, 0, 1, 0, 0, 0]  # mail, except the belt
+COAT_BANDS = [0, 0, 1, 0, 0]  # mail, except the belt
+BUCKLE = V(0, -0.152, 0.735)  # on the flat front of the belt
 
 
 def coat():
@@ -174,6 +184,8 @@ def coat():
         faces.append((i, (i + 1) % 8, len(verts) - 1))
         face_mats.append(2)
     part('coat', verts, faces, [M['mail'], M['leather'], M['tunic']], face_mats, inside=lambda c: V(0, 0, c.z))
+    # The belt buckle, its face smaller than its back so the edges read as a bevel.
+    box('buckle', BUCKLE, [V(0, -1, 0), V(1, 0, 0), V(0, 0, 1)], (0.014, 0.036, 0.032), M['trim'], 0.75)
 
 
 # Head --------------------------------------------------------------------------------------------
@@ -249,7 +261,7 @@ def beard():
     part('beard', verts, faces, M['hair'], inside=lambda c: V(0, -0.02, c.z + 0.03))
 
 
-# A tall helm of eight facets, round-shouldered, on a brass band: z and radius from the brim up.
+# A tall helm of eight facets, round-shouldered, on a band: z and radius from the brim up.
 HELM = [(1.232, 0.152), (1.282, 0.152), (1.36, 0.132), (1.41, 0.084)]
 HELM_TOP = V(0, 0, 1.434)
 
@@ -262,7 +274,7 @@ def helm():
     verts.append(HELM_TOP)
     faces += [(last + i, last + (i + 1) % 8, len(verts) - 1) for i in range(8)]
     face_mats += [1] * 8
-    part('helm', verts, faces, [M['brass'], M['steel']], face_mats, inside=V(0, 0, 1.26))
+    part('helm', verts, faces, [M['trim'], M['steel']], face_mats, inside=V(0, 0, 1.26))
 
     # Cheek-guards hanging from the brim beside his face.
     for s in (-1, 1):
@@ -345,6 +357,15 @@ def mantle():
     verts, faces, _ = loft([hem, shoulder, dome, neck])
     part('mantle', verts, faces, M['team'], inside=V(0, 0.01, 0.88))
 
+    # A round brooch on top of each shoulder, pinning the cape to the mantle: a low six-sided boss
+    # on the slope between the dome and the shoulder, facing up and out, so it shows from in front,
+    # from behind and from above.
+    for s, i in ((1, 0), (-1, 4)):
+        top, edge = dome[i], shoulder[i]
+        normal = V(s * (top.z - edge.z), 0, abs(edge.x - top.x)).normalized()
+        at = top.lerp(edge, 0.45)
+        cone(f'brooch-{s}', at - 0.004 * normal, at + 0.016 * normal, 0.03, M['trim'], n=6, back=None)
+
 
 def cape():
     # Down his back to the hips, so the long mail coat shows below it. Each level: z at the middle
@@ -399,7 +420,7 @@ SHIELD_CENTRE = V(0.235, -0.3, 0.78)
 SHIELD_TURN = Matrix.Rotation(math.radians(16), 3, 'Z') @ Matrix.Rotation(math.radians(-8), 3, 'X')
 SHIELD_SIDES = 12
 # The profile turned round the shield's axis, from its outer edge over the rim, down the
-# team-coloured face to the brass boss: radius and y (forward is -y). The wooden boards close the
+# team-coloured face to the boss: radius and y (forward is -y). The wooden boards close the
 # back at the outer edge.
 SHIELD_PROFILE = [
     (0.288, 0.012),  # the outer edge, round the wooden boards
@@ -407,7 +428,7 @@ SHIELD_PROFILE = [
     (0.08, -0.044),  # the foot of the boss
     (0.058, -0.092),  # the shoulder of the boss
 ]
-SHIELD_BANDS = [1, 0, 2]  # steel rim, team face, brass boss
+SHIELD_BANDS = [1, 0, 2]  # steel rim, team face, the boss in trim
 SUN_RAYS = 8
 
 
@@ -432,7 +453,7 @@ def shield():
     if newell([verts[i] for i in faces[-2]]).y > 0:  # the boss's tip must face forward
         faces = [tuple(reversed(f)) for f in faces]
     placed = [SHIELD_CENTRE + SHIELD_TURN @ v for v in verts]
-    part('shield', placed, faces, [M['team'], M['steel'], M['brass'], M['wood']], face_mats)
+    part('shield', placed, faces, [M['team'], M['steel'], M['trim'], M['wood']], face_mats)
 
     # The sun blazoned on its face: long and short rays round the boss, laid on the face's planes.
     plane = []
@@ -455,7 +476,7 @@ def shield():
         verts += [on_face(0.082, a - spread), on_face(reach, a), on_face(0.082, a + spread)]
         faces.append((3 * k, 3 * k + 1, 3 * k + 2))
     placed = [SHIELD_CENTRE + SHIELD_TURN @ v for v in verts]
-    flat('sun', placed, faces, M['brass'], SHIELD_TURN @ V(0, -1, 0))
+    flat('sun', placed, faces, M['gilt'], SHIELD_TURN @ V(0, -1, 0))
 
     # His left arm comes forward to the grip behind the boss.
     fist = SHIELD_CENTRE + SHIELD_TURN @ V(0, 0.055, 0)
@@ -474,7 +495,7 @@ def spear(fist):
     tube('shaft', SPEAR_BUTT + 0.06 * along, top, [(0, 0.02), (1, 0.018)], M['wood'])
     # A steel shoe on the butt, standing on the ground.
     cone('shoe', SPEAR_BUTT + 0.075 * along, SPEAR_BUTT, 0.025, M['steel'], n=4, phase=45)
-    # A long leaf-shaped head on a brass socket.
+    # A long leaf-shaped head on a socket.
     u, v = frame(along)
     stations = [(0.0, 0.024, 0.024), (0.055, 0.022, 0.022), (0.115, 0.056, 0.022), (0.22, 0.036, 0.016)]
     rings = []
@@ -486,7 +507,7 @@ def spear(fist):
     verts.append(point)
     faces += [(last + i, last + (i + 1) % 4, len(verts) - 1) for i in range(4)]
     face_mats = [0 if b == 0 else 1 for b in bands] + [1] * 4
-    part('spearhead', verts, faces, [M['brass'], M['steel']], face_mats,
+    part('spearhead', verts, faces, [M['trim'], M['steel']], face_mats,
          inside=nearest_on_polyline([top, point]))
     arm('right', LEANING @ R_SHOULDER, LEANING @ R_ELBOW, fist, along)
 
