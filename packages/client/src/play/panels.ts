@@ -26,7 +26,7 @@ export function renderCouncil(flow: PlayFlow, now: number): void {
   const picks = c.options.map((_, option) => flow.check({ type: 'pick', option }).ok);
   const picking = picks.includes(true);
   const status = element('council-status');
-  const waitingFor = (c.groups[c.group] ?? []).filter((seat) => seat !== flow.you).map((seat) => flow.seatName(seat));
+  const waitingFor = flow.councilWaiting().map((seat) => flow.seatName(seat));
   rebuild(status, JSON.stringify([picking, waitingFor]), () =>
     picking
       ? [icon('council'), el('strong', '', 'Your turn'), el('span', '', 'Pick a unit and what it brings.')]

@@ -10,7 +10,7 @@ import { GIFTS, type GiftId } from '../src/data/gifts.js';
 import { RING } from '../src/data/ring.js';
 import { fromPlacement } from '../src/hex.js';
 import type { Team } from '../src/types.js';
-import { BOARDS, placed } from './helpers.js';
+import { placed } from './helpers.js';
 
 let nextId = 0;
 
@@ -112,10 +112,18 @@ describe('team trait counts', () => {
   });
 
   it("give exactly the levels a fight's teams start with", () => {
-    const gifts: GiftId[][] = [[], ['shire-folk'], ['captains-horn', 'guard-of-the-citadel'], ['wizards-hat', 'burglars-contract', 'horse-lords']];
-    const boards = [...Object.values(BOARDS), [placed('ringwraith', 3, 2), placed('theoden', 4, 3, 1, ['ring-of-the-nine']), placed('gimli', 2, 3, 1, ['ring-of-the-nine'])]];
-    for (const board of boards) {
-      for (const g of gifts) expect(traitLevelsOf(teamTraitCounts(board, g))).toEqual(teamSetup(board, g).traits);
+    // Théoden and Gimli wear the Nine, so with the Ringwraith three count as Nazgûl: its second level.
+    const nine = [placed('ringwraith', 3, 2), placed('theoden', 4, 3, 1, ['ring-of-the-nine']), placed('gimli', 2, 3, 1, ['ring-of-the-nine'])];
+    const cases: [GiftId[], Record<string, number>][] = [
+      [[], { nazgul: 1 }],
+      // Théoden's Captain and Gimli's Guardian reach their first level with a crest each.
+      [['captains-horn', 'guard-of-the-citadel'], { nazgul: 1, captain: 0, guardian: 0 }],
+      // A crest for a trait the team doesn't have adds nothing.
+      [['shire-folk'], { nazgul: 1 }],
+    ];
+    for (const [gifts, levels] of cases) {
+      expect(teamSetup(nine, gifts).traits).toEqual(levels);
+      expect(traitLevelsOf(teamTraitCounts(nine, gifts))).toEqual(levels);
     }
     expect(traitLevelsOf({ hobbit: 1, elf: 4, dwarf: 3, ent: 1 })).toEqual({ elf: 1, dwarf: 1, ent: 0 });
   });
