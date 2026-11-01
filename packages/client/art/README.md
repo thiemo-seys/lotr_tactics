@@ -1,6 +1,6 @@
 # Models
 
-The game's 3D models of units, monsters and summons, in the Faceted style (`docs/viewer-spec.md` section 4). Each model is a Blender 4.5 LTS script that exports a glTF binary to `packages/client/public/models/<id>.glb`, named by its id in `packages/sim`. The scripts are the source. The `.glb` files are committed, because CI and other machines don't have Blender. The client doesn't load them yet.
+The game's 3D models of units, monsters and summons, in the Faceted style (`docs/viewer-spec.md` section 4). Each model is a Blender 4.5 LTS script that exports a glTF binary to `packages/client/public/models/<id>.glb`, named by its id in `packages/sim`. The scripts are the source. The `.glb` files are committed, because CI and other machines don't have Blender. The client loads them (`src/models.ts`), with a 2★ `<id>-2.glb` and a 3★ `<id>-3.glb` when they exist (`star-study/`, `docs/viewer-spec.md` section 4).
 
 - `kit.py`: what the models share: the team colour, the budgets, the shared palette, materials, the geometry helpers, and `finish()`, which joins, checks and exports a model.
   - Besides straight tubes and boxes, its helpers build bent forms such as limbs, tails, staves, braids and bows (`bent_tube()` on `path_rings()`, wound with `nearest_on_polyline()`), points such as spikes, claws, tines and pommels (`cone()`), and rough rocks and clumps of leaves (`lump()`); and they pose parts built upright: `lean()` forward, `turn()` sideways and `stoop()`, a bend that grows with height.

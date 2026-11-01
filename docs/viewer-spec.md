@@ -40,6 +40,8 @@ packages/client/
     layout.ts      hex and bench positions, and finding the place under a point
     playback.ts    stepping the fight and what to draw at a moment (no Three.js, no DOM)
     scene.ts       Three.js scene, units, the planning view, and the marker where a drag would drop
+    models.ts      loading unit models, dressing a copy per unit, and the base under it
+    stars.ts       which model, scale, label height and colours a star level gets (no Three.js, no DOM)
     units.ts       names and sizes of units, monsters and summons
     items.ts       item and Ring of Power colours, and what each item is and does, from the item data
     gifts.ts       Gift tiers and effects from the Gift data
@@ -67,7 +69,7 @@ packages/client/
   test/
 ```
 
-- flow.ts, playback.ts and the modules from units.ts to log.ts use neither Three.js nor the DOM, so they are tested (section 7). scene.ts and the modules in ui/ and play/ draw what those work out, and are checked in a browser.
+- flow.ts, playback.ts, stars.ts and the modules from units.ts to log.ts use neither Three.js nor the DOM, so they are tested (section 7). scene.ts, models.ts and the modules in ui/ and play/ draw what those work out, and are checked in a browser.
 - **Look:** both pages share one design system in style.css: a deep slate background with gold accents; tokens for colours, spacing, radii, shadows and motion; buttons (primary, secondary, ghost, danger and icon-only), fields, panels and chips. Headings use Cinzel and everything else Inter, both bundled from `@fontsource` packages, so the built client needs nothing from the network. Text has a contrast of at least 4.5:1, focus shows a gold ring, and motion stops when the system asks for reduced motion.
 - **Icons:** inline SVGs from icons.ts, all drawn on one 24-unit grid with a rounded stroke in `currentColor`. Each trait and item component has its own icon, keyed by its id, so a new one fails the typecheck until it has an icon. Icons next to text are hidden from screen readers; buttons with only an icon have a label.
 - **Tooltips:** hovering or focusing anything with a tip shows one card for it (ui/tooltip.ts), laid out from tips.ts: an icon, name and subtitle, a recipe, stats, effects, a trait's breakpoints, a key, and a hint or the reason a button can't be used. It stays on screen, follows chips on moving units, never takes the mouse, and hides while something is dragged. Buttons that can't be used now are marked `aria-disabled` rather than disabled, so they can still say why.
@@ -85,7 +87,7 @@ packages/client/
 
 ## 4. Units
 
-- **Body:** the unit's model (below), with its `team` material in its team's colour. A unit without a model, or whose model hasn't loaded, is a low-poly pawn in its team's colour; Large pawns are drawn bigger. Summons are smaller and have no name.
+- **Body:** the unit's model (below; `public/models/` lists them when the client is built, so a missing one is never requested), with its `team` material in its team's colour. A unit without a model, or whose model hasn't loaded, is a low-poly pawn in its team's colour; Large pawns are drawn bigger. Summons are smaller and have no name.
 - **Overlay** above each unit (ui/labels.ts):
   - a name plate with star pips: one bronze pip at 1★, two silver at 2★ and three gold at 3★; summons have no pips, and those without a name no plate
   - its items as chips, each naming its effect when hovered, and the One Ring with its Corruption on the Ring's bearer
@@ -177,6 +179,7 @@ The parts without Three.js are tested with Vitest:
 - item and Ring of Power colours and descriptions, Gift descriptions, and the One Ring's;
 - the icons: every trait, item component, Gift tier, round type and label status has one, each trait and component its own;
 - trait text and the trait tracker's rows;
-- tooltip content, the HUD's values, the players list's rows, a round's results and the timer.
+- tooltip content, the HUD's values, the players list's rows, a round's results and the timer;
+- the model a star level uses, falling back to the level below, its scale within the hex and its label height.
 
 The Three.js scene and the pages are checked by building them and looking at them in a browser.
