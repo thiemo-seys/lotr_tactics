@@ -40,6 +40,7 @@ Online play (`docs/server-spec.md`), lobbies with bots in the empty seats, is in
 - Game numbers live in data files (`packages/sim/src/data/`), not hard-coded in logic. All numbers are placeholders until balancing.
 - In data, percentages and multipliers are whole-number percents (25 for 25%, 70 for 0.7 D) and durations are in seconds (`docs/sim-spec.md` section 4).
 - When a rule or number changes, update `docs/design.md` (and `docs/sim-spec.md` if it affects the sim) in the same change.
+- The backlog is the repository's GitHub issues. Each has one stage label (`stage:design`, `stage:spec`, `stage:build`, `stage:audit`, `stage:playtest`, `stage:balance`), one or more area labels (`area:sim`, `area:client`, `area:server`, `area:art`, `area:docs`, `area:tooling`), `decision` if it waits on the owner, `parked` if it's left for later, and a `Blocked by: #n` line in its body for each issue it waits on. Every pull request names its issue with `Closes #n` in its body.
 
 ## When reviewing
 
@@ -77,5 +78,6 @@ Subagents in `.claude/agents/`, each with its own area. They start without this 
 - `server-engineer`: `packages/server`.
 - `determinism-auditor`: reviews sim and browser-safe server changes for anything that breaks determinism; read-only.
 - `playtester`: plays the game in a browser and reports bugs; changes no code.
+- `producer`: reports where the project stands, from the issues, pull requests, CI, Claude sessions and docs: what's in flight or stuck, ready, waiting on a decision, or parked. Lays out the options without ranking them, and proposes issues for work that has none; changes nothing.
 
 A new feature usually goes: game-designer, then design-keeper to check the docs, then spec-test-writer and the engineers for each package, with low-poly-artist for anything new on screen, then determinism-auditor and playtester, then balance-analyst.
