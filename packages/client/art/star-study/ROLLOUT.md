@@ -25,21 +25,20 @@ Every model passes `finish()` and keeps the Faceted rules:
 - it is drawn from the books, not the films;
 - no Ring is shown.
 
-The kit needs `GEAR_BUDGET` and `BOOK_BUDGET` beside the existing budgets, and `pnpm models` must also build the `-2` and `-3` scripts.
-
 ## Order
 
-1. **Kit and the three study units.**
-   - Add the budgets and `trim` to the kit and `mounts.py`.
-   - Move `star-study/{frodo,aragorn,eomer}{,-3}.py` and `aragorn-2.py` into `units/`.
-   - Add gear for Frodo and Éomer.
+1. **Kit and the three study units** (done, in the star-level pull request).
+   - `kit.py` has `GEAR_BUDGET`, `BOOK_BUDGET` and their mounted and Large versions, and `trim_material()`. `finish()` warns when a model has no `trim`.
+   - `mounts.py` makes the horse's browband `trim`.
+   - `pnpm models <id>` builds a unit's `-2` and `-3` scripts too.
+   - Frodo, Aragorn and Éomer are in `units/` from the study: trim on all three, Aragorn's gear, and the three book models. Frodo's and Éomer's gear come with the rest.
 2. **The rest by cost, cheapest first**, because 1-costs reach 3★ most often. 5-costs come last: a 3★ 5-cost takes all 9 copies.
 
 | Cost | Units |
 |---|---|
 | 1 | Beregond, Gorbag, Grishnákh, Háma, Merry, Pippin, Sam, Sharku |
-| 2 | Balin, Faramir, Gamling, Haldir, Lurtz, Radagast, Ringwraith (Frodo in step 1) |
-| 3 | Bilbo, Boromir, Éowyn, Gimli, Gollum, Khamûl, Uglúk (Éomer in step 1) |
+| 2 | Balin, Faramir, Frodo (gear only), Gamling, Haldir, Lurtz, Radagast, Ringwraith |
+| 3 | Bilbo, Boromir, Éomer (gear only), Éowyn, Gimli, Gollum, Khamûl, Uglúk |
 | 4 | Dáin, Elrond, Gothmog, Legolas, Saruman, Théoden (Aragorn in step 1) |
 | 5 | Galadriel, Gandalf, Sauron, Treebeard, Witch-king |
 
@@ -51,6 +50,6 @@ Book moments the owner has already seen:
 
 ## How to run it
 
-Run one low-poly-artist agent per unit, each doing all three steps for its unit and checking them with `preview.py` and `board.mjs --stars` (copy `options/chosen.json` and point it at the unit). Run them as a workflow like the roster's, two at a time.
+Run one low-poly-artist agent per unit, each doing all three steps for its unit in its own git worktree and branch, `claude/stars-<id>`, and checking them with `preview.py` and `board.mjs --stars` (copy `options/chosen.json` and point it at the unit). Run two at a time.
 
-On the roster each agent used 300k to 370k tokens, and nine at once hit the plan's 5-hour limit. With 33 units plus step 1, two at a time is about 17 rounds, overnight or longer. Each unit is its own draft pull request, as the roster's were.
+On the roster each agent used 300k to 370k tokens, and nine at once hit the plan's 5-hour limit. With 33 units plus step 1, two at a time is about 17 rounds, overnight or longer. Each unit is its own draft pull request, as the roster's were. It touches only that unit's scripts and models, so they can be merged in any order. Until the star-level pull request is merged, they are based on it; after it, on `main`. The units table in `art/README.md` is filled in once at the end, so the unit pull requests don't conflict over it.

@@ -156,7 +156,7 @@ A unit's star level shows four ways at once, chosen from a study of Frodo, Arago
 ## 6. Controls
 
 - **Fight:** team A board, team B board, seed, stage, and a New fight button.
-  - Presets: duel, tanks, archers, mixed, full, items (all 21 combined items), ring (a One Ring bearer), rings (the Three, the Seven and the Nine), traits.
+  - Presets: duel, tanks, archers, mixed, full, items (all 21 combined items), ring (a One Ring bearer), rings (the Three, the Seven and the Nine), stars (Frodo, Aragorn and Éomer at 1★, 2★ and 3★, for star levels on models), traits.
   - Random: 7 units with star levels from 1 to 3 and up to 3 random items each, placed at random on their half, from the seed and the team.
 - **Playback:**
   - Play/pause, an icon button that the space bar also toggles.

@@ -8,47 +8,58 @@ The game's 3D models of units, monsters and summons, in the Faceted style (`docs
 - `preview.py`: renders a model with Cycles for review, in both team colours and from every side.
 - `units/`: one script per unit, named by its id. Gimli (`gimli.py`) is the reference model, and each people has one that the others follow: Frodo for Hobbits, Legolas for Elves, Aragorn for Gondor, Éomer for Rohan, Gandalf for the Istari, Gorbag for Orcs and the Ringwraith for the Nazgûl.
 - `style-study/`: the study that chose the style, kept as it was.
+- `star-study/`: the study that chose how star levels show, with its comparison page, kept as it was; [`star-study/ROLLOUT.md`](star-study/ROLLOUT.md) plans the 2★ and 3★ models for every unit.
+
+## Star levels
+
+A unit shows its star level on its model (`docs/viewer-spec.md` section 4, "Star levels"), so each unit has up to three scripts:
+
+- `units/<id>.py`, its 1★ model. Its fittings, such as buckles, clasps, sword guards and the horse's browband, use `trim_material()`, which the client colours iron, silver or gold by star level.
+- `units/<id>-2.py`, its 2★ model: the 1★ with one piece of gear added, such as Aragorn's shoulder plates. Its budget is `GEAR_BUDGET` (900), `MOUNTED_GEAR_BUDGET` (1,350) or `LARGE_GEAR_BUDGET` (2,250).
+- `units/<id>-3.py`, its 3★ model, the book moment: the unit as itself at its height in the books, such as Frodo in the mithril coat, King Elessar or Éomer King. Its budget is `BOOK_BUDGET` (1,000), `MOUNTED_BOOK_BUDGET` (1,500) or `LARGE_BOOK_BUDGET` (2,500).
+
+Until a unit has them, the client uses the level below. Frodo, Aragorn and Éomer are the references, from the study.
 
 ## Units
 
-| Unit | People | Script | Triangles | Budget |
-|---|---|---|---|---|
-| Bilbo | Hobbit | `units/bilbo.py` | 749 | 800 |
-| Frodo | Hobbit | `units/frodo.py` | 716 | 800 |
-| Gollum | Hobbit | `units/gollum.py` | 740 | 800 |
-| Merry | Hobbit | `units/merry.py` | 770 | 800 |
-| Pippin | Hobbit | `units/pippin.py` | 696 | 800 |
-| Sam | Hobbit | `units/sam.py` | 791 | 800 |
-| Elrond | Elf | `units/elrond.py` | 620 | 800 |
-| Galadriel | Elf | `units/galadriel.py` | 577 | 800 |
-| Haldir | Elf | `units/haldir.py` | 706 | 800 |
-| Legolas | Elf | `units/legolas.py` | 628 | 800 |
-| Balin | Dwarf | `units/balin.py` | 747 | 800 |
-| Dáin | Dwarf | `units/dain.py` | 765 | 800 |
-| Gimli | Dwarf | `units/gimli.py` | 793 | 800 |
-| Aragorn | Gondor | `units/aragorn.py` | 746 | 800 |
-| Beregond | Gondor | `units/beregond.py` | 793 | 800 |
-| Boromir | Gondor | `units/boromir.py` | 784 | 800 |
-| Faramir | Gondor | `units/faramir.py` | 670 | 800 |
-| Éomer | Rohan | `units/eomer.py` | 1,177 | 1,200 |
-| Éowyn | Rohan | `units/eowyn.py` | 764 | 800 |
-| Gamling | Rohan | `units/gamling.py` | 1,195 | 1,200 |
-| Háma | Rohan | `units/hama.py` | 790 | 800 |
-| Théoden | Rohan | `units/theoden.py` | 1,177 | 1,200 |
-| Gandalf | Istari | `units/gandalf.py` | 705 | 800 |
-| Radagast | Istari | `units/radagast.py` | 781 | 800 |
-| Saruman | Istari | `units/saruman.py` | 685 | 800 |
-| Gorbag | Orc | `units/gorbag.py` | 672 | 800 |
-| Gothmog | Orc | `units/gothmog.py` | 694 | 800 |
-| Grishnákh | Orc | `units/grishnakh.py` | 639 | 800 |
-| Lurtz | Orc | `units/lurtz.py` | 696 | 800 |
-| Sharku | Orc | `units/sharku.py` | 1,105 | 1,200 |
-| Uglúk | Orc | `units/ugluk.py` | 728 | 800 |
-| Khamûl | Nazgûl | `units/khamul.py` | 1,102 | 1,200 |
-| Ringwraith | Nazgûl | `units/ringwraith.py` | 511 | 800 |
-| Witch-king | Nazgûl | `units/witch-king.py` | 1,176 | 1,200 |
-| Treebeard | Ent | `units/treebeard.py` | 1,659 | 2,000 |
-| Sauron | Dark Lord | `units/sauron.py` | 1,164 | 2,000 |
+| Unit | People | Script | Triangles | Budget | 2★ | 3★ |
+|---|---|---|---|---|---|---|
+| Bilbo | Hobbit | `units/bilbo.py` | 749 | 800 | — | — |
+| Frodo | Hobbit | `units/frodo.py` | 754 | 800 | — | 918 |
+| Gollum | Hobbit | `units/gollum.py` | 740 | 800 | — | — |
+| Merry | Hobbit | `units/merry.py` | 770 | 800 | — | — |
+| Pippin | Hobbit | `units/pippin.py` | 696 | 800 | — | — |
+| Sam | Hobbit | `units/sam.py` | 791 | 800 | — | — |
+| Elrond | Elf | `units/elrond.py` | 620 | 800 | — | — |
+| Galadriel | Elf | `units/galadriel.py` | 577 | 800 | — | — |
+| Haldir | Elf | `units/haldir.py` | 706 | 800 | — | — |
+| Legolas | Elf | `units/legolas.py` | 628 | 800 | — | — |
+| Balin | Dwarf | `units/balin.py` | 747 | 800 | — | — |
+| Dáin | Dwarf | `units/dain.py` | 765 | 800 | — | — |
+| Gimli | Dwarf | `units/gimli.py` | 793 | 800 | — | — |
+| Aragorn | Gondor | `units/aragorn.py` | 746 | 800 | 874 | 962 |
+| Beregond | Gondor | `units/beregond.py` | 793 | 800 | — | — |
+| Boromir | Gondor | `units/boromir.py` | 784 | 800 | — | — |
+| Faramir | Gondor | `units/faramir.py` | 670 | 800 | — | — |
+| Éomer | Rohan | `units/eomer.py` | 1,177 | 1,200 | — | 1,267 |
+| Éowyn | Rohan | `units/eowyn.py` | 764 | 800 | — | — |
+| Gamling | Rohan | `units/gamling.py` | 1,195 | 1,200 | — | — |
+| Háma | Rohan | `units/hama.py` | 790 | 800 | — | — |
+| Théoden | Rohan | `units/theoden.py` | 1,177 | 1,200 | — | — |
+| Gandalf | Istari | `units/gandalf.py` | 705 | 800 | — | — |
+| Radagast | Istari | `units/radagast.py` | 781 | 800 | — | — |
+| Saruman | Istari | `units/saruman.py` | 685 | 800 | — | — |
+| Gorbag | Orc | `units/gorbag.py` | 672 | 800 | — | — |
+| Gothmog | Orc | `units/gothmog.py` | 694 | 800 | — | — |
+| Grishnákh | Orc | `units/grishnakh.py` | 639 | 800 | — | — |
+| Lurtz | Orc | `units/lurtz.py` | 696 | 800 | — | — |
+| Sharku | Orc | `units/sharku.py` | 1,105 | 1,200 | — | — |
+| Uglúk | Orc | `units/ugluk.py` | 728 | 800 | — | — |
+| Khamûl | Nazgûl | `units/khamul.py` | 1,102 | 1,200 | — | — |
+| Ringwraith | Nazgûl | `units/ringwraith.py` | 511 | 800 | — | — |
+| Witch-king | Nazgûl | `units/witch-king.py` | 1,176 | 1,200 | — | — |
+| Treebeard | Ent | `units/treebeard.py` | 1,659 | 2,000 | — | — |
+| Sauron | Dark Lord | `units/sauron.py` | 1,164 | 2,000 | — | — |
 
 ## Building a model
 
@@ -56,7 +67,7 @@ The game's 3D models of units, monsters and summons, in the Faceted style (`docs
 blender --background --factory-startup --python-exit-code 1 --python packages/client/art/units/gimli.py
 ```
 
-This writes `packages/client/public/models/gimli.glb`. Add `-- <out.glb>` to write it somewhere else. `pnpm models` rebuilds every unit, and `pnpm models gimli frodo` only those; the builds are reproducible, so rebuilding an unchanged script leaves its `.glb` as it was. `finish()` fails a model over its triangle budget, without a `team` material, with an image texture or with a material more metallic than 0.15. It warns when the model doesn't stand on the origin or reaches outside its hex.
+This writes `packages/client/public/models/gimli.glb`. Add `-- <out.glb>` to write it somewhere else. `pnpm models` rebuilds every unit, and `pnpm models gimli frodo` only those, with their 2★ and 3★ models; the builds are reproducible, so rebuilding an unchanged script leaves its `.glb` as it was. `finish()` fails a model over its triangle budget, without a `team` material, with an image texture or with a material more metallic than 0.15. It warns when the model doesn't stand on the origin, reaches outside its hex or has no `trim` material.
 
 ## Previewing
 
@@ -65,3 +76,12 @@ blender --background --factory-startup --python-exit-code 1 --python packages/cl
 ```
 
 This writes a PNG for each view and `sheet.png` with all of them. Add `--quick` to render only the three-quarter view, and `--fit` to frame the model alone instead of in the box every model shares. Add `--culled` to draw every material single-sided, as three.js would if the client culled back faces: a face wound inside out, which the double-sided export hides, shows as a hole.
+
+## On the board
+
+```bash
+node packages/client/art/board.mjs /tmp/board/gimli packages/client/public/models/gimli.glb
+node packages/client/art/board.mjs /tmp/board/stars --stars <study.json> --unit=0
+```
+
+`board.mjs` renders models on the game's board with three.js in headless Chromium, with the client's camera, lights and team colours, so a model can be judged at the size it is played at. `--lineup` puts several side by side, and `--stars` lays a unit out at 1★, 2★ and 3★ with the base, growth, trim and labels the client gives it; `star-study/options/chosen.json` is an example. Its header lists the options.
