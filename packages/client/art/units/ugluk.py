@@ -16,6 +16,12 @@ a yoke over his shoulders and a panel down his chest and one down his back nearl
 belted at the waist and ragged at the hem. From behind, his ridged helm and pointed ears, the iron
 pauldrons, the sword and the strapped back of the shield show round and above it.
 
+His fittings use `trim`, which the client colours iron, silver or gold by star level
+(docs/viewer-spec.md section 4, "Star levels"): the binding round the shield's rim, the sword's guard
+and pommel, the belt buckle, the rivets on his pauldrons, three on each, and two studs on the back of
+his belt. The S-rune and the White Hand stay white: they are devices, not fittings. His 2★ model is
+ugluk-2.py and his 3★ model ugluk-3.py.
+
     blender --background --factory-startup --python-exit-code 1 --python ugluk.py [-- <out.glb>]
 
 Coordinates are Blender's: z up, the model faces -Y, so his right hand, with the sword, is at -X.
@@ -52,6 +58,7 @@ from kit import (  # noqa: E402
     reset,
     segment,
     team_material,
+    trim_material,
     tube,
     wind,
 )
@@ -70,6 +77,7 @@ M = {}  # materials by name, made once the scene is reset
 def make_materials():
     M.update(
         team=team_material(),
+        trim=trim_material(),
         skin=material('skin', SKIN, roughness=0.85),
         hair=material('hair', HAIR, roughness=0.95),
         iron=material('iron', IRON, roughness=0.55, metallic=0.12),
@@ -239,12 +247,23 @@ def tabard():
     part('tabard', verts, faces, M['team'])
 
 
+def rivet(name, at, out, size=0.022, rise=0.018):
+    """A rivet's head: a low four-sided point standing `rise` proud of the surface at `at`, along
+    `out`, its foot just under the surface."""
+    out = Vector(out).normalized()
+    cone(name, at - 0.004 * out, at + rise * out, size, M['trim'], n=4, phase=45, back=None)
+
+
 def belt():
     rings = [ellipse(0, 0.02, z, 0.25, 0.2, 8, 22.5) for z in (0.675, 0.745)]
     verts, faces, _ = loft(rings)
     part('belt', verts, faces, M['leather'], inside=V(0, 0.02, 0.71))
     axes = [V(0, -1, 0), V(1, 0, 0), V(0, 0, 1)]
-    box('buckle', V(0, -0.188, 0.71), axes, (0.018, 0.045, 0.042), M['iron'], 0.75)
+    box('buckle', V(0, -0.188, 0.71), axes, (0.018, 0.045, 0.042), M['trim'], 0.75)
+    # Two studs on its back, where it crosses the tabard, so the trim shows from behind.
+    back = 0.02 + 0.2 * math.sin(math.radians(67.5))  # the flat back face of the octagon
+    for x in (-0.055, 0.055):
+        rivet(f'stud-{x}', V(x, back, 0.71), V(0, 1, 0), 0.024)
 
 
 SHOULDERS = {s: V(s * 0.29, 0.04, 0.975) for s in (-1, 1)}  # the middle of each pauldron, upright
@@ -259,10 +278,21 @@ def pauldron(s):
         angles = (math.tau * (i + 0.5) / 6 for i in range(6))
         return [c + tip @ V(rx * math.cos(a), ry * math.sin(a), z) for a in angles]
 
-    verts, faces, _ = loft([ring(0.182, 0.175, -0.07), ring(0.152, 0.148, 0.03)])
+    lower, upper = ring(0.182, 0.175, -0.07), ring(0.152, 0.148, 0.03)
+    verts, faces, _ = loft([lower, upper])
     verts.append(c + tip @ V(0, 0, 0.078))
     faces += [(6 + i, 6 + (i + 1) % 6, 12) for i in range(6)]
     part(f'pauldron-{s}', verts, faces, M['iron'], inside=c + tip @ V(0, 0, -0.08))
+    # Rivets on the shell, low on three of its faces: in front, outside and behind. Face k spans
+    # points k and k + 1, from 30 + 60k to 90 + 60k degrees round from +X.
+    for k in ((4, 5, 0) if s > 0 else (3, 2, 1)):
+        a, b = lower[k], lower[(k + 1) % 6]
+        p, q = upper[k], upper[(k + 1) % 6]
+        at = (a + b) * 0.32 + (p + q) * 0.18
+        out = (b - a).cross(p - a)
+        if out.dot(at - (c + tip @ V(0, 0, -0.08))) < 0:
+            out = -out
+        rivet(f'rivet-{s}-{k}', at, out, 0.027, 0.02)
     verts, faces, _ = loft([ring(0.195, 0.182, -0.145), ring(0.155, 0.15, -0.055)])
     part(f'lame-{s}', verts, faces, M['iron'], inside=c + tip @ V(0, 0, -0.1))
 
@@ -442,19 +472,19 @@ def on_shield(u, v, w):
 
 def shield():
     forward = SHIELD_TURN @ V(0, -1, 0)
-    # Its outline three times: the outer edge, the crest of the iron rim and the rim's inner edge.
+    # Its outline three times: the outer edge, the crest of the rim's binding and its inner edge.
     profile = [(1.0, -0.005), (0.985, 0.022), (0.9, 0.005)]
     rings = [[on_shield(k * u, k * v, w) for u, v in OUTLINE] for k, w in profile]
     verts, faces, _ = loft(rings)
     axis = nearest_on_line(SHIELD_CENTRE, SHIELD_CENTRE + forward)
     n = len(OUTLINE)
     faces = wind(verts, faces[:n], inside=axis) + wind(verts, faces[n:], outward=forward)
-    face_mats = [1] * (2 * n)
+    face_mats = [1] * (2 * n)  # the binding round its rim, in trim
     faces += wind(verts, [tuple(2 * n + i for i in s) for s in STRIPS], outward=forward)
     face_mats += [0] * len(STRIPS)
     faces += wind(verts, STRIPS, outward=-forward)
     face_mats += [2] * len(STRIPS)
-    part('shield', verts, faces, [M['team'], M['iron'], M['wood']], face_mats)
+    part('shield', verts, faces, [M['team'], M['trim'], M['wood']], face_mats)
 
     # Two iron straps across the boards on the back, following their curve.
     for v in (-0.17, 0.17):
@@ -490,8 +520,8 @@ def sword():
     flat = across.cross(d).normalized()  # square to the flat of the blade
     g = R_FIST
     tube('grip', g - 0.08 * d, g + 0.07 * d, [(0, 0.024), (1, 0.024)], M['leather'], n=4)
-    cone('pommel', g - 0.085 * d, g - 0.13 * d, 0.036, M['iron'], n=4, back=g - 0.065 * d)
-    box('guard', g + 0.08 * d, [d, across, flat], (0.018, 0.1, 0.03), M['iron'])
+    cone('pommel', g - 0.085 * d, g - 0.13 * d, 0.036, M['trim'], n=4, back=g - 0.065 * d)
+    box('guard', g + 0.08 * d, [d, across, flat], (0.018, 0.1, 0.03), M['trim'])
     # A diamond in section, broad and swelling a little before it narrows to the point.
     stations = [(0.09, 0.044, 0.013), (0.34, 0.054, 0.012), (0.45, 0.044, 0.009)]
     rings = [[g + t * d + w * across, g + t * d + k * flat, g + t * d - w * across, g + t * d - k * flat]
