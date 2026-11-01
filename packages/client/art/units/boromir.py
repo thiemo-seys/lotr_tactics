@@ -7,8 +7,8 @@ in the black and silver of Gondor: a black surcoat over a long mail coat, and st
 the books: a tall Man with a fair and noble face and dark hair, who wore a great horn tipped with
 silver on a baldric, and bore a long sword and a round shield. He is a Captain: he holds the great
 horn up in his left hand, ready to sound it, and his sword ready in his right, its point up and out.
-The round shield is slung on his back, black with a silver rim and boss, by a broad baldric of pale
-leather with a silver mount, which crosses his breast from his left hip and goes over his right
+The round shield is slung on his back, black with a metal rim and boss, by a broad baldric of pale
+leather with a metal mount, which crosses his breast from his left hip and goes over his right
 shoulder. The team colour is his cloak: a mantle over his shoulders, and a cloak down his back to his
 calves, under the shield.
 
@@ -16,6 +16,12 @@ Beside the other Men of Gondor he is the horn, the pale baldric and the round sh
 his sword high and a banner, Faramir is a hooded ranger with a bow, and Beregond has a winged helm and
 a tall shield. From behind, as the near side sees him, the black shield on the cloak and the horn
 held up beside his head tell him; from the front, the horn and the baldric across the mantle.
+
+His fittings, the shield's rim and boss, the horn's tip and bands, the sword's guard and pommel, the
+baldric's mount and the belt buckle, use `trim`, which the client colours iron, silver or gold by
+star level (docs/viewer-spec.md section 4, "Star levels"): from behind the shield's rim and boss show
+it, and from the front the mount, the buckle and the horn's bands. His 2★ model is boromir-2.py and
+his 3★ model boromir-3.py.
 
     blender --background --factory-startup --python-exit-code 1 --python boromir.py [-- <out.glb>]
 
@@ -51,6 +57,7 @@ from kit import (  # noqa: E402
     path_rings,
     reset,
     team_material,
+    trim_material,
     tube,
     wind,
 )
@@ -59,7 +66,6 @@ from kit import (  # noqa: E402
 SKIN = 0xD9A280  # fair
 HAIR = 0x3A2B22  # dark brown
 SABLE = 0x2B2B30  # the black of Gondor, as Aragorn's: his surcoat and the face of his shield
-SILVER = 0xE3E5E7  # the horn's tip and bands, the shield's rim and boss, the buckle and the mount
 IVORY = 0xD8C9A3  # the horn of a wild ox of Araw
 HOLLOW = 0x3B2E24  # the shadowed inside of its bell
 BUFF = 0xC4B59A  # the pale leather of the baldric
@@ -71,7 +77,6 @@ def make_materials():
     M.update(
         team=team_material(),
         sable=material('sable', SABLE, roughness=0.9),
-        silver=material('silver', SILVER, roughness=0.45, metallic=0.1),
         steel=material('steel', STEEL, roughness=0.5, metallic=0.1),
         mail=material('mail', MAIL, roughness=0.8, metallic=0.05),
         skin=material('skin', SKIN, roughness=0.85),
@@ -83,6 +88,8 @@ def make_materials():
         horn=material('horn', IVORY, roughness=0.6),
         hollow=material('hollow', HOLLOW, roughness=0.9),
         eyes=material('eyes', EYES, roughness=0.6),
+        # Fittings: the client recolours this iron, silver or gold by star level.
+        trim=trim_material(),
     )
 
 
@@ -158,7 +165,7 @@ def torso():
 
     # The belt buckle, its face smaller than its back so the edges read as a bevel.
     axes = [V(0, -1, 0), V(1, 0, 0), V(0, 0, 1)]
-    box('buckle', V(0, -0.142, 0.73), axes, (0.014, 0.032, 0.03), M['silver'], 0.75)
+    box('buckle', V(0, -0.142, 0.73), axes, (0.014, 0.032, 0.03), M['trim'], 0.75)
     return body
 
 
@@ -225,7 +232,7 @@ BALDRIC = [
 
 def baldric(bodies):
     verts = strap('baldric', BALDRIC, 0.028, M['baldric'], bodies)
-    # A silver mount on it over his right breast, between its seventh and eighth points: a lozenge, a
+    # A metal mount on it over his right breast, between its seventh and eighth points: a lozenge, a
     # little proud of it.
     a, b, c, d = verts[12:16]
     centre = (a + b + c + d) / 4
@@ -237,7 +244,7 @@ def baldric(bodies):
     centre += 0.004 * out
     verts = [centre + 0.04 * along, centre + 0.033 * side, centre - 0.04 * along, centre - 0.033 * side,
              centre + 0.008 * out]
-    part('mount', verts, [(0, 1, 4), (1, 2, 4), (2, 3, 4), (3, 0, 4)], M['silver'], outward=out)
+    part('mount', verts, [(0, 1, 4), (1, 2, 4), (2, 3, 4), (3, 0, 4)], M['trim'], outward=out)
 
 
 # Head --------------------------------------------------------------------------------------------
@@ -371,7 +378,7 @@ SHIELD_TURN = Matrix.Rotation(math.radians(SHIELD_TILT), 3, 'X') @ Matrix.Rotati
 
 def shield():
     # Built facing -Y round the origin, as one profile turned round the axis: from the edge, over the
-    # raised silver rim, down the black face to the silver boss, then turned to face behind him. The
+    # raised metal rim, down the black face to the metal boss, then turned to face behind him. The
     # rim is a ridge, so no one point is inside every face: the profile is wound as a whole instead.
     n = 10
     profile = [  # radius, y
@@ -381,7 +388,7 @@ def shield():
         (0.076, -0.04),  # foot of the boss
         (0.056, -0.086),  # shoulder of the boss
     ]
-    band_mats = [1, 1, 0, 1]  # sable, silver
+    band_mats = [1, 1, 0, 1]  # sable, trim
 
     def ring(r, y):
         angles = (math.tau * (i + 0.5) / n for i in range(n))
@@ -398,7 +405,7 @@ def shield():
     if newell([verts[i] for i in faces[-2]]).y > 0:  # the boss's tip must face outwards
         faces = [tuple(reversed(f)) for f in faces]
     verts = [SHIELD_CENTRE + SHIELD_TURN @ v for v in verts]
-    part('shield', verts, faces, [M['sable'], M['silver'], M['leather']], face_mats)
+    part('shield', verts, faces, [M['sable'], M['trim'], M['leather']], face_mats)
 
 
 # Arms --------------------------------------------------------------------------------------------
@@ -455,8 +462,8 @@ def sword():
     part('blade', verts, faces, M['steel'], inside=guard + 0.3 * along)
 
     # The cross-guard on top of his fist, and the pommel below it.
-    box('guard', guard, [along, across, thick], (0.017, 0.1, 0.022), M['steel'], 0.8)
-    cone('pommel', R_FIST - 0.085 * along, R_FIST - 0.125 * along, 0.03, M['steel'], n=4,
+    box('guard', guard, [along, across, thick], (0.017, 0.1, 0.022), M['trim'], 0.8)
+    cone('pommel', R_FIST - 0.085 * along, R_FIST - 0.125 * along, 0.03, M['trim'], n=4,
          back=R_FIST - 0.05 * along)
 
     arm('right', R_SHOULDER, R_FIST, R_POLE, along)
@@ -464,17 +471,17 @@ def sword():
 
 # The Horn of Gondor, raised in his left hand ------------------------------------------------------
 
-# Its centre line, a crescent from the silver-tipped mouthpiece, pointing in at his head, out through
+# Its centre line, a crescent from the metal-tipped mouthpiece, pointing in at his head, out through
 # his fist and up to the bell above his head, which opens upwards, inwards and forwards, towards the
 # fight: the control points of a cubic.
 HORN_CURVE = [V(0.3, -0.05, 1.18), V(0.56, -0.08, 1.12), V(0.72, -0.12, 1.4), V(0.58, -0.18, 1.64)]
 HORN = [  # how far along the curve, the radius, and the material of the band from there
-    (0.0, 0.022, 'silver'),  # the tip
+    (0.0, 0.022, 'trim'),  # the tip
     (0.08, 0.025, 'horn'),
     (0.3, 0.038, 'horn'),
-    (0.55, 0.054, 'silver'),  # a band
+    (0.55, 0.054, 'trim'),  # a band
     (0.62, 0.058, 'horn'),
-    (0.86, 0.08, 'silver'),  # the rim of the bell
+    (0.86, 0.08, 'trim'),  # the rim of the bell
     (1.0, 0.1, None),
 ]
 HORN_GRIP = 0.25  # where his fist holds it
@@ -492,9 +499,9 @@ def horn_at(t):
 def great_horn():
     points = [horn_at(t)[0] for t, _, _ in HORN]
     radii = [r for _, r, _ in HORN]
-    mats = ['silver', 'horn']
+    mats = ['trim', 'horn']
     band_mats = [mats.index(m) for _, _, m in HORN[:-1]]
-    bent_tube('horn', points, radii, [M['silver'], M['horn']], band_mats, n=6, start='cap')
+    bent_tube('horn', points, radii, [M['trim'], M['horn']], band_mats, n=6, start='cap')
 
     # The dark hollow of the bell: a shallow funnel inside the rim.
     bell, ahead = horn_at(1.0)
