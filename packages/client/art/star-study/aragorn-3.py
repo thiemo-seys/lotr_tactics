@@ -51,7 +51,10 @@ from kit import (  # noqa: E402
 SKIN = 0xCC9675  # weathered
 HAIR = 0x463E38  # dark, flecked with grey
 SABLE = 0x2B2B30  # the black of Gondor: his surcoat and his standard
-MITHRIL = 0xE3E5E7  # the Star of Elendil, its fillet, and the White Tree
+MITHRIL = 0xE3E5E7  # the crown's circlet, and the White Tree
+PEARL = 0xEFEBE1  # the white helm of the crown, and its wings
+SILVER = 0xC4C6C8  # the wings' primaries
+GEM = 0xF6F4EE  # the Elendilmir, and the crown's gems: white, adamant
 
 M = {}  # materials by name, made once the scene is reset
 
@@ -61,6 +64,9 @@ def make_materials():
         team=team_material(),
         sable=material('sable', SABLE, roughness=0.9),
         mithril=material('mithril', MITHRIL, roughness=0.45, metallic=0.1),
+        pearl=material('pearl', PEARL, roughness=0.35, metallic=0.05),
+        silver=material('silver', SILVER, roughness=0.4, metallic=0.15),
+        gem=material('gem', GEM, roughness=0.15, emission=GEM, emission_strength=0.6),
         steel=material('steel', STEEL, roughness=0.5, metallic=0.1),
         mail=material('mail', MAIL, roughness=0.8, metallic=0.05),
         skin=material('skin', SKIN, roughness=0.85),
@@ -270,35 +276,98 @@ def head():
     faces += [(0, 1, 2), (6, 7, 8)]
     part('brows', verts, faces, M['hair'], inside=V(0, -0.07, 1.3))
 
-    # The fillet over his brow and his hair, and the Star of Elendil on it.
-    def ring_at(z, grow):
-        k = (z - HEAD[4][0]) / (HEAD[5][0] - HEAD[4][0])
-        return [a.lerp(b, k) + grow * V(a.x, a.y - 0.01, 0).normalized() for a, b in zip(rings[4], rings[5])]
+    crown()
 
-    # It runs round the front of his head from side to side; behind, it is under his hair.
-    band = [[V(p.x, p.y, z) for p in (ring_at(z, 0.006)[i] for i in (4, 5, 6, 7, 0))] for z in (1.333, 1.347)]
-    verts, faces, _ = loft(band, closed=False)
-    part('fillet', verts, faces, M['mithril'], inside=V(0, 0.0, 1.34))
 
-    front = ring_at(1.34, 0.006)[6]
-    up = (rings[5][6] - rings[4][6]).normalized()
-    out = up.cross(V(1, 0, 0)).normalized()
-    if out.y > 0:
-        out = -out
-    across = V(1, 0, 0)
-    centre = front + 0.004 * out
-    tips = [centre + 0.03 * up, centre - 0.027 * across, centre - 0.024 * up, centre + 0.027 * across]
-    inner = [centre + 0.008 * (up + across), centre + 0.008 * (up - across),
-             centre - 0.008 * (up + across), centre - 0.008 * (up - across)]
-    raised = centre + 0.008 * out
-    verts = [raised] + tips + inner
-    # Four points (1 to 4: up, to his right, down, to his left) round a raised middle (0), with the
-    # inner corners between them (5 to 8).
+# The crown of Gondor ------------------------------------------------------------------------------
+
+# "Tall, like the helms of the Guards of the Citadel, save that it was loftier, and it was all white,
+# and the wings at either side were wrought of pearl and silver in the likeness of the wings of a
+# sea-bird": a high white helm on a silver circlet with seven gems, the Elendilmir at its front and
+# a single jewel on its summit. Each ring of the helm: z, half-width, half-depth and centre y.
+HELM = [
+    (1.318, 0.154, 0.158, 0.0),  # the circlet's lower edge, over his brow
+    (1.378, 0.156, 0.16, 0.0),  # its upper edge
+    (1.388, 0.146, 0.15, 0.002),  # the helm steps in above it
+    (1.5, 0.142, 0.146, 0.008),  # and rises nearly straight, tall
+    (1.6, 0.118, 0.124, 0.014),
+    (1.675, 0.068, 0.076, 0.02),
+]
+HELM_TOP = V(0, 0.022, 1.715)
+HELM_BANDS = [0, 1, 1, 1, 1]  # the circlet silver, the helm white
+
+
+def gem(name, centre, out, size, mat):
+    """A cut gem set in a surface: a four-sided point standing `size` proud of it along `out`."""
+    out = Vector(out).normalized()
+    a = out.cross(V(0, 0, 1)).normalized()
+    b = out.cross(a).normalized()
+    verts = [centre + size * a, centre + size * b, centre - size * a, centre - size * b, centre + size * out]
+    part(name, verts, [(i, (i + 1) % 4, 4) for i in range(4)], mat, inside=centre - 0.02 * out)
+
+
+def crown():
+    rings = [ellipse(0, cy, z, rx, ry, 8, 0) for z, rx, ry, cy in HELM]
+    verts, faces, bands = loft(rings)
+    face_mats = [HELM_BANDS[b] for b in bands]
+    apex, last = len(verts), (len(rings) - 1) * 8
+    verts.append(HELM_TOP)
+    faces += [(last + i, last + (i + 1) % 8, apex) for i in range(8)]
+    face_mats += [1] * 8
+    part('helm', verts, faces, [M['mithril'], M['pearl']], face_mats, inside=lambda c: V(0, 0.01, c.z))
+
+    # Seven gems round the circlet, every eighth of the way round but the front, where the
+    # Elendilmir is.
+    z = 1.348
+    for k in range(7):
+        a = math.radians(270 + 45 * (k + 1))
+        n = V(math.cos(a) / 0.155, math.sin(a) / 0.159, 0).normalized()
+        gem(f'gem-{k}', V(0.155 * math.cos(a), 0.159 * math.sin(a), z), n, 0.013, M['gem'])
+
+    # The Elendilmir, the white star of Elendil, on his brow at the circlet's front.
+    centre = V(0, -0.162, 1.345)
+    up, across, out = V(0, 0, 1), V(1, 0, 0), V(0, -1, 0)
+    tips = [centre + 0.042 * up, centre - 0.034 * across, centre - 0.034 * up, centre + 0.034 * across]
+    inner = [centre + 0.01 * (up + across), centre + 0.01 * (up - across),
+             centre - 0.01 * (up + across), centre - 0.01 * (up - across)]
+    verts = [centre + 0.012 * out] + tips + inner
     faces = []
-    order = [(1, 6, 2), (2, 7, 3), (3, 8, 4), (4, 5, 1)]  # each point, the corner after it and the next
-    for t, c, n in order:
+    for t, c, n in [(1, 6, 2), (2, 7, 3), (3, 8, 4), (4, 5, 1)]:
         faces += [(0, t, c), (0, c, n)]
-    part('star', verts, faces, M['mithril'], outward=out)
+    part('elendilmir', verts, faces, M['gem'], outward=out)
+
+    # The single jewel on the summit, "the light of which went up like a flame": a tall point.
+    base = HELM_TOP - V(0, 0, 0.012)
+    ring = [base + V(0.018 * math.cos(math.radians(a)), 0.018 * math.sin(math.radians(a)), 0) for a in (45, 135, 225, 315)]
+    verts = ring + [base + V(0, 0, 0.075), base - V(0, 0, 0.01)]
+    faces = [(i, (i + 1) % 4, 4) for i in range(4)] + [((i + 1) % 4, i, 5) for i in range(4)]
+    part('summit', verts, faces, M['gem'], inside=base + V(0, 0, 0.01))
+
+    for side in (-1, 1):
+        wing(side)
+
+
+# A sea-bird's wing, as (out, up) from its root on the helm: a pearl body fanned from the root, and
+# three silver primaries along its trailing edge, swept up and back.
+WING = [(0, 0), (0, 0.1), (0.09, 0.2), (0.25, 0.28), (0.17, 0.19), (0.25, 0.15), (0.14, 0.11),
+        (0.2, 0.06), (0.08, 0.035)]
+WING_BODY = [(0, 8, 6), (0, 6, 4), (0, 4, 2), (0, 2, 1)]
+WING_FEATHERS = [(2, 4, 3), (4, 6, 5), (6, 8, 7)]
+WING_ROOT = V(0.14, 0.035, 1.41)
+WING_SWEEP = 34  # degrees back from straight out to the side
+WING_LIFT = 0.25  # how far the wing leans out as it rises
+
+
+def wing(side):
+    sweep = math.radians(WING_SWEEP)
+    out = V(side * math.cos(sweep), math.sin(sweep), 0)
+    root = V(side * WING_ROOT.x, WING_ROOT.y, WING_ROOT.z)
+    rise = V(side * WING_LIFT, 0, 1)
+    verts = [root + 1.15 * (s * out + t * rise) for s, t in WING]
+    normal = out.cross(rise) * side  # facing forward and down
+    faces = WING_BODY + WING_FEATHERS
+    mats = [0] * len(WING_BODY) + [1] * len(WING_FEATHERS)
+    part(f'wing-{side}', verts, faces, [M['pearl'], M['silver']], mats, outward=normal)
 
 
 def hair():
@@ -414,38 +483,78 @@ def anduril():
     arm('right', R_SHOULDER, R_ELBOW, R_WRIST, R_FIST, along)
 
 
-# The standard of the White Tree, in his left hand --------------------------------------------------
+# Arwen's standard, in his left hand ----------------------------------------------------------------
 
-POLE_TOP = 1.93
-BAR = 1.85  # the cross-bar the banner hangs from
-FLAG = [-0.18, -0.115, 0.0, 0.115, 0.18]  # the banner's columns, across from the pole
-FLAG_ROWS = [1.85, 1.63]  # and its rows, down from the bar
-FLAG_HEM = [1.37, 1.41, 1.47, 1.41, 1.37]  # swallow-tailed
-FLAG_FOLD = [0.035, 0.0, 0.0, 0.0, 0.035]  # its sides curl back
-FLAG_Y = POLE.y - 0.028
+# The royal standard Arwen made for him, unfurled from the pole: on black, the White Tree in blossom,
+# seven stars about it and a high crown above. It flies out from the pole, away from him, so the
+# crown's left wing shows beside it. Each column of the banner, out from the pole: u, its lift
+# (towards his back, so it ripples) and the heights of its top, middle and foot; the fly is
+# swallow-tailed.
+POLE_TOP = 2.0
+FLAG = [
+    (0.02, 0.0, (1.97, 1.72, 1.47)),
+    (0.16, 0.026, (1.97, 1.72, 1.47)),
+    (0.31, -0.006, (1.965, 1.72, 1.475)),
+    (0.46, 0.022, (1.96, 1.72, 1.48)),
+]
+FLAG_NOTCH = 0.39  # how far out the swallow-tail's notch reaches
+FLAG_Y = POLE.y + 0.004
+EMBLEM_U = 0.215  # the middle of the device, out from the pole
+
+
+def flag_y(u):
+    """The banner's y at `u` out from the pole, along its ripples."""
+    for (u0, y0, _), (u1, y1, _) in zip(FLAG, FLAG[1:]):
+        if u <= u1:
+            return FLAG_Y + y0 + (y1 - y0) * (u - u0) / (u1 - u0)
+    return FLAG_Y + FLAG[-1][1]
+
+
+def device(name, points, faces, lift, normal):
+    """A flat device on the banner: (u, z) points, laid on its ripples and lifted off its face."""
+    verts = [V(POLE.x + u, flag_y(u) + lift, z) for u, z in points]
+    part(name, verts, faces, M['mithril'], outward=normal)
+
+
+def star_points(u, z, r):
+    return ([(u, z + 1.15 * r), (u - r, z), (u, z - r), (u + r, z)]
+            + [(u + k * 0.3 * r, z + j * 0.3 * r) for k, j in ((1, 1), (-1, 1), (-1, -1), (1, -1))])
+
+
+STAR_FACES = [(4, 5, 6), (4, 6, 7), (0, 5, 4), (1, 6, 5), (2, 7, 6), (3, 4, 7)]
+# The high crown: a band and three tall points, the middle one highest, (u, z) about its foot.
+CROWN_POINTS = [(-0.055, 0.0), (0.055, 0.0), (0.055, 0.035), (0.065, 0.1), (0.028, 0.05), (0.0, 0.11),
+                (-0.028, 0.05), (-0.065, 0.1), (-0.055, 0.035)]
+CROWN_FACES = [(0, 1, 2), (0, 2, 8), (8, 2, 4), (8, 4, 6), (2, 3, 4), (4, 5, 6), (6, 7, 8)]
 
 
 def standard():
     tube('pole', POLE, POLE + V(0, 0, POLE_TOP), [(0, 0.021), (1, 0.018)], M['wood'])
-    # A silver spear-point on the top.
+    # A spear-point on the top.
     top = POLE + V(0, 0, POLE_TOP)
     ring = segment(top, top + V(0, 0, 1), [(0, 0.032)], 4, 0)[0]
     verts = ring + [top + V(0, 0, 0.1), top - V(0, 0, 0.03)]
     faces = [(i, (i + 1) % 4, 4) for i in range(4)] + [(i, (i + 1) % 4, 5) for i in range(4)]
     part('finial', verts, faces, M['trim'], inside=top + V(0, 0, 0.02))
-    tube('bar', POLE + V(-0.19, -0.012, BAR), POLE + V(0.19, -0.012, BAR), [(0, 0.014), (1, 0.014)],
-         M['wood'], n=4, phase=45)
 
-    # The banner, hanging from the bar in front of the pole.
-    rows = [[V(POLE.x + u, FLAG_Y + f, z) for u, f in zip(FLAG, FLAG_FOLD)] for z in FLAG_ROWS]
-    rows.append([V(POLE.x + u, FLAG_Y + f, z) for u, f, z in zip(FLAG, FLAG_FOLD, FLAG_HEM)])
-    verts, faces, _ = loft(rows, closed=False)
+    # The banner, from the pole out to its swallow-tailed fly.
+    columns = []
+    for k, (u, lift, zs) in enumerate(FLAG):
+        us = [u, FLAG_NOTCH if k == len(FLAG) - 1 else u, u]
+        columns.append([V(POLE.x + c, FLAG_Y + lift, z) for c, z in zip(us, zs)])
+    verts, faces, _ = loft(columns, closed=False)
     part('banner', verts, faces, M['sable'], outward=V(0, -1, 0))
 
-    # The White Tree on both faces of it, on its flat middle.
-    for name, lift, normal in (('tree-front', -0.004, V(0, -1, 0)), ('tree-back', 0.004, V(0, 1, 0))):
-        points = tree_points(lambda u, v, y=FLAG_Y + lift: V(POLE.x + 0.21 * u, y, 1.5 + 0.27 * v))
-        flat(name, points, TREE_FACES, M['mithril'], normal)
+    # The device on both faces: the tree, the seven stars in an arc over it and the crown above.
+    tree = [(EMBLEM_U + 0.19 * u, 1.5 + 0.22 * v) for u, v in TREE_POINTS]
+    stars = [(EMBLEM_U + 0.145 * math.cos(math.radians(a)), 1.625 + 0.135 * math.sin(math.radians(a)))
+             for a in (0, 30, 60, 90, 120, 150, 180)]
+    crown = [(EMBLEM_U + u, 1.805 + z) for u, z in CROWN_POINTS]
+    for side, lift, normal in (('front', -0.004, V(0, -1, 0)), ('back', 0.004, V(0, 1, 0))):
+        device(f'tree-{side}', tree, TREE_FACES, lift, normal)
+        for k, (u, z) in enumerate(stars):
+            device(f'star-{side}-{k}', star_points(u, z, 0.021), STAR_FACES, lift, normal)
+        device(f'crown-{side}', crown, CROWN_FACES, lift, normal)
 
     arm('left', L_SHOULDER, L_ELBOW, L_WRIST, L_FIST, V(0, 0, 1))
 
@@ -461,7 +570,7 @@ def main():
     cloak()
     anduril()
     standard()
-    finish('aragorn')
+    finish('aragorn-3', budget=1000)
 
 
 main()
