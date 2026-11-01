@@ -17,3 +17,8 @@ export function displayName(id: Id): string {
 export function isLarge(id: Id): boolean {
   return definition(id).large === true;
 }
+
+/** Whether an id is one of the roster's units, which have models, rather than a monster or summon. */
+export function isRosterUnit(id: Id): boolean {
+  return Object.hasOwn(UNITS, id);
+}
