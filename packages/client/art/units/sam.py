@@ -18,6 +18,11 @@ back and bunched at his nape over the pack; and the cloak hanging from his shoul
 above his knees. From behind, as the near side is seen, his sandy curls show above the hood, the pack
 and its rope in the middle of the cloak, and the pan and the sword either side.
 
+His fittings, the sword's cross-guard and pommel, the setting behind the leaf clasp, the buckles on
+the pack's straps and the buckle that fastens its flap, use `trim`, which the client colours iron,
+silver or gold by star level (docs/viewer-spec.md section 4, "Star levels"). His 2★ model is
+sam-2.py and his 3★ model sam-3.py.
+
     blender --background --factory-startup --python-exit-code 1 --python sam.py [-- <out.glb>]
 
 Coordinates are Blender's: z up, the model faces -Y, so his right hand is at -X.
@@ -33,7 +38,6 @@ from mathutils import Matrix
 
 sys.path.insert(0, os.path.join(os.path.dirname(os.path.abspath(__file__)), '..'))
 from kit import (  # noqa: E402
-    BRASS,
     EYES,
     LEATHER,
     V,
@@ -51,6 +55,7 @@ from kit import (  # noqa: E402
     part,
     reset,
     team_material,
+    trim_material,
     tube,
 )
 
@@ -83,7 +88,7 @@ def make_materials():
         rope=material('rope', ROPE, roughness=0.9),
         iron=material('iron', IRON, roughness=0.6, metallic=0.1),
         steel=material('steel', BLADE, roughness=0.4, metallic=0.1),
-        brass=material('brass', BRASS, roughness=0.55, metallic=0.1),
+        trim=trim_material(),  # fittings, recoloured by star
         leaf=material('leaf', LEAF, roughness=0.6),
         eyes=material('eyes', EYES, roughness=0.6),
         mouth=material('mouth', MOUTH, roughness=0.8),
@@ -410,10 +415,10 @@ def sword():
     faces += [(last + i, last + (i + 1) % 4, tip) for i in range(4)]
     part('blade', verts, faces, M['steel'], inside=nearest_on_line(guard, guard + SWORD))
 
-    box('guard', guard, [SWORD, width, flat], (0.012, 0.062, 0.017), M['brass'], 0.8)
+    box('guard', guard, [SWORD, width, flat], (0.012, 0.062, 0.017), M['trim'], 0.8)
     end = fist - 0.06 * SWORD
     tube('grip', end, guard, [(0, 0.016), (1, 0.016)], M['leather'], n=4, phase=45)
-    cone('pommel', end, end - 0.03 * SWORD, 0.025, M['brass'], n=4, phase=45, back=end + 0.012 * SWORD)
+    cone('pommel', end, end - 0.03 * SWORD, 0.025, M['trim'], n=4, phase=45, back=end + 0.012 * SWORD)
 
 
 # Team colour: the elven cloak ---------------------------------------------------------------------
@@ -436,6 +441,10 @@ def cowl():
     verts = [V(0, y, 0.592), V(0.022, y, 0.569), V(0, y, 0.545), V(-0.022, y, 0.569),
              V(0, y - 0.008, 0.569)]
     part('clasp', verts, [(0, 1, 4), (1, 2, 4), (2, 3, 4), (3, 0, 4)], M['leaf'], inside=V(0, 0, 0.56))
+    # Its setting, a rim of metal round the leaf.
+    y += 0.004
+    verts = [V(0, y, 0.602), V(0.031, y, 0.569), V(0, y, 0.535), V(-0.031, y, 0.569)]
+    part('clasp-setting', verts, [(0, 1, 2, 3)], M['trim'], outward=V(0, -1, 0))
 
 
 def hood():
@@ -542,6 +551,27 @@ def pack():
             verts += [p + V(-0.02, 0, 0), p + V(0.02, 0, 0)]
         faces = [(2 * k, 2 * k + 1, 2 * k + 3, 2 * k + 2) for k in range(len(path) - 1)]
         part(f'strap-{s}', verts, faces, M['leather'], inside=V(s * 0.05, 0.0, 0.45))
+        middle = path[2].lerp(path[3], STRAP_BUCKLE)
+        buckle(f'strap-buckle-{s}', middle, path[3] - path[2], V(0, -1, 0.15))
+
+    # The buckle that fastens the flap, at its point on the back of the pack.
+    buckle('flap-buckle', V(0, down[0] + 0.002, point + 0.026), V(0, 0, 1), V(0, 1, 0))
+
+
+STRAP_BUCKLE = 0.45  # how far down the strap from the cowl to the belly its buckle is
+BUCKLE = 0.026, 0.022  # half-width and half-height of a buckle
+
+
+def buckle(name, centre, along, out):
+    """A square buckle lying on a strap: `along` runs down the strap and `out` away from it."""
+    out = out.normalized()
+    along = (along - along.dot(out) * out).normalized()
+    across = along.cross(out)
+    w, h = BUCKLE
+    centre = centre + 0.006 * out
+    verts = [centre + w * across + h * along, centre - w * across + h * along,
+             centre - w * across - h * along, centre + w * across - h * along]
+    part(name, verts, [(0, 1, 2, 3)], M['trim'], outward=out)
 
 
 def main():
