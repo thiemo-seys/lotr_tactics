@@ -1,0 +1,232 @@
+{
+  "$comment": "Colours (sRGB hex) and sizes (game units, 1 = 1 Blender unit) for models and the interface. The Blender scripts in this folder and the client (src/art-style.ts) read them; docs/art-style.md says what they are for and the rules they follow.",
+  "team": { "A": "#4a90d9", "B": "#d9534f" },
+  "shared": { "base": "#33383f", "shadow": "#0e0d11" },
+  "base": { "height": 0.09, "rim": 0.06 },
+  "sizes": {
+    "normal": { "radius": 0.4, "triangles": 800 },
+    "mounted": { "radius": 0.62, "triangles": 1100 },
+    "large": { "radius": 0.82, "triangles": 2000 },
+    "small": { "radius": 0.3, "triangles": 500 }
+  },
+  "origins": {
+    "hobbit": {
+      "ui": "#ecc14a",
+      "height": 0.85,
+      "palette": {
+        "skin": "#e8b48f",
+        "hair": "#6b4423",
+        "cloth-yellow": "#d9a43c",
+        "cloth-green": "#7a9a46",
+        "cloth-brown": "#8b5e3c",
+        "linen": "#eadfc8",
+        "brass": "#c9a14a",
+        "leather": "#6b4a30",
+        "steel": "#c3c9cf",
+        "stone": "#8e8a82",
+        "skin-grey": "#6f6a5c",
+        "glow": "#f2f5e6"
+      }
+    },
+    "elf": {
+      "ui": "#a9d8e6",
+      "height": 1.45,
+      "palette": {
+        "skin": "#f1dcc8",
+        "hair-gold": "#e4c873",
+        "hair-dark": "#2f2a2c",
+        "hair-brown": "#7a5638",
+        "hair-pale": "#e9e2cc",
+        "cloth-grey": "#9ca79d",
+        "cloth-white": "#efeee8",
+        "cloth-green": "#5d7a52",
+        "cloth-brown": "#7a6049",
+        "leather": "#6e5640",
+        "silver": "#d4dbe1",
+        "gold": "#dcc27a",
+        "wood": "#d0b88c",
+        "glow": "#f5f8ff"
+      }
+    },
+    "dwarf": {
+      "ui": "#d9977c",
+      "height": 1.0,
+      "palette": {
+        "skin": "#d6a383",
+        "beard-brown": "#6e4a2e",
+        "beard-white": "#e7e2d8",
+        "beard-grey": "#a6a299",
+        "cloth-brown": "#74513a",
+        "leather": "#5e4030",
+        "steel": "#9ea6ad",
+        "iron": "#5c636a",
+        "gold": "#d6aa4c",
+        "copper": "#b8703f",
+        "wood": "#7a5a3a"
+      }
+    },
+    "gondor": {
+      "ui": "#e3e6ea",
+      "height": 1.35,
+      "palette": {
+        "skin": "#e2b998",
+        "hair": "#2e2724",
+        "sable": "#2c2b30",
+        "white": "#f1f0ea",
+        "silver": "#d8dde2",
+        "steel": "#a8b0b7",
+        "leather": "#5c4334",
+        "cloth-green": "#5a6b47",
+        "cloth-brown": "#6d5541",
+        "ivory": "#e6dcc4",
+        "glow": "#fbfbf3"
+      }
+    },
+    "rohan": {
+      "ui": "#62b86c",
+      "height": 1.35,
+      "palette": {
+        "skin": "#e8bf9e",
+        "hair-fair": "#d9b56a",
+        "hair-white": "#ece8df",
+        "hair-grey": "#b8b2a6",
+        "cloth-green": "#3f7d4a",
+        "cloth-green-dark": "#2f5a37",
+        "gold": "#d8aa3e",
+        "white": "#f2f0e9",
+        "leather": "#7a5435",
+        "steel": "#a3abb2",
+        "wood": "#8b6a45",
+        "horse-bay": "#784e30",
+        "horse-white": "#e8e5de",
+        "horse-dun": "#a8916c"
+      }
+    },
+    "istari": {
+      "ui": "#b79ff0",
+      "height": 1.6,
+      "palette": {
+        "skin": "#e3b79a",
+        "beard-white": "#eeeae2",
+        "beard-grey": "#bdb8ad",
+        "robe-grey": "#8f9194",
+        "robe-white": "#eeece6",
+        "robe-brown": "#7a5a3c",
+        "hat-grey": "#59627a",
+        "silver": "#cfd4d9",
+        "wood": "#6b5137",
+        "wood-pale": "#cfc6b4",
+        "prism-rose": "#e9d3d8",
+        "prism-green": "#d5e6d6",
+        "prism-violet": "#dcd3ec",
+        "feather": "#8a6a4a",
+        "glow": "#efe8ff"
+      }
+    },
+    "orc": {
+      "ui": "#a8a23a",
+      "height": 1.15,
+      "palette": {
+        "skin-sallow": "#8b8a4f",
+        "skin-swart": "#5a5246",
+        "iron-black": "#34322f",
+        "iron": "#5b5751",
+        "rust": "#875733",
+        "leather": "#4b3b2d",
+        "rag": "#6c6151",
+        "bone": "#d5ccb4",
+        "wood": "#5e4a36",
+        "horn": "#3a3430",
+        "fur": "#5b5a57",
+        "fur-dark": "#3b3a39",
+        "badge-white": "#ecebe4",
+        "badge-eye": "#e3a038",
+        "badge-moon": "#c8d4ae"
+      }
+    },
+    "nazgul": {
+      "ui": "#c8e0b4",
+      "height": 1.5,
+      "palette": {
+        "robe": "#24222a",
+        "robe-tatter": "#302d37",
+        "hands": "#8e8d88",
+        "steel": "#b6bcc2",
+        "iron": "#3a383d",
+        "horse": "#25232a",
+        "glow": "#d6f0c4",
+        "glow-eye": "#ffc640"
+      }
+    },
+    "ent": {
+      "ui": "#7fd0b4",
+      "height": 2.4,
+      "palette": {
+        "bark": "#6f7666",
+        "bark-dark": "#4f5448",
+        "wood": "#a08c6a",
+        "moss": "#7d995a",
+        "beard": "#9b9a8b",
+        "stone": "#8b8880",
+        "glow": "#a8e6c8"
+      }
+    },
+    "dark-lord": {
+      "ui": "#f59f1f",
+      "height": 2.3,
+      "palette": {
+        "iron": "#2e2c30",
+        "basalt": "#47413f",
+        "cloth": "#3b3036",
+        "gold": "#c09032",
+        "glow": "#ff8a33",
+        "glow-eye": "#ffc640"
+      }
+    }
+  },
+  "monsters": {
+    "moria": {
+      "members": ["goblin", "goblin-archer", "cave-troll", "watcher", "balrog"],
+      "palette": {
+        "skin": "#a3a083",
+        "rag": "#5f5547",
+        "iron": "#57534d",
+        "rust": "#875733",
+        "leather": "#4a3a2c",
+        "wood": "#5c4935",
+        "hide": "#4e5e4a",
+        "hide-belly": "#6f7a60",
+        "stone": "#77736b",
+        "tentacle": "#a9c99a",
+        "water": "#1f3a3f",
+        "smoke": "#262326",
+        "ash": "#3a3335",
+        "glow": "#ff9a3c",
+        "glow-hot": "#ffd36a"
+      }
+    },
+    "wild": {
+      "members": ["warg"],
+      "palette": {
+        "fur": "#5b5a57",
+        "fur-dark": "#3b3a39",
+        "fur-light": "#8a8780",
+        "bone": "#d8cfb8",
+        "glow": "#e8c04a"
+      }
+    },
+    "harad": {
+      "members": ["mumak"],
+      "palette": {
+        "hide": "#7f7d78",
+        "hide-dark": "#5f5d59",
+        "ivory": "#e6dcc4",
+        "cloth-red": "#6a3431",
+        "cloth-black": "#2a2826",
+        "gold": "#c99a3e",
+        "wood": "#6b5236",
+        "leather": "#5e4430"
+      }
+    }
+  }
+}

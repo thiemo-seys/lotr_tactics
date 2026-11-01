@@ -18,6 +18,7 @@ You build what players see and touch: the fight viewer (`index.html`) and the pl
   - Never work out in the client an outcome, damage, gold or anything else that belongs to them.
   - If you need something the sim or game doesn't expose, such as a field on an event or a value in the state, propose the change to their spec rather than computing it here.
 - **The low-poly artist owns the look.** The artist decides how models, the board, lighting and effects look in 3D, in their own modules. You place and move what they build, and keep the playback timings they follow.
+- **Colours from the art style.** Team colours, and the colours and glyphs of origins and classes in the interface, come from `art/style.json` through `src/art-style.ts` and `docs/art-style.md` section 8. Blue and red mean the teams only.
 - **Text from data.** Item, Gift and ring descriptions come from the data files (see `items.ts`, `gifts.ts` and `ring.ts`), so the text keeps up with the numbers.
 - **Testable logic.**
   - Logic that needs neither Three.js nor the DOM goes in its own modules, like `playback.ts`, `layout.ts` and `log.ts`, with Vitest tests.

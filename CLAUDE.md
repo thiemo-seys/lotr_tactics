@@ -9,12 +9,15 @@ Browser-based, 8-player auto battler in the style of Teamfight Tactics, with Lor
 - `docs/viewer-spec.md`: spec for the fight viewer in `packages/client`.
 - `docs/game-spec.md`: implementation spec for the game around the fights: shop, economy, rounds and bots.
 - `docs/server-spec.md`: spec for online play: lobbies, the match runner, the protocol and the Node server in `packages/server`.
+- `docs/art-style.md`: the art style guide: how every origin, class, monster and summon looks, with the colours and sizes in `packages/client/art/style.json`.
 
 ## Status
 
 Design is done for combat, units, traits, items, Gifts of Lothlórien, the One Ring, the Rings of Power, economy and rounds. The combat simulation in `packages/sim` (`docs/sim-spec.md`) is done: hex maths (`hex.ts`), the seeded generator (`rng.ts`), the data files (`data/`), stat calculation (`combat/stats.ts`), the combat loop (`combat/combat.ts`: tick 0, action order, events, end of combat; units as they start a fight in `combat/fighters.ts`, and damage amps, reductions and auras in `combat/modifiers.ts`), targeting and movement (`combat/targeting.ts`, `combat/movement.ts`), basic attacks, damage and mana (`combat/damage.ts`), statuses (`combat/statuses.ts`: stuns, slows, buffs, reductions, shields, untargetable), abilities (`combat/abilities.ts` for selectors and placement, `combat/combat.ts` for casting and effects), traits (`combat/traits.ts` for counting and static bonuses, `combat/combat.ts` for the rest), items (`data/items.ts`; `combat/items.ts` for stats and recipes, `combat/combat.ts` for the effects), the Gifts of Lothlórien that act in fights (`data/gifts.ts`, `combat/combat.ts`), the One Ring's bearer and the Eye's Nazgûl (`data/ring.ts`, `combat/combat.ts`), and the Rings of Power that act in fights, the Three and the Nine (`data/items.ts`, `combat/combat.ts`). That covers everything in scope in `docs/sim-spec.md` section 1.
 
 `packages/client` is the fight viewer (`docs/viewer-spec.md`): Vite and Three.js, running a fight with the sim and playing it back. Its play page (`play.html`, `docs/game-spec.md` section 12, `docs/server-spec.md` section 10) has a menu, lobbies, and whole games online or against 7 bots offline, through a connection (`connection.ts`) to the server or to a match running in the page; its steps, from menu to results, are in `flow.ts`, without the DOM.
+
+The art style guide (`docs/art-style.md`) sets the look of every origin, class, monster and summon: bases and team colour, sizes, palettes, class silhouettes, a sheet for each origin and the interface's origin colours. Its colours and sizes are in `packages/client/art/style.json`, read by the client (`src/art-style.ts`, where the scene gets its team colours) and checked by tests. No models are built yet: units are still pawns.
 
 The game around the fights (`docs/game-spec.md`), the shop, economy, rounds and bots, is in `packages/sim`: the pool and shop rolls (`game/pool.ts`), and each player's bench, board, merging, items, Gifts, gold and XP (`game/player.ts`, with places on the bench and board in `game/places.ts` and Gift offers in `game/gifts.ts`), with the numbers in `data/economy.ts` and `data/gifts.ts`; PvE monsters in the combat (`data/monsters.ts`, `sim-spec.md` section 7.6); and the rounds (`game/game.ts`: `createGame`, actions, fights, damage, eliminations; whether an action is allowed, which bots and the client also ask, in `game/rules.ts`; `game/matchmaking.ts`, `game/council.ts`, `game/schedule.ts`; data in `data/rounds.ts` and `data/pve.ts`); the One Ring (its state and changes in `game/ring.ts`, driven by `game/game.ts`, numbers in `data/ring.ts`); the Rings of Power (their supply in `game/ring-supply.ts`, Council offers and fate with the One in `game/game.ts`, the Seven's gold in `game/player.ts`, numbers in `data/items.ts` and `data/rounds.ts`); bots (`bots/bot.ts`, tuned in `data/bots.ts`, driven through a game by `bots/autopilot.ts`, which the server's matches use too) with a balance runner (`scripts/balance.ts`); and the client's play page. That covers it apart from tuning.
 
@@ -37,6 +40,7 @@ Online play (`docs/server-spec.md`), lobbies with bots in the empty seats, is in
 - Game numbers live in data files (`packages/sim/src/data/`), not hard-coded in logic. All numbers are placeholders until balancing.
 - In data, percentages and multipliers are whole-number percents (25 for 25%, 70 for 0.7 D) and durations are in seconds (`docs/sim-spec.md` section 4).
 - When a rule or number changes, update `docs/design.md` (and `docs/sim-spec.md` if it affects the sim) in the same change.
+- Colours and sizes for models, and the origins' interface colours, live in `packages/client/art/style.json` and follow `docs/art-style.md`. Don't define them anywhere else.
 
 ## When reviewing
 
@@ -70,7 +74,7 @@ Subagents in `.claude/agents/`, each with its own area. They start without this 
 - `bot-strategist`: how bots play (`bots/`, `data/bots.ts`).
 - `balance-analyst`: balance runs, and the numbers in `data/` with the docs to match.
 - `client-engineer`: `packages/client`.
-- `low-poly-artist`: the 3D look in `packages/client`: models for units, monsters and summons built in Blender 4.5 LTS from Python scripts in `packages/client/art/`, plus the board, lighting and effects, checked with renders and screenshots.
+- `low-poly-artist`: the 3D look in `packages/client`: models for units, monsters and summons built in Blender 4.5 LTS from Python scripts in `packages/client/art/`, plus the board, lighting and effects, checked with renders and screenshots. Builds to the art style guide (`docs/art-style.md`) and keeps it.
 - `server-engineer`: `packages/server`.
 - `determinism-auditor`: reviews sim and browser-safe server changes for anything that breaks determinism; read-only.
 - `playtester`: plays the game in a browser and reports bugs; changes no code.

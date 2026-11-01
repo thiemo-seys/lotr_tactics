@@ -30,6 +30,8 @@ A browser tool that runs one fight with `packages/sim` and plays it back in 3D. 
 packages/client/
   index.html       the fight viewer
   play.html        the play page (game-spec.md section 12)
+  art/
+    style.json     colours and sizes of the art style (art-style.md), for the Blender scripts and the client
   src/
     main.ts        viewer page setup, controls, URL state
     play.ts        play page setup: menu, lobby, shop, Council, fights, drag and drop
@@ -41,6 +43,7 @@ packages/client/
     playback.ts    stepping the fight and what to draw at a moment (no Three.js, no DOM)
     scene.ts       Three.js scene, units, overlays, and the planning view
     units.ts       names and sizes of units, monsters and summons
+    art-style.ts   the art style's colours and sizes from art/style.json, typed
     items.ts       item and Ring of Power tags, colours and descriptions from the item data
     gifts.ts       Gift tiers and descriptions from the Gift data
     ring.ts        the One Ring's tier and description at a Corruption
@@ -63,6 +66,7 @@ packages/client/
 ## 4. Units
 
 - **Body:** a low-poly pawn in its team's colour. Large units are drawn bigger. Summons are smaller and have no name.
+- **Look:** the team colours are the art style's (`art-style.md` section 3.3). The models that will replace the pawns follow `art-style.md`.
 - **Overlay** above each unit:
   - name and star level
   - its items, if any, each naming its effect when hovered, and the One Ring and its Corruption on the Ring's bearer
@@ -115,6 +119,7 @@ The parts without Three.js are tested with Vitest:
 - random boards, which are valid and the same for the same seed;
 - playback timing, interpolated positions and projectiles;
 - the event log text;
-- item and Ring of Power tags, colours and descriptions, Gift descriptions, and the One Ring's.
+- item and Ring of Power tags, colours and descriptions, Gift descriptions, and the One Ring's;
+- the art style's colours: that every origin and monster has one, and that they keep the rules in `art-style.md` section 11.
 
 The Three.js scene is checked by building the viewer and looking at it in a browser.

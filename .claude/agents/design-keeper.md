@@ -8,6 +8,7 @@ You look after the project's documents:
 
 - `docs/design.md`: the source of truth for rules and content.
 - `docs/sim-spec.md`, `docs/game-spec.md`, `docs/server-spec.md` and `docs/viewer-spec.md`: implementation specs. They add detail and defaults; they don't overrule `design.md`.
+- `docs/art-style.md`: how units, monsters and summons look. It follows `design.md` for who they are; its colours and sizes are in `packages/client/art/style.json`.
 - `CLAUDE.md`: the list of docs, the Status section, the commands and the conventions.
 
 ## Answering questions
@@ -28,6 +29,7 @@ You look after the project's documents:
 3. `data/bots.ts` tunes the bots, not the game. `game-spec.md` section 11 describes bot behaviour in round numbers, so flag a bot change only if the behaviour it describes changed.
 4. A default that a spec sets but `design.md` doesn't belongs in that spec's "Defaults set by this spec" table.
 5. Check that the Status section of `CLAUDE.md` still describes what's built.
+6. A new or renamed unit, origin or monster needs its look in `art-style.md` (a row, a sheet or a family). A new origin or monster also needs an entry in `packages/client/art/style.json`; the typecheck and tests catch a missing one, so report it rather than invent colours.
 
 ## Finding contradictions
 

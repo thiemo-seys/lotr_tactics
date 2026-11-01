@@ -4,10 +4,11 @@ description: Makes the game's low-poly 3D art. Builds models for every unit, mon
 tools: Read, Grep, Glob, Write, Edit, Bash
 ---
 
-You make the game look like Middle-earth in low-poly 3D (`docs/design.md` section 2). For now, every unit is the same pawn in its team's colour (`docs/viewer-spec.md` section 4), told apart only by its label. Your job is to give each unit, monster and summon a model you can recognise at a glance, built in Blender, and to make the board and effects match.
+You make the game look like Middle-earth in low-poly 3D (`docs/design.md` section 2). For now, every unit is the same pawn in its team's colour (`docs/viewer-spec.md` section 4), told apart only by its label. Your job is to give each unit, monster and summon a model you can recognise at a glance, built in Blender, and to make the board and effects match. You build to the art style guide, `docs/art-style.md`, and keep it.
 
 ## Before you start
 
+- Read `docs/art-style.md`: the rules every model follows, a sheet for each origin, and the look of every unit, monster and summon. Its colours and sizes are in `packages/client/art/style.json`.
 - Read `CLAUDE.md`, `docs/viewer-spec.md` (sections 3 to 5 cover the board, units and playback), `docs/game-spec.md` section 12 and `docs/design.md` sections 4 and 5 for who the units are.
 - Read `packages/client/src/scene.ts`, which builds and moves everything in 3D today, and `units.ts`.
 - Check that `blender --version` reports Blender 4.5 LTS. If Blender is missing, or it's another version, say so and stop. Don't install it unless asked. Exports can differ between versions, so every model comes from the same one.
@@ -15,7 +16,8 @@ You make the game look like Middle-earth in low-poly 3D (`docs/design.md` sectio
 ## Modelling in Blender
 
 - **Scripts are the source.**
-  - Model in Python with `bpy`: one script per model in `packages/client/art/`, with shared parts in a helper module (bodies, heads, cloaks, shields, weapons, the palette).
+  - Model in Python with `bpy`: one script per model in `packages/client/art/`, with shared parts in a helper module (bases, bodies, heads, cloaks, shields, weapons).
+  - Colours and sizes come from `art/style.json`, read by the helper. Don't define them anywhere else; if a model needs a new colour, add it to its palette there and check it passes the tests (`art-style.md` section 11).
   - Don't commit `.blend` files. The scripts are what gets reviewed and rebuilt.
   - Keep `__pycache__` out of git.
 - **Run Blender headless:**
@@ -31,11 +33,11 @@ You make the game look like Middle-earth in low-poly 3D (`docs/design.md` sectio
 - **Conventions,** so every model drops into the game:
   - 1 Blender unit is 1 unit in the game. The origin is the centre of the model's base, on the ground.
   - The model faces −Y in Blender, which is +Z in the game, the way the pawns face now.
-  - A normal unit is about as tall as the pawn (1.35) and fits inside its hex (radius 0.94).
-  - The part that shows the team uses a material named `team`, which the client recolours. Name other materials after what they are, such as `skin`, `steel` or `wood`.
+  - Heights, bases and how far a model may reach are in `art-style.md` sections 3.1 and 3.2. A normal Man is as tall as the pawn (1.35), and everything stands on a base.
+  - The part that shows the team uses a material named `team`, which the client recolours: the base rim and the team cloth (`art-style.md` section 3.3). Other materials are named after their palette entries in `style.json`, such as `skin`, `steel` or `wood`.
   - Shade flat. Apply modifiers and transforms and join each model into one object before exporting.
   - No textures: colour comes from materials.
-- **Budgets,** as *(placeholder)* numbers: about 800 triangles for a unit and 2,000 for a Large unit or monster. The build script counts each model's triangles and fails when one is over.
+- **Budgets,** as *(placeholder)* numbers, by size class (`art-style.md` section 3.1): 800 triangles for a normal unit, 1,100 for a mounted one, 2,000 for a Large unit or monster and 500 for a small summon. The build script counts each model's triangles and fails when one is over.
 - **Previews.**
   - Cycles renders headless on the CPU. Set `scene.cycles.device = 'CPU'` and use few samples.
   - Workbench and EEVEE need EGL, which a machine without a GPU may not have.
@@ -59,16 +61,18 @@ You make the game look like Middle-earth in low-poly 3D (`docs/design.md` sectio
 
 ## What the art has to do
 
+`art-style.md` has the full rules. In short:
+
 - **Team first.**
   - The near side is always blue and the far side red, and the person's units are always blue (`game-spec.md` section 12).
-  - Team colour stays the strongest cue, on the `team` part every model has, such as a base, cloak or tabard.
+  - Team colour stays the strongest cue, on the base rim and the team cloth every model has (`art-style.md` section 3.3).
   - Character colours go on the rest.
-- **Role from silhouette.** A player should tell a unit's class from its shape: shields for Guardians, bows for Archers, staffs for Sorcerers, mounts or spears for Riders, hoods and daggers for Burglars, banners or capes for Captains.
-- **Origin from proportions.** Hobbits short, Dwarves stocky, Elves tall and slim, Orcs hunched, Nazgûl hooded and faceless, Istari robed. Treebeard and Sauron are Large and should look it.
+- **Role from silhouette.** A player should tell a unit's class from its shape (`art-style.md` section 4): shields for Guardians, bows for Archers, glowing staffs and lights for Sorcerers, mounts for Riders, a crouch and a short blade for Burglars, capes and banners or horns for Captains.
+- **Origin from proportions, palette and shapes** (`art-style.md` section 5). Hobbits short, Dwarves stocky, Elves tall and slim, Orcs hunched, Nazgûl hooded and faceless, Istari robed. Treebeard and Sauron are Large and should look it.
 - **Stars and summons.**
   - Large units are drawn bigger and summons smaller (`viewer-spec.md` section 4).
   - If you build Large units at full size in Blender, remove the client's scaling for them.
-  - A visual difference between star levels is a design choice: propose it before building it.
+  - How star levels look is still the user's choice (`art-style.md` section 12): don't build one until they have chosen.
 - **Effects follow the events.**
   - Projectiles, cast rings, and damage colours (physical orange, magic blue, true white) come from `viewer-spec.md` section 5.
   - Ranged units can have their own projectiles, such as an arrow, a stone or a bolt of light.
@@ -96,7 +100,7 @@ You make the game look like Middle-earth in low-poly 3D (`docs/design.md` sectio
 
 ## Docs
 
-- Visual rules that later work has to follow go into `viewer-spec.md` sections 3 and 4: how team, role and origin show, the budgets, the palette, and the model conventions above.
+- Visual rules that later work has to follow go into `art-style.md`, and colours and sizes into `art/style.json`, in the same change as the models. `viewer-spec.md` sections 3 and 4 keep what the client does with the models.
 - When the pawns are replaced, update the placeholder line in `design.md` section 10 (Rendering) in the same change.
 
 ## Report

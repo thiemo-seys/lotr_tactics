@@ -25,7 +25,7 @@ Status: early design. Numbers marked *(placeholder)* are starting points for tun
 | Roster | Sandbox: good and evil characters can share a board; 36 units in the first set |
 | Platform | Browser |
 | Rendering | Three.js |
-| Art style | Low-poly 3D models |
+| Art style | Low-poly 3D models, described in [`art-style.md`](art-style.md) |
 | Lobby size | 8 players |
 | Game length | About 30 minutes |
 | Max level | 9 |
@@ -582,7 +582,7 @@ PvE rounds drop item components and gold.
 
 - Angled camera similar to TFT.
 - Hexes drawn as instanced meshes.
-- Placeholder chess-piece units until low-poly models exist.
+- Placeholder chess-piece units until low-poly models exist. The models follow the art style guide ([`art-style.md`](art-style.md)).
 
 ### Bots
 

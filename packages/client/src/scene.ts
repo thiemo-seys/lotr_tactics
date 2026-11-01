@@ -19,6 +19,7 @@ import {
 import * as THREE from 'three';
 import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
 import { CSS2DObject, CSS2DRenderer } from 'three/addons/renderers/CSS2DRenderer.js';
+import { ART_STYLE } from './art-style.js';
 import { itemColours, itemTag, itemText } from './items.js';
 import { ringText } from './ring.js';
 import { benchToWorld, hexToWorld, type Point } from './layout.js';
@@ -26,8 +27,11 @@ import type { PlanningRing } from './flow.js';
 import { EFFECT_TICKS, facing, type CastRing, type FloatingText, type Playback, type Projectile } from './playback.js';
 import { displayName, isLarge } from './units.js';
 
-/** Units on the side the camera looks from are drawn as team A: blue, with green health. */
-const TEAM_COLOURS: Record<Team, number> = { A: 0x4a90d9, B: 0xd9534f };
+/**
+ * Units on the side the camera looks from are drawn as team A: blue, with green health. The
+ * colours are the art style's (docs/art-style.md section 3.3).
+ */
+const TEAM_COLOURS: Readonly<Record<Team, string>> = ART_STYLE.team;
 
 /** Where the camera sits and looks, behind a team's back row or over the planning board and bench. */
 const CAMERA = {
