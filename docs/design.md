@@ -277,7 +277,7 @@ All numbers are *(placeholder)*.
 | Crit Damage | Damage multiplier on a crit | 140% |
 | Dodge | Chance to avoid a basic attack | 0% |
 
-**Star levels:** a 2★ unit has 1.8× the Health and Attack Damage of a 1★; a 3★ has 1.8× those of a 2★. Ability values grow 1.5× per star level (section 5).
+**Star levels:** a 2★ unit has 1.8× the Health and Attack Damage of a 1★; a 3★ has 1.8× those of a 2★. Ability values grow 1.5× per star level (section 5). On the board a 2★ unit wears a piece of gear and a 3★ appears as itself at its height in the books, a little bigger, on a base with a silver or gold rim and pips for its stars, with silver or gold fittings ([`viewer-spec.md`](viewer-spec.md) section 4).
 
 ### Damage
 
@@ -607,7 +607,7 @@ Built from day one to:
 ## 12. Still to define
 
 1. **PvE enemies:** stats and loot tables (placeholders in [`game-spec.md`](game-spec.md) section 9)
-2. **Unit models:** how star levels show on a model, whether the team colour sits on clothing (as on the models so far) or on a ring round the base, and whether Riders stay mounted, as their models are, at a larger triangle budget ([`viewer-spec.md`](viewer-spec.md) section 4)
+2. **Unit models:** whether the team colour sits on clothing (as on the models so far) or on a ring round the base, and whether Riders stay mounted, as their models are, at a larger triangle budget ([`viewer-spec.md`](viewer-spec.md) section 4)
 
 All numbers marked *(placeholder)* will be tuned during balancing.
 
