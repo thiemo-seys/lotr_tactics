@@ -14,6 +14,12 @@ and her girdle, whose long ends hang down the front of the gown. Her deep-gold h
 mantle to her waist, and the white gown spreads below it, so from behind she is gold and white as
 much as the team's colour.
 
+Her fittings use `trim`, which the client colours iron, silver or gold by star level
+(docs/viewer-spec.md section 4, "Star levels"): from in front, the two brooches and the chain that
+fasten the mantle across her breast, the clasp on the girdle's knot and the cup the phial stands in;
+from every side, the band about her raised forearm; and from behind, the clasp that binds her hair
+between her shoulders. Her 2★ model is galadriel-2.py and her 3★ model galadriel-3.py.
+
     blender --background --factory-startup --python-exit-code 1 --python galadriel.py [-- <out.glb>]
 
 Coordinates are Blender's: z up, the model faces -Y, so her right hand, with the light, is at -X.
@@ -40,6 +46,7 @@ from kit import (  # noqa: E402
     reset,
     segment,
     team_material,
+    trim_material,
     tube,
 )
 
@@ -64,6 +71,8 @@ def make_materials():
         eyes=material('eyes', EYES, roughness=0.6),
         lips=material('lips', LIPS, roughness=0.8),
         light=material('light', LIGHT, roughness=0.5, emission=LIGHT, emission_strength=1.0),
+        # Fittings: the renderer recolours this iron, silver or gold by star level.
+        trim=trim_material(),
     )
 
 
@@ -145,6 +154,9 @@ def girdle_ends():
     # one longer than the other. Each is a strip of rows (x of its edges, z) laid on the skirt.
     knot = V(0.012, -0.096, 0.885)
     box('knot', knot, [V(0, -1, 0), V(1, 0, 0), V(0, 0, 1)], (0.018, 0.03, 0.034), M['team'], 0.75)
+    # A round clasp of metal on the knot, its boss standing out from it.
+    at = knot + V(0, -0.016, 0)
+    cone('girdle-clasp', at, at + V(0, -0.016, 0), 0.03, M['trim'], n=6, phase=90, back=at + V(0, 0.01, 0))
     for name, rows, tip in (
         ('girdle-end-left', [((0.0, 0.05), 0.87), ((0.012, 0.058), 0.64), ((0.022, 0.066), 0.36)], (0.044, 0.31)),
         ('girdle-end-right', [((-0.03, 0.016), 0.87), ((-0.032, 0.012), 0.66), ((-0.036, 0.006), 0.46)], (-0.015, 0.42)),
@@ -195,7 +207,8 @@ def bodice():
 
 # Each ring runs from the front edge at her left round her back to the front edge at her right: half-width,
 # half-depth, centre y, how far either side of straight ahead the edges stop (degrees), heights by degrees
-# from the middle of her back, and the depth of the folds. Clasped at the throat, it opens below.
+# from the middle of her back, and the depth of the folds. It opens below the collar, fastened across
+# her breast.
 MANTLE = [
     (0.07, 0.066, 0.012, 22, [(0, 1.222), (90, 1.20), (160, 1.168)], 0.0),  # the collar, standing at the back
     (0.19, 0.114, 0.006, 34, [(0, 1.122), (90, 1.108), (160, 1.10)], 0.0),  # over the shoulders
@@ -226,6 +239,21 @@ def mantle_back():
 def mantle():
     verts, faces, _ = loft([mantle_ring(*level) for level in MANTLE], closed=False)
     part('mantle', verts, faces, M['team'], inside=lambda c: V(0, 0, c.z))
+
+    # Fastened across her breast, below the throat where her chin would hide it: a brooch on each
+    # front edge, over the collarbones, and a short chain between them, sagging a little.
+    collar, shoulders = mantle_ring(*MANTLE[0]), mantle_ring(*MANTLE[1])
+    pins = []
+    for i in (0, N_MANTLE - 1):
+        at = collar[i].lerp(shoulders[i], 0.72) + V(0, -0.008, 0)
+        out = V(0.3 * math.copysign(1.0, at.x), -1, 0.3).normalized()
+        cone(f'brooch-{i}', at, at + 0.013 * out, 0.025, M['trim'], n=6, back=at - 0.006 * out)
+        pins.append(at)
+    left, right = pins
+    middle = left.lerp(right, 0.5) + V(0, -0.006, -0.028)
+    verts = [left + V(0, 0, 0.006), middle + V(0, 0, 0.006), right + V(0, 0, 0.006),
+             right - V(0, 0, 0.006), middle - V(0, 0, 0.006), left - V(0, 0, 0.006)]
+    part('chain', verts, [(0, 1, 4, 5), (1, 2, 3, 4)], M['trim'], outward=V(0, -1, 0))
 
 
 # Head ---------------------------------------------------------------------------------------------
@@ -312,6 +340,9 @@ def head():
     tube('neck', V(0, 0.01, 1.12), V(0, -0.004, 1.28), [(0, 0.044), (1, 0.04)], M['skin'])
 
 
+HAIR_CLASP_Z = 1.08
+
+
 def hair_fall():
     # Long hair from the back of her head down over the mantle to her waist, in three locks: rows
     # across her back from her left to her right, edge, ridge, valley, ridge, valley, ridge, edge,
@@ -329,6 +360,7 @@ def hair_fall():
     for z, half in ((1.15, 0.13), (0.98, 0.115), (0.84, 0.08)):
         rows.append([on_mantle(f * half, z, out) for f, out in zip(across, lift)])
     verts, faces, _ = loft(rows, closed=False)
+    sheet = triangles(verts, faces)  # the hair's triangles, for laying the clasp on it
     n = len(verts)
     q = list(range(n - 7, n))  # the last row
     for f, z in ((0.66, 0.775), (0.0, 0.735), (-0.66, 0.775)):
@@ -336,6 +368,17 @@ def hair_fall():
     faces += [(q[0], q[1], n), (q[1], q[2], n), (q[2], q[3], n + 1), (q[3], q[4], n + 1),
               (q[4], q[5], n + 2), (q[5], q[6], n + 2)]
     part('hair-fall', verts, faces, M['hair'], outward=V(0, 1, 0))
+
+    # A clasp of metal binds it between her shoulders, laid across it and tilted with it, its face
+    # smaller than its back.
+    z = HAIR_CLASP_Z
+    centre = V(0, on_surface(sheet, 0, z), z)
+    down = V(0, on_surface(sheet, 0, z - 0.05), z - 0.05) - centre
+    out = down.cross(V(1, 0, 0)).normalized()
+    if out.y < 0:
+        out = -out
+    up = V(1, 0, 0).cross(out)
+    box('hair-clasp', centre + 0.004 * out, [out, V(1, 0, 0), up], (0.014, 0.085, 0.022), M['trim'], 0.8)
 
 
 def front_lock():
@@ -372,6 +415,8 @@ def raised_arm():
     verts, faces, _ = loft(rings)
     part('sleeve-right', verts, faces, M['gown'], inside=lambda c: elbow + (c - elbow).dot(down) * down)
     tube('forearm-right', elbow, wrist, [(-0.05, 0.04), (1.0, 0.033)], M['skin'])
+    # A band of metal about her forearm below the elbow, well clear of her hand.
+    tube('armlet', elbow.lerp(wrist, 0.22), elbow.lerp(wrist, 0.4), [(0, 0.04), (0.5, 0.048), (1, 0.039)], M['trim'])
     fist = wrist + 0.035 * ahead
     up = (V(0, -1, 0) - V(0, -1, 0).dot(ahead) * ahead).normalized()
     box('fist-right', fist, [ahead, up, ahead.cross(up)], (0.036, 0.036, 0.032), M['skin'], 0.8)
@@ -382,6 +427,10 @@ def star_glass(centre):
     # The phial: a small crystal, and the star's light round it in four short rays and a long one up.
     tall = V(0, 0, 1)
     cone('phial', centre, centre + 0.08 * tall, 0.04, M['light'], n=6, back=centre - 0.055 * tall)
+    # It stands in a small cup of metal above her hand.
+    verts, faces, _ = loft(segment(centre - 0.05 * tall, centre - 0.006 * tall, [(0, 0.022), (1, 0.04)], 6))
+    faces.append(tuple(range(6)))
+    part('phial-cup', verts, faces, M['trim'], inside=centre - 0.03 * tall)
     for k in range(4):
         a = math.radians(45 + 90 * k)
         out = V(math.cos(a), math.sin(a), 0.0)
