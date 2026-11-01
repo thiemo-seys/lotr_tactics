@@ -91,7 +91,8 @@ code { font: .88em var(--mono); }
   </header>
 
   <nav class="index" aria-label="Options">
-    <a class="rec" href="#recommended">Recommended</a>
+    <a class="rec" href="#chosen">Chosen</a>
+    <a href="#recommended">Recommended</a>
     <a href="#today">Today</a>
     <a href="#grow">1 · Grow</a>
     <a href="#base">2 · Base</a>
@@ -100,8 +101,20 @@ code { font: .88em var(--mono); }
     <a href="#book">5 · Book moment</a>
     <a href="#aura">6 · Aura</a>
     <a href="#models">The 3★ models</a>
-    <a href="#choose">Choose</a>
+    <a href="#choose">Next</a>
   </nav>
+
+  <section id="chosen">
+    <div class="head"><h2>Chosen</h2><span class="eyebrow">1 November 2026 · every option but the aura</span></div>
+    <div class="tags"><span class="tag good">stays in the hex</span><span class="tag warn">art: a gear and a book model per unit</span><span class="tag good">client: scale, base, trim, model per star</span></div>
+    <ul class="trade">
+      <li><b>Gear at 2★</b> (<code>&lt;id&gt;-2.glb</code>) and the <b>book moment at 3★</b> (<code>&lt;id&gt;-3.glb</code>), each falling back to the level below until it is built. Here only Aragorn has his 2★ gear.</li>
+      <li><b>Grow:</b> 2★ and 3★ are 10% bigger, as far as the hex allows: Éomer grows 3.8%.</li>
+      <li><b>Base:</b> a stone stand with a plain, silver or gold rim, and one to three pips on the edge facing the other side.</li>
+      <li><b>Trim:</b> fittings iron, silver, gold. The stars stay on the label. No aura.</li>
+    </ul>
+    <div data-gallery="chosen" data-views="all,0,1,2" data-solo></div>
+  </section>
 
   <section id="recommended">
     <div class="head"><h2>Recommended</h2><span class="eyebrow">grow at 2★ · book model at 3★ · stars on the label</span></div>
@@ -203,7 +216,7 @@ code { font: .88em var(--mono); }
           <tr><td>Frodo 1★</td><td>frodo.glb</td><td class="num">754</td><td class="num">800</td><td class="num">0.88</td><td class="num">0.66</td></tr>
           <tr><td>Frodo 3★</td><td>frodo-3.glb</td><td class="num">918</td><td class="num">1,000</td><td class="num">0.88</td><td class="num">0.62</td></tr>
           <tr><td>Aragorn 1★</td><td>aragorn.glb</td><td class="num">746</td><td class="num">800</td><td class="num">2.03</td><td class="num">0.62</td></tr>
-          <tr><td>Aragorn 2★ gear</td><td>aragorn-2-gear.glb</td><td class="num">874</td><td class="num">900</td><td class="num">2.03</td><td class="num">0.62</td></tr>
+          <tr><td>Aragorn 2★ gear</td><td>aragorn-2.glb</td><td class="num">874</td><td class="num">900</td><td class="num">2.03</td><td class="num">0.62</td></tr>
           <tr><td>Aragorn 3★</td><td>aragorn-3.glb</td><td class="num">962</td><td class="num">1,000</td><td class="num">2.10</td><td class="num">0.84</td></tr>
           <tr><td>Éomer 1★</td><td>eomer.glb</td><td class="num">1,177</td><td class="num">1,200</td><td class="num">1.93</td><td class="num">0.91</td></tr>
           <tr><td>Éomer 3★</td><td>eomer-3.glb</td><td class="num">1,267</td><td class="num">1,500</td><td class="num">2.12</td><td class="num">0.91</td></tr>
@@ -215,7 +228,7 @@ code { font: .88em var(--mono); }
       <figure><a href="img/sheet-frodo-3.webp" target="_blank" rel="noopener"><img src="img/sheet-frodo-3.webp" alt="Frodo at 3 stars from eight sides" loading="lazy"></a><figcaption>Frodo ★★★ · mithril coat</figcaption></figure>
       <figure><a href="img/sheet-aragorn-3.webp" target="_blank" rel="noopener"><img src="img/sheet-aragorn-3.webp" alt="Aragorn as King Elessar from eight sides" loading="lazy"></a><figcaption>Aragorn ★★★ · King Elessar</figcaption></figure>
       <figure><a href="img/sheet-eomer-3.webp" target="_blank" rel="noopener"><img src="img/sheet-eomer-3.webp" alt="Éomer King from eight sides" loading="lazy"></a><figcaption>Éomer ★★★ · Éomer King</figcaption></figure>
-      <figure><a href="img/sheet-aragorn-2-gear.webp" target="_blank" rel="noopener"><img src="img/sheet-aragorn-2-gear.webp" alt="Aragorn with shoulder plates from eight sides" loading="lazy"></a><figcaption>Aragorn ★★ gear · shoulder plates</figcaption></figure>
+      <figure><a href="img/sheet-aragorn-2.webp" target="_blank" rel="noopener"><img src="img/sheet-aragorn-2.webp" alt="Aragorn with shoulder plates from eight sides" loading="lazy"></a><figcaption>Aragorn ★★ gear · shoulder plates</figcaption></figure>
       <figure><a href="img/sheet-frodo.webp" target="_blank" rel="noopener"><img src="img/sheet-frodo.webp" alt="Frodo at 1 star from eight sides" loading="lazy"></a><figcaption>Frodo ★ · with trim</figcaption></figure>
       <figure><a href="img/sheet-aragorn.webp" target="_blank" rel="noopener"><img src="img/sheet-aragorn.webp" alt="Aragorn at 1 star from eight sides" loading="lazy"></a><figcaption>Aragorn ★ · with trim</figcaption></figure>
       <figure><a href="img/sheet-eomer.webp" target="_blank" rel="noopener"><img src="img/sheet-eomer.webp" alt="Éomer at 1 star from eight sides" loading="lazy"></a><figcaption>Éomer ★ · with trim</figcaption></figure>
@@ -224,14 +237,8 @@ code { font: .88em var(--mono); }
 
   <section id="choose">
     <div class="ask">
-      <h2>Choose</h2>
-      <p>Answer in the session or on the pull request. Any mix works, for example:</p>
-      <ol>
-        <li><b>The recommendation as it is:</b> grow at 2★, the book model at 3★.</li>
-        <li><b>The recommendation plus a base</b> (rim, pips or team colour), if Riders need more at 2★ than 2% of growth.</li>
-        <li><b>Something else:</b> any of the six, or a change to one of the 3★ models.</li>
-      </ol>
-      <p>Nothing is rolled out until you choose. After that the choice goes into <code>design.md</code> section 12 and <code>viewer-spec.md</code> section 4, and the other 33 units and the client follow as a planned roll-out.</p>
+      <h2>Next</h2>
+      <p>The choice is recorded in <code>design.md</code> section 2 and <code>viewer-spec.md</code> section 4. The client draws the models with their stars next, and then the gear and book models are built for the other units, 5-costs last (<code>star-study/ROLLOUT.md</code>).</p>
     </div>
   </section>
 </main>

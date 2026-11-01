@@ -2,12 +2,13 @@
 
 How a unit's star level (1★, 2★, 3★) shows on its model, tried on Frodo (small), Aragorn (standard) and Éomer (mounted) on the game's board. `docs/design.md` section 12, item 2, leaves this open. The task and its background are in [`HANDOFF.md`](HANDOFF.md).
 
-**Not chosen yet.** The comparison page is [`results/index.html`](results/index.html) (open it in a browser). Nothing here is used by the client, and `units/` and `public/models/` are untouched.
+**Chosen** on 1 November 2026: every option but the aura (`options/chosen.json`). A 2★ unit wears its gear and a 3★ is its book model, both drawn 10% bigger as far as the hex allows, on a base with a plain, silver or gold rim and pips, with its trim coloured to match. The rules are in `docs/viewer-spec.md` section 4; the roll-out to every unit is planned in [`ROLLOUT.md`](ROLLOUT.md). The comparison page is [`results/index.html`](results/index.html) (open it in a browser).
 
 ## The options
 
 | Option | What it is | Work | Trade-offs |
 |---|---|---|---|
+| Chosen | everything below but the aura | client, and a gear and book model per unit | — |
 | Recommended | 2★ grows 10% (Riders as far as the hex allows), 3★ is the book-moment model, stars stay on the label | client: a scale per star and loading `<id>-3.glb`; art: 36 new models | Riders barely grow at 2★ |
 | 1 · Grow | 2★ +10%, 3★ +20% | client only | size compares a unit only with itself; Éomer reaches 0.91 of the hex's 0.94, so he can grow only 3.8% |
 | 2 · Base | a low stand: plain, silver or gold rim; pips; or the team colour | client only, built once | says nothing about the character; changes the feel of the board |
@@ -23,7 +24,7 @@ How a unit's star level (1★, 2★, 3★) shows on its model, tried on Frodo (s
 | Frodo 1★ | `frodo.py` | 754 | 800 |
 | Frodo 3★: the mithril coat where the elven cloak opens | `frodo-3.py` | 918 | 1,000 |
 | Aragorn 1★ | `aragorn.py` | 746 | 800 |
-| Aragorn 2★, gear: shoulder plates | `aragorn-2-gear.py` | 874 | 900 |
+| Aragorn 2★, gear: shoulder plates | `aragorn-2.py` | 874 | 900 |
 | Aragorn 3★: King Elessar, winged crown, Arwen's standard | `aragorn-3.py` | 962 | 1,000 |
 | Éomer 1★ | `eomer.py` | 1,177 | 1,200 |
 | Éomer 3★: Éomer King, crowned helm, royal banner | `eomer-3.py` | 1,267 | 1,500 |

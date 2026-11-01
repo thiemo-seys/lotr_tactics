@@ -25,7 +25,7 @@
 //     "grow": [100, 110, 120],     // scale per star, in percent
 //     "riderGrow": [100, 103, 103],// the same for Riders and Large units
 //     "fit": true,                 // never grow a model past the hex's 0.94 radius
-//     "base": "rim" | "pips" | "team" | null, // a low stand: silver and gold rim, pips, or the team colour
+//     "base": "rim" | "pips" | "rim+pips" | "team" | null, // a low stand: silver and gold rim, pips, both, or the team colour
 //     "trim": true,                // colour the `trim` material iron, silver, gold
 //     "aura": [false, false, true] // a faint glow per star
 //   }
@@ -196,18 +196,18 @@ function base(star, team) {
   // Hex corners line up with the tile's.
   group.add(top);
   const kind = config.study.base;
-  if (kind === 'rim' || kind === 'team') {
+  if (kind === 'rim' || kind === 'team' || kind === 'rim+pips') {
     const colour = kind === 'team' ? TEAM_COLOURS[team] : RIM[star - 1];
     const rim = new THREE.Mesh(rimGeometry, new THREE.MeshStandardMaterial({ color: colour, roughness: 0.5, metalness: 0.1, flatShading: true, side: THREE.DoubleSide }));
     rim.position.y = BASE_HEIGHT * 0.4;
     group.add(rim);
   }
-  if (kind === 'pips' || kind === 'team') {
+  if (kind === 'pips' || kind === 'team' || kind === 'rim+pips') {
     const pip = new THREE.MeshStandardMaterial({ color: kind === 'team' ? 0xe8e4da : PIP[star - 1], roughness: 0.5, metalness: 0.1, flatShading: true });
     for (let i = 0; i < star; i++) {
       const p = new THREE.Mesh(pipGeometry, pip);
       p.scale.set(1, 0.6, 1);
-      // Along the front edge, centred.
+      // Along the edge towards the other team's half, centred.
       p.position.set((i - (star - 1) / 2) * 0.2, BASE_HEIGHT + 0.02, BASE_RADIUS * 0.84);
       group.add(p);
     }

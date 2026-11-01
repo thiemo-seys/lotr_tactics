@@ -12,7 +12,7 @@ Star-study 2-star variant for the Gear option: the 1-star Aragorn (aragorn.py he
 plus one piece, the steel spaulders of a captain of the Dúnedain, two lames on each shoulder edged in
 `trim`, which broaden his shoulders out past his mantle.
 
-    blender --background --factory-startup --python-exit-code 1 --python aragorn-2-gear.py -- models/aragorn-2-gear.glb
+    blender --background --factory-startup --python-exit-code 1 --python aragorn-2.py -- models/aragorn-2.glb
 
 Coordinates are Blender's: z up, the model faces -Y, so his right hand is at -X.
 """
@@ -476,7 +476,7 @@ def main():
     anduril()
     standard()
     spaulders()
-    finish('aragorn-2-gear', budget=900)
+    finish('aragorn-2', budget=900)
 
 
 main()
