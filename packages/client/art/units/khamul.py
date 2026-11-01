@@ -16,6 +16,14 @@ rim of the hood and the horse's cloth, seen from in front, from behind and from 
 the black hood rises over the mantle, and the black cloak falls over the saddle onto the cloth over
 the horse's quarters, so he reads as a Nazgûl rider whichever way he faces.
 
+His fittings use `trim`, which the client colours iron, silver or gold by star level
+(docs/viewer-spec.md section 4, "Star levels"): the sword's cross-guard and pommel, a round clasp
+closing the mantle at his throat, the stirrups under his boots, the bosses where the breast strap
+meets the caparison and two on the caparison over the croup, and the horse's browband. The sword's
+fittings and the bosses on the croup show from behind, the clasp, the bosses on the breast and the
+browband from in front, and the stirrups from both. His 2★ model is khamul-2.py and his 3★
+khamul-3.py.
+
     blender --background --factory-startup --python-exit-code 1 --python khamul.py [-- <out.glb>]
 
 Coordinates are Blender's: z up, the model faces -Y, so his right hand is at -X.
@@ -44,6 +52,7 @@ from kit import (  # noqa: E402
     part,
     reset,
     team_material,
+    trim_material,
 )
 from mounts import Surface, horse  # noqa: E402
 
@@ -54,16 +63,13 @@ VOID = 0x050505  # the darkness under the hood
 GLEAM = 0xDCDECF  # the faint, pale gleam of the eyes
 SKIN = 0x9A968A  # haggard, grey hands
 BLADE = 0xC8CDC9  # the sword's cold, pale steel
-IRON = 0x494643  # its pommel
 COAT = 0x454346  # the great black horse, as dark as the coat can be and still show its facets
 POINTS = 0x2A282A  # its mane, tail and legs, blacker still
-TARNISH = 0x8A7650  # the old brass of the horse's browband
 
 M = {}  # materials by name, made once the scene is reset
 
 
 def make_materials():
-    # Made before the horse, so its browband takes this old brass.
     M.update(
         team=team_material(),
         cloak=material('cloak', CLOAK, roughness=0.9),
@@ -72,10 +78,10 @@ def make_materials():
         gleam=material('gleam', GLEAM, roughness=0.6, emission=GLEAM, emission_strength=1.0),
         skin=material('skin', SKIN, roughness=0.85),
         blade=material('blade', BLADE, roughness=0.35, metallic=0.1, emission=BLADE, emission_strength=0.2),
-        iron=material('iron', IRON, roughness=0.5, metallic=0.1),
         leather=material('leather', LEATHER, roughness=0.85),
         boots=material('boots', BOOTS, roughness=0.9),
-        brass=material('brass', TARNISH, roughness=0.6, metallic=0.1),
+        # Fittings: the renderer recolours this iron, silver or gold by star level.
+        trim=trim_material(),
     )
 
 
@@ -116,6 +122,27 @@ def clear_cloth(cloth, body):
             v.co = V(0, p.y, 0.58) + (reach + CLOTH_CLEAR) * out.normalized()
 
 
+# The caparison's fittings, in trim: a boss on each side where the breast strap meets the cloth, facing
+# out and forward, and two on the cloth over the croup either side of the tail, facing up and out.
+BOSS_RADIUS, BOSS_HEIGHT = 0.04, 0.013
+CROUP_BOSSES = [V(s * 0.55, 0.12, 0.8) for s in (-1, 1)]  # the way each faces from the middle of the croup
+
+
+def boss(name, at, out):
+    out = out.normalized()
+    cone(name, at - 0.004 * out, at + BOSS_HEIGHT * out, BOSS_RADIUS, M['trim'], n=6, phase=30, back=None)
+
+
+def fittings(caparison):
+    strap = bpy.data.objects['horse-strap'].data.vertices
+    for s, (low, high) in ((1, (0, 13)), (-1, (12, 25))):  # its ends, on his left and right
+        end = (strap[low].co + strap[high].co) / 2
+        boss(f'boss-breast-{s}', end + V(s * 0.004, 0.006, 0), V(s * 0.8, -0.6, 0))
+    surface = Surface(caparison)
+    for k, out in enumerate(CROUP_BOSSES):
+        boss(f'boss-croup-{k}', surface.onto(V(0, 0.34, 0.6), out), out)
+
+
 # Legs: robed thighs astride the horse, tall boots hanging in high stirrups.
 HIP, KNEE, ANKLE = V(0.115, 0.04, 0.83), V(0.30, -0.15, 0.70), V(0.31, -0.10, 0.46)
 
@@ -130,6 +157,29 @@ def legs():
         axes = [V(s * 0.25, -1, -0.1), V(1, 0, 0), V(0, 0, 1)]
         box(f'foot-{s}', ankle + V(0, -0.05, -0.03), axes, (0.08, 0.042, 0.04), M['boots'], 0.75)
     return objects
+
+
+# The high stirrups under his boots: flat iron loops in trim round the ball of each foot, square to
+# it, the tread under the sole and the eye over the instep, so they show from in front and behind.
+STIRRUP_TREAD, STIRRUP_EYE = 0.375, 0.53  # the heights of the bottom of the tread and the top of the eye
+STIRRUP_HALF = 0.064  # half the tread's width
+STIRRUP_BAR = 0.017  # how thick the iron is
+
+
+def stirrups():
+    for s in (-1, 1):
+        ankle = ANKLE * V(s, 1, 1)
+        along = V(s * 0.25, -1, -0.1).normalized()  # the foot, as legs() lays it
+        across = V(1, s * 0.25, 0).normalized()
+        ball = ankle + V(0, -0.05, -0.03) + 0.025 * along
+        centre = V(ball.x, ball.y, 0)
+        outer = [centre + V(0, 0, STIRRUP_EYE)] + [centre + k * STIRRUP_HALF * across + V(0, 0, STIRRUP_TREAD)
+                                                  for k in (-1, 1)]
+        inner = [centre + V(0, 0, STIRRUP_EYE - 1.6 * STIRRUP_BAR)]
+        inner += [centre + k * (STIRRUP_HALF - STIRRUP_BAR) * across + V(0, 0, STIRRUP_TREAD + STIRRUP_BAR)
+                  for k in (-1, 1)]
+        faces = [(0, 1, 4, 3), (1, 2, 5, 4), (2, 0, 3, 5)]
+        part(f'stirrup-{s}', outer + inner, faces, M['trim'], outward=along)
 
 
 # Cloak and robe ----------------------------------------------------------------------------------
@@ -323,6 +373,15 @@ def mantle():
     part('mantle-hem', verts, faces, M['team'], inside=lambda c: V(0, cy, c.z))
 
 
+# A round clasp in trim closing the mantle at his throat, under the hood.
+CLASP = V(0, SHOULDER_Y - 0.152, SHOULDER_Z - 0.085)  # the middle of its face
+CLASP_OUT = V(0, -1, 0.35).normalized()  # facing forward and a little up, to the game's camera
+
+
+def clasp():
+    cone('clasp', CLASP - 0.018 * CLASP_OUT, CLASP, 0.034, M['trim'], n=6, phase=30)
+
+
 # Arms --------------------------------------------------------------------------------------------
 
 # The right arm holds the sword up and out; the left gathers the reins over the withers.
@@ -384,14 +443,14 @@ def sword():
     faces += [(last + i, last + (i + 1) % 4, tip) for i in range(4)]
     part('blade', verts, faces, M['blade'], inside=lambda c: guard + (c - guard).dot(SWORD) * SWORD)
 
-    # A long cross-guard of the same pale steel, so the hilt shows as a cross against the black
-    # sleeve, its ends swept down towards the hand; the grip and an iron pommel.
+    # A long cross-guard in trim, so the hilt shows as a cross against the black sleeve, its ends
+    # swept down towards the hand; the grip and a trim pommel.
     for s in (-1, 1):
-        cone(f'quillon-{s}', guard, guard + s * 0.095 * width - 0.035 * SWORD, 0.017, M['blade'], n=4,
+        cone(f'quillon-{s}', guard, guard + s * 0.095 * width - 0.035 * SWORD, 0.017, M['trim'], n=4,
              phase=45, back=None)
     end = grip - 0.1 * SWORD
     bent_tube('grip', [end, guard], [0.018, 0.018], M['leather'], n=4, phase=45)
-    cone('pommel', end, end - 0.045 * SWORD, 0.028, M['iron'], n=4, phase=45, back=end + 0.015 * SWORD)
+    cone('pommel', end, end - 0.045 * SWORD, 0.028, M['trim'], n=4, phase=45, back=end + 0.015 * SWORD)
 
 
 def reins(mount):
@@ -411,11 +470,14 @@ def main():
     mount = horse(COAT, POINTS, tack='caparison', raised='right', turn=40)
     body, caparison = bpy.data.objects['horse-body'], bpy.data.objects['horse-caparison']
     clear_cloth(caparison, body)
+    fittings(caparison)
     covered = [body, caparison] + legs()
+    stirrups()
     fixed = set(bpy.context.scene.objects)
     cloak()
     hood()
     mantle()
+    clasp()
     sleeve('right', R_SHOULDER, R_ELBOW, R_WRIST)
     sleeve('left', L_SHOULDER, L_ELBOW, L_WRIST)
     fist('fist-left', L_WRIST, L_ELBOW, V(0, 0, 1))
