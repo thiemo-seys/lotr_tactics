@@ -193,6 +193,13 @@ export class PlayFlow {
     return this.state!.players.filter((p) => p.placement === null && seats?.[p.seat]?.kind === 'person' && seats[p.seat]!.connected).map((p) => p.seat);
   }
 
+  /** The others in the Council group picking now who haven't picked yet. */
+  councilWaiting(): number[] {
+    const council = this.state?.council;
+    if (council === null || council === undefined) return [];
+    return (council.groups[council.group] ?? []).filter((seat) => seat !== this.you && !council.options.some((o) => o.pickedBy === seat));
+  }
+
   seatName(seat: number): string {
     return seat === this.you ? 'You' : (this.lobby?.seats[seat]?.name ?? `Seat ${seat + 1}`);
   }

@@ -138,7 +138,8 @@ function showClock(): void {
   if (over) {
     const { outcome, finalTick } = playback.combat.result();
     rebuild(banner, `${outcome}-${finalTick}`, () => {
-      banner.className = `outcome-banner ${outcome === 'draw' ? 'draw' : outcome === 'A' ? 'victory' : 'defeat'}`;
+      // The viewer takes no side: either team's win is a win.
+      banner.className = `outcome-banner ${outcome === 'draw' ? 'draw' : 'victory'}`;
       return [
         el('span', 'banner-line'),
         icon(outcome === 'draw' ? 'pvp' : 'trophy'),

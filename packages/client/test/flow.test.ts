@@ -208,6 +208,24 @@ describe('the timer', () => {
   });
 });
 
+describe('the Council', () => {
+  it('waits only for the others in the group picking now who have not picked yet', () => {
+    const { flow } = recorded();
+    const option = (pickedBy: number | null) => ({ unitId: 'sam', item: 'blade', ring: false, pickedBy });
+    const council = (picks: (number | null)[], groups: number[][], group: number) =>
+      ({ council: { options: picks.map(option), groups, group } }) as unknown as MatchView;
+    expect(flow.councilWaiting()).toEqual([]);
+    // Seats 1 and 3 have picked, and you are seat 0.
+    flow.state = council([1, null, 3, null], [[0, 1, 2, 3, 4]], 0);
+    expect(flow.councilWaiting()).toEqual([2, 4]);
+    // Only the group picking now counts.
+    flow.state = council([0, null, null], [[0, 5], [6, 7]], 1);
+    expect(flow.councilWaiting()).toEqual([6, 7]);
+    flow.state = { council: null } as unknown as MatchView;
+    expect(flow.councilWaiting()).toEqual([]);
+  });
+});
+
 describe('results', () => {
   it('name outcomes for the team played, order standings and write places', () => {
     expect([outcomeText('A', 'A'), outcomeText('B', 'A'), outcomeText('draw', 'B')]).toEqual(['Victory', 'Defeat', 'Draw']);

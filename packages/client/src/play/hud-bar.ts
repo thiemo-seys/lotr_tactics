@@ -60,7 +60,7 @@ export class HudBar {
       this.mountDoom,
       actionTip(
         'Mount Doom',
-        `Throw the One Ring into Mount Doom, borne by a Hobbit who has carried it through ${RING.destroy.hobbitFights} fights. Every ring of the Three and the Nine goes with it, yours included.`,
+        `Throw the One Ring into Mount Doom: a Hobbit bearer can, once Hobbits have carried it through ${RING.destroy.hobbitFights} fights. You gain ${RING.destroy.gold} gold and ${plural(RING.destroy.combinedItems, 'random combined item')}. Every ring of the Three and the Nine goes with it, yours included.`,
         null,
       ),
     );
