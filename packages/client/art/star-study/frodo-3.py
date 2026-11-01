@@ -14,14 +14,17 @@ is the cloak: the hood's cowl round his neck and shoulders, the hood thrown back
 dark hollow under his curls, and a short cape to above his knees. From behind, as the near side is
 seen, his curls show above it, his sleeves and Sting beside it and his legs and feet below it.
 
-Star-level study copy (star-study/HANDOFF.md, option 3, trim): the same as units/frodo.py but for
-its fittings, which use a material named `trim` that the study's renderer colours iron, silver or
-gold by star level: Sting's cross-guard and pommel, the setting behind the leaf clasp, the belt
-buckle and the waistcoat's buttons.
+Star-level study, the 3-star "book moment" (star-study/HANDOFF.md, option 5): Frodo at his height,
+the same hobbit as star-study/frodo.py, with the mithril coat Bilbo gave him in Rivendell glinting
+where the elven cloak opens at the chest. From the books: a shirt of rings of silvered steel, light
+and close-fitting, with a belt of pearls and crystals, worn under his clothes until the road wore
+them away. Here it covers his chest and upper arms and hangs below the belt over his breeches, in
+rows of light and darker rings so it reads as mail; the cloak, longer and fuller, is clasped at the
+throat by a bigger leaf in a metal setting and falls open over his chest. Sting is raised higher,
+plain steel with no glow. The mithril is a muted light silver-grey, metallic 0.15, nothing blue.
+Fittings (the leaf's setting, the buckle, Sting's guard and pommel) use `trim`.
 
-    blender --background --factory-startup --python-exit-code 1 --python star-study/frodo.py -- star-study/models/frodo.glb
-
-Coordinates are Blender's: z up, the model faces -Y, so his right hand is at -X.
+    blender --background --factory-startup --python-exit-code 1 --python star-study/frodo-3.py -- star-study/models/frodo-3.glb
 """
 
 import math
@@ -59,10 +62,13 @@ from kit import (  # noqa: E402
 SKIN = 0xE3B08C  # fair for a hobbit, warm
 HAIR = 0x5C3A23  # curly brown, on his head and the tops of his feet
 SHIRT = 0xD8CDB2  # unbleached linen
-WAISTCOAT = 0x8E7743  # a hobbit's yellow, faded by the road
 BREECHES = 0x5A5040  # brown wool
 LEAF = 0x6D8A4F  # the clasp, a green leaf of Lórien
 LINING = 0x434B3C  # the grey-green of an elven cloak, in the shadow inside the hood
+MITHRIL = 0xD2D3CF  # the coat: light, neutral silver-grey, the bright rows of rings
+MAIL = 0x969893  # the rows between, in shadow, so the coat reads as mail
+PEARL = 0xE4DECF  # the belt of pearls
+CRYSTAL = 0xEEEFEA  # its crystals, clear and colourless
 BLADE = 0xCED3D6  # Sting: plain bright steel
 MOUTH = 0x6A4434  # a dark line, not red
 
@@ -75,12 +81,15 @@ def make_materials():
         skin=material('skin', SKIN, roughness=0.85),
         hair=material('hair', HAIR, roughness=0.9),
         shirt=material('shirt', SHIRT, roughness=0.9),
-        waistcoat=material('waistcoat', WAISTCOAT, roughness=0.85),
         breeches=material('breeches', BREECHES, roughness=0.9),
         leather=material('leather', LEATHER, roughness=0.85),
         leaf=material('leaf', LEAF, roughness=0.6),
         lining=material('lining', LINING, roughness=0.9),
         steel=material('steel', BLADE, roughness=0.4, metallic=0.1),
+        mithril=material('mithril', MITHRIL, roughness=0.25, metallic=0.15),
+        mail=material('mail', MAIL, roughness=0.35, metallic=0.15),
+        pearl=material('pearl', PEARL, roughness=0.35),
+        crystal=material('crystal', CRYSTAL, roughness=0.15, metallic=0.05),
         trim=material('trim', BRASS, roughness=0.55, metallic=0.1),  # fittings, recoloured by star
         eyes=material('eyes', EYES, roughness=0.6),
         mouth=material('mouth', MOUTH, roughness=0.8),
@@ -173,26 +182,47 @@ def legs():
 
 # Body --------------------------------------------------------------------------------------------
 
-# Octagons from the seat of his breeches to the shoulders: z, half-width, half-depth and centre y.
-# The belly is the widest and stands out in front, over the belt.
+# Octagons from the hem of the mail to the shoulders: z, half-width, half-depth and centre y. The
+# belly is the widest and stands out in front, over the belt. Above the belt the coat is in rows.
 TORSO = [
-    (0.215, 0.128, 0.105, 0.015),  # the seat of his breeches
-    (0.285, 0.152, 0.128, 0.004),  # the belt's lower edge
-    (0.325, 0.163, 0.143, -0.01),  # the belt's upper edge, under the belly
-    (0.405, 0.18, 0.168, -0.036),  # the round belly
-    (0.475, 0.158, 0.132, -0.014),  # chest
+    (0.2, 0.162, 0.146, 0.02),  # the hem of the coat, flared over his breeches (jagged below)
+    (0.285, 0.154, 0.13, 0.004),  # the belt's lower edge
+    (0.325, 0.165, 0.145, -0.01),  # the belt's upper edge, under the belly
+    (0.365, 0.176, 0.161, -0.024),
+    (0.405, 0.181, 0.169, -0.036),  # the round belly
+    (0.44, 0.172, 0.153, -0.026),
+    (0.475, 0.159, 0.133, -0.014),  # chest
+    (0.5025, 0.145, 0.116, -0.007),
     (0.53, 0.128, 0.098, 0.0),  # shoulders, open above under the cowl
 ]
-TORSO_BANDS = [0, 1, 2, 2, 2]  # breeches, belt, waistcoat
+HEM_JAG = 0.026  # every other point of the hem hangs this much lower
+BELT_BAND = 1
 
 
 def torso():
     rings = [ellipse(0, cy, z, rx, ry, 8, 22.5) for z, rx, ry, cy in TORSO]
+    for i, p in enumerate(rings[0]):
+        p.z -= HEM_JAG * (i % 2)
     verts, faces, bands = loft(rings)
-    face_mats = [TORSO_BANDS[b] for b in bands]
-    mats = [M['breeches'], M['leather'], M['waistcoat']]
+    mats = [M['mithril'], M['mail'], M['pearl']]
+    face_mats = [2 if b == BELT_BAND else (1 if b % 2 else 0) for b in bands]
+    mats[2] = M['leather']  # the belt's strap, under its pearls
     part('torso', verts, faces, mats, face_mats, inside=lambda c: V(0, -0.01, c.z))
     tube('neck', V(0, 0.005, 0.55), V(0, -0.015, 0.64), [(0, 0.048), (1, 0.046)], M['skin'])
+
+    # The belt of pearls and crystals: pearls all round, a crystal between every other pair in front.
+    z, rx, ry, cy = 0.305, 0.168, 0.146, -0.003
+    for k in range(12):
+        d = 270 + 30 * k + 15
+        if abs((d - 270 + 180) % 360 - 180) < 16:
+            continue  # the buckle
+        r = math.radians(d)
+        at = V(rx * math.cos(r), cy + ry * math.sin(r), z)
+        out = V(math.cos(r), math.sin(r), 0)
+        front = math.sin(r) < -0.3
+        mat = M['crystal'] if front and k % 2 else M['pearl']
+        cone(f'bead-{k}', at, at + 0.022 * out, 0.016, mat, n=4, phase=45, back=at - 0.006 * out)
+    box('buckle', V(0, -0.138, 0.305), [V(1, 0, 0), V(0, 0, 1), V(0, 1, 0)], (0.03, 0.026, 0.009), M['trim'], 0.85)
 
 
 # Head --------------------------------------------------------------------------------------------
@@ -329,13 +359,15 @@ def hair():
 # Arms --------------------------------------------------------------------------------------------
 
 # The right arm holds Sting low and forward; the left is out to the side, for balance.
-R_SHOULDER, R_ELBOW, R_WRIST = V(-0.138, 0.0, 0.495), V(-0.212, -0.035, 0.39), V(-0.205, -0.17, 0.33)
+R_SHOULDER, R_ELBOW, R_WRIST = V(-0.138, 0.0, 0.495), V(-0.212, -0.035, 0.39), V(-0.2, -0.165, 0.39)
 L_SHOULDER, L_ELBOW, L_WRIST = V(0.138, 0.0, 0.495), V(0.235, -0.012, 0.4), V(0.3, -0.115, 0.415)
 
 
 def arm(side, shoulder, elbow, wrist, up):
     """A full linen sleeve gathered at the wrist, and a big fist; `up` is where its thumb points."""
-    bent_tube(f'sleeve-{side}', [shoulder, elbow, wrist], [0.05, 0.048, 0.04], M['shirt'])
+    mid = shoulder.lerp(elbow, 0.5)
+    bent_tube(f'sleeve-{side}', [shoulder, mid, elbow, wrist], [0.056, 0.056, 0.052, 0.04],
+              [M['mithril'], M['mail'], M['shirt']], [0, 1, 2])
     ahead = (wrist - elbow).normalized()
     up = (up - up.dot(ahead) * ahead).normalized()
     across = ahead.cross(up)
@@ -345,7 +377,7 @@ def arm(side, shoulder, elbow, wrist, up):
 
 # Sting, in his right hand ------------------------------------------------------------------------
 
-STING = V(-0.45, -0.84, 0.3).normalized()  # forward, out to his right and a little up
+STING = V(-0.4, -0.74, 0.56).normalized()  # forward, out to his right and raised
 STING_LENGTH = 0.33  # from the guard to the point
 STING_ROLL = 65  # degrees the flat is turned from upright towards level, to face the sky
 # Stations along the blade: fraction of its length, half-width and half-thickness at the ridge.
@@ -383,34 +415,72 @@ def sting():
 # Team colour: the elven cloak, its hood thrown back -------------------------------------------------
 
 
+COWL_POINTS = 11
+COWL_GAP = 30  # degrees either side of the front where the cloak lies open, at the shoulders
+
+
+def at_angle(values, degrees):
+    """Eight values at 45-degree steps from +X, read at any angle."""
+    k = (degrees % 360) / 45
+    i = int(k)
+    return lerp(values[i % 8], values[(i + 1) % 8], k - i)
+
+
+def open_ring(cy, rx, ry, zs, gap):
+    points = []
+    for i in range(COWL_POINTS):
+        a = 270 + gap + (360 - 2 * gap) * i / (COWL_POINTS - 1)
+        r = math.radians(a)
+        points.append(V(rx * math.cos(r), cy + ry * math.sin(r), at_angle(zs, a)))
+    return points
+
+
+# The cloak's fronts, falling from the cowl over his belly either side of the opening, so the mithril
+# shows between them: rings across each front from the opening outwards, from the cowl's hem down,
+# as (z, half-width, half-depth, centre y) of the ellipse they lie on and the angles from the
+# opening to the outer edge (degrees from the front).
+FRONTS = [
+    (0.475, 0.205, 0.17, 0.0, 26, 70),
+    (0.405, 0.205, 0.19, -0.034, 33, 68),
+    (0.33, 0.19, 0.172, -0.01, 37, 64),
+]
+
+
+def panels():
+    for side in (-1, 1):
+        rings = []
+        for z, rx, ry, cy, inner, outer in FRONTS:
+            ring = []
+            for k in range(4):
+                a = math.radians(270 + side * lerp(inner, outer, k / 3))
+                ring.append(V(rx * math.cos(a), cy + ry * math.sin(a), z - 0.012 * (k == 0)))
+            rings.append(ring)
+        verts, faces, _ = loft(rings, closed=False)
+        part(f'front-{side}', verts, faces, M['team'], inside=lambda c: V(0, 0, c.z))
+
+
 def cowl():
     # The hood's cowl round his neck and over his shoulders, eight points round from his left (+X);
     # it rises behind the neck and dips in front to the clasp.
     neck_z = [0.6, 0.612, 0.62, 0.612, 0.6, 0.585, 0.572, 0.585]
-    neck = ellipse(0, 0.012, 0, 0.088, 0.082, 8, 0, neck_z)
-    dome = ellipse(0, 0.014, 0, 0.165, 0.135, 8, 0, [z - 0.035 for z in neck_z])
+    # Open in front below the clasp: each ring runs from the front, round his left, the back and
+    # his right to the front again, with a gap that widens downwards.
     shoulder_z = [0.515, 0.535, 0.545, 0.535, 0.515, 0.5, 0.495, 0.5]
-    shoulder = ellipse(0, 0.016, 0, 0.22, 0.168, 8, 0, shoulder_z)
-    hem = ellipse(0, 0.016, 0, 0.21, 0.16, 8, 0, [z - 0.04 for z in shoulder_z])
-    verts, faces, _ = loft([hem, shoulder, dome, neck])
+    neck = open_ring(0.012, 0.088, 0.082, neck_z, 4)
+    dome = open_ring(0.014, 0.165, 0.135, [z - 0.035 for z in neck_z], 12)
+    shoulder = open_ring(0.016, 0.22, 0.168, shoulder_z, COWL_GAP)
+    hem = open_ring(0.016, 0.21, 0.16, [z - 0.04 for z in shoulder_z], COWL_GAP)
+    verts, faces, _ = loft([hem, shoulder, dome, neck], closed=False)
     part('cowl', verts, faces, M['team'], inside=V(0, 0.015, 0.45))
 
     # The clasp at his throat, a leaf, its two halves folded along the midrib.
-    y = -0.09
-    verts = [V(0, y, 0.585), V(0.022, y, 0.562), V(0, y, 0.538), V(-0.022, y, 0.562), V(0, y - 0.008, 0.562)]
+    y = -0.098
+    verts = [V(0, y, 0.596), V(0.028, y, 0.564), V(0, y, 0.532), V(-0.028, y, 0.564), V(0, y - 0.01, 0.564)]
     part('clasp', verts, [(0, 1, 4), (1, 2, 4), (2, 3, 4), (3, 0, 4)], M['leaf'], inside=V(0, 0, 0.56))
     # Its setting, a rim of metal round the leaf.
-    y = -0.086
-    verts = [V(0, y, 0.594), V(0.03, y, 0.562), V(0, y, 0.529), V(-0.03, y, 0.562)]
+    y = -0.094
+    verts = [V(0, y, 0.606), V(0.038, y, 0.564), V(0, y, 0.522), V(-0.038, y, 0.564)]
     part('clasp-setting', verts, [(0, 1, 2, 3)], M['trim'], outward=V(0, -1, 0))
-
-
-def fittings():
-    """The belt buckle and the waistcoat's buttons, on the front of the torso."""
-    box('buckle', V(0, -0.132, 0.305), [V(1, 0, 0), V(0, 0, 1), V(0, 1, 0)], (0.026, 0.024, 0.008), M['trim'], 0.85)
-    for y, z in ((-0.17, 0.37), (-0.188, 0.41), (-0.165, 0.445)):
-        at = V(0, y, z)
-        cone(f'button-{z}', at, at + V(0, -0.016, 0), 0.013, M['trim'], n=4, phase=45, back=at + V(0, 0.01, 0))
 
 
 # The hood, thrown back: its opening lies on his upper back under his curls, the lining showing
@@ -436,23 +506,25 @@ def hood():
 
 
 # The cape from under the cowl to above his knees, behind his arms, in five folds, the hem lowest in
-# the middle of his back; short, so his legs show below it from behind and above. Each level: z in
-# the middle and at the edges, half-width, half-depth, centre y, how far short of the sides it stops
-# (degrees) and how deep the folds are.
+# the middle of his back. Swept back off his sword arm, it hangs from his left shoulder and across
+# his back, its edge running down from his right shoulder, so from behind the mail shows on that
+# side as well as below the hem. Each level: z in the middle and at the edges, half-width,
+# half-depth, centre y, how far short of the left side and of the right side it stops (degrees) and
+# how deep the folds are.
 CAPE = [
-    (0.53, 0.51, 0.2, 0.15, 0.02, -8, 0.0),
-    (0.41, 0.42, 0.206, 0.168, 0.022, 4, 0.015),
-    (0.275, 0.3, 0.214, 0.172, 0.026, 10, 0.026),
+    (0.53, 0.51, 0.2, 0.15, 0.02, -8, 20, 0.0),
+    (0.41, 0.42, 0.206, 0.168, 0.022, 4, 58, 0.015),
+    (0.285, 0.31, 0.218, 0.176, 0.03, 10, 78, 0.028),
 ]
 CAPE_POINTS = 11
 
 
 def cape():
     rings = []
-    for middle, edge, rx, ry, cy, spread, fold in CAPE:
+    for middle, edge, rx, ry, cy, left, right, fold in CAPE:
         ring = []
         for i in range(CAPE_POINTS):
-            a = math.radians(spread + (180 - 2 * spread) * i / (CAPE_POINTS - 1))
+            a = math.radians(left + (180 - left - right) * i / (CAPE_POINTS - 1))
             k = 1 + (fold / ry if i % 2 else 0)
             z = edge + (middle - edge) * math.sin(a) ** 2
             ring.append(V(k * rx * math.cos(a), cy + k * ry * math.sin(a), z))
@@ -472,11 +544,11 @@ def main():
     cowl()
     hood()
     cape()
-    fittings()
+    panels()
     arm('left', L_SHOULDER, L_ELBOW, L_WRIST, V(0, 0, 1))
     sting()
     lean([o for o in bpy.context.scene.objects if o not in lower], HIPS, LEAN)
-    finish('frodo')
+    finish('frodo-3', budget=1000)
 
 
 main()
