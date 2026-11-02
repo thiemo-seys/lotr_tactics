@@ -2,9 +2,14 @@
 
 Tall and slim beside the Dwarf: 1.48 to the crown, shoulders about 0.42 across, long legs and a narrow
 waist, long straight dark hair and a smooth, beardless face with pointed ears. Clad in green and brown,
-as the books have him, with a long bow of the Galadhrim held out in his left hand, an arrow nocked and
-half drawn, and a quiver on his back. The team colour is his short Lórien cloak and the baldric across
-his chest.
+as the books have him, with his bow of Mirkwood held out in his left hand, an arrow nocked and half
+drawn, and a quiver on his back. The team colour is his short Lórien cloak and the baldric across his
+chest.
+
+His fittings, the leaf clasp at the throat of his cloak, the baldric's buckle, the bands round the
+quiver and the collars either side of the bow's grip, use `trim`, which the client colours iron,
+silver or gold by star level (docs/viewer-spec.md section 4, "Star levels"). His 2★ model is
+legolas-2.py and his 3★ model legolas-3.py.
 
     blender --background --factory-startup --python-exit-code 1 --python legolas.py [-- <out.glb>]
 
@@ -26,6 +31,7 @@ from kit import (  # noqa: E402
     STEEL,
     V,
     box,
+    cone,
     finish,
     frame,
     loft,
@@ -35,6 +41,7 @@ from kit import (  # noqa: E402
     reset,
     segment,
     team_material,
+    trim_material,
     tube,
 )
 
@@ -43,7 +50,7 @@ HAIR = 0x3B2C22  # dark brown
 SKIN = 0xE4C1A2  # fair
 TUNIC = 0x5A6943  # forest green
 LEGGINGS = 0x6D5841  # brown
-BOW = 0xB28C5C  # the pale wood of a bow of the Galadhrim, and the arrows
+BOW = 0xB28C5C  # the wood of his bow of Mirkwood, and the arrows
 FEATHER = 0xDCD6C8  # grey-white fletching, and the bowstring
 
 M = {}  # materials by name, made once the scene is reset
@@ -62,6 +69,7 @@ def make_materials():
         feather=material('feather', FEATHER, roughness=0.9),
         steel=material('steel', STEEL, roughness=0.5, metallic=0.1),
         eyes=material('eyes', EYES, roughness=0.6),
+        trim=trim_material(),
     )
 
 
@@ -215,6 +223,23 @@ def baldric():
     verts, faces, _ = loft(rows, closed=False)
     part('baldric', verts, faces, M['team'], inside=lambda c: V(0, 0, c.z))
 
+    # Its buckle on his breast, halfway between the corners either side of the front.
+    low, high = (rows[0][1] + rows[0][2]) / 2, (rows[1][1] + rows[1][2]) / 2
+    along = ((rows[0][2] + rows[1][2]) - (rows[0][1] + rows[1][1])).normalized()
+    across = (high - low).normalized()
+    out = along.cross(across).normalized()
+    centre = (low + high) / 2
+    if out.dot(V(centre.x, centre.y, 0)) < 0:
+        out = -out
+    box('buckle', centre + 0.006 * out, [out, along, across], (0.008, 0.026, 0.042), M['trim'], 0.75)
+
+
+def clasp():
+    # A leaf of trim at his throat, clasping the cloak's edges together over the top of his tunic.
+    base = V(0, -0.068, 1.1)
+    out = V(0, -0.84, 0.542)  # square to the slope of his chest there
+    cone('clasp', base, base + 0.016 * out, 0.026, M['trim'], n=4, squash=1.6)
+
 
 CLOAK_SPAN = 296.0, 604.0  # degrees from +X: from the front of his left shoulder round his back to his right
 
@@ -258,6 +283,10 @@ def quiver():
     foot, top = QUIVER_FOOT, QUIVER_TOP
     along = (top - foot).normalized()
     tube('quiver', foot, top, [(0, 0.048), (1, 0.06)], M['leather'], n=6)
+    # Two bands of trim round it.
+    for k, t in enumerate((0.2, 0.7)):
+        r = 0.048 + 0.012 * t + 0.006
+        tube(f'quiver-band-{k}', foot.lerp(top, t - 0.04), foot.lerp(top, t + 0.04), [(0, r), (1, r)], M['trim'], n=6)
     # A rounded foot, and a rim round the mouth.
     ring = segment(foot, top, [(0, 0.048)], 6)[0]
     verts = ring + [foot - 0.035 * along]
@@ -425,6 +454,24 @@ def bow():
         face_mats += [0] * 4
     part('bow', verts, faces, [M['wood'], M['leather']], face_mats, inside=nearest_on_path(centres))
 
+    # A collar of trim at either end of the grip, proud of the stave.
+    def stave_ring(u, grow):
+        for (u0, w0, t0), (u1, w1, t1) in zip(STAVE, STAVE[1:]):
+            if u0 <= u <= u1:
+                k = (u - u0) / (u1 - u0)
+                w, t = w0 + k * (w1 - w0), t0 + k * (t1 - t0)
+                c = GRIP + u * BOW_UP - w * AIM
+                w_ahead = w0 + (k + 0.01) * (w1 - w0)
+                ahead = (GRIP + (u + 0.01 * (u1 - u0)) * BOW_UP - w_ahead * AIM - c).normalized()
+                back = side.cross(ahead)
+                t *= grow
+                return [c + t * back, c + 0.9 * t * side, c - t * back, c - 0.9 * t * side]
+        raise ValueError(f'no stave at {u}')
+
+    for name, (u0, u1) in (('grip-collar-low', (-0.135, -0.1)), ('grip-collar-high', (0.1, 0.135))):
+        verts, faces, _ = loft([stave_ring(u0, 1.3), stave_ring(u1, 1.3)])
+        part(name, verts, faces, M['trim'], inside=nearest_on_path(centres))
+
     # The string, from tip to tip by way of the arrow's nock.
     top, bottom = centres[-1] - 0.025 * BOW_UP, centres[0] + 0.025 * BOW_UP
     for name, a, b in (('string-top', NOCK, top), ('string-bottom', NOCK, bottom)):
@@ -478,6 +525,7 @@ def main():
     torso()
     baldric()
     cloak()
+    clasp()
     quiver()
     turn(new_objects(before), TORSO_YAW)
     before = set(bpy.context.scene.objects)
