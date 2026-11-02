@@ -10,6 +10,12 @@ shield on his left arm and the reins in that hand. The team colour is his cloak,
 shoulders and a cape down his back, and the horse's saddle-cloth and breast strap; everything else
 is muted green, gold, grey and earth.
 
+His fittings, Herugrim's guard and pommel, the clasps of his cloak, the belt buckle, the shield's
+rim, the stirrups and the horse's browband, use `trim`, which the client colours iron, silver or
+gold by star level (docs/viewer-spec.md section 4, "Star levels"). The circlet on his helm is a
+crown and the shield's face is the golden shield, so they stay `gold` at every level. His 2★ model
+is theoden-2.py and his 3★ model theoden-3.py.
+
     blender --background --factory-startup --python-exit-code 1 --python theoden.py [-- <out.glb>]
 
 Coordinates are Blender's: z up, the model faces -Y, so his right hand is at -X.
@@ -43,6 +49,7 @@ from kit import (  # noqa: E402
     part,
     reset,
     team_material,
+    trim_material,
     tube,
 )
 from mounts import horse  # noqa: E402
@@ -67,9 +74,11 @@ def make_materials():
         tunic=material('tunic', TUNIC, roughness=0.9),
         leather=material('leather', LEATHER, roughness=0.85),
         boots=material('boots', BOOTS, roughness=0.9),
-        brass=material('brass', BRASS, roughness=0.55, metallic=0.1),
+        gold=material('gold', BRASS, roughness=0.55, metallic=0.1),  # the crown and the golden shield
         wood=material('wood', WOOD, roughness=0.85),
         eyes=material('eyes', EYES, roughness=0.6),
+        # Fittings: the renderer recolours this iron, silver or gold by star level.
+        trim=trim_material(),
     )
 
 
@@ -80,16 +89,16 @@ PIVOT = V(0, 0.05, 0.80)
 LEANING = Matrix.Translation(PIVOT) @ Matrix.Rotation(math.radians(LEAN), 4, 'X') @ Matrix.Translation(-PIVOT)
 
 # The mail shirt as a barrel of octagons: z, half-width, half-depth and centre y. The belt is the
-# band between the second and third rings.
+# band between the second and third rings. Above the chest the body is hidden under the mantle, so
+# it runs straight to the neck.
 TORSO = [
     (0.75, 0.165, 0.125, 0.06),  # in the saddle, round the hips
     (0.915, 0.17, 0.118, 0.05),  # belt, lower edge
     (0.965, 0.178, 0.122, 0.05),  # belt, upper edge
-    (1.08, 0.205, 0.132, 0.04),  # chest
-    (1.175, 0.20, 0.118, 0.05),  # shoulders
+    (1.08, 0.205, 0.132, 0.04),  # chest, inside the mantle's hem
     (1.245, 0.072, 0.068, 0.06),  # neck
 ]
-TORSO_BANDS = [0, 1, 0, 0, 0]  # mail, except the belt
+TORSO_BANDS = [0, 1, 0, 0]  # mail, except the belt
 
 
 def torso():
@@ -97,6 +106,13 @@ def torso():
     verts, faces, bands = loft(rings)
     face_mats = [TORSO_BANDS[b] for b in bands]
     part('torso', verts, faces, [M['mail'], M['leather']], face_mats, inside=lambda c: V(0, 0.05, c.z))
+    # The belt's buckle, a plate standing out from the front of the belt; its back is against it.
+    centre, half, deep = V(0, -0.058, 0.94), V(0.036, 0, 0.03), V(0, -0.018, 0)
+    corners = [V(-1, 0, -1), V(1, 0, -1), V(1, 0, 1), V(-1, 0, 1)]
+    back = [centre + V(c.x * half.x, 0, c.z * half.z) for c in corners]
+    front = [centre + deep + V(0.75 * c.x * half.x, 0, 0.75 * c.z * half.z) for c in corners]
+    faces = [(4, 5, 6, 7)] + [(i, (i + 1) % 4, 4 + (i + 1) % 4, 4 + i) for i in range(4)]
+    part('buckle', back + front, faces, M['trim'], inside=centre)
 
 
 # His legs astride the horse, as Éomer's: thighs forward and down along the saddle, boots hanging.
@@ -111,6 +127,23 @@ def rider_legs():
                   side=V(0, 1, 0))
         axes = [V(s * 0.25, -1, -0.1), V(1, 0, 0), V(0, 0, 1)]
         box(f'foot-{s}', ankle + V(0, -0.05, -0.03), axes, (0.08, 0.042, 0.04), M['boots'], 0.75)
+        stirrup(s, ankle)
+
+
+# A stirrup iron round the ball of each foot: a flat loop, broad at the tread under the sole and
+# narrower at the eye over the instep, square to the foot. Its outer corners, (across, up) from the
+# middle of the tread; where that is from the ankle (out, forward and down); and the iron's width.
+STIRRUP = [(-0.06, 0.0), (0.06, 0.0), (0.046, 0.15), (-0.046, 0.15)]
+STIRRUP_AT, STIRRUP_BAR = V(0.012, -0.085, -0.09), 0.017
+
+
+def stirrup(s, ankle):
+    centre = ankle + V(s * STIRRUP_AT.x, STIRRUP_AT.y, STIRRUP_AT.z)
+    outer = [centre + V(x, 0, z) for x, z in STIRRUP]
+    middle = sum(outer, Vector()) / 4
+    inner = [p + STIRRUP_BAR * (middle - p).normalized() for p in outer]
+    faces = [(i, (i + 1) % 4, 4 + (i + 1) % 4, 4 + i) for i in range(4)]
+    part(f'stirrup-{s}', outer + inner, faces, M['trim'], outward=V(0, -1, 0))
 
 
 # Arms: short sleeves of mail, the tunic at the elbow, leather bracers, big fists. The right arm is
@@ -219,7 +252,7 @@ def helm():
     verts.append(HELM_TOP)
     faces += [(last + i, last + (i + 1) % 8, len(verts) - 1) for i in range(8)]
     face_mats += [1] * 8
-    part('helm', verts, faces, [M['brass'], M['steel']], face_mats, inside=V(0, HEAD_Y, 1.45))
+    part('helm', verts, faces, [M['gold'], M['steel']], face_mats, inside=V(0, HEAD_Y, 1.45))
 
     # The circlet's points: each a thin three-sided spike standing on its top edge over a corner,
     # the one over his brow the tallest.
@@ -232,7 +265,7 @@ def helm():
         high = 0.1 if k == 0 else 0.074
         verts = [foot + 0.031 * along, foot - 0.031 * along, foot - 0.016 * out + V(0, 0, 0.004),
                  foot + 0.008 * out + V(0, 0, high)]
-        part(f'tine-{k}', verts, [(0, 1, 3), (1, 2, 3), (2, 0, 3)], M['brass'],
+        part(f'tine-{k}', verts, [(0, 1, 3), (1, 2, 3), (2, 0, 3)], M['gold'],
              inside=foot - 0.004 * out + V(0, 0, 0.02))
 
 
@@ -270,6 +303,25 @@ def mantle():
     hem = ellipse(0, 0.05, 0, 0.30, 0.195, 8, 0, [z - 0.05 for z in shoulder_z])
     verts, faces, _ = loft([hem, shoulder, dome, neck])
     part('mantle', verts, faces, M['team'], inside=V(0, 0.05, 1.05))
+    clasps(dome, shoulder)
+
+
+def clasps(dome, shoulder):
+    """A round clasp each side of his beard, pinning the mantle at the front: a low five-sided boss on
+    the facet between the front of the dome and of the shoulders."""
+    for s, (i, j) in ((1, (6, 7)), (-1, (6, 5))):
+        a, b, c, d = dome[i], dome[j], shoulder[j], shoulder[i]
+        normal = (b - a).cross(d - a).normalized()
+        if normal.y > 0:
+            normal = -normal
+        centre = a.lerp(b, 0.68).lerp(d.lerp(c, 0.68), 0.5) + 0.004 * normal
+        u = (b - a).normalized()
+        v = normal.cross(u)
+        ring = [centre + 0.026 * (math.cos(t) * u + math.sin(t) * v)
+                for t in (math.radians(90 + 72 * k) for k in range(5))]
+        faces = [(k, (k + 1) % 5, 5) for k in range(5)]
+        part(f'clasp-{s}', ring + [centre + 0.016 * normal], faces, M['trim'],
+             inside=centre - 0.01 * normal)
 
 
 def cape():
@@ -310,7 +362,7 @@ def shield():
         (0.18, -0.022),  # where the gold face starts
         (0.07, -0.05),  # the foot of the boss
     ]
-    band_mats = [1, 1, 0]  # gold, steel
+    band_mats = [3, 3, 0]  # the rim in trim, then the gold face
 
     def ring(r, y):
         angles = (math.tau * (i + 0.5) / n for i in range(n))
@@ -325,7 +377,8 @@ def shield():
     faces.append(tuple(reversed(range(n))))  # the boards behind
     face_mats.append(2)
     verts = [SHIELD_CENTRE + SHIELD_TURN @ v for v in verts]
-    part('shield', verts, faces, [M['brass'], M['steel'], M['wood']], face_mats, inside=SHIELD_CENTRE)
+    part('shield', verts, faces, [M['gold'], M['steel'], M['wood'], M['trim']], face_mats,
+         inside=SHIELD_CENTRE)
 
 
 # Herugrim and the reins, made after he leans --------------------------------------------------------
@@ -346,13 +399,13 @@ def herugrim():
     verts.append(guard + 0.59 * along)
     faces += [(4 + i, 4 + (i + 1) % 4, 8) for i in range(4)]
     part('blade', verts, faces, M['steel'], inside=guard + 0.3 * along)
-    box('guard', guard, [along, across, thick], (0.016, 0.1, 0.022), M['brass'], 0.8)
-    # A gold pommel under his fist.
+    box('guard', guard, [along, across, thick], (0.016, 0.1, 0.022), M['trim'], 0.8)
+    # A pommel under his fist.
     end = grip - 0.06 * along
     ring = [end + 0.026 * d for d in (across, thick, -across, -thick)]
     verts = ring + [end - 0.045 * along, end + 0.03 * along]
     faces = [(i, (i + 1) % 4, 4) for i in range(4)] + [(i, (i + 1) % 4, 5) for i in range(4)]
-    part('pommel', verts, faces, M['brass'], inside=end)
+    part('pommel', verts, faces, M['trim'], inside=end)
 
 
 def reins(mount):
