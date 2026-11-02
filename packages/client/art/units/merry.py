@@ -6,7 +6,7 @@ From the books rather than the films: a sensible, bold hobbit of Buckland, with 
 no beard, in breeches and a jerkin over a linen shirt, and no shoes, for his feet are big and
 thatched on top with curling hair. His blade is the one from the Barrow-downs, made by the Men of
 Westernesse: long and leaf-shaped, damasked with serpent-forms in red and gold, kept here to steel
-with gold inlay and a gold hilt, so that nothing but the team colour is red. It is the blade that
+with gold inlay, so that nothing but the team colour is red. It is the blade that
 wounds the Witch-king. He holds it low and forward in a knife-fighter's crouch, his feet wide, his
 left foot forward and his left hand up before him as a guard.
 
@@ -17,6 +17,11 @@ is his short cloak, thrown back off his shoulders to free his arms, with its hoo
 upper back under his curls, and his scarf, wound round his neck with its ends down his chest. From
 behind, as the near side is seen, his curls show above the cloak, the long blade beside it and his
 green jerkin, his legs and his feet below it.
+
+His fittings, the blade's cross-guard and pommel, the belt buckle and the two round brooches that
+pin the cloak's corners at his shoulders, use `trim`, which the client colours iron, silver or gold
+by star level (docs/viewer-spec.md section 4, "Star levels"); the gold damask on the blade is
+decoration and stays gold. His 2★ model is merry-2.py and his 3★ model merry-3.py.
 
     blender --background --factory-startup --python-exit-code 1 --python merry.py [-- <out.glb>]
 
@@ -50,6 +55,7 @@ from kit import (  # noqa: E402
     part,
     reset,
     team_material,
+    trim_material,
     tube,
 )
 
@@ -59,7 +65,7 @@ HAIR = 0x8A522E  # chestnut, warmer and lighter than Frodo's dark brown
 SHIRT = 0xD8CDB2  # unbleached linen
 JERKIN = 0x5B6A3E  # Buckland green, olive rather than bottle green
 BREECHES = 0x6B5843  # brown wool
-GOLD = 0xC49A45  # the barrow-blade's hilt and inlay
+GOLD = 0xC49A45  # the gold damask on the barrow-blade
 BLADE = 0xCED3D6  # bright steel, with no glow
 MOUTH = 0x6A4434  # a dark line, not red
 
@@ -77,6 +83,7 @@ def make_materials():
         leather=material('leather', LEATHER, roughness=0.85),
         steel=material('steel', BLADE, roughness=0.4, metallic=0.1),
         gold=material('gold', GOLD, roughness=0.5, metallic=0.1),
+        trim=trim_material(),  # fittings, recoloured by star
         eyes=material('eyes', EYES, roughness=0.6),
         mouth=material('mouth', MOUTH, roughness=0.8),
     )
@@ -220,7 +227,7 @@ def torso():
     tube('neck', V(0, 0.005, 0.47), V(0, -0.015, 0.58), [(0, 0.048), (1, 0.046)], M['skin'])
     # The belt buckle, its face smaller than its back so the edges read as a bevel.
     axes = [V(0, -1, -0.15), V(1, 0, 0), V(0, -0.15, 1)]
-    box('buckle', V(0, -0.152, 0.27), axes, (0.012, 0.03, 0.022), M['gold'], 0.75)
+    box('buckle', V(0, -0.152, 0.27), axes, (0.012, 0.03, 0.022), M['trim'], 0.75)
 
 
 # Head --------------------------------------------------------------------------------------------
@@ -390,6 +397,7 @@ CLOAK = [
 ]
 CLOAK_POINTS = 11
 COLLAR = V(0, 0.155, 0.505)  # the back of the collar, which the cloak hangs from
+BROOCH, BROOCH_OUT = V(0.152, 0.056, 0.452), V(0.72, 0.1, 0.69)  # on its left corner, and its facing
 
 
 def cloak():
@@ -412,6 +420,12 @@ def cloak():
     verts = [a, g, b, c, e, d, f]
     faces = [(0, 1, 4, 3), (1, 2, 5, 4), (3, 4, 6), (4, 5, 6)]
     made.append(part('hood', verts, faces, M['team'], inside=V(0, 0.12, 0.42)))
+
+    # A round brooch at each of its corners, pinning it at his shoulders, facing out and up.
+    for s in (-1, 1):
+        out = V(s * BROOCH_OUT.x, BROOCH_OUT.y, BROOCH_OUT.z).normalized()
+        at = V(s * BROOCH.x, BROOCH.y, BROOCH.z)
+        made.append(cone(f'brooch-{s}', at - 0.004 * out, at + 0.014 * out, 0.027, M['trim'], n=6))
     return made
 
 
@@ -496,11 +510,11 @@ def blade():
         faces = [(0, 1, 2), (0, 2, 3)]
         part(f'inlay-{side}', verts, faces, M['gold'], outward=side * flat)
 
-    # A gold cross-guard, a leather grip and a gold pommel.
-    box('guard', guard, [BLADE_DIR, width, flat], (0.012, 0.06, 0.017), M['gold'], 0.8)
+    # A cross-guard, a leather grip and a pommel.
+    box('guard', guard, [BLADE_DIR, width, flat], (0.012, 0.06, 0.017), M['trim'], 0.8)
     end = fist - 0.06 * BLADE_DIR
     tube('grip', end, guard, [(0, 0.015), (1, 0.015)], M['leather'], n=4, phase=45)
-    cone('pommel', end, end - 0.034 * BLADE_DIR, 0.025, M['gold'], n=4, phase=45,
+    cone('pommel', end, end - 0.034 * BLADE_DIR, 0.025, M['trim'], n=4, phase=45,
          back=end + 0.012 * BLADE_DIR)
 
 
