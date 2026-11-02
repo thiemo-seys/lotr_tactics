@@ -13,6 +13,11 @@ Tree on it, and an arming sword ready in his right hand, held low with its point
 colour is also on his short cloak, a mantle over the shoulders and a cape down his back to the hips;
 from behind, his helm and wings, the sword and the shield's rim show round and above it.
 
+His fittings, the belt buckle, the sword's guard and pommel and the binding round the shield's rim,
+use `trim`, which the client colours iron, silver or gold by star level (docs/viewer-spec.md section
+4, "Star levels"); from behind, the guard, the pommel and the rim's edge show it. His 2★ model is
+beregond-2.py and his 3★ model beregond-3.py.
+
     blender --background --factory-startup --python-exit-code 1 --python beregond.py [-- <out.glb>]
 
 Coordinates are Blender's: z up, the model faces -Y, so his right hand, on the sword, is at -X.
@@ -47,6 +52,7 @@ from kit import (  # noqa: E402
     part,
     reset,
     team_material,
+    trim_material,
     tube,
     wind,
 )
@@ -76,6 +82,8 @@ def make_materials():
         cloth=material('cloth', CLOTH, roughness=0.9),
         wood=material('wood', WOOD, roughness=0.85),
         eyes=material('eyes', EYES, roughness=0.6),
+        # Fittings: the renderer recolours this iron, silver or gold by star level.
+        trim=trim_material(),
     )
 
 
@@ -221,7 +229,7 @@ def torso():
 
     # The belt buckle, its face smaller than its back so the edges read as a bevel.
     axes = [V(0, -1, 0), V(1, 0, 0), V(0, 0, 1)]
-    box('buckle', V(0, -0.14, 0.712), axes, (0.014, 0.032, 0.03), M['steel'], 0.75)
+    box('buckle', V(0, -0.14, 0.712), axes, (0.014, 0.032, 0.03), M['trim'], 0.75)
 
 
 # Head --------------------------------------------------------------------------------------------
@@ -443,7 +451,7 @@ SHIELD = [
 ]
 # The strips its face and back are filled with, between the two sides of the outline.
 SHIELD_STRIPS = [(0, 1, 13), (1, 2, 12, 13), (2, 3, 11, 12), (3, 4, 10, 11), (4, 5, 9, 10), (5, 6, 8, 9), (6, 7, 8)]
-RIM = 0.024  # the steel rim's width
+RIM = 0.024  # the width of the metal binding round its rim
 
 
 def on_shield(u, v, w=0.0):
@@ -468,7 +476,7 @@ def inset(outline, width):
 
 def shield():
     forward = SHIELD_TURN @ V(0, -1, 0)
-    # Its outline three times: the outer edge, the crest of the steel rim and the rim's inner edge.
+    # Its outline three times: the outer edge, the crest of the rim's binding and its inner edge.
     inner = inset(SHIELD, RIM)
     crest = inset(SHIELD, 0.006)
     rings = [[on_shield(u, v, w) for u, v in ring] for ring, w in ((SHIELD, -0.004), (crest, 0.02), (inner, 0.006))]
@@ -481,7 +489,7 @@ def shield():
     face_mats += [0] * len(SHIELD_STRIPS)
     faces += wind(verts, SHIELD_STRIPS, outward=-forward)
     face_mats += [2] * len(SHIELD_STRIPS)
-    part('shield', verts, faces, [M['team'], M['steel'], M['wood']], face_mats)
+    part('shield', verts, faces, [M['team'], M['trim'], M['wood']], face_mats)
 
     # The White Tree on its face, just proud of it, its crown where the shield is widest.
     points = [on_shield(0.25 * u, -0.17 + 0.36 * v, 0.008) for u, v in TREE_POINTS]
@@ -499,8 +507,8 @@ def sword():
     across = d.cross(V(0, 1, 0)).normalized()  # the edges
     thick = across.cross(d).normalized()  # square to the flat of the blade
     g = R_FIST
-    cone('pommel', g - 0.075 * d, g - 0.125 * d, 0.034, M['steel'], n=4, back=g - 0.045 * d)
-    box('guard', g + 0.078 * d, [d, across, thick], (0.016, 0.1, 0.024), M['steel'], 0.8)
+    cone('pommel', g - 0.075 * d, g - 0.125 * d, 0.034, M['trim'], n=4, back=g - 0.045 * d)
+    box('guard', g + 0.078 * d, [d, across, thick], (0.016, 0.1, 0.024), M['trim'], 0.8)
     # A diamond in section, narrowing a little to a long point.
     stations = [(0.09, 0.04, 0.012), (0.5, 0.033, 0.01)]
     rings = [[g + t * d + w * across, g + t * d + k * thick, g + t * d - w * across, g + t * d - k * thick]
