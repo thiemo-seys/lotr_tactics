@@ -11,6 +11,12 @@ The team colour is a ragged mantle over the shoulders, seen from in front, behin
 rim of the hood round the dark face. The black hood rises above the mantle, so the Nazgûl reads from
 behind as well.
 
+Its fittings, the lozenge clasp at the throat, the Morgul-knife's guard and pommel, the buckle of the
+belt cinching the cloak at the waist and two bosses pinning the mantle on the shoulders, use `trim`,
+which the client colours iron, silver or gold by star level (docs/viewer-spec.md section 4, "Star
+levels"): the clasp and the buckle show from the front, the bosses and the pommel from behind too.
+Its 2★ model is ringwraith-2.py and its 3★ model ringwraith-3.py.
+
     blender --background --factory-startup --python-exit-code 1 --python ringwraith.py [-- <out.glb>]
 
 Coordinates are Blender's: z up, the model faces -Y, so its right hand is at -X.
@@ -27,6 +33,7 @@ from kit import (  # noqa: E402
     BOOTS,
     V,
     box,
+    cone,
     finish,
     frame,
     loft,
@@ -34,6 +41,7 @@ from kit import (  # noqa: E402
     part,
     reset,
     team_material,
+    trim_material,
 )
 
 # The Ringwraith's own colours (sRGB).
@@ -43,7 +51,6 @@ VOID = 0x050505  # the darkness under the hood
 GLEAM = 0xDCDECF  # the faint, pale gleam of the eyes
 SKIN = 0x9A968A  # haggard, grey hands
 BLADE = 0xC8CDC9  # the Morgul-knife's cold, pale steel
-IRON = 0x494643  # its guard and pommel
 
 M = {}  # materials by name, made once the scene is reset
 
@@ -57,8 +64,9 @@ def make_materials():
         eyes=material('eyes', GLEAM, roughness=0.6, emission=GLEAM, emission_strength=1.0),
         skin=material('skin', SKIN, roughness=0.85),
         blade=material('blade', BLADE, roughness=0.35, metallic=0.1, emission=BLADE, emission_strength=0.2),
-        iron=material('iron', IRON, roughness=0.5, metallic=0.1),
         leather=material('leather', BOOTS, roughness=0.85),
+        # Fittings: the renderer recolours this iron, silver or gold by star level.
+        trim=trim_material(),
     )
 
 
@@ -363,14 +371,65 @@ def knife():
     faces += [(last + i, last + (i + 1) % 4, tip) for i in range(4)]
     part('blade', verts, faces, M['blade'], inside=lambda c: guard + (c - guard).dot(KNIFE) * KNIFE)
 
-    # A cross-guard, its arms swept forward, the grip and a pommel.
+    # A cross-guard, its arms swept forward, the grip and a pommel, the fittings in `trim`.
     for s in (-1, 1):
-        arm = guard + s * 0.055 * width + 0.02 * KNIFE
+        arm = guard + s * 0.058 * width + 0.02 * KNIFE
         mid = guard.lerp(arm, 0.5)
-        box(f'guard-{s}', mid, [KNIFE, (arm - guard).normalized(), side], (0.012, 0.034, 0.014), M['iron'], 0.7)
+        box(f'guard-{s}', mid, [KNIFE, (arm - guard).normalized(), side], (0.013, 0.036, 0.016), M['trim'], 0.7)
     end = fist - 0.075 * KNIFE
     limb('grip', [end, guard], [0.017, 0.017], M['leather'], n=4, phase=45)
-    limb('pommel', [end + 0.01 * KNIFE, end - 0.035 * KNIFE], [0.026, 0.0], M['iron'], n=4, phase=45)
+    cone('pommel', end, end - 0.048 * KNIFE, 0.03, M['trim'], n=4, phase=45, back=end + 0.016 * KNIFE)
+
+
+# Fittings ----------------------------------------------------------------------------------------
+
+CLASP = V(0, -0.214, 1.056)  # the middle of the clasp, across the mantle's opening at the throat
+CLASP_SIZE = (0.044, 0.05, 0.022)  # its half-width, half-height and how far its middle stands out
+# The belt's lower and upper edges: z, and how much wider than the cloak it is there.
+BELT = [(0.862, 1.045), (0.902, 1.045)]
+BUCKLE = V(0, -0.158, 0.882)
+BOSS = 0.58  # where the bosses sit on the mantle, from its collar (0) to over the shoulder (1)
+
+
+def cloak_at(z):
+    """The cloak's ring at height `z`, between the rings of CLOAK_RINGS round it."""
+    for low, high in zip(CLOAK_RINGS, CLOAK_RINGS[1:]):
+        if low[0] <= z <= high[0]:
+            t = (z - low[0]) / (high[0] - low[0])
+            return [a + (b - a) * t for a, b in zip(low, high)]
+    raise ValueError(z)
+
+
+def fittings():
+    """The clasp at the throat, the belt cinching the cloak at the waist with its buckle, and a boss
+    pinning the mantle on each shoulder; the knife's guard and pommel are in knife()."""
+    # The clasp: a lozenge with a raised middle, pinning the mantle's fronts under the hood.
+    w, h, rise = CLASP_SIZE
+    out = V(0, -1, 0.2).normalized()
+    verts = [CLASP + V(0, 0, h), CLASP + V(w, 0, 0), CLASP - V(0, 0, h), CLASP - V(w, 0, 0), CLASP + rise * out]
+    part('clasp', verts, [(0, 1, 4), (1, 2, 4), (2, 3, 4), (3, 0, 4)], M['trim'], inside=CLASP - 0.01 * out)
+
+    # The belt, round the gaunt waist where the cloak closes, and its buckle in front.
+    rings = []
+    for z, grow in BELT:
+        _, rx, ry, cy, _, _ = cloak_at(z)
+        rings.append([V(grow * rx * math.cos(a), cy + grow * ry * math.sin(a), z)
+                      for a in (math.radians(-90 + 30 * i) for i in range(12))])
+    verts, faces, _ = loft(rings)
+    part('belt', verts, faces, M['leather'], inside=lambda c: V(0, -0.012, c.z))
+    axes = [V(0, -1, 0), V(1, 0, 0), V(0, 0, 1)]
+    box('buckle', BUCKLE, axes, (0.012, 0.034, 0.03), M['trim'], 0.7)
+
+    # A boss on top of each shoulder, between the mantle's collar and the ring over the shoulder.
+    collar, shoulder = MANTLE[0], MANTLE[1]
+    for s in (-1, 1):
+        a = 0 if s > 0 else math.pi
+        inner = V(collar[2] * math.cos(a), collar[4], (collar[0] + collar[1]) / 2)
+        outer = V(shoulder[2] * math.cos(a), shoulder[4], (shoulder[0] + shoulder[1]) / 2)
+        at = inner.lerp(outer, BOSS)
+        slope = outer - inner
+        normal = V(-slope.z * math.cos(a), 0, abs(slope.x)).normalized()
+        cone(f'boss-{s}', at - 0.004 * normal, at + 0.036 * normal, 0.04, M['trim'], n=6, back=None)
 
 
 def main():
@@ -383,6 +442,7 @@ def main():
     sleeve('left', L_SHOULDER, L_ELBOW, L_WRIST)
     claw()
     knife()
+    fittings()
     finish('ringwraith')
 
 
