@@ -6,6 +6,7 @@ import { SHOP, UNITS, XP, isComponent, ownedUnits, type ActionResult, type Playe
 import type { PlayFlow } from '../flow.js';
 import { TRAIT_ICONS } from '../icons.js';
 import { actionTip, unitTip } from '../tips.js';
+import { shopMark } from '../shop.js';
 import { goldCost, itemChip, ringChip, traitTag } from '../ui/chips.js';
 import { el, icon, rebuild, setEnabled, setText, toggle } from '../ui/dom.js';
 import { setTip } from '../ui/tooltip.js';
@@ -136,10 +137,10 @@ export class ShopBar {
  */
 function unitCard(id: UnitId, owned: readonly Star[], buy: ActionResult, onBuy: () => void): HTMLElement {
   const def = UNITS[id];
-  const mark = owned.length === 0 ? '' : owned.filter((star) => star === 1).length >= 2 ? ' has-copy completes-star' : ' has-copy';
+  const mark = shopMark(owned);
   const card = el(
     'button',
-    `unit-card cost-${def.cost}${mark}`,
+    `unit-card cost-${def.cost}${mark === 'none' ? '' : ' has-copy'}${mark === 'completes' ? ' completes-star' : ''}`,
     el(
       'span',
       'portrait',
@@ -151,10 +152,10 @@ function unitCard(id: UnitId, owned: readonly Star[], buy: ActionResult, onBuy: 
     ),
     el('span', 'card-foot', ...[def.origin, ...def.classes].map(traitTag)),
   );
-  const ownedText = owned.length === 0 ? '' : `, you have ${owned.length}${mark.includes('completes-star') ? ', buying it makes a 2★' : ''}`;
+  const ownedText = owned.length === 0 ? '' : `, you have ${owned.length}${mark === 'completes' ? ', buying it makes a 2★' : ''}`;
   card.setAttribute('aria-label', `${def.name}, ${def.cost} gold${ownedText}${buy.ok ? '' : `: ${buy.reason}`}`);
   setEnabled(card, buy.ok);
-  const hint = mark.includes('completes-star') ? 'Click to buy: it combines into a 2★.' : owned.length > 0 ? `Click to buy. You have ${owned.length}.` : 'Click to buy.';
+  const hint = mark === 'completes' ? 'Click to buy: it combines into a 2★.' : owned.length > 0 ? `Click to buy. You have ${owned.length}.` : 'Click to buy.';
   setTip(card, unitTip(id, buy.ok ? { text: hint, reason: false } : { text: buy.reason, reason: true }));
   card.addEventListener('click', onBuy);
   return card;

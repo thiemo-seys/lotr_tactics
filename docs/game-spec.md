@@ -124,7 +124,7 @@ Each player has:
 - **Bench:** 9 slots.
 - **Board:** the player's half, in their own perspective (`sim-spec.md` section 5): columns 0–6, rows 0–3, row 3 at the front. At most `level` units.
 - **Shop:** 5 slots and a lock.
-- **Items:** the items they hold that aren't on a unit, in the order they got them: components, combined items and Rings of Power.
+- **Items:** the items they hold that aren't on a unit, in the order they got them, with an item combined from two of them in the place of the one it was combined into (7.7): components, combined items and Rings of Power.
 - **Gifts:** the Gifts they have picked, in order; their current Gift offer, if any, and whether they have rerolled it; and the free rerolls left this round (section 9.10).
 - **Recent opponents:** the last 3 players they fought, for matchmaking.
 - **Placement:** set when they are eliminated or win.
@@ -258,7 +258,7 @@ A Council round sets up the Council instead (9.6).
 
 ### 9.3 Planning
 
-During planning, living players act in any order: buy, sell, reroll, buy XP, lock, move, give items, and pick or reroll a Gift offer. When the driver ends planning (the timer runs out, or every person is ready), unpicked Gift offers are picked at random (9.10) and the fights run.
+During planning, living players act in any order: buy, sell, reroll, buy XP, lock, move, give items, combine two of their components (7.7), and pick or reroll a Gift offer. When the driver ends planning (the timer runs out, or every person is ready), unpicked Gift offers are picked at random (9.10) and the fights run.
 
 ### 9.4 Fights
 
