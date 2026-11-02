@@ -50,6 +50,7 @@ packages/client/
     tips.ts        what each tooltip says: items, rings, Gifts, traits, units and actions
     abilities.ts   what an ability does, in words, from its steps and the sim's ability values
     hud.ts         the HUD's stats, streak, timer, One Ring status and stage tracker
+    shop.ts        how a shop card marks a unit the person already has
     players.ts     the players list's rows
     icons.ts       the icon set, and the icon for each trait, component, Gift tier, round type and status
     log.ts         event log text

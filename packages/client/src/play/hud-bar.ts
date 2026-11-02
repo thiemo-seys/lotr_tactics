@@ -31,7 +31,7 @@ export class HudBar {
   private readonly value = (name: string) => this.pill(name).querySelector('.value') as HTMLElement;
   private readonly xpText = this.pill('level').querySelector('.xp-text') as HTMLElement;
   private readonly xpBar = this.pill('level').querySelector('.xp-bar i') as HTMLElement;
-  private readonly ring = element('ring-status');
+  private readonly ring = this.pill('ring-status');
   private readonly mountDoom = element('mount-doom');
   /** The drain bar's width in steps of half a percent, to write it only when it moves. */
   private drained = -1;
