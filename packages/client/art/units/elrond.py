@@ -15,6 +15,12 @@ lowest at the back, so it shows from the front, from behind and from above. His 
 over it at the back, and the circlet, the staff, the raised hand, the wide sleeves and the plum robe
 below it keep him recognisable from behind.
 
+His fittings, the clasp of his mantle, the clasp of his girdle, a clasp binding his hair between his
+shoulders, and the band under the staff's head and the ferrule at its foot, use `trim`, which the
+client colours iron, silver or gold by star level (docs/viewer-spec.md section 4, "Star levels"). The
+silver circlet and the silver leaves of the staff stay silver. His 2★ model is elrond-2.py and his 3★
+model elrond-3.py.
+
     blender --background --factory-startup --python-exit-code 1 --python elrond.py [-- <out.glb>]
 
 Coordinates are Blender's: z up, the model faces -Y, so his right hand is at -X.
@@ -43,6 +49,7 @@ from kit import (  # noqa: E402
     path_rings,
     reset,
     team_material,
+    trim_material,
     tube,
 )
 
@@ -71,6 +78,8 @@ def make_materials():
         shoes=material('shoes', SHOES, roughness=0.9),
         wood=material('wood', STAFF_WOOD, roughness=0.7),
         light=material('light', LIGHT, roughness=0.6, emission=LIGHT, emission_strength=1.0),
+        # Fittings: the renderer recolours this iron, silver or gold by star level.
+        trim=trim_material(),
     )
 
 
@@ -107,6 +116,7 @@ TORSO = [
     (1.16, 0.066, 0.060, 0.008),  # neck
 ]
 TORSO_BANDS = [1, 0, 0, 0]  # the girdle, then robe
+GIRDLE_CLASP = V(0, -0.106, 0.829)
 
 
 def torso():
@@ -114,6 +124,8 @@ def torso():
     verts, faces, bands = loft(rings)
     part('torso', verts, faces, [M['robe'], M['silver']], [TORSO_BANDS[b] for b in bands],
          inside=lambda c: V(0, 0, c.z))
+    # The girdle's clasp, on its front, its face smaller than its back so the edges read as a bevel.
+    box('girdle-clasp', GIRDLE_CLASP, [V(0, -1, 0), V(1, 0, 0), V(0, 0, 1)], (0.01, 0.03, 0.025), M['trim'], 0.72)
 
 
 # The skirt below the girdle, in twelve pleats that are deepest at the hem and gone at the waist,
@@ -203,12 +215,12 @@ def mantle():
     rings = [mantle_ring(*level) for level in MANTLE]
     verts, faces, _ = loft(rings, closed=False)
     part('mantle', verts, faces, M['team'], inside=lambda c: V(0, 0.01, c.z))
-    # A silver clasp at his throat, where the collar's edges meet.
-    c = V(0, -0.078, 1.142)
-    verts = [c + V(-0.03, 0, 0), c + V(0, -0.014, 0.0), c + V(0.03, 0, 0), c + V(0, 0, 0.028),
-             c + V(0, 0, -0.028)]
+    # A clasp at his throat, where the collar's edges meet.
+    c = V(0, -0.08, 1.142)
+    verts = [c + V(-0.036, 0, 0), c + V(0, -0.017, 0.0), c + V(0.036, 0, 0), c + V(0, 0, 0.034),
+             c + V(0, 0, -0.034)]
     faces = [(0, 1, 3), (1, 2, 3), (0, 4, 1), (1, 4, 2)]
-    part('clasp', verts, faces, M['silver'], outward=V(0, -1, 0))
+    part('clasp', verts, faces, M['trim'], outward=V(0, -1, 0))
 
 
 # Head: Legolas's, a little higher and broader in the jaw ------------------------------------------
@@ -283,6 +295,9 @@ def head():
     tube('neck', V(0, 0.01, 1.10), V(0, -0.004, 1.26), [(0, 0.05), (1, 0.046)], M['skin'])
 
 
+HAIR_CLASP_Z = 1.0
+
+
 def hair_fall():
     # Long straight hair from the back of his head, over the mantle's collar and down it to his hips:
     # rows of five points from his left round to his right, the lower ones laid on the mantle, a little
@@ -297,10 +312,24 @@ def hair_fall():
         rows.append([V(k * half, on_surface(back, k * half, z) + 0.016 + 0.014 * (1 - k * k), z)
                      for k in (1, 0.5, 0, -0.5, -1)])
     verts, faces, _ = loft(rows, closed=False)
+    sheet = []  # the hair's triangles, for laying the clasp on it
+    for face in faces:
+        a, b, c, d = (verts[i] for i in face)
+        sheet += [(a, b, c), (a, c, d)]
     verts.append(V(0, on_surface(back, 0, 0.73) + 0.02, 0.73))
     last = len(verts) - 6
     faces += [(last + i, last + i + 1, len(verts) - 1) for i in range(4)]
     part('hair-fall', verts, faces, M['hair'], inside=lambda c: V(0, 0, c.z))
+
+    # A clasp binding it between his shoulders, laid on it and tilted with it.
+    z = HAIR_CLASP_Z
+    centre = V(0, on_surface(sheet, 0, z), z)
+    down = V(0, on_surface(sheet, 0, z - 0.05), z - 0.05) - centre
+    out = down.cross(V(1, 0, 0)).normalized()
+    if out.y < 0:
+        out = -out
+    up = V(1, 0, 0).cross(out)
+    box('hair-clasp', centre + 0.002 * out, [out, V(1, 0, 0), up], (0.012, 0.07, 0.021), M['trim'], 0.8)
 
 
 def circlet():
@@ -404,6 +433,9 @@ def staff():
     verts, faces, _ = loft(rings)
     faces.append(tuple(range(12, 18)))
     part('staff', verts, faces, M['wood'], inside=nearest_on_polyline(points))
+    # A band under its head, and a ferrule shoeing its foot.
+    tube('staff-band', top - 0.075 * up, top - 0.024 * up, [(0, 0.0235), (1, 0.0235)], M['trim'], n=6, phase=30)
+    tube('ferrule', foot + 0.003 * up, foot + 0.08 * up, [(0, 0.02), (1, 0.0225)], M['trim'], n=6, phase=30)
 
     # A silver cup at its head, and four silver leaves rising from it and curling in round the light,
     # a bud about to open. They stand at the corners, so the light shows between them from every side.
