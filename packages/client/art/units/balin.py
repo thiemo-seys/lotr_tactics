@@ -15,6 +15,13 @@ anvil under a crown on the team colour, flying out to his left above his head, s
 front and from behind without the pole crossing it; in his right, a bearded axe at the ready. The
 short mantle leaves his coat and mail sleeves to show from behind, round the team colour.
 
+His fittings, the point on the banner pole, the axe's pommel and the collar under its head, and the
+studs on his belt, use `trim`, which the client colours iron, silver or gold by star level
+(docs/viewer-spec.md section 4, "Star levels"); from behind the pole's point, the collar and the
+studs on the back of the belt show it, and from in front the point, the axe's fittings and the studs
+either side of his beard. The circlet is a lord's crown, not a fitting, and stays brass. His 2★
+model is balin-2.py and his 3★ model balin-3.py.
+
     blender --background --factory-startup --python-exit-code 1 --python balin.py [-- <out.glb>]
 
 Coordinates are Blender's: z up, the model faces -Y, so his right hand is at -X.
@@ -39,16 +46,19 @@ from kit import (  # noqa: E402
     WOOD,
     V,
     box,
+    cone,
     ellipse,
     finish,
     lean,
     loft,
     material,
+    newell,
     on_surface,
     part,
     reset,
     segment,
     team_material,
+    trim_material,
     tube,
     wind,
 )
@@ -72,7 +82,8 @@ def make_materials():
         leather=material('leather', LEATHER, roughness=0.85),
         boots=material('boots', BOOTS, roughness=0.9),
         cloth=material('cloth', CLOTH, roughness=0.9),
-        brass=material('brass', BRASS, roughness=0.55, metallic=0.1),
+        brass=material('brass', BRASS, roughness=0.55, metallic=0.1),  # the circlet
+        trim=trim_material(),  # fittings, recoloured by star
         steel=material('steel', STEEL, roughness=0.5, metallic=0.1),
         wood=material('wood', WOOD, roughness=0.85),
         silver=material('silver', SILVER, roughness=0.6),
@@ -143,6 +154,10 @@ TORSO = [
     (0.79, 0.145, 0.125, 0.02),  # neck
 ]
 TORSO_BANDS = [0, 0, 1, 0, 0, 0]  # coat, except the belt
+BELT = 2  # the ring at the belt's lower edge
+# Square studs on the belt, on the faces of the coat's octagon at these angles (degrees from +X,
+# his left): three on the back, and one either side of his beard in front.
+STUDS = [45, 90, 135, 225, 315]
 
 
 def coat():
@@ -150,6 +165,15 @@ def coat():
     verts, faces, bands = loft(rings)
     face_mats = [TORSO_BANDS[b] for b in bands]
     part('coat', verts, faces, [M['coat'], M['leather']], face_mats, inside=lambda c: V(0, 0, c.z))
+    for a in STUDS:
+        k = a // 45 - 1  # the face at angle a runs from vertex k to k + 1 of each ring
+        j = (k + 1) % 8
+        corners = [rings[BELT][k], rings[BELT][j], rings[BELT + 1][j], rings[BELT + 1][k]]
+        at = sum(corners, Vector()) / 4
+        out = newell(corners).normalized()
+        if out.dot(V(at.x, at.y, 0)) < 0:
+            out = -out
+        cone(f'stud-{a}', at - 0.004 * out, at + 0.018 * out, 0.027, M['trim'], n=4, phase=45, back=None)
 
 
 # Head --------------------------------------------------------------------------------------------
@@ -362,10 +386,12 @@ def axe():
     ring = segment(end, end + along, [(0, 0.036)], 4, 45)[0]
     verts = ring + [end - 0.04 * along, end + 0.03 * along]
     faces = [(i, (i + 1) % 4, 4) for i in range(4)] + [(i, (i + 1) % 4, 5) for i in range(4)]
-    part('pommel', verts, faces, M['steel'], inside=end)
+    part('pommel', verts, faces, M['trim'], inside=end)
 
-    # The socket the head is forged round, closed over the top of the haft.
+    # The socket the head is forged round, closed over the top of the haft, and a collar under it.
     eye = grip + 0.47 * along
+    collar = [(0, 0.029), (0.5, 0.041), (1, 0.029)]
+    tube('collar', eye - 0.135 * along, eye - 0.075 * along, collar, M['trim'])
     rings = segment(eye - 0.075 * along, eye + 0.09 * along, [(0, 0.045), (1, 0.04)], 6, 30)
     verts, faces, _ = loft(rings)
     faces += [tuple(range(6)), tuple(range(6, 12))]
@@ -429,12 +455,12 @@ DEVICE_FACES = [
 
 def standard():
     tube('pole', POLE, POLE + V(0, 0, POLE_TOP), [(0, 0.021), (1, 0.018)], M['wood'])
-    # A brass point on the top.
+    # A point on the top.
     top = POLE + V(0, 0, POLE_TOP)
     ring = segment(top, top + V(0, 0, 1), [(0, 0.034)], 4, 0)[0]
     verts = ring + [top + V(0, 0, 0.11), top - V(0, 0, 0.03)]
     faces = [(i, (i + 1) % 4, 4) for i in range(4)] + [(i, (i + 1) % 4, 5) for i in range(4)]
-    part('finial', verts, faces, M['brass'], inside=top + V(0, 0, 0.02))
+    part('finial', verts, faces, M['trim'], inside=top + V(0, 0, 0.02))
     bar_end = POLE + V(FLAG_TAIL + 0.012, 0.0, BAR + 0.012)
     tube('bar', POLE + V(0, 0, BAR + 0.012), bar_end, [(0, 0.015), (1, 0.013)], M['wood'], n=4, phase=45)
 
