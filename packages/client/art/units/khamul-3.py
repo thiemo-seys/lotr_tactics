@@ -1,0 +1,611 @@
+"""Khamûl the Black Easterling, lieutenant of Dol Guldur: his 3★ model, the book moment
+(docs/viewer-spec.md section 4, "Star levels").
+
+The second of the Nine, as Unfinished Tales shows him in "The Hunt for the Ring": Khamûl the
+Easterling, the Witch-king's lieutenant, who held Dol Guldur for Sauron and led the hunt for the Ring
+into the Shire, the Black Rider sniffing along the road and asking at Farmer Maggot's gate (The
+Fellowship of the Ring, I 3-4). Here he rides at his height, armed as the Easterling king he once
+was, terrible:
+- a war-helm of black iron over his hood, round-shouldered and drawn up to a spike, not a crown,
+  which is the Witch-king's (witch-king.py); under its brow the hood's rim in the team colour still
+  frames the faceless dark and the faint gleam of his eyes;
+- his great black horse in black war-gear: a chanfron down its face with a spike on the brow, and a
+  crinet of plates over the crest of its neck where the mane was;
+- the long black lance of his 2★ model (khamul-2.py), with a ragged black pennon flying out from
+  under its head to his right.
+He is still the same Black Rider: the black hood round a faceless dark, the ragged mantle and the
+caparison in the team colour, the grey robe and the haggard hands, leaning forward in the saddle,
+hunting. The books don't describe his war-gear; its shapes are this model's own.
+
+His fittings, the spike of the helm, the lance's socket and shoe, the clasp at his throat, the
+stirrups, the bosses on the caparison and the horse's browband, use `trim`, which the client colours
+gold at 3★.
+
+    blender --background --factory-startup --python-exit-code 1 --python khamul-3.py [-- <out.glb>]
+
+Coordinates are Blender's: z up, the model faces -Y, so his right hand is at -X.
+"""
+
+import math
+import os
+import sys
+
+import bpy
+from mathutils import Matrix, Vector
+from mathutils.geometry import tessellate_polygon
+
+sys.path.insert(0, os.path.join(os.path.dirname(os.path.abspath(__file__)), '..'))
+from kit import (  # noqa: E402
+    BOOTS,
+    LEATHER,
+    MOUNTED_BOOK_BUDGET,
+    V,
+    bent_tube,
+    box,
+    cone,
+    finish,
+    loft,
+    material,
+    nearest_on_line,
+    nearest_on_polyline,
+    part,
+    reset,
+    team_material,
+    trim_material,
+    tube,
+)
+from mounts import (  # noqa: E402
+    DOWN_FACE,
+    HEAD_END,
+    HEAD_START,
+    NECK,
+    UP_FACE,
+    Surface,
+    head_ring,
+    head_row,
+    horse,
+    neck_ring,
+)
+
+# Khamûl's own colours (sRGB), the Ringwraith's where they share them.
+CLOAK = 0x2C2A2B  # black, lifted just enough that the facets show
+ROBE = 0x56534E  # the long grey robe under the black
+VOID = 0x050505  # the darkness under the hood
+GLEAM = 0xDCDECF  # the faint, pale gleam of the eyes
+SKIN = 0x9A968A  # haggard, grey hands
+BLADE = 0xC8CDC9  # the lance-head's cold, pale steel
+SHAFT = 0x3A3533  # the lance's black shaft, lifted just enough to show against the cloak
+IRON = 0x5A5D62  # black iron, his war-helm and the horse's war-gear, a little lighter than the coat
+COAT = 0x454346  # the great black horse, as dark as the coat can be and still show its facets
+POINTS = 0x2A282A  # its mane, tail and legs, blacker still
+
+M = {}  # materials by name, made once the scene is reset
+
+
+def make_materials():
+    M.update(
+        team=team_material(),
+        cloak=material('cloak', CLOAK, roughness=0.9),
+        robe=material('robe', ROBE, roughness=0.9),
+        void=material('void', VOID, roughness=1.0),
+        gleam=material('gleam', GLEAM, roughness=0.6, emission=GLEAM, emission_strength=1.0),
+        skin=material('skin', SKIN, roughness=0.85),
+        blade=material('blade', BLADE, roughness=0.35, metallic=0.1, emission=BLADE, emission_strength=0.2),
+        shaft=material('shaft', SHAFT, roughness=0.7),
+        iron=material('iron', IRON, roughness=0.4, metallic=0.15),
+        leather=material('leather', LEATHER, roughness=0.85),
+        boots=material('boots', BOOTS, roughness=0.9),
+        # Fittings: the renderer recolours this iron, silver or gold by star level.
+        trim=trim_material(),
+    )
+
+
+# Pose --------------------------------------------------------------------------------------------
+
+# He is built sitting upright, then everything above the saddle leans forward, hunting.
+LEAN = 8
+PIVOT = V(0, 0.06, 0.80)
+LEANING = Matrix.Translation(PIVOT) @ Matrix.Rotation(math.radians(LEAN), 4, 'X') @ Matrix.Translation(-PIVOT)
+
+
+def leaned(p):
+    return LEANING @ Vector(p)
+
+
+# The horse's caparison runs straight between its rows, and the broad croup bulges through it
+# between the last two. Each point of the cloth over the quarters is pushed out from the middle of
+# the body until it clears the body there and a little before and behind it.
+CROUP_FROM = 0.1  # y from which the cloth is cleared
+CLOTH_CLEAR = 0.014
+
+
+def clear_cloth(cloth, body):
+    surface = Surface(body)
+    for v in cloth.data.vertices:
+        p = v.co.copy()
+        if p.y < CROUP_FROM or p.z < 0.45:  # the hem and its rags hang free
+            continue
+        out = V(p.x, 0, p.z - 0.58)
+        reach = 0.0
+        for dy in (-0.08, -0.04, 0.0, 0.04, 0.08):
+            centre = V(0, p.y + dy, 0.58)
+            try:
+                reach = max(reach, (surface.onto(centre, out) - centre).length)
+            except ValueError:
+                continue
+        if out.length < reach + CLOTH_CLEAR:
+            v.co = V(0, p.y, 0.58) + (reach + CLOTH_CLEAR) * out.normalized()
+
+
+# The caparison's fittings, in trim: a boss on each side where the breast strap meets the cloth, facing
+# out and forward, and two on the cloth over the croup either side of the tail, facing up and out.
+BOSS_RADIUS, BOSS_HEIGHT = 0.04, 0.013
+CROUP_BOSSES = [V(s * 0.55, 0.12, 0.8) for s in (-1, 1)]  # the way each faces from the middle of the croup
+
+
+def boss(name, at, out):
+    out = out.normalized()
+    cone(name, at - 0.004 * out, at + BOSS_HEIGHT * out, BOSS_RADIUS, M['trim'], n=6, phase=30, back=None)
+
+
+def fittings(caparison):
+    strap = bpy.data.objects['horse-strap'].data.vertices
+    for s, (low, high) in ((1, (0, 13)), (-1, (12, 25))):  # its ends, on his left and right
+        end = (strap[low].co + strap[high].co) / 2
+        boss(f'boss-breast-{s}', end + V(s * 0.004, 0.006, 0), V(s * 0.8, -0.6, 0))
+    surface = Surface(caparison)
+    for k, out in enumerate(CROUP_BOSSES):
+        boss(f'boss-croup-{k}', surface.onto(V(0, 0.34, 0.6), out), out)
+
+
+# The horse's black war-gear: a chanfron down its face from below the browband to the noseband, over
+# the ridge of the face and down its cheeks, with a spike on the brow; and a crinet of plates over the
+# crest of the neck from the withers to the poll, in place of the mane.
+CHANFRON = [0.13, 0.4, 0.63]  # how far down the face each of its rows is
+CHANFRON_STAND = 0.012  # how far it stands off the face
+SPIKE_AT, SPIKE_LENGTH = 0.24, 0.15
+CRINET_STAND = 0.018
+
+
+def war_gear(mount):
+    rows = []
+    for t in CHANFRON:
+        ring = head_ring(*head_row(t), grow=CHANFRON_STAND)
+        row = [ring[5].lerp(ring[4], 0.4), ring[5], ring[0], ring[1], ring[1].lerp(ring[2], 0.4)]
+        rows.append([mount.turned(p) for p in row])
+    verts, faces, _ = loft(rows, closed=False)
+    face = nearest_on_polyline([mount.turned(HEAD_START), mount.turned(HEAD_END)])
+    part('chanfron', verts, faces, M['iron'], inside=face)
+    brow = head_ring(*head_row(SPIKE_AT), grow=CHANFRON_STAND)[0]
+    ahead = (UP_FACE - 0.1 * DOWN_FACE).normalized()  # out of the face, forward and up, past the ears
+    cone('chanfron-spike', mount.turned(brow - 0.01 * ahead), mount.turned(brow + SPIKE_LENGTH * ahead), 0.024,
+         M['iron'], n=4, phase=45, back=None)
+
+    bpy.data.objects.remove(bpy.data.objects['horse-mane'])
+    rows, crest = [], []
+    for c, t, half in NECK:
+        ring = neck_ring(c, t, half)
+        middle = (ring[0] + ring[3]) / 2
+        row = [p + CRINET_STAND * (p - middle).normalized() for p in (ring[5], ring[0], ring[1])]
+        row[1] += V(0, 0, 0.012)  # a ridge along the crest
+        rows.append([mount.turned(p) for p in row])
+        crest.append(mount.turned(middle))
+    verts, faces, _ = loft(rows, closed=False)
+    part('crinet', verts, faces, M['iron'], inside=nearest_on_polyline(crest))
+
+
+# Legs: robed thighs astride the horse, tall boots hanging in high stirrups.
+HIP, KNEE, ANKLE = V(0.115, 0.04, 0.83), V(0.30, -0.15, 0.70), V(0.31, -0.10, 0.46)
+
+
+def legs():
+    objects = []
+    for s in (-1, 1):
+        flip = V(s, 1, 1)
+        hip, knee, ankle = (p * flip for p in (HIP, KNEE, ANKLE))
+        objects.append(bent_tube(f'leg-{s}', [hip, knee, ankle], [0.075, 0.062, 0.05], [M['robe'], M['boots']],
+                                 [0, 1], side=V(0, 1, 0)))
+        axes = [V(s * 0.25, -1, -0.1), V(1, 0, 0), V(0, 0, 1)]
+        box(f'foot-{s}', ankle + V(0, -0.05, -0.03), axes, (0.08, 0.042, 0.04), M['boots'], 0.75)
+    return objects
+
+
+# The high stirrups under his boots: flat iron loops in trim round the ball of each foot, square to
+# it, the tread under the sole and the eye over the instep, so they show from in front and behind.
+STIRRUP_TREAD, STIRRUP_EYE = 0.375, 0.53  # the heights of the bottom of the tread and the top of the eye
+STIRRUP_HALF = 0.064  # half the tread's width
+STIRRUP_BAR = 0.017  # how thick the iron is
+
+
+def stirrups():
+    for s in (-1, 1):
+        ankle = ANKLE * V(s, 1, 1)
+        along = V(s * 0.25, -1, -0.1).normalized()  # the foot, as legs() lays it
+        across = V(1, s * 0.25, 0).normalized()
+        ball = ankle + V(0, -0.05, -0.03) + 0.025 * along
+        centre = V(ball.x, ball.y, 0)
+        outer = [centre + V(0, 0, STIRRUP_EYE)] + [centre + k * STIRRUP_HALF * across + V(0, 0, STIRRUP_TREAD)
+                                                  for k in (-1, 1)]
+        inner = [centre + V(0, 0, STIRRUP_EYE - 1.6 * STIRRUP_BAR)]
+        inner += [centre + k * (STIRRUP_HALF - STIRRUP_BAR) * across + V(0, 0, STIRRUP_TREAD + STIRRUP_BAR)
+                  for k in (-1, 1)]
+        faces = [(0, 1, 4, 3), (1, 2, 5, 4), (2, 0, 3, 5)]
+        part(f'stirrup-{s}', outer + inner, faces, M['trim'], outward=along)
+
+
+# Cloak and robe ----------------------------------------------------------------------------------
+
+N_CLOAK = 13  # points round a ring, from the left edge of the opening round the back to the right
+
+# The black cloak from the saddle up, as he sits upright, parted from his lap to his chest where the
+# grey robe shows: z, half-width, half-depth, centre y and half the opening (degrees).
+CLOAK_RINGS = [
+    (0.80, 0.21, 0.175, 0.07, 30),  # the hips, in the saddle
+    (0.97, 0.168, 0.14, 0.06, 18),  # the gaunt waist
+    (1.13, 0.195, 0.148, 0.045, 12),  # chest
+    (1.265, 0.18, 0.122, 0.035, 0),  # shoulders, under the mantle
+]
+SHOULDER_Z, SHOULDER_Y = CLOAK_RINGS[-1][0], CLOAK_RINGS[-1][3]
+
+
+def ring_round(rx, ry, cy, opening, zs):
+    """N_CLOAK points round from the left edge of the opening, round the back, to the right edge;
+    `zs` is a height or a function of the angle's sine."""
+    ring = []
+    for i in range(N_CLOAK):
+        a = math.radians(-90 + opening + (360 - 2 * opening) * i / (N_CLOAK - 1))
+        z = zs(math.sin(a)) if callable(zs) else zs
+        ring.append(V(rx * math.cos(a), cy + ry * math.sin(a), z))
+    return ring
+
+
+def cloak():
+    rings = [ring_round(rx, ry, cy, opening, z) for z, rx, ry, cy, opening in CLOAK_RINGS]
+    verts, faces, _ = loft(rings, closed=False)
+    axis = [V(0, cy, z) for z, _, _, cy, _ in CLOAK_RINGS]
+    part('cloak', verts, faces, M['cloak'], inside=nearest_on_polyline(axis))
+
+    # The grey robe behind the opening, a little wider than it, from his chest down over his lap.
+    rows = []
+    for z, rx, ry, cy, opening in [(0.775,) + CLOAK_RINGS[0][1:]] + CLOAK_RINGS[:3]:
+        spread = opening + 8
+        rows.append([V(0.93 * rx * math.cos(a), cy + 0.93 * ry * math.sin(a), z)
+                     for a in (math.radians(-90 - spread), math.radians(-90), math.radians(-90 + spread))])
+    verts, faces, _ = loft(rows, closed=False)
+    part('robe', verts, faces, M['robe'], inside=lambda c: V(0, 0.1, c.z))
+
+
+# The skirts of the cloak, over his thighs and the horse's back, from the front of his left knee
+# round behind him to the front of his right: half-width, half-depth in front and behind, centre y,
+# and the height at the sides, at the back and at the front edges. Each point is then pushed out
+# clear of the horse, its cloth and his legs. They end just behind the saddle, so the horse's cloth
+# shows over its quarters.
+SKIRT_OPENING = 50
+SKIRT = [
+    (0.40, 0.36, 0.21, 0.06, 0.71, 0.80, 0.73),  # over the knees and behind the saddle
+    (0.42, 0.36, 0.25, 0.07, 0.56, 0.78, 0.60),  # the hem, above his boots and on the loins
+]
+# The ragged hem: for each of its 12 edges, where along it the rag hangs, how far it flares and
+# how far it falls.
+SKIRT_TIPS = [
+    (0.5, 0.03, 0.05), (0.4, 0.03, 0.05), (0.6, 0.03, 0.1), (0.45, 0.03, 0.06), (0.55, 0.03, 0.08),
+    (0.4, 0.03, 0.05), (0.6, 0.03, 0.05), (0.45, 0.03, 0.08), (0.55, 0.03, 0.06), (0.4, 0.03, 0.1),
+    (0.6, 0.03, 0.05), (0.5, 0.03, 0.05),
+]
+SKIRT_MARGIN = 0.03  # how far the skirts stand clear of what they cover
+
+
+def skirt_ring(rx, front_ry, back_ry, cy, side, back, front):
+    edge = -math.sin(math.radians(-90 + SKIRT_OPENING))
+    ring = []
+    for i in range(N_CLOAK):
+        a = math.radians(-90 + SKIRT_OPENING + (360 - 2 * SKIRT_OPENING) * i / (N_CLOAK - 1))
+        s = math.sin(a)
+        z = side + (back - side) * s * s if s > 0 else side + (front - side) * (-s / edge) ** 2
+        ring.append(V(rx * math.cos(a), cy + (back_ry if s > 0 else front_ry) * s, z))
+    return ring
+
+
+def skirts(surface):
+    def clear(p):
+        inside = V(0, p.y, 0.56)
+        try:
+            hit = surface.onto(inside, p - inside, SKIRT_MARGIN)
+        except ValueError:
+            return p
+        return hit if (hit - inside).length > (p - inside).length else p
+
+    hips = [leaned(p) for p in ring_round(*CLOAK_RINGS[0][1:], CLOAK_RINGS[0][0])]
+    rings = [[clear(p) for p in skirt_ring(*level)] for level in reversed(SKIRT)]
+    rings.append(hips)
+    verts, faces, _ = loft(rings, closed=False)
+    hem = rings[0]
+    for k, (along, flare, drop) in enumerate(SKIRT_TIPS):
+        p = hem[k].lerp(hem[k + 1], along)
+        out = V(p.x, p.y - 0.06, 0).normalized()
+        verts.append(clear(p + flare * out - V(0, 0, drop)))
+        faces.append((k, k + 1, len(verts) - 1))
+    part('skirts', verts, faces, M['cloak'], inside=lambda c: V(0, 0.06, c.z - 0.3))
+
+
+# Hood --------------------------------------------------------------------------------------------
+
+# The Ringwraith's hood (ringwraith.py), a little bigger so it reads over the horse: built round the
+# line from the middle of its opening back into it, x across, u up the face and b back.
+HOOD_SCALE = 1.1
+FACE = V(0, SHOULDER_Y - 0.15 * HOOD_SCALE, SHOULDER_Z + 0.085 * HOOD_SCALE)
+HOOD_TIP = math.radians(4)
+BACK = V(0, math.cos(HOOD_TIP), math.sin(HOOD_TIP))
+UP = V(0, -math.sin(HOOD_TIP), math.cos(HOOD_TIP))
+
+# Rings round that line from the opening back: (x, u) of the top, upper corner, shoulder, side, lower
+# corner and bottom of the left half, mirrored for the right, and how far back the ring is. The rim
+# of the opening is the band between the first two; the peak is the top of the third.
+HOOD = [
+    ([(0, 0.118), (0.046, 0.1), (0.08, 0.054), (0.094, -0.015), (0.07, -0.086), (0, -0.108)], 0.0),
+    ([(0, 0.176), (0.08, 0.15), (0.13, 0.078), (0.148, -0.015), (0.118, -0.124), (0, -0.158)], 0.04),
+    # Under the war-helm the peak is drawn down, so the helm sits low on the hood (war_helm()).
+    ([(0, 0.2), (0.09, 0.165), (0.15, 0.09), (0.18, -0.03), (0.155, -0.168), (0, -0.218)], 0.16),
+    ([(0, 0.16), (0.07, 0.13), (0.12, 0.06), (0.156, -0.045), (0.136, -0.17), (0, -0.212)], 0.27),
+]
+HOOD_BACK = 0.335  # where the back of the hood closes, behind the head
+VOID_DEPTH = 0.055  # how far back the darkness sits from the rim
+
+
+def hood_point(x, u, b):
+    return FACE + HOOD_SCALE * (x * V(1, 0, 0) + u * UP + b * BACK)
+
+
+def hood():
+    rings = []
+    for half, b in HOOD:
+        left = [(x, u) for x, u in half]
+        right = [(-x, u) for x, u in reversed(half[1:-1])]
+        rings.append([hood_point(x, u, b) for x, u in left + right])
+    n = len(rings[0])
+    verts, faces, bands = loft(rings)
+    face_mats = [0 if b == 0 else 1 for b in bands]
+    end, last = len(verts), (len(rings) - 1) * n
+    verts.append(hood_point(0, -0.03, HOOD_BACK))
+    faces += [(last + i, last + (i + 1) % n, end) for i in range(n)]
+    face_mats += [1] * n
+    part('hood', verts, faces, [M['team'], M['cloak']], face_mats, inside=hood_point(0, 0.0, 0.15))
+
+    # The darkness inside, a shallow funnel set back from the rim.
+    verts = rings[0] + [hood_point(0, 0.0, VOID_DEPTH)]
+    part('void', verts, [(i, (i + 1) % n, n) for i in range(n)], M['void'], outward=-BACK)
+
+    # Two faint points of light, slanting up and out, just in front of the dark.
+    for s in (-1, 1):
+        corners = [(s * 0.016, 0.02), (s * 0.056, 0.034), (s * 0.04, 0.006)]
+        verts = [hood_point(x, u, VOID_DEPTH * (1 - math.hypot(x, u) / 0.1) - 0.006) for x, u in corners]
+        part(f'eye-{s}', verts, [(0, 1, 2)], M['gleam'], outward=-BACK)
+
+
+# The war-helm of black iron over the hood -----------------------------------------------------------
+
+# Rings in the hood's frame from the brim up: the middle (b), the half-width and half-depth, and the
+# height (u) at the front and at the back. The brim sits on the hood just over the rim of the
+# opening and comes down to the nape behind; the helm rounds over the hood and draws up to a spike in
+# trim. Each ring sits further back than the one below, so that while he leans forward the helm's
+# spike stands upright over the middle of his head: further forward, it would rise into his label
+# as the game's camera sees him from behind.
+HELM = [
+    (0.175, 0.185, 0.168, 0.188, 0.03),  # the brim
+    (0.195, 0.165, 0.15, 0.235, 0.14),
+    (0.215, 0.105, 0.098, 0.272, 0.235),
+    (0.232, 0.03, 0.03, 0.30, 0.295),  # the foot of the spike
+]
+HELM_SPIKE = (0.375, 0.25)  # u and b of its point
+N_HELM = 8
+
+
+def war_helm():
+    rings = []
+    for cb, rx, rb, front, back in HELM:
+        ring = []
+        for i in range(N_HELM):
+            a = math.radians(-90 + 360 * i / N_HELM)  # from the front round to his left
+            s = math.sin(a)
+            ring.append(hood_point(rx * math.cos(a), front + (back - front) * (1 + s) / 2, cb + rb * s))
+        rings.append(ring)
+    verts, faces, _ = loft(rings)
+    face_mats = [0] * len(faces)
+    last = (len(rings) - 1) * N_HELM
+    verts.append(hood_point(0, *HELM_SPIKE))
+    faces += [(last + i, last + (i + 1) % N_HELM, len(verts) - 1) for i in range(N_HELM)]
+    face_mats += [1] * N_HELM
+    axis = nearest_on_line(hood_point(0, 0, 0.17), hood_point(0, 1, 0.17))
+    part('war-helm', verts, faces, [M['iron'], M['trim']], face_mats, inside=axis)
+
+
+# Team colour: a ragged mantle over the shoulders --------------------------------------------------
+
+# The mantle from the collar down, open at the front: z at the front and at the back, half-width,
+# half-depth, centre y, how deep its folds stand out and half the opening (degrees).
+MANTLE = [
+    (SHOULDER_Z - 0.08, SHOULDER_Z - 0.02, 0.172, 0.166, SHOULDER_Y + 0.005, 0.0, 22),  # the collar
+    (SHOULDER_Z - 0.13, SHOULDER_Z - 0.105, 0.258, 0.21, SHOULDER_Y + 0.015, 0.008, 30),  # the shoulders
+    (SHOULDER_Z - 0.27, SHOULDER_Z - 0.3, 0.275, 0.226, SHOULDER_Y + 0.025, 0.03, 36),  # the hem
+]
+# Its hem in tatters, longest down the back: for each edge from the left front round to the right,
+# where along it the rag hangs, how far it flares out and how far it falls below the hem.
+MANTLE_TIPS = [
+    (0.6, 0.015, 0.08), (0.35, 0.02, 0.12), (0.6, 0.025, 0.07), (0.4, 0.03, 0.14), (0.65, 0.03, 0.09),
+    (0.35, 0.03, 0.13), (0.6, 0.03, 0.1), (0.4, 0.03, 0.14), (0.55, 0.03, 0.08), (0.35, 0.025, 0.13),
+    (0.6, 0.02, 0.06), (0.4, 0.015, 0.12),
+]
+
+
+def mantle_ring(front, back, rx, ry, cy, fold, opening):
+    ring = []
+    for i in range(N_CLOAK):
+        a = math.radians(-90 + opening + (360 - 2 * opening) * i / (N_CLOAK - 1))
+        z = front + (back - front) * (1 + math.sin(a)) / 2
+        k = 1 + (fold / ry if i % 2 else 0)
+        ring.append(V(k * rx * math.cos(a), cy + k * ry * math.sin(a), z))
+    return ring
+
+
+def mantle():
+    rings = [mantle_ring(*level) for level in MANTLE]
+    verts, faces, _ = loft(rings, closed=False)
+    cy = MANTLE[-1][4]
+    part('mantle', verts, faces, M['team'], inside=lambda c: V(0, cy, c.z))
+    hem = rings[-1]
+    verts, faces = list(hem), []
+    for k, (along, flare, drop) in enumerate(MANTLE_TIPS):
+        p = hem[k].lerp(hem[k + 1], along)
+        out = V(p.x, p.y - cy, 0).normalized()
+        verts.append(p + flare * out - V(0, 0, drop))
+        faces.append((k, k + 1, len(verts) - 1))
+    part('mantle-hem', verts, faces, M['team'], inside=lambda c: V(0, cy, c.z))
+
+
+# A round clasp in trim closing the mantle at his throat, under the hood.
+CLASP = V(0, SHOULDER_Y - 0.152, SHOULDER_Z - 0.085)  # the middle of its face
+CLASP_OUT = V(0, -1, 0.35).normalized()  # facing forward and a little up, to the game's camera
+
+
+def clasp():
+    cone('clasp', CLASP - 0.018 * CLASP_OUT, CLASP, 0.034, M['trim'], n=6, phase=30)
+
+
+# Arms --------------------------------------------------------------------------------------------
+
+# The right arm holds the lance out to his side, the forearm forward; the left gathers the reins over
+# the withers.
+R_SHOULDER, R_ELBOW, R_WRIST = V(-0.17, 0.045, 1.115), V(-0.34, 0.035, 0.98), V(-0.39, -0.165, 1.005)
+L_SHOULDER, L_ELBOW, L_WRIST = V(0.17, 0.045, 1.115), V(0.29, 0.0, 0.96), V(0.18, -0.18, 0.91)
+# Each sleeve: radius at the shoulder, the elbow, along the forearm and at the open cuff.
+SLEEVE = [0.06, 0.068, 0.088, 0.115]
+CUFF = 0.88  # how far from the elbow to the wrist the cuff ends
+
+
+def sleeve(side, shoulder, elbow, wrist):
+    cuff = elbow.lerp(wrist, CUFF)
+    middle = elbow.lerp(wrist, 0.45)
+    tube = bent_tube(f'sleeve-{side}', [shoulder, elbow, middle, cuff], SLEEVE, M['cloak'], phase=30)
+    # Rags hang from the cuff, its last ring.
+    along = (wrist - elbow).normalized()
+    ring = [tube.data.vertices[i].co.copy() for i in range(len(tube.data.vertices) - 6, len(tube.data.vertices))]
+    verts, faces = list(ring), []
+    for i in range(6):
+        a, b = ring[i], ring[(i + 1) % 6]
+        mid = (a + b) / 2
+        verts.append(mid + 0.05 * along + V(0, 0, -0.05) + 0.02 * (mid - cuff).normalized())
+        faces.append((i, (i + 1) % 6, len(verts) - 1))
+    part(f'cuff-{side}', verts, faces, M['cloak'], inside=lambda c: cuff + (c - cuff).dot(along) * along)
+    # The thin wrist, from the dark of the sleeve.
+    bent_tube(f'wrist-{side}', [elbow.lerp(wrist, 0.6), wrist], [0.03, 0.03], M['skin'], n=4, phase=45)
+
+
+def fist(name, wrist, elbow, up):
+    ahead = (wrist - elbow).normalized()
+    up = (up - up.dot(ahead) * ahead).normalized()
+    centre = wrist + 0.05 * ahead
+    box(name, centre, [ahead, up, ahead.cross(up)], (0.048, 0.05, 0.052), M['skin'], 0.85)
+    return centre
+
+
+# The lance, in the right hand ---------------------------------------------------------------------
+
+LANCE = V(-0.36, -0.16, 0.92).normalized()  # up, out to his right and a little forward
+BUTT, TOP = -0.36, 0.58  # how far down and up the shaft runs from his fist, to the socket
+SHAFT_RADII = (0.021, 0.018)  # at the butt and at the socket
+SOCKET = 0.05  # how long the trim socket is, up to the head
+# The head above the socket: how far along it, its half-width and its half-thickness, to the point.
+HEAD = [(0.0, 0.028, 0.02), (0.08, 0.05, 0.017), (0.22, 0.03, 0.012)]
+HEAD_LENGTH = 0.34
+SHOE = 0.07  # how far the trim shoe at the butt runs to its point
+
+
+def lance():
+    wrist, elbow = leaned(R_WRIST), leaned(R_ELBOW)
+    grip = fist('fist-right', wrist, elbow, LANCE)
+    butt, socket = grip + BUTT * LANCE, grip + TOP * LANCE
+    tube('lance-shaft', butt, socket, [(0, SHAFT_RADII[0]), (1, SHAFT_RADII[1])], M['shaft'], n=5)
+    neck = socket + SOCKET * LANCE
+    tube('lance-socket', socket - 0.01 * LANCE, neck, [(0, 0.024), (1, 0.029)], M['trim'], n=6)
+    cone('lance-shoe', butt + 0.01 * LANCE, butt - SHOE * LANCE, 0.022, M['trim'], n=5)
+
+    # The flat of the head faces forward and back, where the game's camera sees it.
+    width = LANCE.cross(V(0, 1, 0)).normalized()
+    side = LANCE.cross(width).normalized()
+    rings = []
+    for t, w, th in HEAD:
+        c = neck + t * LANCE
+        rings.append([c + w * width, c + th * side, c - w * width, c - th * side])
+    verts, faces, _ = loft(rings)
+    tip, last = len(verts), (len(rings) - 1) * 4
+    verts.append(neck + HEAD_LENGTH * LANCE)
+    faces += [(last + i, last + (i + 1) % 4, tip) for i in range(4)]
+    part('lance-head', verts, faces, M['blade'], inside=lambda c: neck + (c - neck).dot(LANCE) * LANCE)
+    pennon(grip)
+
+
+# A ragged black pennon under the head, flying out to his right and a little back, so it shows from in
+# front and from behind: its outline in (u, v), u from the shaft out to the fly and v up the shaft,
+# torn into tails at the fly.
+PENNON = [
+    (0.0, 0.0), (0.0, 1.0), (0.42, 0.9), (1.0, 0.8), (0.7, 0.6), (0.92, 0.42), (0.56, 0.3), (0.62, 0.08),
+    (0.3, 0.1),
+]
+PENNON_FROM, PENNON_HIGH, PENNON_LONG = 0.36, 0.2, 0.31  # along the shaft from his fist; its size
+FLY = V(-0.8, 0.42, 0)  # the way it flies, back enough that it reaches no further than the horse's muzzle
+RIPPLE = 0.025
+
+
+def pennon(grip):
+    hoist = grip + PENNON_FROM * LANCE
+    out = (FLY - FLY.dot(LANCE) * LANCE).normalized()
+    normal = LANCE.cross(out)
+
+    def place(u, v):
+        return hoist + u * PENNON_LONG * out + v * PENNON_HIGH * LANCE + RIPPLE * math.sin(math.pi * 1.5 * u) * normal
+
+    verts = [place(u, v) for u, v in PENNON]
+    triangles = tessellate_polygon([[Vector((u, v, 0)) for u, v in PENNON]])
+    part('pennon', verts, [tuple(t) for t in triangles], M['cloak'], outward=normal)
+
+
+def reins(mount):
+    # From the bits to his left hand, by way of points beside the neck.
+    hand = leaned(L_WRIST) + 0.05 * (leaned(L_WRIST) - leaned(L_ELBOW)).normalized()
+    for s, bit in zip((-1, 1), mount.bits):
+        mid = mount.turned(V(s * 0.125, -0.52, 0.92))
+        path = [bit, mid, hand + V(-s * 0.012, 0.0, -0.01)]
+        width = V(0, 0, 0.012)
+        verts = [p + width for p in path] + [p - width for p in path]
+        part(f'rein-{s}', verts, [(0, 1, 4, 3), (1, 2, 5, 4)], M['leather'], outward=V(s, 0, 0))
+
+
+def main():
+    reset()
+    make_materials()
+    mount = horse(COAT, POINTS, tack='caparison', raised='right', turn=40)
+    body, caparison = bpy.data.objects['horse-body'], bpy.data.objects['horse-caparison']
+    clear_cloth(caparison, body)
+    fittings(caparison)
+    war_gear(mount)
+    covered = [body, caparison] + legs()
+    stirrups()
+    fixed = set(bpy.context.scene.objects)
+    cloak()
+    hood()
+    war_helm()
+    mantle()
+    clasp()
+    sleeve('right', R_SHOULDER, R_ELBOW, R_WRIST)
+    sleeve('left', L_SHOULDER, L_ELBOW, L_WRIST)
+    fist('fist-left', L_WRIST, L_ELBOW, V(0, 0, 1))
+    for obj in bpy.context.scene.objects:
+        if obj not in fixed:
+            obj.data.transform(LEANING)
+    skirts(Surface(*covered))
+    lance()
+    reins(mount)
+    finish('khamul-3', budget=MOUNTED_BOOK_BUDGET)
+
+
+main()
