@@ -8,6 +8,12 @@ breastplate and on his cape, the four-fingered Black Hand raised open at his sho
 flanged mace held upright in the other. The team colour is his great cape, which carries the Eye on
 its back, and the long tabard down his front.
 
+His fittings use `trim`, which the client colours iron, silver or gold by star level
+(docs/viewer-spec.md section 4, "Star levels"): the stepped edges and rivets of his pauldrons, the
+two clasps that pin his cape to his back, the belt buckle, and the mace's collar, socket and pommel.
+The crown's band stays gold, for it is a crown and not a fitting. His 2★ model is sauron-2.py and his
+3★ model sauron-3.py.
+
     blender --background --factory-startup --python-exit-code 1 --python sauron.py [-- <out.glb>]
 
 Coordinates are Blender's: z up, the model faces -Y, so his right hand is at -X.
@@ -34,11 +40,13 @@ from kit import (  # noqa: E402
     loft,
     material,
     nearest_on_line,
+    newell,
     on_surface,
     part,
     reset,
     segment,
     team_material,
+    trim_material,
     tube,
     wind,
 )
@@ -64,6 +72,8 @@ def make_materials():
         ember=material('ember', EMBER, roughness=0.6, emission=EMBER, emission_strength=0.6),
         eyes=material('eyes', EYES, roughness=0.6),
         leather=material('leather', LEATHER, roughness=0.85),
+        # Fittings: the renderer recolours this iron, silver or gold by star level.
+        trim=trim_material(),
     )
 
 
@@ -187,9 +197,9 @@ def torso():
          inside=lambda c: V(0, 0, c.z))
     chest = surface(verts, faces, lambda c: c.y < -0.15 and 1.1 < c.z < 1.5)
     eye('eye-chest', chest, 0.0, 1.33, 0.2, 0.11, -0.008)
-    # A plate of gold where the belt closes, over the top of the tabard.
+    # A plate where the belt closes, over the top of the tabard.
     axes = [V(0, -1, 0), V(1, 0, 0), V(0, 0, 1)]
-    box('buckle', V(0, -0.205, 0.995), axes, (0.02, 0.06, 0.06), M['gold'], 0.8)
+    box('buckle', V(0, -0.205, 0.995), axes, (0.02, 0.06, 0.06), M['trim'], 0.8)
 
 
 # The Lidless Eye, "yellow as a cat's" with "the black slit of its pupil" (The Mirror of Galadriel):
@@ -339,20 +349,33 @@ def crown():
 
 # Pauldrons ---------------------------------------------------------------------------------------
 
-# A dome over each shoulder in three stepped lames: distance along the dome's axis, and radius.
+# A dome over each shoulder in three stepped lames: distance along the dome's axis, and radius. The
+# steps between the lames, their edges, are trim.
 PAULDRON = [(-0.07, 0.24), (0.015, 0.236), (0.03, 0.208), (0.085, 0.198), (0.1, 0.165), (0.145, 0.128)]
+PAULDRON_BANDS = [0, 1, 0, 1, 0]  # iron lames, trim edges
 PAULDRON_TOP = 0.19
+RIVETS = (0, 1, 2, 3, 7)  # the lowest lame's faces that get a rivet: its outer side, front to back
 
 
 def pauldron(side, s):
     centre = V(s * 0.38, 0.02, 1.43)
     axis = V(s * 0.42, 0, 1).normalized()
     rings = segment(centre, centre + axis, PAULDRON, 8, 22.5, 0.88)
-    verts, faces, _ = loft(rings)
+    verts, faces, bands = loft(rings)
+    face_mats = [PAULDRON_BANDS[b] for b in bands]
     apex, last = len(verts), (len(PAULDRON) - 1) * 8
     verts.append(centre + PAULDRON_TOP * axis)
     faces += [(last + i, last + (i + 1) % 8, apex) for i in range(8)]
-    part(f'pauldron-{side}', verts, faces, M['iron'], inside=centre)
+    face_mats += [0] * 8
+    part(f'pauldron-{side}', verts, faces, [M['iron'], M['trim']], face_mats, inside=centre)
+    # A rivet in the middle of each outer face of the lowest lame.
+    for k in RIVETS:
+        corners = [verts[i] for i in faces[k]]
+        middle = sum(corners, Vector()) / 4
+        out = newell(corners).normalized()
+        if out.dot(middle - centre) < 0:
+            out = -out
+        cone(f'rivet-{side}-{k}', middle - 0.004 * out, middle + 0.016 * out, 0.02, 4, M['trim'], 45)
 
 
 # Cape --------------------------------------------------------------------------------------------
@@ -370,6 +393,7 @@ CAPE = [
     (0.26, 0.38, 0.53, 0.43, 0.06, -6, 0.09, 0.08),
 ]
 CAPE_POINTS = 15
+CLASP = (0.2, 1.36)  # where the clasps pin the cape to his back: x out from his spine, and z
 
 
 def cape():
@@ -387,6 +411,18 @@ def cape():
     part('cape', verts, faces, M['team'], inside=lambda c: V(0, 0, c.z))
     back = surface(verts, faces, lambda c: c.y > 0.2 and 0.6 < c.z < 1.4 and abs(c.x) < 0.3)
     eye('eye-cape', back, 0.0, 1.02, 0.3, 0.16, 0.012)
+    # Two clasps pin it to his back, below the pauldrons: a round boss of trim on each shoulder blade.
+    yoke = surface(verts, faces, lambda c: c.y > 0.15 and c.z > 1.2)
+    for s in (-1, 1):
+        x, z = s * CLASP[0], CLASP[1]
+        seat = V(x, on_surface(yoke, x, z), z)
+        out = V(0, 1, 0.35).normalized()
+        segments = segment(seat, seat + out, [(-0.012, 0.045), (0.012, 0.045), (0.022, 0.03)], 6, 30)
+        ring_verts, ring_faces, _ = loft(segments)
+        top = len(ring_verts)
+        ring_verts.append(seat + 0.03 * out)
+        ring_faces += [(12 + i, 12 + (i + 1) % 6, top) for i in range(6)]
+        part(f'clasp-{s}', ring_verts, ring_faces, M['trim'], inside=seat - 0.01 * out)
 
 
 # Mace, in his right hand -------------------------------------------------------------------------
@@ -401,18 +437,20 @@ def mace():
     d = HAFT
     grip = R_FIST
     tube('haft', grip - 0.17 * d, grip + HEAD * d, [(0, 0.036), (1, 0.036)], M['iron'])
-    cone('pommel', grip - 0.16 * d, grip - 0.26 * d, 0.056, 6, M['iron'], 30)
-    tube('collar', grip + 0.33 * d, grip + 0.4 * d, [(0, 0.054), (1, 0.054)], M['gold'], phase=30)
+    cone('pommel', grip - 0.16 * d, grip - 0.26 * d, 0.056, 6, M['trim'], 30)
+    tube('collar', grip + 0.33 * d, grip + 0.4 * d, [(0, 0.054), (1, 0.054)], M['trim'], phase=30)
 
     head = grip + HEAD * d
-    # The head's core, a hexagonal bulb with a spike on top.
+    # The head's core, a hexagonal bulb with a spike on top, on a socket of trim.
     rings = segment(head, head + d, [(-0.18, 0.058), (-0.12, 0.1), (0.12, 0.1), (0.18, 0.062)], 6, 30)
-    verts, faces, _ = loft(rings)
+    verts, faces, bands = loft(rings)
+    face_mats = [1 if b == 0 else 0 for b in bands]
     top, bottom = len(verts), len(verts) + 1
     verts += [head + 0.36 * d, head - 0.21 * d]
     faces += [(18 + i, 18 + (i + 1) % 6, top) for i in range(6)]
     faces += [(i, (i + 1) % 6, bottom) for i in range(6)]
-    part('mace-core', verts, faces, M['iron'], inside=head)
+    face_mats += [0] * 6 + [1] * 6
+    part('mace-core', verts, faces, [M['iron'], M['trim']], face_mats, inside=head)
 
     # Six flanges, between the core's corners.
     u = d.cross(V(0, 0, 1)).normalized()
