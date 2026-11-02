@@ -11,6 +11,12 @@ side; Haldir's raised bow and high elbow are his own outline, from in front and 
 quiver hangs at his right hip. The team colour is his long cloak, its hood thrown back as a mantle
 over his shoulders, and the sash at his waist.
 
+His fittings use `trim`, which the client colours iron, silver or gold by star level
+(docs/viewer-spec.md section 4, "Star levels"): the leaf that clasps his cloak at the throat, the
+brooch pinning the sash's knot, the quiver's mouth and its shod foot, and the bands either side of the
+bow's grip, seen from in front; and from behind, the clasp that binds his long hair between his
+shoulders, and the bow's bands again. His 2★ model is haldir-2.py and his 3★ model haldir-3.py.
+
     blender --background --factory-startup --python-exit-code 1 --python haldir.py [-- <out.glb>]
 
 Coordinates are Blender's: z up, the model faces -Y, so his right hand is at -X.
@@ -29,6 +35,7 @@ from kit import (  # noqa: E402
     V,
     bent_tube,
     box,
+    cone,
     ellipse,
     finish,
     frame,
@@ -40,6 +47,7 @@ from kit import (  # noqa: E402
     reset,
     segment,
     team_material,
+    trim_material,
     tube,
 )
 
@@ -50,7 +58,7 @@ TUNIC = 0x868D87  # the grey of Lórien, cool and a little green
 LEGGINGS = 0x555B58  # a darker grey
 BOOTS = 0x4B4741  # soft grey-brown leather
 LEATHER = 0x51463B  # the quiver and the bracer
-SILVER = 0xD3D7DA  # the clasp, the arrowheads and the quiver's rim
+SILVER = 0xD3D7DA  # the arrowhead
 BOW = 0xC2A677  # the pale wood of a bow of the Galadhrim, and the arrows
 FEATHER = 0xE0DCD0  # pale fletching, and the bowstring
 
@@ -70,6 +78,8 @@ def make_materials():
         wood=material('wood', BOW, roughness=0.7),
         feather=material('feather', FEATHER, roughness=0.9),
         eyes=material('eyes', EYES, roughness=0.6),
+        # Fittings: the renderer recolours this iron, silver or gold by star level.
+        trim=trim_material(),
     )
 
 
@@ -246,7 +256,11 @@ def torso_point(degrees, z, out=0.0):
 def sash():
     # The sash's knot at his front left and its two ends hanging down the skirt of his tunic.
     knot = torso_point(300, 0.815, 0.014)
-    box('sash-knot', knot, [V(0.5, -0.86, 0), V(0.86, 0.5, 0), V(0, 0, 1)], (0.022, 0.034, 0.03), M['team'], 0.8)
+    out = V(0.5, -0.86, 0)
+    box('sash-knot', knot, [out, V(0.86, 0.5, 0), V(0, 0, 1)], (0.022, 0.034, 0.03), M['team'], 0.8)
+    # A round brooch pins it.
+    at = knot + 0.016 * out
+    cone('sash-brooch', at, at + 0.014 * out, 0.019, M['trim'], n=6, back=at - 0.004 * out)
     for k, (a0, a1, low) in enumerate(((292, 300, 0.56), (306, 318, 0.6))):
         rows = []
         for z, a, w in ((0.8, a0, 0.024), (0.68, (a0 + a1) / 2, 0.028), (low, a1, 0.032)):
@@ -281,12 +295,12 @@ def mantle():
     faces = [(0, 1, 4, 3), (1, 2, 5, 4), (3, 4, 6), (4, 5, 6)]
     part('hood', verts, faces, M['team'], inside=V(0, 0.1, 1.0))
 
-    # A silver leaf clasps it at his throat.
+    # A leaf of metal clasps it at his throat.
     centre = V(0, -0.082, 1.1)
     verts = [centre + V(0, -0.012, 0.0), centre + V(-0.026, -0.004, 0.014), centre + V(0, -0.002, 0.042),
              centre + V(0.026, -0.004, 0.014), centre + V(0, -0.004, -0.03)]
     faces = [(0, 1, 2), (0, 2, 3), (0, 3, 4), (0, 4, 1)]
-    part('clasp', verts, faces, M['silver'], outward=V(0, -1, 0))
+    part('clasp', verts, faces, M['trim'], outward=V(0, -1, 0))
 
 
 # The cloak, from under the mantle to his calves, open at the front. Each level: z at the middle of his
@@ -323,15 +337,16 @@ QUIVER_TOP, QUIVER_FOOT = V(-0.235, -0.06, 0.86), V(-0.265, 0.05, 0.45)
 def quiver():
     top, foot = QUIVER_TOP, QUIVER_FOOT
     along = (top - foot).normalized()
-    tube('quiver', foot, top, [(0, 0.044), (1, 0.054)], M['leather'], n=6)
-    ring = segment(foot, top, [(0, 0.044)], 6)[0]
+    # Leather, shod at the foot with a band of metal.
+    tube('quiver', foot, top, [(0, 0.048), (0.12, 0.048), (1, 0.054)], [M['trim'], M['leather']], [0, 1], n=6)
+    ring = segment(foot, top, [(0, 0.048)], 6)[0]
     verts = ring + [foot - 0.03 * along]
-    part('quiver-foot', verts, [(i, (i + 1) % 6, 6) for i in range(6)], M['leather'], inside=foot)
-    # A silver rim round the mouth, which is dark with the shafts of the arrows.
+    part('quiver-foot', verts, [(i, (i + 1) % 6, 6) for i in range(6)], M['trim'], inside=foot)
+    # A metal rim round the mouth, which is dark with the shafts of the arrows.
     rim = segment(top - 0.04 * along, top + 0.008 * along, [(0, 0.06), (1, 0.06)], 6)
     verts, faces, _ = loft(rim)
     faces.append(tuple(range(6, 12)))
-    part('quiver-rim', verts, faces, [M['silver'], M['leather']], [0] * 6 + [1], inside=top - 0.02 * along)
+    part('quiver-rim', verts, faces, [M['trim'], M['leather']], [0] * 6 + [1], inside=top - 0.02 * along)
     across, other = frame(along)
     for k, (du, dv, lean) in enumerate([(0.026, 0.0, 0.14), (-0.022, 0.018, -0.12), (-0.006, -0.028, -0.02),
                                         (0.01, 0.03, 0.06)]):
@@ -447,6 +462,11 @@ def hair_tail():
     spine = [head_point(V(0, 0.0, 1.3)), body(V(0, 0.12, 1.1)), body(V(0, 0.2, 0.95)), body(V(0, 0.18, 0.75))]
     part('hair-tail', verts, faces, M['hair'], inside=nearest_on_polyline(spine))
 
+    # A clasp of metal binds it between his shoulders, its face smaller than its back.
+    clasp = box('hair-clasp', V(0, 0.268, 0.9), [V(0, 1, 0), V(1, 0, 0), V(0, 0, 1)], (0.014, 0.054, 0.022),
+                M['trim'], 0.75)
+    carry([clasp], body)
+
 
 # Arms, the bow and the arrow, placed in the pose ----------------------------------------------------
 
@@ -459,13 +479,17 @@ STAVE = [
     (-0.66, 0.29, 0.0),
     (-0.58, 0.245, 0.022),
     (-0.4, 0.135, 0.028),
-    (-0.1, 0.014, 0.032),
-    (0.1, 0.014, 0.032),
+    (-0.15, 0.022, 0.036),
+    (-0.1, 0.014, 0.036),
+    (0.1, 0.014, 0.036),
+    (0.15, 0.022, 0.036),
     (0.4, 0.135, 0.028),
     (0.58, 0.245, 0.022),
     (0.66, 0.29, 0.0),
 ]
-STAVE_BANDS = [0, 0, 0, 1, 0, 0, 0]  # wood, the grip wrapped in leather
+# Each band's material, by the ring it starts from: wood, the grip wrapped in leather between bands of
+# metal.
+STAVE_BANDS = [0, 0, 0, 2, 1, 2, 0, 0, 0]
 
 
 def bow():
@@ -485,7 +509,7 @@ def bow():
         verts.append(tip)
         faces += [(ring_start + i, ring_start + (i + 1) % 4, len(verts) - 1) for i in range(4)]
         face_mats += [0] * 4
-    part('bow', verts, faces, [M['wood'], M['leather']], face_mats, inside=nearest_on_polyline(centres))
+    part('bow', verts, faces, [M['wood'], M['leather'], M['trim']], face_mats, inside=nearest_on_polyline(centres))
 
     # The string, from tip to tip by way of the arrow's nock.
     top, bottom = centres[-1] - 0.025 * BOW_UP, centres[0] + 0.025 * BOW_UP
