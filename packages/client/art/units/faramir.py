@@ -9,6 +9,12 @@ draws a great bow to the full for his heavy shot, aimed a little upward and to h
 shows its curve to the game's camera from behind and in front, and long arrows stand out of the
 quiver on his back. The team colour is his hooded cloak, the hood up.
 
+His fittings, the belt buckle, the clasp at the throat of his cloak, the buckle of the quiver's strap
+on his breast, the quiver's mouth and its shod foot, and the bands either side of the bow's grip, use
+`trim`, which the client colours iron, silver or gold by star level (docs/viewer-spec.md section 4,
+"Star levels"); from behind, the quiver's mouth and foot and the bow's bands show it. His 2★ model is
+faramir-2.py and his 3★ model faramir-3.py.
+
     blender --background --factory-startup --python-exit-code 1 --python faramir.py [-- <out.glb>]
 
 Coordinates are Blender's: z up, the model faces -Y, so his right hand is at -X.
@@ -31,6 +37,7 @@ from kit import (  # noqa: E402
     V,
     bent_tube,
     box,
+    cone,
     finish,
     frame,
     loft,
@@ -41,6 +48,7 @@ from kit import (  # noqa: E402
     reset,
     segment,
     team_material,
+    trim_material,
     tube,
     turn,
 )
@@ -71,6 +79,8 @@ def make_materials():
         feather=material('feather', FEATHER, roughness=0.9),
         steel=material('steel', STEEL, roughness=0.5, metallic=0.1),
         eyes=material('eyes', EYES, roughness=0.6),
+        # Fittings: the renderer recolours this iron, silver or gold by star level.
+        trim=trim_material(),
     )
 
 
@@ -186,7 +196,7 @@ def torso():
          inside=lambda c: V(0, 0, c.z))
     # The belt buckle, its face smaller than its back so the edges read as a bevel.
     axes = [V(0, -1, 0), V(1, 0, 0), V(0, 0, 1)]
-    box('buckle', V(0, -0.14, 0.725), axes, (0.014, 0.03, 0.028), M['steel'], 0.75)
+    box('buckle', V(0, -0.14, 0.725), axes, (0.014, 0.03, 0.028), M['trim'], 0.75)
 
 
 def torso_point(degrees, z, out=0.0):
@@ -207,6 +217,13 @@ def baldric():
     rows = [[torso_point(a, z + dz, 0.008) for a, z in path] for dz in (-0.028, 0.028)]
     verts, faces, _ = loft(rows, closed=False)
     part('baldric', verts, faces, M['leather'], inside=lambda c: V(0, 0, c.z))
+    # Its buckle in the middle of his breast, square to the strap.
+    (a0, z0), (a1, z1) = path[1], path[2]
+    along = (torso_point(a1, z1) - torso_point(a0, z0)).normalized()
+    out = V(0, -1, 0)
+    across = along.cross(out).normalized()
+    box('strap-buckle', torso_point(270, (z0 + z1) / 2, 0.016), [out, along, across], (0.01, 0.024, 0.036),
+        M['trim'], 0.7)
 
 
 # Team colour: the hooded cloak --------------------------------------------------------------------
@@ -236,6 +253,13 @@ def cloak():
     verts, faces, _ = loft(rings, closed=False)
     part('cloak', verts, faces, M['team'], inside=lambda c: V(0, 0.02, c.z))
 
+    # The clasp at his throat: a bar from one edge of the collar to the other, and a boss on it.
+    edge = rings[0][0]  # the collar's left edge; the right mirrors it
+    z, y = edge.z - 0.016, edge.y - 0.006
+    box('clasp-bar', V(0, y, z), [V(1, 0, 0), V(0, 1, 0), V(0, 0, 1)], (edge.x + 0.008, 0.008, 0.009), M['trim'])
+    at = V(0, y - 0.006, z)
+    cone('clasp', at, at + V(0, -0.024, 0), 0.026, M['trim'], n=4, phase=45, back=at + V(0, 0.01, 0))
+
 
 # The quiver lies on his back over the cloak, from its hem by his left hip to behind his right
 # shoulder, the feathers standing up behind his hood.
@@ -245,14 +269,15 @@ QUIVER_FOOT, QUIVER_TOP = V(0.11, 0.282, 0.68), V(-0.1, 0.232, 1.18)
 def quiver():
     foot, top = QUIVER_FOOT, QUIVER_TOP
     along = (top - foot).normalized()
-    tube('quiver', foot, top, [(0, 0.062), (1, 0.074)], M['leather'], n=6)
-    ring = segment(foot, top, [(0, 0.062)], 6)[0]
+    tube('quiver', foot, top, [(0, 0.066), (0.11, 0.066), (0.12, 0.063), (1, 0.074)],
+         [M['trim'], M['leather']], [0, 1, 1], n=6)
+    ring = segment(foot, top, [(0, 0.066)], 6)[0]
     verts = ring + [foot - 0.04 * along]
-    part('quiver-foot', verts, [(i, (i + 1) % 6, 6) for i in range(6)], M['leather'], inside=foot)
+    part('quiver-foot', verts, [(i, (i + 1) % 6, 6) for i in range(6)], M['trim'], inside=foot)
     rim = segment(top - 0.05 * along, top + 0.01 * along, [(0, 0.085), (1, 0.085)], 6)
     verts, faces, _ = loft(rim)
     faces.append(tuple(range(6, 12)))
-    part('quiver-rim', verts, faces, M['boots'], inside=top - 0.02 * along)
+    part('quiver-rim', verts, faces, [M['trim'], M['boots']], [0] * 6 + [1], inside=top - 0.02 * along)
     # The fletching of the long green-feathered arrows standing out of the mouth, each two crossed vanes.
     across, other = frame(along)
     for k, (du, dv, tilt) in enumerate([(0.032, 0.0, 0.16), (-0.028, 0.022, -0.13), (-0.01, -0.034, -0.03),
@@ -382,15 +407,17 @@ STAVE = [
     (-0.56, 0.19, 0.033),
     (-0.42, 0.115, 0.037),
     (-0.27, 0.05, 0.04),
-    (-0.1, 0.012, 0.043),
-    (0.1, 0.012, 0.043),
+    (-0.155, 0.02, 0.048),
+    (-0.1, 0.012, 0.048),
+    (0.1, 0.012, 0.048),
+    (0.155, 0.02, 0.048),
     (0.27, 0.05, 0.04),
     (0.42, 0.115, 0.037),
     (0.56, 0.19, 0.033),
     (0.67, 0.255, 0.028),
     (0.76, 0.315, 0.0),
 ]
-STAVE_BANDS = [0, 0, 0, 0, 1, 0, 0, 0, 0]  # wood, the grip wrapped in leather
+STAVE_BANDS = [0, 0, 0, 0, 2, 1, 2, 0, 0, 0, 0]  # wood, the grip wrapped in leather between metal bands
 
 
 def bow():
@@ -410,7 +437,7 @@ def bow():
         verts.append(tip)
         faces += [(ring_start + i, ring_start + (i + 1) % 4, len(verts) - 1) for i in range(4)]
         face_mats += [0] * 4
-    part('bow', verts, faces, [M['wood'], M['leather']], face_mats, inside=nearest_on_polyline(centres))
+    part('bow', verts, faces, [M['wood'], M['leather'], M['trim']], face_mats, inside=nearest_on_polyline(centres))
 
     # The string, from tip to tip by way of the arrow's nock.
     top, bottom = centres[-1] - 0.03 * BOW_UP, centres[0] + 0.03 * BOW_UP

@@ -9,6 +9,10 @@ white horse-tail plume, his flaxen hair long. The team colour is his cloak and t
 saddle-cloth and breast strap, seen from the front, from behind and from above; everything else is
 muted green, gold and earth.
 
+His fittings, the belt buckle, the helm's band, the spear's socket and the horse's browband, use
+`trim`, which the client colours iron, silver or gold by star level (docs/viewer-spec.md section 4,
+"Star levels"). His 3★ model is eomer-3.py.
+
     blender --background --factory-startup --python-exit-code 1 --python eomer.py [-- <out.glb>]
 
 Coordinates are Blender's: z up, the model faces -Y, so his right hand is at -X.
@@ -25,14 +29,13 @@ from mathutils import Matrix, Vector
 sys.path.insert(0, os.path.join(os.path.dirname(os.path.abspath(__file__)), '..'))
 from kit import (  # noqa: E402
     BOOTS,
-    BRASS,
     EYES,
     LEATHER,
     MAIL,
     MOUNTED_BUDGET,
     STEEL,
-    WOOD,
     V,
+    WOOD,
     box,
     ellipse,
     finish,
@@ -43,6 +46,7 @@ from kit import (  # noqa: E402
     part,
     reset,
     team_material,
+    trim_material,
     tube,
     wind,
 )
@@ -71,9 +75,10 @@ def make_materials():
         tunic=material('tunic', TUNIC, roughness=0.9),
         leather=material('leather', LEATHER, roughness=0.85),
         boots=material('boots', BOOTS, roughness=0.9),
-        brass=material('brass', BRASS, roughness=0.55, metallic=0.1),
         wood=material('wood', WOOD, roughness=0.85),
         eyes=material('eyes', EYES, roughness=0.6),
+        # Fittings: the renderer recolours this iron, silver or gold by star level.
+        trim=trim_material(),
     )
 
 
@@ -176,7 +181,7 @@ def torso():
     face_mats = [TORSO_BANDS[b] for b in bands]
     part('torso', verts, faces, [M['mail'], M['leather']], face_mats, inside=lambda c: V(0, 0.05, c.z))
     axes = [V(0, -1, 0), V(1, 0, 0), V(0, 0, 1)]
-    box('buckle', V(0, -0.072, 0.94), axes, (0.016, 0.04, 0.034), M['brass'], 0.8)
+    box('buckle', V(0, -0.072, 0.94), axes, (0.016, 0.04, 0.034), M['trim'], 0.8)
 
 
 # His legs astride the horse: thighs forward and down along the saddle, boots hanging straight.
@@ -281,7 +286,7 @@ def helm():
     verts.append(HELM_TOP)
     faces += [(last + i, last + (i + 1) % 8, len(verts) - 1) for i in range(8)]
     face_mats += [1] * 8
-    part('helm', verts, faces, [M['brass'], M['steel']], face_mats, inside=V(0, HEAD_Y, 1.42))
+    part('helm', verts, faces, [M['trim'], M['steel']], face_mats, inside=V(0, HEAD_Y, 1.42))
 
     # Cheek-guards hanging from the brim beside his face.
     for s in (-1, 1):
@@ -387,7 +392,7 @@ def spear():
     verts.append(point)
     faces += [(last + i, last + (i + 1) % 4, len(verts) - 1) for i in range(4)]
     face_mats = [0 if b == 0 else 1 for b in bands] + [1] * 4
-    part('spearhead', verts, faces, [M['brass'], M['steel']], face_mats, inside=nearest_on_polyline([top, point]))
+    part('spearhead', verts, faces, [M['trim'], M['steel']], face_mats, inside=nearest_on_polyline([top, point]))
 
 
 def reins(mount):
@@ -400,6 +405,7 @@ def reins(mount):
         verts = [p + width for p in path] + [p - width for p in path]
         faces = [(0, 1, 4, 3), (1, 2, 5, 4)]
         part(f'rein-{s}', verts, faces, M['leather'], outward=V(s, 0, 0))
+
 
 
 def main():

@@ -11,6 +11,12 @@ on. The team colour is the banner, which bears the sign of Morgul on both faces,
 death's face; the ragged mantle round his neck, under his pauldrons and down his back; and the ragged
 tabard hanging from his belt.
 
+His fittings, the rims of his pauldrons, his belt buckle, the band binding the cleaver's blade to its
+haft and its pommel, and the standard's spear-point and the finials of its cross-bar, use `trim`,
+which the client colours iron, silver or gold by star level (docs/viewer-spec.md section 4, "Star
+levels"). The pale moon stays bone: it is a device, not a fitting. His 2★ model is gothmog-2.py and
+his 3★ model gothmog-3.py.
+
     blender --background --factory-startup --python-exit-code 1 --python gothmog.py [-- <out.glb>]
 
 Coordinates are Blender's: z up, the model faces -Y, so his right hand is at -X.
@@ -42,6 +48,7 @@ from kit import (  # noqa: E402
     part,
     reset,
     team_material,
+    trim_material,
     tube,
     turn,
     wind,
@@ -61,6 +68,7 @@ M = {}  # materials by name, made once the scene is reset
 def make_materials():
     M.update(
         team=team_material(),
+        trim=trim_material(),
         skin=material('skin', SKIN, roughness=0.85),
         hair=material('hair', HAIR, roughness=0.95),
         iron=material('iron', IRON, roughness=0.55, metallic=0.12),
@@ -186,6 +194,11 @@ def pauldron(s):
     verts.append(at(0, 0, 0.095))
     faces += [(6 + i, 6 + (i + 1) % 6, 12) for i in range(6)]
     part(f'pauldron-{s}', verts, faces, M['iron'], inside=at(0, 0, -0.08))
+    # A rim of trim round its lower edge, standing a little proud of the shell.
+    band = [[at(1.05 * rx * math.cos(a), 1.05 * ry * math.sin(a), z) for a in (math.tau * i / 6 for i in range(6))]
+            for z, rx, ry in ((-0.078, 0.19, 0.185), (-0.035, 0.18, 0.176))]
+    verts, faces, _ = loft(band)
+    part(f'pauldron-rim-{s}', verts, faces, M['trim'], inside=at(0, 0, -0.06))
     cone(f'spike-up-{s}', at(0.03, 0, 0.07), at(0.11, 0.0, 0.27), 0.045, M['iron'], n=4, back=None)
     cone(f'spike-out-{s}', at(0.14, 0, 0.0), at(0.31, 0.0, 0.04), 0.04, M['iron'], n=4, back=None)
 
@@ -211,6 +224,14 @@ def mantle():
 
 
 TABARD_Z = 0.565  # the height of the top of the tabard, tucked under the belt
+
+
+def buckle():
+    # A square buckle on the ridge down the front of the belt, over the top of the tabard.
+    centre = leaned(V(0, 0.02 - 0.165 - 0.012, 0.585))
+    out = leaned(V(0, -1, 0)) - leaned(V(0, 0, 0))
+    up = leaned(V(0, 0, 1)) - leaned(V(0, 0, 0))
+    box('buckle', centre, [out, V(1, 0, 0), up], (0.014, 0.05, 0.04), M['trim'], 0.75)
 
 
 def tabard():
@@ -410,10 +431,12 @@ def cleaver():
     faces = wind(verts, cheeks + edges + walls, inside=centre)
     face_mats = [0, 0, 0, 0, 1, 0, 1]  # a pale blade on a back of black iron
     part('cleaver', verts, faces, [M['steel'], M['iron']], face_mats)
-    # A spike from the back near the top, and the haft through his fist to an iron pommel.
+    # A spike from the back near the top, and the haft through his fist to a pommel of trim.
     cone('cleaver-spike', at(-0.01, 0.37), at(-0.12, 0.45), 0.03, M['iron'], n=4)
     tube('haft', at(0, -0.12), at(0, 0.09), [(0, 0.024), (1, 0.024)], M['leather'], n=6)
-    cone('pommel', at(0, -0.12), at(0, -0.17), 0.036, M['iron'], n=4)
+    cone('pommel', at(0, -0.12), at(0, -0.17), 0.036, M['trim'], n=4)
+    # A band of trim binding the heel of the blade to the haft, just above his fist.
+    box('cleaver-band', at(0.045, 0.085), [along, out, flat], (0.022, 0.095, 0.03), M['trim'])
     shoulder = leaned(V(-0.255, 0.03, 0.86))
     arm('right', shoulder, R_FIST, shoulder + V(-0.35, 0.08, -0.05), along)
 
@@ -437,12 +460,12 @@ L_FIST = V(POLE_FOOT.x, POLE_FOOT.y, 0.86)
 def banner():
     tube('pole', POLE_FOOT, POLE_FOOT + V(0, 0, POLE_TOP), [(0, 0.024), (1, 0.02)], M['wood'], n=6)
     top = POLE_FOOT + V(0, 0, POLE_TOP)
-    cone('pole-spike', top - V(0, 0, 0.02), top + V(0, 0, 0.13), 0.034, M['iron'], n=4, phase=45)
+    cone('pole-spike', top - V(0, 0, 0.02), top + V(0, 0, 0.13), 0.034, M['trim'], n=4, phase=45)
     before = set(bpy.context.scene.objects)
     bar = [POLE_FOOT + V(-0.225, -0.012, BAR), POLE_FOOT + V(0.225, -0.012, BAR)]
     tube('bar', bar[0], bar[1], [(0, 0.016), (1, 0.016)], M['iron'], n=4, phase=45)
     for k, (end, out) in enumerate(((bar[0], V(-1, 0, 0.35)), (bar[1], V(1, 0, 0.35)))):
-        cone(f'bar-spike-{k}', end, end + 0.08 * out.normalized(), 0.022, M['iron'], n=4, phase=45)
+        cone(f'bar-spike-{k}', end, end + 0.08 * out.normalized(), 0.022, M['trim'], n=4, phase=45)
 
     # The banner, hanging from the bar in front of the pole, its hem torn into rags.
     x0 = POLE_FOOT.x
@@ -493,6 +516,7 @@ def main():
     mantle()
     lean(new_objects(before), PIVOT, LEAN)
     tabard()
+    buckle()
     before = set(bpy.context.scene.objects)
     head()
     helm()

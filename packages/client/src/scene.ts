@@ -7,7 +7,6 @@ import {
   boardPlace,
   fromPlacement,
   toOffset,
-  type FighterId,
   type ItemId,
   type OwnedUnit,
   type Place,
@@ -21,8 +20,10 @@ import { CSS2DObject, CSS2DRenderer } from 'three/addons/renderers/CSS2DRenderer
 import { benchToWorld, hexToWorld, type Point } from './layout.js';
 import type { PlanningRing } from './flow.js';
 import { EFFECT_TICKS, facing, type CastRing, type FloatingText, type Playback, type Projectile } from './playback.js';
+import { ModelLibrary, createBase, dressModel, type ModelTemplate } from './models.js';
+import { LABEL, LARGE_PAWN_SCALE, BASE, modelLabelHeight, starScale } from './stars.js';
 import { UnitLabel } from './ui/labels.js';
-import { displayName, isLarge } from './units.js';
+import { displayName, isLarge, isRosterUnit } from './units.js';
 
 /** Units on the side the camera looks from are drawn as team A: blue, with green health. */
 const TEAM_COLOURS: Record<Team, number> = { A: 0x4a90d9, B: 0xd9534f };
@@ -52,11 +53,25 @@ export interface PlanningBoard {
   readonly bench: readonly (OwnedUnit | null)[];
 }
 
-interface UnitView {
+/**
+ * A unit as drawn: a pawn, or its model on its base once the model has loaded. The group is placed
+ * on the board; the body inside it turns to face and is scaled.
+ */
+interface Figure {
   readonly group: THREE.Group;
-  readonly material: THREE.MeshStandardMaterial;
+  body: THREE.Object3D;
+  /** The materials this figure owns: faded together, and disposed with it. */
+  materials: THREE.Material[];
   readonly label: CSS2DObject;
   readonly overlay: UnitLabel;
+  readonly unitId: UnitState['unitId'];
+  readonly star: Star;
+  readonly team: Team;
+  readonly look: Team;
+  /** Whether it is a pawn waiting for its model to load. */
+  pending: boolean;
+  /** The opacity last set, so materials are only touched when it changes. */
+  opacity: number;
 }
 
 const geometry = {
@@ -88,7 +103,7 @@ export class FightScene {
   /** Everything that belongs to the current fight. */
   private fightLayer = new THREE.Group();
   private playback: Playback | null = null;
-  private units: UnitView[] = [];
+  private units: Figure[] = [];
   private readonly projectiles = new Map<Projectile, THREE.Mesh>();
   private readonly texts = new Map<FloatingText, { object: CSS2DObject; stack: number }>();
   private readonly rings = new Map<CastRing, THREE.Mesh>();
@@ -98,6 +113,11 @@ export class FightScene {
   private readonly bench = new THREE.Group();
   /** Planning pawns by owned unit id. */
   private planning = new Map<number, THREE.Group>();
+  /** Every unit drawn, in the fight or planning. */
+  private figures: Figure[] = [];
+  private readonly models = new ModelLibrary();
+  /** The model library's version when pending figures last looked for their models. */
+  private modelsSeen = -1;
   private planningKey = '';
   /** Where a dragged unit or item would go while planning. */
   private readonly marker = new THREE.Group();
@@ -169,7 +189,7 @@ export class FightScene {
     if (entering) this.aim('planning');
     const add = (unit: OwnedUnit, at: Point) => {
       const corruption = ring !== null && ring.bearer === unit.id ? ring.corruption : null;
-      const pawn = this.createPawn(unit.unitId, unit.star, 'A', look, false, unit.items, corruption).group;
+      const pawn = this.createFigure(unit.unitId, unit.star, 'A', look, false, unit.items, corruption).group;
       pawn.userData.unitId = unit.id;
       pawn.position.set(at.x, 0, at.z);
       this.fightLayer.add(pawn);
@@ -253,7 +273,8 @@ export class FightScene {
       if (object instanceof CSS2DObject) object.element.remove();
     });
     this.scene.remove(this.fightLayer);
-    for (const { material } of this.units) material.dispose();
+    for (const figure of this.figures) for (const material of figure.materials) material.dispose();
+    this.figures = [];
     this.fightLayer = new THREE.Group();
     this.scene.add(this.fightLayer);
     this.playback = null;
@@ -276,6 +297,10 @@ export class FightScene {
   }
 
   render(): void {
+    if (this.models.version !== this.modelsSeen) {
+      this.modelsSeen = this.models.version;
+      for (const figure of this.figures) if (figure.pending) this.tryModel(figure);
+    }
     if (this.playback !== null) {
       this.updateUnits(this.playback);
       this.updateProjectiles(this.playback);
@@ -342,30 +367,31 @@ export class FightScene {
       view.group.position.set(position.x + lunge.x, -0.6 * death, position.z + lunge.z);
       if (unit.alive && unit.target !== null) {
         const angle = facing(position, playback.position(unit.target));
-        if (angle !== null) view.group.rotation.y = angle;
+        if (angle !== null) view.body.rotation.y = angle;
       }
       const opacity = unit.statuses.has('untargetable') ? UNTARGETABLE_OPACITY : 1;
-      view.material.opacity = opacity * (1 - death);
+      setOpacity(view, opacity * (1 - death));
 
       view.label.visible = unit.alive;
       if (unit.alive) view.overlay.update(unit);
     });
   }
 
-  private createUnit(unit: UnitState): UnitView {
+  private createUnit(unit: UnitState): Figure {
     const look = unit.team === this.side ? 'A' : 'B';
-    const view = this.createPawn(unit.unitId, unit.star, unit.team, look, unit.summon, unit.items, unit.ring, true, unit.base.maxMana > 0);
-    this.fightLayer.add(view.group);
-    return view;
+    const figure = this.createFigure(unit.unitId, unit.star, unit.team, look, unit.summon, unit.items, unit.ring, true, unit.base.maxMana > 0);
+    this.fightLayer.add(figure.group);
+    return figure;
   }
 
   /**
-   * A pawn with its label above it, facing the other team, coloured as the near (`look` A) or far
-   * team. Summons are smaller and unnamed, apart from the Eye's Nazgûl. `bars` adds health, mana
-   * and statuses for fights.
+   * A unit with its label above it, facing the other team, coloured as the near (`look` A) or far
+   * team. A roster unit is drawn as its model once that has loaded, and as a pawn until then or if it
+   * has none; monsters and summons are pawns. Summons are smaller and unnamed, apart from the Eye's
+   * Nazgûl. `bars` adds health, mana and statuses for fights.
    */
-  private createPawn(
-    unitId: FighterId | UnitState['unitId'],
+  private createFigure(
+    unitId: UnitState['unitId'],
     star: Star,
     team: Team,
     look: Team,
@@ -374,18 +400,8 @@ export class FightScene {
     ring: number | null,
     bars = false,
     mana = false,
-  ): UnitView {
+  ): Figure {
     const minor = summon && unitId !== 'eye-nazgul';
-    const material = new THREE.MeshStandardMaterial({ color: TEAM_COLOURS[look], flatShading: true, transparent: true });
-    const body = new THREE.Mesh(geometry.body, material);
-    body.position.y = 0.45;
-    const head = new THREE.Mesh(geometry.head, material);
-    head.position.y = 1.1;
-    // Points where the unit faces.
-    const nose = new THREE.Mesh(geometry.nose, noseMaterial);
-    nose.rotation.x = Math.PI / 2;
-    nose.position.set(0, 1.1, 0.3);
-
     const overlay = new UnitLabel({
       name: minor ? null : displayName(unitId),
       star: summon ? null : star,
@@ -396,14 +412,28 @@ export class FightScene {
       mana,
     });
     const label = new CSS2DObject(overlay.element);
-    label.position.set(0, 1.8, 0);
+
+    const material = new THREE.MeshStandardMaterial({ color: TEAM_COLOURS[look], flatShading: true });
+    const body = createPawn(material);
+    const scale = isLarge(unitId) ? LARGE_PAWN_SCALE : minor ? 0.75 : 1;
+    body.scale.setScalar(scale);
+    // Team A's half is at +z, so it faces −z.
+    body.rotation.y = team === 'A' ? Math.PI : 0;
+    label.position.set(0, LABEL.height * scale, 0);
 
     const group = new THREE.Group();
-    group.add(body, head, nose, label);
-    group.scale.setScalar(isLarge(unitId) ? 1.35 : minor ? 0.75 : 1);
-    // Team A's half is at +z, so it faces −z.
-    group.rotation.y = team === 'A' ? Math.PI : 0;
-    return { group, material, label, overlay };
+    group.add(body, label);
+    const figure: Figure = { group, body, materials: [material], label, overlay, unitId, star, team, look, pending: false, opacity: 1 };
+    this.figures.push(figure);
+    if (!summon && isRosterUnit(unitId)) this.tryModel(figure);
+    return figure;
+  }
+
+  /** Swaps a figure's pawn for its model and base if the model has loaded, or marks it as waiting. */
+  private tryModel(figure: Figure): void {
+    const model = this.models.get(figure.unitId, figure.star);
+    figure.pending = model === 'loading';
+    if (model !== null && model !== 'loading') useModel(figure, model);
   }
 
   private updateProjectiles(playback: Playback): void {
@@ -467,6 +497,57 @@ export class FightScene {
       ring.scale.setScalar(1 + 1.5 * progress);
       (ring.material as THREE.MeshBasicMaterial).opacity = 1 - progress;
     }
+  }
+}
+
+/** A low-poly pawn whose body and head are in the given material, with a nose where it faces. */
+function createPawn(material: THREE.Material): THREE.Group {
+  const body = new THREE.Mesh(geometry.body, material);
+  body.position.y = 0.45;
+  const head = new THREE.Mesh(geometry.head, material);
+  head.position.y = 1.1;
+  const nose = new THREE.Mesh(geometry.nose, noseMaterial);
+  nose.rotation.x = Math.PI / 2;
+  nose.position.set(0, 1.1, 0.3);
+  const pawn = new THREE.Group();
+  pawn.add(body, head, nose);
+  return pawn;
+}
+
+/**
+ * Replaces a figure's pawn with a copy of its model, scaled for its star level and standing on its
+ * base, and raises its label with the model (docs/viewer-spec.md section 4, "Star levels").
+ */
+function useModel(figure: Figure, model: ModelTemplate): void {
+  const { object, materials } = dressModel(model, TEAM_COLOURS[figure.look], figure.star);
+  const base = createBase(figure.star, figure.team);
+  const scale = starScale(figure.star, model.reach);
+  object.scale.setScalar(scale);
+  object.position.y = BASE.height;
+  object.rotation.y = figure.body.rotation.y;
+  figure.group.remove(figure.body);
+  for (const material of figure.materials) material.dispose();
+  figure.group.add(object, base.object);
+  figure.body = object;
+  figure.materials = [...materials, ...base.materials];
+  figure.label.position.y = modelLabelHeight(scale, model.top, isLarge(figure.unitId));
+  // The new materials start opaque; apply the figure's opacity to them.
+  const opacity = figure.opacity;
+  figure.opacity = 1;
+  setOpacity(figure, opacity);
+}
+
+/** Fades a figure's materials, drawing them as transparent only while they are faded. */
+function setOpacity(figure: Figure, opacity: number): void {
+  if (opacity === figure.opacity) return;
+  figure.opacity = opacity;
+  for (const material of figure.materials) {
+    const transparent = opacity < 1;
+    if (material.transparent !== transparent) {
+      material.transparent = transparent;
+      material.needsUpdate = true;
+    }
+    material.opacity = opacity;
   }
 }
 

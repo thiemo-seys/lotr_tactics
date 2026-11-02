@@ -1,0 +1,12 @@
+{
+ "units": [
+  {
+   "name": "Aragorn",
+   "models": [
+    "../models/aragorn.glb",
+    "../models/aragorn-2.glb",
+    "../models/aragorn-3.glb"
+   ]
+  }
+ ]
+}

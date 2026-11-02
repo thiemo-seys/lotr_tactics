@@ -1,0 +1,34 @@
+{
+ "units": [
+  {
+   "name": "Frodo",
+   "models": [
+    "../models/frodo.glb",
+    "../models/frodo.glb",
+    "../models/frodo.glb"
+   ]
+  },
+  {
+   "name": "Aragorn",
+   "models": [
+    "../models/aragorn.glb",
+    "../models/aragorn.glb",
+    "../models/aragorn.glb"
+   ]
+  },
+  {
+   "name": "Éomer",
+   "rider": true,
+   "models": [
+    "../models/eomer.glb",
+    "../models/eomer.glb",
+    "../models/eomer.glb"
+   ]
+  }
+ ],
+ "aura": [
+  false,
+  false,
+  true
+ ]
+}

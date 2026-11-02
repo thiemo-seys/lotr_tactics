@@ -18,6 +18,11 @@ collar and the panel across his chest, from above on his shoulders and from behi
 his seat. From behind, as the near side is seen, his straw curls show above it, the raised arm and
 its stone beside them, the pouch at his hip and his legs and feet below it.
 
+His fittings, the setting behind the leaf clasp, the belt buckle, the jerkin's buttons and the ring
+that gathers the pouch's neck, use `trim`, which the client colours iron, silver or gold by star
+level (docs/viewer-spec.md section 4, "Star levels"). His 2★ model is pippin-2.py and his 3★ model
+pippin-3.py.
+
     blender --background --factory-startup --python-exit-code 1 --python pippin.py [-- <out.glb>]
 
 Coordinates are Blender's: z up, the model faces -Y, so his right hand is at -X.
@@ -37,6 +42,7 @@ from kit import (  # noqa: E402
     V,
     bent_tube,
     box,
+    cone,
     ellipse,
     finish,
     lean,
@@ -48,6 +54,7 @@ from kit import (  # noqa: E402
     part,
     reset,
     team_material,
+    trim_material,
     tube,
 )
 
@@ -77,6 +84,7 @@ def make_materials():
         leather=material('leather', LEATHER, roughness=0.85),
         stone=material('stone', STONE, roughness=0.8),
         leaf=material('leaf', LEAF, roughness=0.6),
+        trim=trim_material(),  # fittings, recoloured by star
         eyes=material('eyes', EYES, roughness=0.6),
         mouth=material('mouth', MOUTH, roughness=0.8),
         brows=material('brows', BROWS, roughness=0.9),
@@ -205,6 +213,15 @@ def torso():
     mats = [M['breeches'], M['leather'], M['jerkin']]
     part('torso', verts, faces, mats, face_mats, inside=lambda c: V(0, -0.01, c.z))
     tube('neck', V(0, 0.005, 0.54), V(0, -0.012, 0.625), [(0, 0.044), (1, 0.043)], M['skin'])
+
+
+def fittings():
+    """The belt buckle and the jerkin's buttons, on the front of the torso where the cloak leaves it
+    open."""
+    box('buckle', V(0, -0.117, 0.31), [V(1, 0, 0), V(0, 0, 1), V(0, 1, 0)], (0.025, 0.022, 0.008), M['trim'], 0.85)
+    for y, z in ((-0.143, 0.375), (-0.15, 0.42), (-0.131, 0.462)):
+        at = V(-0.004, y, z)
+        cone(f'button-{z}', at, at + V(0, -0.016, 0), 0.013, M['trim'], n=4, phase=45, back=at + V(0, 0.01, 0))
 
 
 # Head --------------------------------------------------------------------------------------------
@@ -365,6 +382,10 @@ def cloak():
     y = -0.088
     verts = [V(0, y, 0.6), V(0.022, y, 0.577), V(0, y, 0.553), V(-0.022, y, 0.577), V(0, y - 0.008, 0.577)]
     part('clasp', verts, [(0, 1, 4), (1, 2, 4), (2, 3, 4), (3, 0, 4)], M['leaf'], inside=V(0, 0, 0.575))
+    # Its setting, a rim of metal round the leaf.
+    y += 0.004
+    verts = [V(0, y, 0.61), V(0.031, y, 0.577), V(0, y, 0.543), V(-0.031, y, 0.577)]
+    part('clasp-setting', verts, [(0, 1, 2, 3)], M['trim'], outward=V(0, -1, 0))
 
 
 # Arms --------------------------------------------------------------------------------------------
@@ -389,6 +410,7 @@ def throwing_arm():
 # The pouch of stones -----------------------------------------------------------------------------
 
 POUCH = V(-0.165, -0.05, 0.31)  # the middle of its mouth, hung from his belt at his right hip
+POUCH_RING = [(-0.004, 0.05), (-0.028, 0.053)]  # the ring round its neck: z below the mouth, radius
 
 
 def pouch():
@@ -399,6 +421,10 @@ def pouch():
     verts, faces, _ = loft(rings)
     faces.append(tuple(range(24, 30)))
     part('pouch', verts, faces, M['leather'], inside=lambda c: V(POUCH.x, POUCH.y, max(c.z, POUCH.z - 0.1)))
+    # A metal ring round its neck, over the drawstring, where it hangs from his belt.
+    rings = [ellipse(POUCH.x, POUCH.y, POUCH.z + dz, r, r * 0.85, 6, 0) for dz, r in POUCH_RING]
+    verts, faces, _ = loft(rings)
+    part('pouch-ring', verts, faces, M['trim'], inside=lambda c: V(POUCH.x, POUCH.y, c.z))
     # Stones heaped in its mouth.
     lump('pebble-1', POUCH + V(-0.014, -0.008, 0.014), 0.035, M['stone'], seed=7, rough=0.15)
     lump('pebble-2', POUCH + V(0.026, 0.012, 0.008), 0.03, M['stone'], seed=11, rough=0.15)
@@ -410,6 +436,7 @@ def main():
     legs()
     lower = set(bpy.context.scene.objects)
     torso()
+    fittings()
     cloak()
     twist([o for o in bpy.context.scene.objects if o not in lower])
     head()

@@ -19,6 +19,13 @@ From the front his eyes and face show above the knot; from behind and above, as 
 seen, the rag on his back and the loincloth, with his bald head and its strands, his elbows, his
 knees and his big feet round them.
 
+He has no metal worth the name, so his fittings are scraps from the goblins he caught in the dark
+under the Misty Mountains: a toggle pushed through the knot of his rag, a crude buckle on the cord
+he ties round his hips over the loincloth, at the small of his back, and a clip bent round a lock of
+his hair over his left ear. They use `trim`, which the client colours iron, silver or gold by star
+level (docs/viewer-spec.md section 4, "Star levels"): the toggle shows from the front, the buckle
+from behind and the clip from either side. His 2★ model is gollum-2.py and his 3★ model gollum-3.py.
+
     blender --background --factory-startup --python-exit-code 1 --python gollum.py [-- <out.glb>]
 
 Coordinates are Blender's: z up, the model faces -Y, so his right hand is at -X.
@@ -48,6 +55,7 @@ from kit import (  # noqa: E402
     part,
     reset,
     team_material,
+    trim_material,
     tube,
 )
 
@@ -58,6 +66,7 @@ EYE = 0xE3EABD  # big pale eyes like lamps...
 GLOW = 0xC9DA90  # ...with a faint pale green light, neither blue nor red
 TEETH = 0xD8D0AE
 MOUTH = 0x2A1E1A  # dark, not red
+CORD = 0x4B3E31  # a twist of dark, greasy string round his hips
 
 M = {}  # materials by name, made once the scene is reset
 
@@ -71,6 +80,8 @@ def make_materials():
         pupils=material('pupils', EYES, roughness=0.5),
         mouth=material('mouth', MOUTH, roughness=0.8),
         teeth=material('teeth', TEETH, roughness=0.6),
+        cord=material('cord', CORD, roughness=0.9),
+        trim=trim_material(),  # his scraps of goblin metal, recoloured by star
     )
 
 
@@ -188,12 +199,34 @@ def knot():
                  tip + V(0.1 * width, 0, 0.03), tip - 0.8 * width * across]
         faces = [(0, 1, 2, 3), (0, 3, 4)]
         part(f'knot-end-{k}', verts, faces, M['team'], outward=V(0, -1, 0))
+    # A toggle pushed through the knot to hold it, across its front and tipped down to his left,
+    # turned up a little to the light.
+    out = V(0, -1, 0.45).normalized()
+    along = V(1, 0, -0.3)
+    along = (along - along.dot(out) * out).normalized()
+    box('toggle', at + TOGGLE_AT, [out, along, out.cross(along)], TOGGLE, M['trim'], 0.85)
+
+
+TOGGLE_AT = V(-0.004, -0.036, -0.004)  # from the middle of the knot to the middle of the toggle
+TOGGLE = (0.01, 0.048, 0.012)  # its half-sizes: out of the knot, along it and across
 
 
 # The loincloth's band round his hips, built upright: z, half-width and half-depth of its lower and
 # upper edges, wide enough to clear his hips everywhere.
 LOIN_LOW = (0.145, 0.11, 0.098)
 LOIN_HIGH = (0.215, 0.104, 0.092)
+# The cord tied round it, upright: the z of its lower and upper edges and how far it stands out from
+# the band; and the half-sizes of the buckle at the small of his back (deep, wide and high).
+CORD_Z = (0.184, 0.207)
+CORD_OUT = 0.008
+BUCKLE = (0.01, 0.031, 0.024)
+
+
+def band_at(z):
+    """The half-width and half-depth of the loincloth's band at height z, upright."""
+    (z0, rx0, ry0), (z1, rx1, ry1) = LOIN_LOW, LOIN_HIGH
+    t = (z - z0) / (z1 - z0)
+    return rx0 + (rx1 - rx0) * t, ry0 + (ry1 - ry0) * t
 
 
 def flap(name, top, drops, rags, out):
@@ -218,7 +251,14 @@ def loincloth():
     high = ellipse(0, 0.125, z1, rx1, ry1, n, 0)
     verts, faces, _ = loft([low, high])
     belt = part('loincloth', verts, faces, M['team'], inside=lambda c: V(0, 0.125, c.z))
-    hunch([belt])
+    # The cord round it, and its buckle at the small of his back.
+    rings = [ellipse(0, 0.125, z, band_at(z)[0] + CORD_OUT, band_at(z)[1] + CORD_OUT, n, 0) for z in CORD_Z]
+    verts, faces, _ = loft(rings)
+    cord = part('cord', verts, faces, M['cord'], inside=lambda c: V(0, 0.125, c.z))
+    z = sum(CORD_Z) / 2
+    at = V(0, 0.125 + band_at(z)[1] + CORD_OUT + 0.002, z)
+    buckle = box('buckle', at, [V(0, 1, 0), V(1, 0, 0), V(0, 0, 1)], BUCKLE, M['trim'], 0.8)
+    hunch([belt, cord, buckle])
     low = [hunched(p) for p in low]
     # A flap in front, down between his knees nearly to the ground, and one behind.
     front = [low[5], low[6], low[7]]
@@ -358,11 +398,22 @@ STRANDS = [
 ]
 
 
+# The clip on a strand: which strand it binds, how far down the strand's last length, and its half-length
+# and radius.
+CLIP = 2, 0.45, 0.024, 0.017
+
+
 def hair():
     for k, (path, end) in enumerate(STRANDS):
         # Each grows out of the skull, so its open root is hidden inside it.
         points = [on_skull(x, y, z, -0.012 if i == 0 else 0.006) for i, (x, y, z) in enumerate(path)]
         bent_tube(f'strand-{k}', points, [(0.014, 0.006)] * len(points), M['hair'], n=3, end=V(*end))
+        if k == CLIP[0]:
+            # A clip bent round the lock: a long bead, pointed at both ends, not a ring.
+            _, at, half, radius = CLIP
+            middle = points[-1].lerp(V(*end), at)
+            along = (V(*end) - points[-1]).normalized()
+            cone('clip', middle, middle + half * along, radius, M['trim'], n=5, back=middle - half * along)
 
 
 def head_frame(at):

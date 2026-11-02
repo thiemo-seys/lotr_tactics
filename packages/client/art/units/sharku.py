@@ -15,6 +15,11 @@ cloak, the warg's ragged saddle-cloth and the rag knotted round its throat, seen
 behind and from above; the cap, his ears and the blade show above it, and the warg's tail and
 quarters below it.
 
+His fittings, the cap's brow band, the blade's guard and pommel, the bands at the top of his bracers
+and the ring his rein is tied to at the warg's throat, use `trim`, which the client colours iron,
+silver or gold by star level (docs/viewer-spec.md section 4, "Star levels"). His 2★ model is
+sharku-2.py and his 3★ model sharku-3.py.
+
     blender --background --factory-startup --python-exit-code 1 --python sharku.py [-- <out.glb>]
 
 Coordinates are Blender's: z up, the model faces -Y, so his right hand is at -X.
@@ -51,6 +56,7 @@ from kit import (  # noqa: E402
     reset,
     segment,
     team_material,
+    trim_material,
     tube,
     wind,
 )
@@ -84,6 +90,7 @@ def make_materials():
         dark_fur=material('dark-fur', DARK_FUR, roughness=0.95),
         pale_fur=material('pale-fur', PALE_FUR, roughness=0.95),
         glare=material('warg-eyes', GLARE, roughness=0.5),
+        trim=trim_material(),  # fittings, recoloured by star
     )
 
 
@@ -742,14 +749,16 @@ def head():
                  h(s * 0.32, 0.17, 0.26)]
         part(f'ear-{s}', verts, [(0, 2, 3), (2, 1, 3), (1, 0, 3)], M['skin'], inside=h(s * 0.1, 0.02, 0.15))
 
-    # A pointed cap of crude iron: a band round his brow and eight facets up to a point.
+    # A pointed cap of crude iron: a metal band round his brow and eight facets up to a point.
     profile = [(0.175, 0.165), (0.225, 0.165), (0.23, 0.15), (0.3, 0.115)]
     rings = [[h(p.x, p.y + 0.015, z) for p in ellipse(0, 0, 0, r, r, 8, 22.5)] for z, r in profile]
-    verts, faces, _ = loft(rings)
+    verts, faces, bands = loft(rings)
+    face_mats = [1 if b == 0 else 0 for b in bands]
     verts.append(h(0, 0.03, 0.42))
     last = (len(profile) - 1) * 8
     faces += [(last + i, last + (i + 1) % 8, len(verts) - 1) for i in range(8)]
-    part('cap', verts, faces, M['iron'], inside=h(0, 0.015, 0.25))
+    face_mats += [0] * 8
+    part('cap', verts, faces, [M['iron'], M['trim']], face_mats, inside=h(0, 0.015, 0.25))
 
 
 # Arms ------------------------------------------------------------------------------------------------
@@ -765,6 +774,8 @@ def arm(side, shoulder, fist, pole, fist_up):
     tube(f'upper-arm-{side}', shoulder, elbow, [(-0.1, 0.07), (1.08, 0.058)], M['skin'])
     tube(f'forearm-{side}', elbow, wrist, [(-0.12, 0.056), (0.4, 0.064), (1.0, 0.058)],
          [M['skin'], M['iron']], [0, 1])
+    # A metal band round the top of the iron bracer.
+    tube(f'bracer-band-{side}', elbow, wrist, [(0.4, 0.071), (0.52, 0.07)], M['trim'])
     ahead = (fist - elbow).normalized()
     up = (Vector(fist_up) - Vector(fist_up).dot(ahead) * ahead).normalized()
     box(f'fist-{side}', fist, [ahead, up, ahead.cross(up)], (0.046, 0.05, 0.05), M['skin'], 0.85)
@@ -797,9 +808,9 @@ def blade():
     faces.append((0, 1, 2))
     axis = [BLADE_FIST + d * along + bow * edge for d, bow, _, _ in stations] + [point]
     part('blade', verts, faces, M['steel'], inside=nearest_on_polyline(axis))
-    # An iron guard across the foot of the blade, and a pommel under his fist.
-    box('guard', BLADE_FIST + 0.06 * along, [along, edge, flat], (0.012, 0.055, 0.022), M['iron'])
-    cone('pommel', BLADE_FIST - 0.05 * along, BLADE_FIST - 0.1 * along, 0.03, M['iron'], n=4)
+    # A metal guard across the foot of the blade, and a pommel under his fist.
+    box('guard', BLADE_FIST + 0.06 * along, [along, edge, flat], (0.012, 0.055, 0.022), M['trim'])
+    cone('pommel', BLADE_FIST - 0.05 * along, BLADE_FIST - 0.1 * along, 0.03, M['trim'], n=4)
 
 
 REIN_FIST = V(0.1, -0.33, 0.76)  # his left fist, low over the warg's withers
@@ -816,6 +827,16 @@ def arms(mount):
     path = [REIN_FIST + V(0, -0.04, 0), (REIN_FIST + mount.knot) / 2 + V(0, 0, 0.03), mount.knot]
     verts = [p + width for p in path] + [p - width for p in path]
     part('rein', verts, [(0, 1, 4, 3), (1, 2, 5, 4)], M['leather'], outward=V(1, 0, 0))
+    rein_ring(mount.knot)
+
+
+def rein_ring(knot):
+    """The metal ring the rein is tied to, lying flat on the rag round the warg's throat."""
+    out = (knot - turned(neck_centre(1).lerp(neck_centre(2), 0.5))).normalized()
+    at = knot + 0.008 * out
+    outer, inner = (segment(at - 0.01 * out, at + 0.01 * out, [(0.5, r)], 6, 30)[0] for r in (0.036, 0.021))
+    faces = [(i, (i + 1) % 6, 6 + (i + 1) % 6, 6 + i) for i in range(6)]
+    part('rein-ring', outer + inner, faces, M['trim'], outward=out)
 
 
 # Legs astride the warg: thighs forward and down over its flanks, knees gripping, feet tucked back.

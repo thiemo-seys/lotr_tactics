@@ -38,6 +38,14 @@ HEX_RADIUS = 0.94
 UNIT_BUDGET = 800
 MOUNTED_BUDGET = 1200
 LARGE_BUDGET = 2000
+# A 2★ unit's gear model (<id>-2) has 12.5% more, and a 3★ unit's book model (<id>-3) 25% more
+# (docs/viewer-spec.md section 4, "Star levels").
+GEAR_BUDGET = 900
+MOUNTED_GEAR_BUDGET = 1350
+LARGE_GEAR_BUDGET = 2250
+BOOK_BUDGET = 1000
+MOUNTED_BOOK_BUDGET = 1500
+LARGE_BOOK_BUDGET = 2500
 
 # Metal looks dark in the game, which has no environment map, so steel is a light grey instead.
 MAX_METALLIC = 0.15
@@ -113,6 +121,13 @@ def material(
 def team_material() -> bpy.types.Material:
     """The material the client recolours for each team."""
     return material('team', TEAM_BLUE)
+
+
+def trim_material() -> bpy.types.Material:
+    """Fittings such as buckles, clasps, sword guards and bridle mounts, which the client colours
+    iron, silver or gold by star level (docs/viewer-spec.md section 4, "Star levels"). Brass here,
+    for previews."""
+    return material('trim', BRASS, roughness=0.55, metallic=0.1)
 
 
 def primitive(kind: str, mat: bpy.types.Material, scale=(1, 1, 1), **kwargs) -> bpy.types.Object:
@@ -459,7 +474,8 @@ def finish(name: str, budget: int = UNIT_BUDGET) -> bpy.types.Object:
 
     Applies modifiers and transforms and shades every face flat. Fails over the triangle `budget`,
     without a `team` material, with an image texture or with a material more metallic than
-    MAX_METALLIC; warns when the model doesn't stand on the origin or reaches outside its hex.
+    MAX_METALLIC; warns when the model doesn't stand on the origin, reaches outside its hex or has no
+    `trim` material for the client to colour by star level.
     Prints a summary line starting with MODEL.
     """
     out = output_path(name)
@@ -507,6 +523,8 @@ def finish(name: str, budget: int = UNIT_BUDGET) -> bpy.types.Object:
     )
     if abs(min(zs)) > 0.01:
         print(f'WARNING {name}: the lowest point is at {min(zs):.3f}, not on the ground at 0')
+    if 'trim' not in names:
+        print(f'WARNING {name}: no material named "trim", so its fittings won\'t show its star level')
     if radius > HEX_RADIUS:
         print(f'WARNING {name}: reaches {radius:.2f} from the centre, outside its hex ({HEX_RADIUS})')
     if triangles > budget:

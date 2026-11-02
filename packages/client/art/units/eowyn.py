@@ -17,6 +17,12 @@ The team colour is the shield's face and her short cloak, a mantle over the shou
 down her back to the hips, seen from the front, from behind and from above. Her hair lies over the
 cape, so from behind she is gold as much as the team's colour.
 
+Her fittings, the shield's boss and rim, the sword's cross-guard and pommel, the belt buckle and the
+two round brooches that pin her cloak on her shoulders, use `trim`, which the client colours iron,
+silver or gold by star level (docs/viewer-spec.md section 4, "Star levels"); from behind, the
+brooches, the sword's fittings and the shield's rim show it. Her golden hair stays her own colour.
+Her 2★ model is eowyn-2.py and her 3★ model eowyn-3.py.
+
     blender --background --factory-startup --python-exit-code 1 --python eowyn.py [-- <out.glb>]
 
 Coordinates are Blender's: z up, the model faces -Y, so her right hand, with the sword, is at -X.
@@ -32,7 +38,6 @@ from mathutils import Matrix, Vector
 sys.path.insert(0, os.path.join(os.path.dirname(os.path.abspath(__file__)), '..'))
 from kit import (  # noqa: E402
     BOOTS,
-    BRASS,
     EYES,
     LEATHER,
     MAIL,
@@ -43,6 +48,7 @@ from kit import (  # noqa: E402
     cone,
     ellipse,
     finish,
+    frame,
     lean,
     loft,
     material,
@@ -51,6 +57,7 @@ from kit import (  # noqa: E402
     part,
     reset,
     team_material,
+    trim_material,
     tube,
 )
 
@@ -77,8 +84,9 @@ def make_materials():
         tunic=material('tunic', TUNIC, roughness=0.9),
         leather=material('leather', LEATHER, roughness=0.85),
         boots=material('boots', BOOTS, roughness=0.9),
-        brass=material('brass', BRASS, roughness=0.55, metallic=0.1),
         wood=material('wood', WOOD, roughness=0.85),
+        # Fittings: the renderer recolours this iron, silver or gold by star level.
+        trim=trim_material(),
     )
 
 
@@ -189,7 +197,7 @@ def torso():
     face_mats = [TORSO_BANDS[b] for b in bands]
     part('torso', verts, faces, [M['mail'], M['leather']], face_mats, inside=lambda c: V(0, 0, c.z))
     axes = [V(0, -1, 0), V(1, 0, 0), V(0, 0, 1)]
-    box('buckle', V(0, -0.108, 0.77), axes, (0.012, 0.028, 0.026), M['brass'], 0.75)
+    box('buckle', V(0, -0.108, 0.77), axes, (0.012, 0.028, 0.026), M['trim'], 0.75)
 
 
 # Head --------------------------------------------------------------------------------------------
@@ -301,7 +309,24 @@ def mantle():
     hem = ellipse(0, 0.008, 0, 0.238, 0.157, 8, 0, [z - 0.05 for z in shoulder_z])
     verts, faces, _ = loft([hem, shoulder, dome, neck])
     part('mantle', verts, faces, M['team'], inside=V(0, 0.01, 0.9))
+    brooches()
     return triangles(verts, faces, lambda c: c.y > 0.03)
+
+
+def brooches():
+    # A round brooch on top of each shoulder, pinning the cloak there: a low six-sided boss where
+    # the sleeve meets the mantle, facing up and a little out, beside her hair, so it shows from in
+    # front, from behind and from above.
+    for side, shoulder, elbow in (('right', R_SHOULDER, R_ELBOW), ('left', L_SHOULDER, L_ELBOW)):
+        top, normal = shoulder_top(shoulder, elbow)
+        cone(f'brooch-{side}', top - 0.004 * normal, top + 0.016 * normal, 0.028, M['trim'], n=6, back=None)
+
+
+def shoulder_top(shoulder, elbow):
+    """The top of a sleeve where it leaves the shoulder, and the way up and out from it."""
+    _, v = frame(elbow - shoulder)
+    up = -v if v.z < 0 else v
+    return shoulder + 0.05 * up, (up + V(0, 0, 1)).normalized()
 
 
 # The cape, from under the mantle to her hips. Each level: z at the middle and at the edges,
@@ -397,10 +422,10 @@ def sword():
     verts.append(guard + 0.58 * along)
     faces += [(4 + i, 4 + (i + 1) % 4, 8) for i in range(4)]
     part('blade', verts, faces, M['steel'], inside=guard + 0.25 * along)
-    # A gilded cross-guard over her fist and a pommel under it.
-    box('guard', guard, [along, across, thick], (0.016, 0.085, 0.02), M['brass'], 0.8)
+    # A cross-guard over her fist and a pommel under it.
+    box('guard', guard, [along, across, thick], (0.016, 0.085, 0.02), M['trim'], 0.8)
     pommel = R_FIST - 0.062 * along
-    cone('pommel', pommel + 0.012 * along, pommel - 0.03 * along, 0.024, M['brass'], n=4, back=pommel + 0.03 * along)
+    cone('pommel', pommel + 0.012 * along, pommel - 0.03 * along, 0.024, M['trim'], n=4, back=pommel + 0.03 * along)
 
     arm('right', R_SHOULDER, R_ELBOW, R_WRIST, R_FIST, along)
 
@@ -412,9 +437,9 @@ SHIELD_TURN = Matrix.Rotation(math.radians(34), 3, 'Z') @ Matrix.Rotation(math.r
 
 
 def shield():
-    # Built facing -Y round the origin, as one profile turned round the axis: from the steel rim's
-    # outer edge over its crest, down the team-coloured face to the gilded boss. The rim is a ridge,
-    # so no one point is inside every face: the profile is wound as a whole instead.
+    # Built facing -Y round the origin, as one profile turned round the axis: from the rim's outer
+    # edge over its crest, down the team-coloured face to the boss; the rim and boss are trim. The
+    # rim is a ridge, so no one point is inside every face: the profile is wound as a whole instead.
     n = 12
     profile = [  # radius, y
         (0.245, 0.0),  # outer edge
@@ -422,7 +447,7 @@ def shield():
         (0.214, -0.02),  # inner edge of the rim, where the face starts
         (0.072, -0.042),  # foot of the boss
     ]
-    band_mats = [1, 1, 0]  # steel, steel, team
+    band_mats = [1, 1, 0]  # the rim in trim, then the team-coloured face
 
     def ring(r, y):
         angles = (math.tau * (i + 0.5) / n for i in range(n))
@@ -433,13 +458,13 @@ def shield():
     apex, last = len(verts), (len(profile) - 1) * n
     verts.append(V(0, -0.092, 0))
     faces += [(last + i, last + (i + 1) % n, apex) for i in range(n)]
-    face_mats += [2] * n
+    face_mats += [1] * n  # the boss
     faces.append(tuple(reversed(range(n))))  # the boards behind, wound to match the rim
-    face_mats.append(3)
+    face_mats.append(2)
     if newell([verts[i] for i in faces[-2]]).y > 0:  # the boss's tip must face forward
         faces = [tuple(reversed(f)) for f in faces]
     verts = [SHIELD_CENTRE + SHIELD_TURN @ v for v in verts]
-    part('shield', verts, faces, [M['team'], M['steel'], M['brass'], M['wood']], face_mats)
+    part('shield', verts, faces, [M['team'], M['trim'], M['wood']], face_mats)
 
     # The left arm comes from behind to the grip behind the boss.
     fist = SHIELD_CENTRE + SHIELD_TURN @ V(0, 0.05, 0)

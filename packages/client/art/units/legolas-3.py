@@ -1,0 +1,584 @@
+"""Legolas, the Elf: an Archer of the Fellowship, in the Faceted style (docs/viewer-spec.md section 4).
+
+Tall and slim beside the Dwarf: 1.48 to the crown, shoulders about 0.42 across, long legs and a narrow
+waist, long straight dark hair and a smooth, beardless face with pointed ears. Clad in green and brown,
+as the books have him. The team colour is his short Lórien cloak and the baldric across his chest.
+
+His 3★ model, the book moment (docs/viewer-spec.md section 4, "Star levels"): the same Elf as
+legolas.py, with the bow Galadriel gave him, "a bow such as the Galadhrim used, longer and stouter
+than the bows of Mirkwood, and strung with a string of elf-hair" (The Fellowship of the Ring, II 8),
+at its greatest moment. On the Anduin by night, with Orcs shooting from the eastern shore, he sprang
+ashore, strung it and stood peering back over the River, his head dark against the stars; when a
+great winged shape came out of the blackness in the South, "the great bow of Lórien sang", and the
+shape fell out of the air (II 9). Here he draws it full, to his jaw, aimed up into the sky to his
+left, his head tipped back to follow the arrow.
+
+The bow is the read: taller than he is, stouter than his own bow and bent further, in pale wood,
+white touched with gold, its grip wrapped in leather between collars of `trim` and its tips capped
+with `trim`, and its string of elf-hair nearly white. He wears his Lórien cloak, and on his back the
+quiver of the Galadhrim that came with the bow, as on his 2★ model (legolas-2.py). His other
+fittings, the clasp, the baldric's buckle and the quiver's bands and rim, use `trim`.
+
+    blender --background --factory-startup --python-exit-code 1 --python legolas-3.py [-- <out.glb>]
+
+Coordinates are Blender's: z up, the model faces -Y, so his right hand is at -X.
+"""
+
+import math
+import os
+import sys
+
+import bpy
+from mathutils import Matrix, Vector
+
+sys.path.insert(0, os.path.join(os.path.dirname(os.path.abspath(__file__)), '..'))
+from kit import (  # noqa: E402
+    BOOK_BUDGET,
+    BOOTS,
+    EYES,
+    LEATHER,
+    STEEL,
+    V,
+    box,
+    cone,
+    finish,
+    frame,
+    lean,
+    loft,
+    material,
+    on_surface,
+    part,
+    reset,
+    segment,
+    team_material,
+    trim_material,
+    tube,
+)
+
+# Legolas's own colours (sRGB); the rest come from the kit.
+HAIR = 0x3B2C22  # dark brown
+SKIN = 0xE4C1A2  # fair
+TUNIC = 0x5A6943  # forest green
+LEGGINGS = 0x6D5841  # brown
+ARROW = 0xB28C5C  # the arrows' shafts
+FEATHER = 0xDCD6C8  # grey-white fletching
+QUIVER = 0x7D8070  # the grey of the Galadhrim, on the quiver that came with the bow
+GALADHRIM_BOW = 0xE6D7B2  # the great bow of Lórien: pale wood, white touched with gold
+ELF_HAIR = 0xF3F1EB  # its string of elf-hair, nearly white
+
+M = {}  # materials by name, made once the scene is reset
+
+
+def make_materials():
+    M.update(
+        team=team_material(),
+        skin=material('skin', SKIN, roughness=0.85),
+        hair=material('hair', HAIR, roughness=0.75),
+        tunic=material('tunic', TUNIC, roughness=0.9),
+        leggings=material('leggings', LEGGINGS, roughness=0.9),
+        boots=material('boots', BOOTS, roughness=0.9),
+        leather=material('leather', LEATHER, roughness=0.85),
+        wood=material('wood', ARROW, roughness=0.7),
+        feather=material('feather', FEATHER, roughness=0.9),
+        quiver=material('quiver', QUIVER, roughness=0.85),
+        bow=material('pale-wood', GALADHRIM_BOW, roughness=0.6),
+        string=material('elf-hair', ELF_HAIR, roughness=0.5),
+        steel=material('steel', STEEL, roughness=0.5, metallic=0.1),
+        eyes=material('eyes', EYES, roughness=0.6),
+        trim=trim_material(),
+    )
+
+
+# Pose ------------------------------------------------------------------------------------------
+#
+# His archer's open stance, as in legolas.py, but at full draw and aimed up into the night sky. The
+# arrow points AIM_YAW degrees to his left rather than straight ahead: a bow drawn straight at the
+# target is edge-on to a camera in front or behind and reads as a stick, and turned this far it shows
+# its curve to the game's camera from both sides. It rises only AIM_UP degrees: aimed much higher, the
+# long bow lies back over his head at the game's camera, and reads as Haldir's volley.
+
+TORSO_YAW = -26  # degrees his body above the hips turns to his right, the bow shoulder forward
+HIPS_YAW = -12
+HEAD_YAW = 38  # degrees his head turns to his left, along the arrow
+AIM_YAW = 56  # degrees to his left of straight ahead that the arrow points
+AIM_UP = 16  # degrees above level
+HEAD_PITCH = 11  # degrees he looks up
+CANT = 6  # degrees the bow's top tips towards his right
+NECK = V(0, 0.01, 1.15)  # where his head tips back
+
+
+def yaw(degrees):
+    return Matrix.Rotation(math.radians(degrees), 3, 'Z')
+
+
+def turned(point, degrees):
+    """A point turned about the vertical axis through the origin; positive turns it to his left."""
+    return yaw(degrees) @ Vector(point)
+
+
+def turn(objects, degrees):
+    m = yaw(degrees).to_4x4()
+    for obj in objects:
+        obj.data.transform(m)
+
+
+def head_point(p):
+    """A point of his head, built facing ahead, as it is in the pose: tipped back to look up, then
+    turned along the arrow."""
+    tip = Matrix.Rotation(math.radians(-HEAD_PITCH), 3, 'X')
+    return yaw(HEAD_YAW) @ (NECK + tip @ (Vector(p) - NECK))
+
+
+def bend(root, end, upper, lower, pole):
+    """The middle joint of a limb from root to end, its bones upper and lower long, bent towards pole."""
+    root, end, pole = Vector(root), Vector(end), Vector(pole)
+    axis = end - root
+    reach = min(axis.length, upper + lower - 1e-3)
+    axis.normalize()
+    along = (upper * upper - lower * lower + reach * reach) / (2 * reach)
+    out = math.sqrt(max(upper * upper - along * along, 0.0))
+    side = pole - root
+    side = (side - side.dot(axis) * axis).normalized()
+    return root + along * axis + out * side
+
+
+def nearest_on_path(points):
+    """A function giving the point on the polyline through `points` nearest to a point: the inside of
+    a bent form such as a bow's stave, to wind its faces."""
+    points = [Vector(p) for p in points]
+
+    def nearest(c):
+        best = None
+        for a, b in zip(points, points[1:]):
+            t = max(0.0, min(1.0, (c - a).dot(b - a) / (b - a).length_squared))
+            p = a + t * (b - a)
+            if best is None or (c - p).length < (c - best).length:
+                best = p
+        return best
+
+    return nearest
+
+
+def new_objects(before):
+    return [o for o in bpy.context.scene.objects if o not in before]
+
+
+# Legs --------------------------------------------------------------------------------------------
+
+HIP_Z = 0.73
+THIGH, SHIN = 0.335, 0.33
+# Feet apart, the left towards the shot and forward, the right back and turned out.
+LEGS = {  # hip joint (in the hips' frame), ankle, the foot's yaw
+    'right': (V(-0.075, 0.0, HIP_Z), V(-0.125, 0.11, 0.085), -30),
+    'left': (V(0.075, 0.0, HIP_Z), V(0.13, -0.09, 0.085), 12),
+}
+
+# The boot from the sole up, in the foot's own frame (toes towards -y): the height of each ring and the
+# right half of it, side, heel and toe, mirrored by boot(). Long and narrow, to a pointed toe.
+BOOT_RINGS = [
+    (0.0, [(0.056, -0.01), (0.046, 0.072), (0.022, -0.162)]),  # the sole
+    (0.055, [(0.056, 0.0), (0.048, 0.072), (0.02, -0.114)]),  # the instep slopes back from the toe
+    (0.13, [(0.049, 0.006), (0.044, 0.056), (0.035, -0.038)]),  # round the ankle
+]
+
+
+def boot(name, ankle, foot_yaw):
+    facing = yaw(foot_yaw)
+    at = V(ankle.x, ankle.y, 0)
+    outlines = [(z, [side, heel, (-heel[0], heel[1]), (-side[0], side[1]), (-toe[0], toe[1]), toe])
+                for z, (side, heel, toe) in BOOT_RINGS]
+    rings = [[at + facing @ V(x, y, z) for x, y in ring] for z, ring in outlines]
+    verts, faces, _ = loft(rings)
+    part(name, verts, faces, M['boots'], inside=at + V(0, 0, 0.07))
+
+
+def legs():
+    for side, (hip, ankle, foot_yaw) in LEGS.items():
+        hip = turned(hip, HIPS_YAW)
+        ahead = turned(V(0, -1, 0), foot_yaw)
+        knee = bend(hip, ankle, THIGH, SHIN, (hip + ankle) / 2 + 0.3 * ahead)
+        tube(f'thigh-{side}', hip + V(0, 0, 0.05), knee, [(0, 0.082), (1, 0.062)], M['leggings'])
+        # Leggings to below the knee, then the tall soft boot.
+        shin = [(-0.06, 0.062), (0.4, 0.055), (1.0, 0.046)]
+        tube(f'shin-{side}', knee, ankle, shin, [M['leggings'], M['boots']], [0, 1])
+        boot(f'boot-{side}', ankle, foot_yaw)
+
+
+# Body, in the torso's frame: facing -Y, turned into the pose by TORSO_YAW ---------------------------
+
+# The tunic as a column of octagons: z, half-width, half-depth and centre y. The belt is the band
+# between the third and fourth rings.
+TORSO = [
+    (0.555, 0.178, 0.135, 0.012),  # the hem, flared over the thighs
+    (0.72, 0.14, 0.1, 0.0),  # hips
+    (0.785, 0.125, 0.09, 0.0),  # belt, lower edge
+    (0.835, 0.12, 0.087, 0.0),  # belt, upper edge: the narrow waist
+    (0.975, 0.162, 0.108, -0.006),  # chest
+    (1.07, 0.172, 0.097, 0.004),  # shoulders
+    (1.135, 0.062, 0.056, 0.008),  # neck
+]
+TORSO_BANDS = [0, 0, 1, 0, 0, 0]  # tunic, except the belt
+
+
+def torso():
+    rings = [[V(rx * math.cos(a), cy + ry * math.sin(a), z) for a in OCTAGON] for z, rx, ry, cy in TORSO]
+    verts, faces, bands = loft(rings)
+    part('torso', verts, faces, [M['tunic'], M['leather']], [TORSO_BANDS[b] for b in bands],
+         inside=lambda c: V(0, 0, c.z))
+
+
+OCTAGON = [math.radians(22.5 + 45 * i) for i in range(8)]
+
+
+def torso_point(degrees, z, out=0.0):
+    """The point on the torso's surface at a corner of its octagons (22.5 + 45k degrees from +X) and
+    height z, pushed out by `out`."""
+    for (z0, rx0, ry0, cy0), (z1, rx1, ry1, cy1) in zip(TORSO, TORSO[1:]):
+        if z0 <= z <= z1:
+            t = (z - z0) / (z1 - z0)
+            rx, ry, cy = rx0 + t * (rx1 - rx0), ry0 + t * (ry1 - ry0), cy0 + t * (cy1 - cy0)
+            a = math.radians(degrees)
+            normal = V(math.cos(a) / rx, math.sin(a) / ry, 0).normalized()
+            return V(rx * math.cos(a), cy + ry * math.sin(a), z) + out * normal
+    raise ValueError(f'no torso at {z}')
+
+
+def baldric():
+    # The quiver's strap, in the team colour: from under the cloak at his right shoulder, across his
+    # chest to his left hip and round to the quiver's foot at his back.
+    path = [(202.5, 1.03), (247.5, 0.985), (292.5, 0.905), (337.5, 0.835), (22.5, 0.79), (67.5, 0.765)]
+    rows = [[torso_point(a, z + dz, 0.008) for a, z in path] for dz in (-0.034, 0.034)]
+    verts, faces, _ = loft(rows, closed=False)
+    part('baldric', verts, faces, M['team'], inside=lambda c: V(0, 0, c.z))
+
+    # Its buckle on his breast, halfway between the corners either side of the front.
+    low, high = (rows[0][1] + rows[0][2]) / 2, (rows[1][1] + rows[1][2]) / 2
+    along = ((rows[0][2] + rows[1][2]) - (rows[0][1] + rows[1][1])).normalized()
+    across = (high - low).normalized()
+    out = along.cross(across).normalized()
+    centre = (low + high) / 2
+    if out.dot(V(centre.x, centre.y, 0)) < 0:
+        out = -out
+    box('buckle', centre + 0.006 * out, [out, along, across], (0.008, 0.026, 0.042), M['trim'], 0.75)
+
+
+def clasp():
+    # A leaf of trim at his throat, clasping the cloak's edges together over the top of his tunic.
+    base = V(0, -0.068, 1.1)
+    out = V(0, -0.84, 0.542)  # square to the slope of his chest there
+    cone('clasp', base, base + 0.016 * out, 0.026, M['trim'], n=4, squash=1.6)
+
+
+CLOAK_SPAN = 296.0, 604.0  # degrees from +X: from the front of his left shoulder round his back to his right
+
+
+def arc(rx, ry, cy, heights, fold=0.0, n=11):
+    """n points round the cloak across CLOAK_SPAN, at heights interpolated from (degrees from the
+    middle of his back, z); every other one pushed out by `fold`, for the folds."""
+    start, end = CLOAK_SPAN
+    points = []
+    for i in range(n):
+        a = start + (end - start) * i / (n - 1)
+        d = abs(a - 450.0)
+        for (d0, z0), (d1, z1) in zip(heights, heights[1:]):
+            if d0 <= d <= d1:
+                z = z0 + (z1 - z0) * (d - d0) / (d1 - d0)
+        f = 1 + (fold / ry if i % 2 else 0.0)
+        r = math.radians(a)
+        points.append(V(f * rx * math.cos(r), cy + f * ry * math.sin(r), z))
+    return points
+
+
+def cloak():
+    # A short Lórien cloak, open at the front: over his shoulders and down to his thighs, its edges
+    # either side of the baldric, with his hair and the quiver over it at the back and the bow beside
+    # it.
+    rings = [
+        arc(0.084, 0.076, 0.012, [(0, 1.185), (160, 1.14)]),  # a collar round the neck
+        arc(0.21, 0.126, 0.008, [(0, 1.09), (160, 1.07)]),  # over the shoulders
+        arc(0.226, 0.15, 0.02, [(0, 0.9), (90, 0.92), (160, 0.9)], fold=0.014),
+        arc(0.245, 0.17, 0.035, [(0, 0.585), (55, 0.62), (95, 0.67), (160, 0.65)], fold=0.03),  # the hem
+    ]
+    verts, faces, _ = loft(rings, closed=False)
+    part('cloak', verts, faces, M['team'], inside=lambda c: V(0, 0, c.z))
+
+
+# The quiver that came with the bow, "a quiver of arrows" (The Fellowship of the Ring, II 8): longer
+# and wider than his own, in the grey of the Galadhrim, banded with trim and full of arrows. It hangs on
+# his back from his left hip to above his right shoulder, so its arrows stand up beside his head.
+QUIVER_FOOT, QUIVER_TOP = V(0.085, 0.236, 0.72), V(-0.2, 0.19, 1.27)
+QUIVER_RADII = 0.056, 0.072  # at the foot and the mouth
+QUIVER_BANDS = 0.12, 0.5, 0.86  # how far up it each band is
+# The arrows in it, fanned out of the mouth: across, other way across and how far each leans.
+SHEAF = [(0.04, 0.0, 0.3), (-0.038, 0.02, -0.28), (-0.012, -0.044, -0.06), (0.016, 0.046, 0.1), (0.0, 0.0, 0.0),
+         (0.03, -0.03, 0.2), (-0.03, -0.02, -0.18), (-0.02, 0.04, -0.1), (0.028, 0.03, 0.16)]
+
+
+def quiver():
+    foot, top = QUIVER_FOOT, QUIVER_TOP
+    low, high = QUIVER_RADII
+    along = (top - foot).normalized()
+    tube('quiver', foot, top, [(0, low), (1, high)], M['quiver'], n=6)
+    for k, t in enumerate(QUIVER_BANDS):
+        r = low + (high - low) * t + 0.007
+        tube(f'quiver-band-{k}', foot.lerp(top, t - 0.035), foot.lerp(top, t + 0.035), [(0, r), (1, r)], M['trim'], n=6)
+    # A rounded foot, and a rim of trim round the mouth.
+    ring = segment(foot, top, [(0, low)], 6)[0]
+    verts = ring + [foot - 0.04 * along]
+    part('quiver-foot', verts, [(i, (i + 1) % 6, 6) for i in range(6)], M['quiver'], inside=foot)
+    rim = segment(top - 0.04 * along, top + 0.01 * along, [(0, high + 0.008), (1, high + 0.008)], 6)
+    verts, faces, _ = loft(rim)
+    faces.append(tuple(range(6, 12)))
+    part('quiver-rim', verts, faces, M['trim'], inside=top - 0.02 * along)
+    # The fletching of the arrows standing out of the mouth, each two crossed vanes.
+    across, other = frame(along)
+    for k, (du, dv, tilt) in enumerate(SHEAF):
+        base = top + du * across + dv * other - 0.01 * along
+        up = (along + tilt * across + 0.5 * tilt * other).normalized()
+        fletching(f'fletching-{k}', base, up, 0.22, 0.03)
+
+
+def fletching(name, base, up, length, width):
+    """Two crossed vanes of feather from `base` along `up`."""
+    a, b = frame(up)
+    verts, faces = [], []
+    for w in (a, b):
+        n = len(verts)
+        middle = base + 0.35 * length * up
+        verts += [base, middle + width * w, base + length * up, middle - width * w]
+        faces.append((n, n + 1, n + 2, n + 3))
+    part(name, verts, faces, M['feather'])
+
+
+# Head, in its own frame: facing -Y, turned by HEAD_YAW ----------------------------------------------
+
+# Hair over the crown, the sides and the back: rings of eight points (x, y, z) from his left (+X) round
+# the back to his right and the front, set back where the face is. It hangs straight to the nape at
+# the sides and back, behind the jaw.
+HAIR_RINGS = [
+    [(0.084, 0.022, 1.14), (0.07, 0.084, 1.14), (0.0, 0.108, 1.14), (-0.07, 0.084, 1.14),
+     (-0.084, 0.022, 1.14), (-0.062, -0.035, 1.19), (0.0, -0.03, 1.19), (0.062, -0.035, 1.19)],  # the nape
+    [(0.118, 0.0, 1.34), (0.094, 0.09, 1.34), (0.0, 0.124, 1.34), (-0.094, 0.09, 1.34),
+     (-0.118, 0.0, 1.34), (-0.096, -0.078, 1.34), (0.0, -0.074, 1.34), (0.096, -0.078, 1.34)],  # the temples
+    [(0.1, 0.006, 1.425), (0.078, 0.078, 1.425), (0.0, 0.104, 1.425), (-0.078, 0.078, 1.425),
+     (-0.1, 0.006, 1.425), (-0.08, -0.086, 1.43), (0.0, -0.116, 1.438), (0.08, -0.086, 1.43)],  # the hairline
+    [(0.062, 0.008, 1.468), (0.046, 0.05, 1.468), (0.0, 0.066, 1.468), (-0.046, 0.05, 1.468),
+     (-0.062, 0.008, 1.468), (-0.046, -0.05, 1.47), (0.0, -0.066, 1.472), (0.046, -0.05, 1.47)],
+]
+CROWN = V(0, 0.004, 1.482)
+
+# The face: the right half's corners (x < 0), mirrored, and the points down the middle.
+BROW, CHEEKBONE = V(-0.09, -0.1, 1.376), V(-0.097, -0.085, 1.285)
+JAW, CHEEK = V(-0.074, -0.034, 1.2), V(-0.042, -0.108, 1.222)
+FOREHEAD, NOSE_ROOT, MOUTH, CHIN, UNDER_CHIN = (
+    V(0, -0.113, 1.432), V(0, -0.132, 1.35), V(0, -0.128, 1.222), V(0, -0.118, 1.168), V(0, -0.055, 1.15))
+
+
+def mirror(p):
+    return V(-p.x, p.y, p.z)
+
+
+def head():
+    verts, faces, _ = loft([[V(*p) for p in ring] for ring in HAIR_RINGS])
+    last = len(verts) - 8
+    verts.append(CROWN)
+    faces += [(last + i, last + (i + 1) % 8, len(verts) - 1) for i in range(8)]
+    part('hair', verts, faces, M['hair'], inside=V(0, 0.0, 1.3))
+
+    # A narrow face of planes: forehead, eye sockets, high cheekbones, a pointed chin.
+    verts = [FOREHEAD, NOSE_ROOT, MOUTH, CHIN, UNDER_CHIN]
+    faces = []
+    for s in (BROW, CHEEKBONE, JAW, CHEEK), tuple(mirror(p) for p in (BROW, CHEEKBONE, JAW, CHEEK)):
+        b, c, j, k = range(len(verts), len(verts) + 4)
+        verts += list(s)
+        faces += [(0, b, 1), (1, b, c), (1, c, k), (1, k, 2), (c, j, k), (k, j, 3), (k, 3, 2), (j, 4, 3)]
+    part('face', verts, faces, M['skin'], inside=V(0, 0.0, 1.3))
+    sockets = {s: [(NOSE_ROOT, p(BROW), p(CHEEKBONE))] for s, p in ((-1, lambda q: q), (1, mirror))}
+
+    # Almond eyes, a little tilted, laid just proud of the plane under the brow.
+    for s in (-1, 1):
+        corners = [(s * 0.022, 1.337), (s * 0.078, 1.35), (s * 0.05, 1.322)]
+        verts = [V(x, on_surface(sockets[s], x, z) - 0.006, z) for x, z in corners]
+        part(f'eye-{s}', verts, [(0, 1, 2)], M['eyes'], outward=V(0, -1, 0))
+
+    # A straight, narrow nose.
+    top, tip, under = V(0, -0.135, 1.345), V(0, -0.162, 1.272), V(0, -0.13, 1.262)
+    left, right = V(0.022, -0.126, 1.274), V(-0.022, -0.126, 1.274)
+    verts = [top, tip, under, left, right]
+    faces = [(0, 3, 1), (0, 1, 4), (3, 2, 1), (1, 2, 4)]
+    part('nose', verts, faces, M['skin'], inside=V(0, -0.1, 1.3))
+
+    # Fine dark brows, rising to the outside.
+    for s in (-1, 1):
+        verts = [V(s * 0.018, -0.139, 1.364), V(s * 0.088, -0.112, 1.392), V(s * 0.085, -0.104, 1.38),
+                 V(s * 0.02, -0.132, 1.353)]
+        part(f'brow-{s}', verts, [(0, 1, 2, 3)], M['hair'], outward=V(0, -1, 0.3))
+
+    # Pointed ears through the hair, swept up and back.
+    for s in (-1, 1):
+        base = [V(s * 0.118, -0.03, 1.275), V(s * 0.12, 0.035, 1.3), V(s * 0.12, -0.012, 1.355)]
+        tip = V(s * 0.17, 0.056, 1.43)
+        verts = base + [tip]
+        part(f'ear-{s}', verts, [(0, 1, 3), (1, 2, 3), (2, 0, 3)], M['skin'], inside=V(0, 0.01, 1.32))
+
+    tube('neck', V(0, 0.01, 1.08), V(0, -0.004, 1.24), [(0, 0.05), (1, 0.046)], M['skin'])
+
+
+def hair_tail():
+    # Long straight hair from the back of his head down over the cloak to his shoulder blades. The top
+    # turns with his head, the rest lies on his back, so it twists between them.
+    top = [head_point(V(0.112 * math.cos(math.radians(a)), 0.006 + 0.116 * math.sin(math.radians(a)), 1.3))
+           for a in (10, 50, 90, 130, 170)]
+    shoulders = [turned(V(x, y, 1.12), TORSO_YAW) for x, y in
+                 [(0.105, 0.108), (0.056, 0.14), (0.0, 0.15), (-0.056, 0.14), (-0.105, 0.108)]]
+    ends = [turned(V(x, y, 0.98), TORSO_YAW) for x, y in
+            [(0.078, 0.156), (0.04, 0.174), (0.0, 0.18), (-0.04, 0.174), (-0.078, 0.156)]]
+    verts, faces, _ = loft([top, shoulders, ends], closed=False)
+    verts.append(turned(V(0, 0.19, 0.9), TORSO_YAW))
+    faces += [(10 + i, 11 + i, 15) for i in range(4)]
+    part('hair-tail', verts, faces, M['hair'], inside=lambda c: V(0, 0, c.z))
+
+
+# Arms, the bow and the arrow, placed in the pose ----------------------------------------------------
+
+SHOULDER = V(0.165, 0.0, 1.075)  # his left shoulder joint in the torso's frame; the right mirrors it
+UPPER_ARM, FOREARM = 0.265, 0.255
+ANCHOR = V(-0.02, -0.105, 1.16)  # by the corner of his jaw, where the full draw brings the string
+REACH = 0.6  # from the anchor to the grip: the arrow drawn to its head
+
+AIM = V(
+    math.sin(math.radians(AIM_YAW)) * math.cos(math.radians(AIM_UP)),
+    -math.cos(math.radians(AIM_YAW)) * math.cos(math.radians(AIM_UP)),
+    math.sin(math.radians(AIM_UP)),
+)
+LEVEL_UP = (V(0, 0, 1) - AIM.z * AIM).normalized()  # square to the arrow, as near straight up as it can be
+RIGHT_OF_AIM = AIM.cross(LEVEL_UP)
+BOW_UP = math.cos(math.radians(CANT)) * LEVEL_UP + math.sin(math.radians(CANT)) * RIGHT_OF_AIM
+GRIP = ANCHOR + REACH * AIM
+REST = 0.045  # the arrow lies this far above the middle of the grip
+NOCK = ANCHOR + REST * BOW_UP  # drawn full: the nock at the anchor
+
+# The great bow from the bottom tip to the top: (along the stave, back towards him, half-thickness).
+# Longer than his own bow, stouter, and drawn full, so its limbs bend further back towards him. The
+# grip is wrapped in leather, with a collar of trim either side, and the tips are capped with trim.
+STAVE = [
+    (-0.78, 0.35, 0.0),
+    (-0.7, 0.295, 0.025),
+    (-0.55, 0.195, 0.033),
+    (-0.36, 0.09, 0.038),
+    (-0.12, 0.012, 0.042),
+    (0.12, 0.012, 0.042),
+    (0.36, 0.09, 0.038),
+    (0.55, 0.195, 0.033),
+    (0.7, 0.295, 0.025),
+    (0.78, 0.35, 0.0),
+]
+STAVE_BANDS = [0, 0, 0, 0, 1, 0, 0, 0, 0]  # pale wood, the grip wrapped in leather
+GRIP_COLLARS = (-0.165, -0.12), (0.12, 0.165)  # along the stave
+WIDTH = 1.1  # the limbs' width across the bow, to their thickness
+
+
+def bow():
+    side = AIM.cross(BOW_UP).normalized()  # across the bow's plane
+    centres = [GRIP + u * BOW_UP - w * AIM for u, w, _ in STAVE]
+
+    def ring(c, ahead, t):
+        back = side.cross(ahead)  # in the bow's plane, across the stave
+        return [c + t * back, c + WIDTH * t * side, c - t * back, c - WIDTH * t * side]
+
+    rings = []
+    for k, (u, w, t) in enumerate(STAVE):
+        if t == 0:
+            continue
+        rings.append(ring(centres[k], (centres[k + 1] - centres[k - 1]).normalized(), t))
+    verts, faces, bands = loft(rings)
+    face_mats = [STAVE_BANDS[b + 1] for b in bands]
+    for tip, ring_start in ((centres[0], 0), (centres[-1], 4 * (len(rings) - 1))):
+        verts.append(tip)
+        faces += [(ring_start + i, ring_start + (i + 1) % 4, len(verts) - 1) for i in range(4)]
+        face_mats += [2] * 4  # the tips capped with trim
+    part('bow', verts, faces, [M['bow'], M['leather'], M['trim']], face_mats, inside=nearest_on_path(centres))
+
+    # A collar of trim at either end of the grip, proud of the stave.
+    def stave_ring(u, grow):
+        for (u0, w0, t0), (u1, w1, t1) in zip(STAVE, STAVE[1:]):
+            if u0 <= u <= u1:
+                k = (u - u0) / (u1 - u0)
+                w, t = w0 + k * (w1 - w0), t0 + k * (t1 - t0)
+                c = GRIP + u * BOW_UP - w * AIM
+                ahead = (BOW_UP - (w1 - w0) / (u1 - u0) * AIM).normalized()
+                return ring(c, ahead, grow * t)
+        raise ValueError(f'no stave at {u}')
+
+    for k, (u0, u1) in enumerate(GRIP_COLLARS):
+        verts, faces, _ = loft([stave_ring(u0, 1.25), stave_ring(u1, 1.25)])
+        part(f'grip-collar-{k}', verts, faces, M['trim'], inside=nearest_on_path(centres))
+
+    # The string of elf-hair, from tip to tip by way of the arrow's nock, drawn back to his jaw.
+    top, bottom = centres[-1] - 0.03 * BOW_UP, centres[0] + 0.03 * BOW_UP
+    for name, a, b in (('string-top', NOCK, top), ('string-bottom', NOCK, bottom)):
+        tube(name, a, b, [(0, 0.0075), (1, 0.0075)], M['string'], n=3)
+
+    # The arrow, drawn to its head: a shaft from the nock past the grip and a leaf-shaped steel head.
+    point = GRIP + REST * BOW_UP + 0.07 * AIM
+    tube('arrow', NOCK - 0.015 * AIM, point, [(0, 0.009), (1, 0.009)], M['wood'], n=3)
+    socket = [point + 0.026 * side, point + 0.01 * BOW_UP, point - 0.026 * side, point - 0.01 * BOW_UP]
+    tip = point + 0.085 * AIM
+    verts = socket + [tip]
+    faces = [(i, (i + 1) % 4, 4) for i in range(4)] + [(3, 2, 1, 0)]
+    part('arrowhead', verts, faces, M['steel'], inside=point + 0.02 * AIM)
+
+
+def arms():
+    left_shoulder = turned(SHOULDER, TORSO_YAW)
+    right_shoulder = turned(V(-SHOULDER.x, SHOULDER.y, SHOULDER.z), TORSO_YAW)
+
+    # The bow arm, held out straight towards the sky, the elbow turned down and out.
+    fist = GRIP
+    reach = (fist - left_shoulder).normalized()
+    wrist = fist - 0.05 * reach
+    elbow = bend(left_shoulder, wrist, UPPER_ARM, FOREARM, (left_shoulder + wrist) / 2 + V(0.1, 0.05, -0.3))
+    limb('left', left_shoulder, elbow, wrist, bracer=True)
+    up = (BOW_UP - BOW_UP.dot(reach) * reach).normalized()
+    box('fist-left', fist, [reach, up, reach.cross(up)], (0.045, 0.052, 0.042), M['skin'], 0.85)
+
+    # The drawing arm, the hand at his jaw and the elbow back and out to his right, behind the arrow.
+    fist = NOCK - 0.012 * AIM - 0.014 * BOW_UP
+    wrist = fist - 0.055 * AIM + V(-0.02, 0.02, -0.01)
+    level = V(AIM.x, AIM.y, 0).normalized()
+    pole = right_shoulder - 0.3 * level + V(-0.08, 0, 0.1)
+    elbow = bend(right_shoulder, wrist, UPPER_ARM, FOREARM, pole)
+    limb('right', right_shoulder, elbow, wrist)
+    ahead = (fist - wrist).normalized()
+    up = (V(0, 0, 1) - ahead.z * ahead).normalized()
+    box('fist-right', fist, [ahead, up, ahead.cross(up)], (0.042, 0.045, 0.04), M['skin'], 0.85)
+
+
+def limb(side, shoulder, elbow, wrist, bracer=False):
+    tube(f'upper-arm-{side}', shoulder, elbow, [(-0.12, 0.064), (1.08, 0.052)], M['tunic'])
+    stations = [(-0.08, 0.053), (0.38, 0.054), (1.0, 0.046)]
+    tube(f'forearm-{side}', elbow, wrist, stations, [M['tunic'], M['leather']], [0, 1] if bracer else [0, 0])
+
+
+def main():
+    reset()
+    make_materials()
+    legs()
+    before = set(bpy.context.scene.objects)
+    torso()
+    baldric()
+    cloak()
+    clasp()
+    quiver()
+    turn(new_objects(before), TORSO_YAW)
+    before = set(bpy.context.scene.objects)
+    head()
+    lean(new_objects(before), NECK, -HEAD_PITCH)
+    turn(new_objects(before), HEAD_YAW)
+    hair_tail()
+    arms()
+    bow()
+    finish('legolas-3', budget=BOOK_BUDGET)
+
+
+main()

@@ -6,7 +6,7 @@ inside the hex. `horse()` builds it after `reset()` and returns a `Horse`: where
 where his feet hang and where the reins start. Éomer's script is the example of seating a rider.
 
 The horse makes its `coat`, `horsehair` and `blaze` materials from its colours. Its bridle is
-`leather` with a `brass` browband, its eyes `eyes` and its tack `team`, in the kit's colours unless
+`leather` with a `trim` browband, its eyes `eyes` and its tack `team`, in the kit's colours unless
 the rider's script made those materials first. It is 550 to 580 triangles, with its markings and
 tack, which leaves the rider about 620 of MOUNTED_BUDGET.
 
@@ -22,7 +22,6 @@ from mathutils import Vector
 from mathutils.bvhtree import BVHTree
 
 from kit import (
-    BRASS,
     EYES,
     LEATHER,
     V,
@@ -32,6 +31,7 @@ from kit import (
     nearest_on_polyline,
     part,
     team_material,
+    trim_material,
 )
 
 M = {}  # the horse's materials by name, made by horse()
@@ -44,7 +44,7 @@ def make_materials(coat, points, blaze):
         coat=material('coat', coat, roughness=0.85),
         horsehair=material('horsehair', points, roughness=0.9),
         leather=material('leather', LEATHER, roughness=0.85),
-        brass=material('brass', BRASS, roughness=0.55, metallic=0.1),
+        trim=trim_material(),
         eyes=material('eyes', EYES, roughness=0.6),
     )
     if blaze is not None:
@@ -222,7 +222,7 @@ def horse_head(blaze):
         verts, faces, _ = loft(rows, closed=False)
         part('horse-blaze', verts, faces, M['blaze'], inside=nearest_on_polyline([HEAD_START, HEAD_END]))
 
-    # The bridle: a noseband, cheek-pieces up to the poll and a brass browband.
+    # The bridle: a noseband, cheek-pieces up to the poll and a browband in `trim`.
     band = [head_ring(*head_row(t), grow=0.007) for t in (0.66, 0.76)]
     verts, faces, _ = loft(band)
     part('horse-noseband', verts, faces, M['leather'], inside=nearest_on_polyline([HEAD_START, HEAD_END]))
@@ -238,7 +238,7 @@ def horse_head(blaze):
     lower = [ring[1].lerp(ring[2], 0.3), ring[1], ring[0], ring[5], ring[5].lerp(ring[4], 0.3)]
     upper = [p - 0.028 * DOWN_FACE for p in lower]
     verts, faces, _ = loft([lower, upper], closed=False)
-    part('horse-browband', verts, faces, M['brass'], inside=nearest_on_polyline([HEAD_START, HEAD_END]))
+    part('horse-browband', verts, faces, M['trim'], inside=nearest_on_polyline([HEAD_START, HEAD_END]))
     return head
 
 

@@ -65,6 +65,18 @@ export const PRESETS = {
     placed('gandalf', 3, 0, 1, ['narya']),
     placed('elrond', 4, 0, 1, ['vilya']),
   ],
+  /** Frodo, Aragorn and Éomer at 1★, 2★ and 3★ from left to right, to see how star levels show on models. */
+  stars: [
+    placed('eomer', 2, 3, 1),
+    placed('eomer', 3, 3, 2),
+    placed('eomer', 4, 3, 3),
+    placed('aragorn', 2, 2, 1),
+    placed('aragorn', 3, 2, 2),
+    placed('aragorn', 4, 2, 3),
+    placed('frodo', 2, 1, 1),
+    placed('frodo', 3, 1, 2),
+    placed('frodo', 4, 1, 3),
+  ],
   traits: [
     placed('khamul', 2, 3),
     placed('eomer', 3, 3),

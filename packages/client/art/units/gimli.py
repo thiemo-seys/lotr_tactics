@@ -6,6 +6,11 @@ like chiselled stone. Heroic proportions: about 1.15 tall, the head a third of t
 nearly as wide as he is tall. A muted, earthy palette in which only the team colour is saturated:
 his hood, cape and shield face.
 
+His fittings, the helmet's band, the belt buckle, the shield's rim and boss, and the axe's finial,
+socket and pommel, use `trim`, which the client colours iron, silver or gold by star level
+(docs/viewer-spec.md section 4, "Star levels"). His 2★ model is gimli-2.py and his 3★ model
+gimli-3.py.
+
     blender --background --factory-startup --python-exit-code 1 --python gimli.py [-- <out.glb>]
 
 Coordinates are Blender's: z up, the model faces -Y, so his right hand is at -X.
@@ -21,7 +26,6 @@ from mathutils import Matrix, Vector
 sys.path.insert(0, os.path.join(os.path.dirname(os.path.abspath(__file__)), '..'))
 from kit import (  # noqa: E402
     BOOTS,
-    BRASS,
     CLOTH,
     EYES,
     LEATHER,
@@ -41,6 +45,7 @@ from kit import (  # noqa: E402
     reset,
     segment,
     team_material,
+    trim_material,
     tube,
     wind,
 )
@@ -64,7 +69,7 @@ def make_materials():
         boots=material('boots', BOOTS, roughness=0.9),
         cloth=material('cloth', CLOTH, roughness=0.9),
         tunic=material('tunic', TUNIC, roughness=0.9),
-        brass=material('brass', BRASS, roughness=0.55, metallic=0.1),
+        trim=trim_material(),
         wood=material('wood', WOOD, roughness=0.85),
         eyes=material('eyes', EYES, roughness=0.6),
     )
@@ -140,7 +145,7 @@ def torso():
     part('torso', verts, faces, mats, face_mats, inside=lambda c: V(0, 0, c.z))
     # The belt buckle, its face smaller than its back so the edges read as a bevel.
     axes = [V(0, -1, 0), V(1, 0, 0), V(0, 0, 1)]
-    box('buckle', V(0, -0.236, 0.467), axes, (0.02, 0.05, 0.042), M['brass'], 0.8)
+    box('buckle', V(0, -0.236, 0.467), axes, (0.02, 0.05, 0.042), M['trim'], 0.8)
 
 
 # Arms: short sleeves of mail, the tunic at the elbow, leather bracers, big fists. The right forearm
@@ -209,7 +214,7 @@ def head():
 
 
 def helmet():
-    # A rounded cap of eight facets with a ridge down the front, on a brass band.
+    # A rounded cap of eight facets with a ridge down the front, on a band of trim.
     profile = [  # z, radius
         (0.936, 0.19),
         (0.996, 0.19),
@@ -226,7 +231,7 @@ def helmet():
     for i in range(8):
         faces.append((last + i, last + (i + 1) % 8, apex))
         face_mats.append(1)
-    part('helmet', verts, faces, [M['brass'], M['steel']], face_mats, inside=V(0, 0.015, 0.95))
+    part('helmet', verts, faces, [M['trim'], M['steel']], face_mats, inside=V(0, 0.015, 0.95))
 
 
 def beard():
@@ -312,9 +317,10 @@ SHIELD_TURN = Matrix.Rotation(math.radians(25), 3, 'Z') @ Matrix.Rotation(math.r
 
 
 def shield():
-    # Built facing -Y round the origin, as one profile turned round the axis: from the steel rim on
-    # the back, over the raised rim, down the team-coloured face to the steel boss. The rim is a
-    # ridge, so no one point is inside every face: the profile is wound as a whole instead.
+    # Built facing -Y round the origin, as one profile turned round the axis: from the rim on the
+    # back, over the raised rim, down the team-coloured face to the boss, the rim and boss in trim.
+    # The rim is a ridge, so no one point is inside every face: the profile is wound as a whole
+    # instead.
     n = 10
     profile = [  # radius, y
         (0.232, 0.012),  # back of the rim, round the wooden boards
@@ -324,7 +330,7 @@ def shield():
         (0.088, -0.046),  # foot of the boss
         (0.064, -0.094),  # shoulder of the boss
     ]
-    band_mats = [1, 1, 1, 0, 1]  # team, steel
+    band_mats = [1, 1, 1, 0, 1]  # team, trim
 
     def ring(r, y):
         angles = (math.tau * (i + 0.5) / n for i in range(n))
@@ -341,7 +347,7 @@ def shield():
     if newell([verts[i] for i in faces[-2]]).y > 0:  # the boss's tip must face forward
         faces = [tuple(reversed(f)) for f in faces]
     verts = [SHIELD_CENTRE + SHIELD_TURN @ v for v in verts]
-    part('shield', verts, faces, [M['team'], M['steel'], M['wood']], face_mats)
+    part('shield', verts, faces, [M['team'], M['trim'], M['wood']], face_mats)
 
     # The left arm comes from behind to the grip behind the boss.
     fist = SHIELD_CENTRE + SHIELD_TURN @ V(0, 0.052, 0)
@@ -379,23 +385,23 @@ def axe():
     across = out.cross(along)
 
     tube('haft', grip - 0.19 * along, grip + 0.58 * along, [(0, 0.029), (1, 0.026)], M['wood'])
-    # A steel finial on top and a pommel below.
+    # A finial on top and a pommel below, fittings in trim.
     top = grip + 0.58 * along
     ring = segment(top, top + along, [(0, 0.026)], 6)[0]
     verts = ring + [top + 0.03 * along]
-    part('finial', verts, [(i, (i + 1) % 6, 6) for i in range(6)], M['steel'], inside=top)
+    part('finial', verts, [(i, (i + 1) % 6, 6) for i in range(6)], M['trim'], inside=top)
     end = grip - 0.19 * along
     ring = segment(end, end + along, [(0, 0.036)], 4, 45)[0]
     verts = ring + [end - 0.04 * along, end + 0.03 * along]
     faces = [(i, (i + 1) % 4, 4) for i in range(4)] + [(i, (i + 1) % 4, 5) for i in range(4)]
-    part('pommel', verts, faces, M['steel'], inside=end)
+    part('pommel', verts, faces, M['trim'], inside=end)
 
-    # The socket the head is forged round.
+    # The socket the head is forged round, in trim.
     eye = grip + 0.465 * along
     rings = segment(eye - 0.07 * along, eye + 0.07 * along, [(0, 0.045), (1, 0.045)], 6, 30)
     verts, faces, _ = loft(rings)
     faces += [tuple(range(6)), tuple(range(6, 12))]
-    part('socket', verts, faces, M['steel'], inside=eye)
+    part('socket', verts, faces, M['trim'], inside=eye)
 
     # The blade: thick by the eye, bevelled to a crescent edge.
     def at(u, v, w):

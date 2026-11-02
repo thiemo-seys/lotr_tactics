@@ -14,6 +14,10 @@ is the cloak: the hood's cowl round his neck and shoulders, the hood thrown back
 dark hollow under his curls, and a short cape to above his knees. From behind, as the near side is
 seen, his curls show above it, his sleeves and Sting beside it and his legs and feet below it.
 
+His fittings, Sting's cross-guard and pommel, the setting behind the leaf clasp, the belt buckle and
+the waistcoat's buttons, use `trim`, which the client colours iron, silver or gold by star level
+(docs/viewer-spec.md section 4, "Star levels"). His 3★ model is frodo-3.py.
+
     blender --background --factory-startup --python-exit-code 1 --python frodo.py [-- <out.glb>]
 
 Coordinates are Blender's: z up, the model faces -Y, so his right hand is at -X.
@@ -27,9 +31,8 @@ from itertools import pairwise
 import bpy
 from mathutils import Matrix
 
-sys.path.insert(0, os.path.join(os.path.dirname(os.path.abspath(__file__)), '..'))
+sys.path.insert(0, os.path.join(os.path.dirname(os.path.abspath(__file__)), '..'))  # art/, for kit.py
 from kit import (  # noqa: E402
-    BRASS,
     EYES,
     LEATHER,
     V,
@@ -47,6 +50,7 @@ from kit import (  # noqa: E402
     part,
     reset,
     team_material,
+    trim_material,
     tube,
 )
 
@@ -76,7 +80,7 @@ def make_materials():
         leaf=material('leaf', LEAF, roughness=0.6),
         lining=material('lining', LINING, roughness=0.9),
         steel=material('steel', BLADE, roughness=0.4, metallic=0.1),
-        brass=material('brass', BRASS, roughness=0.55, metallic=0.1),
+        trim=trim_material(),  # fittings, recoloured by star
         eyes=material('eyes', EYES, roughness=0.6),
         mouth=material('mouth', MOUTH, roughness=0.8),
     )
@@ -369,10 +373,10 @@ def sting():
     part('blade', verts, faces, M['steel'], inside=nearest_on_line(guard, guard + STING))
 
     # A plain cross-guard, a leather grip and a pommel.
-    box('guard', guard, [STING, width, flat], (0.011, 0.058, 0.016), M['brass'], 0.8)
+    box('guard', guard, [STING, width, flat], (0.011, 0.058, 0.016), M['trim'], 0.8)
     end = fist - 0.06 * STING
     tube('grip', end, guard, [(0, 0.015), (1, 0.015)], M['leather'], n=4, phase=45)
-    cone('pommel', end, end - 0.032 * STING, 0.024, M['brass'], n=4, phase=45, back=end + 0.012 * STING)
+    cone('pommel', end, end - 0.032 * STING, 0.024, M['trim'], n=4, phase=45, back=end + 0.012 * STING)
 
 
 # Team colour: the elven cloak, its hood thrown back -------------------------------------------------
@@ -394,6 +398,18 @@ def cowl():
     y = -0.09
     verts = [V(0, y, 0.585), V(0.022, y, 0.562), V(0, y, 0.538), V(-0.022, y, 0.562), V(0, y - 0.008, 0.562)]
     part('clasp', verts, [(0, 1, 4), (1, 2, 4), (2, 3, 4), (3, 0, 4)], M['leaf'], inside=V(0, 0, 0.56))
+    # Its setting, a rim of metal round the leaf.
+    y = -0.086
+    verts = [V(0, y, 0.594), V(0.03, y, 0.562), V(0, y, 0.529), V(-0.03, y, 0.562)]
+    part('clasp-setting', verts, [(0, 1, 2, 3)], M['trim'], outward=V(0, -1, 0))
+
+
+def fittings():
+    """The belt buckle and the waistcoat's buttons, on the front of the torso."""
+    box('buckle', V(0, -0.132, 0.305), [V(1, 0, 0), V(0, 0, 1), V(0, 1, 0)], (0.026, 0.024, 0.008), M['trim'], 0.85)
+    for y, z in ((-0.17, 0.37), (-0.188, 0.41), (-0.165, 0.445)):
+        at = V(0, y, z)
+        cone(f'button-{z}', at, at + V(0, -0.016, 0), 0.013, M['trim'], n=4, phase=45, back=at + V(0, 0.01, 0))
 
 
 # The hood, thrown back: its opening lies on his upper back under his curls, the lining showing
@@ -455,6 +471,7 @@ def main():
     cowl()
     hood()
     cape()
+    fittings()
     arm('left', L_SHOULDER, L_ELBOW, L_WRIST, V(0, 0, 1))
     sting()
     lean([o for o in bpy.context.scene.objects if o not in lower], HIPS, LEAN)

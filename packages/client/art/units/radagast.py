@@ -15,6 +15,11 @@ About 1.45 to the hat's brim; the crown, the staff and the birds go higher. The 
 hat, seen from every side and from above, and a sash round his middle knotted at his right hip, its
 ends hanging down his robe. The birds stay greys and browns, and everything else is earth and moss.
 
+His few fittings, a brooch on the hat's band, the ring his sash is drawn through beside the knot, the
+clasp of the herb pouch's flap, and the staff's ferrule and a band binding it below its fork, use
+`trim`, which the client colours iron, silver or gold by star level (docs/viewer-spec.md section 4,
+"Star levels"). His 2★ model is radagast-2.py and his 3★ model radagast-3.py.
+
     blender --background --factory-startup --python-exit-code 1 --python radagast.py [-- <out.glb>]
 
 Coordinates are Blender's: z up, the model faces -Y, so his right hand, with the bird, is at -X.
@@ -50,6 +55,7 @@ from kit import (  # noqa: E402
     stoop,
     stooped,
     team_material,
+    trim_material,
     tube,
 )
 
@@ -82,6 +88,7 @@ def make_materials():
         plumage=material('plumage', PLUMAGE, roughness=0.9),
         breast=material('breast', BREAST, roughness=0.9),
         beak=material('beak', BEAK, roughness=0.6),
+        trim=trim_material(),  # fittings, recoloured by star
     )
 
 
@@ -202,14 +209,14 @@ SKIRT = [
 HEM_RAGS = [0.0, 0.03, 0.0, 0.012, 0.0, 0.026, 0.0, 0.016, 0.0, 0.032, 0.0, 0.01]  # the hem, worn ragged
 
 # The robe from the sash up, in octagons: z, half-width, half-depth and centre y. The sash is the
-# first band, round a stout middle.
+# first band, round a stout middle. It stops at the shoulders: above them the mantle, his hair and
+# his beard hide it.
 ROBE_RINGS = [
     (0.68, 0.213, 0.19, 0.0),  # the sash, lower edge
     (0.80, 0.216, 0.186, 0.0),  # the sash, upper edge
     (1.02, 0.22, 0.156, 0.012),  # shoulders
-    (1.14, 0.10, 0.092, 0.012),  # neck
 ]
-ROBE_BANDS = [1, 0, 0]  # the sash, then robe
+ROBE_BANDS = [1, 0]  # the sash, then robe
 
 
 def skirt_at(z, degrees, out=0.0):
@@ -248,6 +255,22 @@ SASH_ENDS = [  # degrees round from the knot, the bottom's height, and half-widt
     (9, 0.5, 6),
 ]
 
+# The ring the sash is drawn through: how far it sits along the face of the sash from the knot's
+# corner towards the front, its height, and its outer and inner half-sizes.
+RING_AT, RING_Z, RING = 0.64, 0.742, (0.034, 0.016)
+
+
+def flat_ring(name, centre, out, up, outer, inner):
+    """A flat square ring of `trim` facing along `out`: four bands round a square hole."""
+    out = out.normalized()
+    up = (up - up.dot(out) * out).normalized()
+    across = up.cross(out)
+    corners = [(1, 1), (-1, 1), (-1, -1), (1, -1)]
+    verts = [centre + outer * (a * across + b * up) for a, b in corners]
+    verts += [centre + inner * (a * across + b * up) for a, b in corners]
+    faces = [(i, (i + 1) % 4, 4 + (i + 1) % 4, 4 + i) for i in range(4)]
+    part(name, verts, faces, M['trim'], outward=out)
+
 
 def sash():
     a = math.radians(KNOT)
@@ -267,14 +290,35 @@ def sash():
         verts, faces, _ = loft(levels, closed=False)
         part(f'sash-end-{k}', verts, faces, M['team'], outward=out)
 
+    # The ring the sash is drawn through before it is knotted, flat on the face of the sash that
+    # runs from the knot towards the front.
+    lower, upper = ROBE_RINGS[0], ROBE_RINGS[1]
+    rx, ry = (lower[1] + upper[1]) / 2, (lower[2] + upper[2]) / 2
+
+    def corner(degrees):
+        r = math.radians(degrees)
+        return V(rx * math.cos(r), ry * math.sin(r), RING_Z)
+
+    start, end = corner(202.5), corner(247.5)
+    face_out = (end - start).cross(V(0, 0, 1)).normalized()
+    flat_ring('sash-ring', start.lerp(end, RING_AT) + 0.006 * face_out, face_out, V(0, 0, 1), *RING)
+
 
 def pouch():
-    # A leather pouch of herbs, hanging from the sash at his right hip, towards the back.
+    # A leather pouch of herbs, hanging from the sash at his right hip, towards the back. Its flap
+    # folds down over its face to a point, fastened with a clasp.
     a = math.radians(140)
     out = V(math.cos(a), math.sin(a), 0)
     along = V(-math.sin(a), math.cos(a), 0)
+    up = V(0, 0, 1)
     centre = skirt_at(0.6, 140, 0.032)
-    box('pouch', centre, [out, along, V(0, 0, 1)], (0.03, 0.058, 0.062), M['leather'], 0.72)
+    box('pouch', centre, [out, along, up], (0.03, 0.058, 0.062), M['leather'], 0.72)
+    face = centre + 0.033 * out  # just proud of its outer face
+    verts = [face + 0.044 * along + 0.0446 * up, face - 0.044 * along + 0.0446 * up,
+             face - 0.044 * along + 0.004 * up, face - 0.026 * up, face + 0.044 * along + 0.004 * up]
+    part('pouch-flap', verts, [(0, 1, 2, 3, 4)], M['boots'], outward=out)
+    clasp = face - 0.013 * up
+    cone('pouch-clasp', clasp - 0.002 * out, clasp + 0.018 * out, 0.023, M['trim'], n=4, back=None)
 
 
 # The mantle over his shoulders, eight points round from his left (+X): the back rises, the front dips
@@ -402,6 +446,7 @@ CROWN = [  # height above the brim, half-width, half-depth, centre x and y
     (0.16, 0.112, 0.108, -0.024, 0.012),
 ]
 CROWN_TOP = V(-0.032, 0.016, BRIM_Z + 0.182)  # the soft crown slumps a little to his right
+BROOCH_Z = 0.021  # how high over the brim the brooch is: the middle of the band where it shows
 
 
 def droop(a):
@@ -434,6 +479,10 @@ def hat():
     faces += [(last + i, last + (i + 1) % 8, apex) for i in range(8)]
     face_mats += [0] * 8
     part('crown', verts, faces, [M['team'], M['moss']], face_mats, inside=V(0, 0.006, BRIM_Z + 0.06))
+
+    # A brooch pinned to the front of the band, a diamond standing out from it.
+    base = V(0, -0.138, BRIM_Z + BROOCH_Z)
+    cone('hat-brooch', base, base - V(0, 0.026, 0), 0.029, M['trim'], n=4, squash=1.2, back=None)
 
     bird('bird-hat', CROWN_TOP - V(0, 0, 0.012), (1.0, 0.12), size=1.5)
 
@@ -471,14 +520,16 @@ STAFF_GRIP = V(0.43, -0.15, 0.955)  # in his fist
 STAFF_UP = V(0.07, 0.03, 1.0).normalized()  # leaning out from him a little
 STAFF = [  # distance along the staff from his fist (None for the foot, on the ground), radius, kink
     (0.70, 0.022, V(0, 0, 0)),
-    (0.56, 0.031, V(0.03, -0.012, 0)),
+    (0.56, 0.033, V(0.03, -0.012, 0)),  # the fork, where the side shoot grows
+    (0.5, 0.034, V(0.011, -0.003, 0)),
     (0.38, 0.026, V(-0.026, 0.014, 0)),
     (0.17, 0.032, V(0.012, -0.004, 0)),
     (0.0, 0.028, V(0, 0, 0)),
     (-0.3, 0.03, V(-0.022, 0.006, 0)),
-    (-0.6, 0.034, V(0.01, 0.0, 0)),
-    (None, 0.024, V(0, 0, 0)),
+    (-0.885, 0.033, V(0.004, 0.0, 0)),  # the top of the ferrule
+    (None, 0.028, V(0, 0, 0)),
 ]
+STAFF_METAL = (1, len(STAFF) - 2)  # its bands of metal: one binding it below the fork, and the ferrule
 
 
 # Single leaves round the clumps: which clump, how far its edge is, which way round from +X the leaf
@@ -512,7 +563,8 @@ def staff():
         points.append(STAFF_GRIP + t * STAFF_UP + kink)
         radii.append(r)
     points[-1].z = 0.0
-    bent_tube('staff', points, radii, M['wood'], n=5, level_end=True)
+    bands = [1 if k in STAFF_METAL else 0 for k in range(len(points) - 1)]
+    bent_tube('staff', points, radii, [M['wood'], M['trim']], bands, n=5, level_end=True)
 
     # The leaves: a clump round its head and a smaller one on a side shoot, each with big single
     # leaves sticking out of it, so it reads as foliage and not as a ball.

@@ -19,6 +19,11 @@ behind and from above, its two fronts framing his waistcoat, and the hood down h
 behind, as the near side is seen, his white curls show above it, his raised hand and the knife
 either side of it, and his waistcoat and breeches below it.
 
+His fittings, the waistcoat's buttons, the clasp at his throat, the hood's tassel and the knife's
+cross-guard and pommel, use `trim`, which the client colours iron, silver or gold by star level
+(docs/viewer-spec.md section 4, "Star levels"). His 2★ model is bilbo-2.py and his 3★ model
+bilbo-3.py.
+
     blender --background --factory-startup --python-exit-code 1 --python bilbo.py [-- <out.glb>]
 
 Coordinates are Blender's: z up, the model faces -Y, so his right hand is at -X.
@@ -50,6 +55,7 @@ from kit import (  # noqa: E402
     part,
     reset,
     team_material,
+    trim_material,
     tube,
     wind,
 )
@@ -61,7 +67,6 @@ GREY = 0xA8A499  # the thatch on the tops of his feet, greyer
 SHIRT = 0xD8CDB2  # unbleached linen
 WAISTCOAT = 0x45634A  # bottle green, darker and cooler than Merry's olive jerkin
 BREECHES = 0x6E5A43  # brown wool
-BRIGHT_BRASS = 0xD4A84A  # his buttons, polished
 LINING = 0x394536  # the dark green of the borrowed hood, inside it
 BLADE = 0xCED3D6  # plain bright steel
 MOUTH = 0x6A4434  # a dark line, not red
@@ -81,7 +86,7 @@ def make_materials():
         leather=material('leather', LEATHER, roughness=0.85),
         lining=material('lining', LINING, roughness=0.9),
         steel=material('steel', BLADE, roughness=0.4, metallic=0.1),
-        brass=material('brass', BRIGHT_BRASS, roughness=0.45, metallic=0.1),
+        trim=trim_material(),  # fittings, recoloured by star
         eyes=material('eyes', EYES, roughness=0.6),
         mouth=material('mouth', MOUTH, roughness=0.8),
     )
@@ -186,7 +191,7 @@ TORSO = [
     (0.52, 0.13, 0.1, 0.0),  # shoulders, closed above by his shirt, round the neck
 ]
 TORSO_BANDS = [0, 1, 1, 1, 1]  # breeches, waistcoat
-BUTTONS = [0.318, 0.38, 0.442]  # heights of the brass buttons down the front
+BUTTONS = [0.318, 0.38, 0.442]  # heights of the bright buttons down the front
 BUTTON_SIZE = 0.026  # half the height of each button
 
 
@@ -234,7 +239,7 @@ def torso():
     mats = [M['breeches'], M['waistcoat'], M['shirt']]
     part('torso', verts, faces, mats, face_mats, inside=lambda c: V(0, -0.01, min(c.z, 0.5)))
 
-    # Brass buttons down the front corner, each a little pyramid.
+    # Bright buttons down the front corner, each a little pyramid.
     for k, z in enumerate(BUTTONS):
         c = torso_front(z)
         ridge = (torso_front(z + 0.01) - torso_front(z - 0.01)).normalized()
@@ -243,7 +248,7 @@ def torso():
         across = [V(sx * s, 0, 0) - 0.4 * s * out for sx in (1, -1)]  # sunk to the faces either side
         verts = [c + s * ridge, c + across[0], c - s * ridge, c + across[1], c + 0.016 * out]
         faces = [(i, (i + 1) % 4, 4) for i in range(4)]
-        part(f'button-{k}', verts, faces, M['brass'], inside=c - 0.01 * out)
+        part(f'button-{k}', verts, faces, M['trim'], inside=c - 0.01 * out)
 
     tube('neck', V(0, 0.009, 0.5), V(0, -0.015, 0.63), [(0, 0.05), (1, 0.047)], M['skin'])
 
@@ -453,11 +458,11 @@ def knife():
     spine = wind(verts, [(0, 1, 3, 2), (1, 4, 3)], outward=width)
     part('blade', verts, front + rear + spine, M['steel'])
 
-    # A brass cross-guard, a leather grip and a brass pommel.
-    box('guard', guard, [KNIFE, width, flat], (0.011, 0.05, 0.018), M['brass'], 0.8)
+    # A cross-guard, a leather grip and a pommel.
+    box('guard', guard, [KNIFE, width, flat], (0.011, 0.05, 0.018), M['trim'], 0.8)
     end = fist - 0.056 * KNIFE
     tube('grip', end, guard, [(0, 0.016), (1, 0.016)], M['leather'], n=4, phase=45)
-    cone('pommel', end, end - 0.03 * KNIFE, 0.022, M['brass'], n=4, phase=45, back=end + 0.012 * KNIFE)
+    cone('pommel', end, end - 0.03 * KNIFE, 0.022, M['trim'], n=4, phase=45, back=end + 0.012 * KNIFE)
 
 
 # Team colour: the borrowed hood and cloak ---------------------------------------------------------
@@ -493,7 +498,7 @@ def cape():
     verts, faces, _ = loft(rings, closed=False)
     part('cape', verts, faces, M['team'], inside=V(0, 0.015, 0.45))
 
-    # The clasp at his throat, a round brass brooch joining the two fronts.
+    # The clasp at his throat, a round brooch joining the two fronts.
     neck, dome = rings[3], rings[2]
     top = (neck[0] + neck[8]) / 2
     low = (dome[0] + dome[8]) / 2
@@ -503,12 +508,12 @@ def cape():
     ring = [c + 0.024 * (math.cos(a) * V(1, 0, 0) + math.sin(a) * down)
             for a in (math.tau * i / 6 for i in range(6))]
     verts = ring + [c + 0.013 * out]
-    part('clasp', verts, [(i, (i + 1) % 6, 6) for i in range(6)], M['brass'], inside=c - 0.01 * out)
+    part('clasp', verts, [(i, (i + 1) % 6, 6) for i in range(6)], M['trim'], inside=c - 0.01 * out)
 
 
 # The hood, thrown back: Dwalin's, too big for him. Its opening lies flat under his curls, the lining
 # a sliver inside, and below it the hood hangs in a long point down his back, over the waistcoat, to a
-# brass tassel. The rim and the bag from the nape round to his left (+X), the back and his right.
+# tassel. The rim and the bag from the nape round to his left (+X), the back and his right.
 HOOD_RIM = [V(0, 0.112, 0.616), V(0.072, 0.122, 0.606), V(0.114, 0.146, 0.588), V(0.084, 0.162, 0.574),
             V(0, 0.168, 0.57), V(-0.084, 0.162, 0.574), V(-0.114, 0.146, 0.588), V(-0.072, 0.122, 0.606)]
 HOOD_HOLLOW = V(0, 0.132, 0.586)  # the bottom of the hollow inside, just clear of the cape
@@ -527,7 +532,7 @@ def hood():
     part('hood', verts, faces, M['team'], inside=nearest_on_polyline(middle))
     verts = HOOD_RIM + [HOOD_HOLLOW]
     part('hood-lining', verts, [(i, (i + 1) % n, n) for i in range(n)], M['lining'], outward=V(0, 0.6, 0.8))
-    cone('tassel', HOOD_POINT + V(0, 0, 0.012), TASSEL, 0.022, M['brass'], n=4,
+    cone('tassel', HOOD_POINT + V(0, 0, 0.012), TASSEL, 0.022, M['trim'], n=4,
          back=HOOD_POINT + V(0, 0, 0.03))
 
 

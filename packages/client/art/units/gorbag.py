@@ -9,6 +9,12 @@ of them rides his back. The team colour is his ragged cowl, which hangs in rags 
 chest, and his loincloth, whose front flap bears the sign of Minas Morgul: a pale moon with a death's
 face.
 
+His fittings, the binding of the quiver's mouth and the band round its foot, the belt buckle, the
+bands at the top of his vambraces, the ferrules either side of the bow's grip and the ring that binds
+his scalp-lock, use `trim`, which the client colours iron, silver or gold by star level
+(docs/viewer-spec.md section 4, "Star levels"). His 2★ model is gorbag-2.py and his 3★ model
+gorbag-3.py.
+
     blender --background --factory-startup --python-exit-code 1 --python gorbag.py [-- <out.glb>]
 
 Coordinates are Blender's: z up, the model faces -Y, so his right hand is at -X.
@@ -39,6 +45,7 @@ from kit import (  # noqa: E402
     reset,
     segment,
     team_material,
+    trim_material,
     tube,
 )
 
@@ -67,6 +74,7 @@ def make_materials():
         wood=material('wood', WOOD, roughness=0.85),
         feathers=material('feathers', FEATHERS, roughness=0.95),
         eyes=material('eyes', EYES, roughness=0.6),
+        trim=trim_material(),  # fittings, recoloured by star
     )
 
 
@@ -227,10 +235,11 @@ ARROWS = [(-0.024, -0.008, 0.15), (0.024, -0.004, 0.13), (0.0, 0.018, 0.17), (0.
 
 def quiver():
     # Slung across his back, its mouth over his right shoulder, so he can draw from it: leather, bound
-    # in bone at the mouth.
+    # in metal at the mouth and round the foot.
     axis = (QUIVER_TOP - QUIVER_BOTTOM).normalized()
     stations = [(0, 0.04), (0.84, 0.048), (0.87, 0.056), (1, 0.056)]
-    tube('quiver', QUIVER_BOTTOM, QUIVER_TOP, stations, [M['leather'], M['bone']], [0, 0, 1], n=6)
+    tube('quiver', QUIVER_BOTTOM, QUIVER_TOP, stations, [M['leather'], M['trim']], [0, 0, 1], n=6)
+    tube('quiver-band', QUIVER_BOTTOM, QUIVER_TOP, [(0.1, 0.048), (0.19, 0.049)], M['trim'], n=6)
     ring = segment(QUIVER_BOTTOM, QUIVER_TOP, [(0, 0.04)], 6)[0]
     verts = ring + [QUIVER_BOTTOM - 0.03 * axis]
     part('quiver-end', verts, [(i, (i + 1) % 6, 6) for i in range(6)], M['leather'], inside=QUIVER_BOTTOM)
@@ -274,6 +283,20 @@ def h(x, y, z):
     return HEAD + HEAD_SCALE * V(x, y, z)
 
 
+def lock_ring(root, tip):
+    """The metal ring that binds a scalp-lock, from its four root points to its tip, near the root."""
+    middle = sum(root, Vector()) / len(root)
+    rings = []
+    for f in LOCK_RING:
+        c = middle.lerp(tip, f)
+        rings.append([c + 1.35 * (p.lerp(tip, f) - c) for p in root])
+    verts, faces, _ = loft(rings)
+    part('lock-ring', verts, faces, M['trim'], inside=nearest_on_path([middle, tip]))
+
+
+LOCK_RING = (0.12, 0.3)  # where the ring starts and ends, from the root of the lock to its tip
+
+
 def head():
     before = set(bpy.context.scene.objects)
     rings = []
@@ -297,6 +320,7 @@ def head():
     root = [h(0.035, 0.0, 0.27), h(0, 0.06, 0.265), h(-0.035, 0.0, 0.27), h(0, -0.045, 0.265)]
     verts = root + [h(0, 0.21, 0.36)]
     part('scalp-lock', verts, [(i, (i + 1) % 4, 4) for i in range(4)], M['hair'], inside=h(0, 0.02, 0.25))
+    lock_ring(root, verts[4])
 
     def front(band):
         tris = []
@@ -397,6 +421,17 @@ def loincloth():
         part(f'badge-eye-{s}', verts, [(0, 1, 2)], M['eyes'], outward=V(0, -1, 0))
 
 
+def belt_buckle():
+    # A crude square buckle on the front of the belt, over the top of the front flap. The belt leans
+    # forward with his body, so the buckle faces a little down.
+    out = V(0, -1, -0.17).normalized()
+    up = V(0, -0.17, 1).normalized()
+    box('buckle', BUCKLE, [out, V(1, 0, 0), up], (0.014, 0.034, 0.028), M['trim'], 0.75)
+
+
+BUCKLE = V(0, -0.15, 0.478)  # the middle of the buckle
+
+
 # Bow, arrow and arms ---------------------------------------------------------------------------------
 
 # He draws to under his chin in an archer's open stance, his chest turned to his right and the arrow
@@ -422,6 +457,7 @@ STAVE = [
     (0.33, 0.02, 0.017, 0.014),  # and curls forward in a horn ear
 ]
 TIP = (0.34, 0.085)
+FERRULE = (0.05, 0.085)  # where the ferrules start and end, up the limb from the middle of the grip
 
 
 def bow_axes():
@@ -464,6 +500,21 @@ def bow():
     path = [at(-TIP[0], TIP[1])] + centres + [at(*TIP)]
     part('bow', verts, faces, [M['horn'], M['leather']], face_mats, inside=nearest_on_path(path))
 
+    # Metal ferrules either side of the grip, just clear of his fist.
+    (u0, w0, t0, h0), (u1, w1, t1, h1) = STAVE[0], STAVE[1]
+    for s in (-1, 1):
+        along = (at(s * u1, w1) - at(s * u0, w0)).normalized()
+        normal = side.cross(along).normalized()
+        rings = []
+        for u in FERRULE:
+            k = (u - u0) / (u1 - u0)
+            c = at(s * u, w0 + k * (w1 - w0))
+            t, hh = t0 + k * (t1 - t0) + 0.006, h0 + k * (h1 - h0) + 0.006
+            rings.append([c + t * normal, c + hh * side, c - t * normal, c - hh * side])
+        verts, faces, _ = loft(rings)
+        ends = [at(s * u, w0) for u in FERRULE]
+        part(f'ferrule-{s}', verts, faces, M['trim'], inside=nearest_on_path(ends))
+
     # The string, from where it leaves each limb back to the nock.
     u, w, t, _ = STAVE[3]
     for name, end in (('upper', at(u, w - t)), ('lower', at(-u, w - t))):
@@ -495,6 +546,7 @@ def arm(side, shoulder, fist, pole, fist_up):
     tube(f'upper-arm-{side}', shoulder, elbow, [(-0.1, 0.072), (1.08, 0.06)], M['skin'])
     tube(f'forearm-{side}', elbow, wrist, [(-0.12, 0.058), (0.4, 0.066), (1.0, 0.06)],
          [M['skin'], M['iron']], [0, 1])
+    tube(f'vambrace-band-{side}', elbow, wrist, [(0.4, 0.073), (0.52, 0.072)], M['trim'])
     ahead = (fist - elbow).normalized()
     up = (Vector(fist_up) - Vector(fist_up).dot(ahead) * ahead).normalized()
     box(f'fist-{side}', fist, [ahead, up, ahead.cross(up)], (0.046, 0.05, 0.05), M['skin'], 0.85)
@@ -520,6 +572,7 @@ def main():
     hunch(new_objects(before))
     head()
     loincloth()
+    belt_buckle()
     bow()
     arms()
     finish('gorbag')

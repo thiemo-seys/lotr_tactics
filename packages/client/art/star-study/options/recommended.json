@@ -1,0 +1,40 @@
+{
+ "units": [
+  {
+   "name": "Frodo",
+   "models": [
+    "../models/frodo.glb",
+    "../models/frodo.glb",
+    "../models/frodo-3.glb"
+   ]
+  },
+  {
+   "name": "Aragorn",
+   "models": [
+    "../models/aragorn.glb",
+    "../models/aragorn.glb",
+    "../models/aragorn-3.glb"
+   ]
+  },
+  {
+   "name": "Éomer",
+   "rider": true,
+   "models": [
+    "../models/eomer.glb",
+    "../models/eomer.glb",
+    "../models/eomer-3.glb"
+   ]
+  }
+ ],
+ "grow": [
+  100,
+  110,
+  110
+ ],
+ "riderGrow": [
+  100,
+  102,
+  102
+ ],
+ "fit": true
+}

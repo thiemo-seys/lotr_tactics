@@ -8,6 +8,10 @@ high boots. His cloak is the team colour, its hood thrown back over his shoulder
 is a Captain: he holds the reforged sword high to rally his allies, and in his other hand the
 standard Arwen made for him, the White Tree on black.
 
+His fittings, the belt buckle, Andúril's cross-guard and the standard's spear-point, use `trim`,
+which the client colours iron, silver or gold by star level (docs/viewer-spec.md section 4, "Star
+levels"). His 2★ model is aragorn-2.py and his 3★ model aragorn-3.py.
+
     blender --background --factory-startup --python-exit-code 1 --python aragorn.py [-- <out.glb>]
 
 Coordinates are Blender's: z up, the model faces -Y, so his right hand is at -X.
@@ -27,8 +31,8 @@ from kit import (  # noqa: E402
     LEATHER,
     MAIL,
     STEEL,
-    WOOD,
     V,
+    WOOD,
     box,
     ellipse,
     finish,
@@ -39,6 +43,7 @@ from kit import (  # noqa: E402
     reset,
     segment,
     team_material,
+    trim_material,
     tube,
 )
 
@@ -65,6 +70,8 @@ def make_materials():
         cloth=material('cloth', CLOTH, roughness=0.9),
         wood=material('wood', WOOD, roughness=0.85),
         eyes=material('eyes', EYES, roughness=0.6),
+        # Fittings: the renderer recolours this iron, silver or gold by star level.
+        trim=trim_material(),
     )
 
 
@@ -192,7 +199,7 @@ def torso():
 
     # The belt buckle, its face smaller than its back so the edges read as a bevel.
     axes = [V(0, -1, 0), V(1, 0, 0), V(0, 0, 1)]
-    box('buckle', V(0, -0.138, 0.73), axes, (0.014, 0.032, 0.03), M['steel'], 0.75)
+    box('buckle', V(0, -0.138, 0.73), axes, (0.014, 0.032, 0.03), M['trim'], 0.75)
 
 
 # Head --------------------------------------------------------------------------------------------
@@ -402,7 +409,7 @@ def anduril():
 
     # The cross-guard on top of his fist. The grip and pommel would be hidden in his fist and wrist,
     # since he holds the sword up along his forearm, so they are left out.
-    box('guard', guard, [along, across, thick], (0.017, 0.112, 0.022), M['steel'], 0.8)
+    box('guard', guard, [along, across, thick], (0.017, 0.112, 0.022), M['trim'], 0.8)
 
     arm('right', R_SHOULDER, R_ELBOW, R_WRIST, R_FIST, along)
 
@@ -425,7 +432,7 @@ def standard():
     ring = segment(top, top + V(0, 0, 1), [(0, 0.032)], 4, 0)[0]
     verts = ring + [top + V(0, 0, 0.1), top - V(0, 0, 0.03)]
     faces = [(i, (i + 1) % 4, 4) for i in range(4)] + [(i, (i + 1) % 4, 5) for i in range(4)]
-    part('finial', verts, faces, M['steel'], inside=top + V(0, 0, 0.02))
+    part('finial', verts, faces, M['trim'], inside=top + V(0, 0, 0.02))
     tube('bar', POLE + V(-0.19, -0.012, BAR), POLE + V(0.19, -0.012, BAR), [(0, 0.014), (1, 0.014)],
          M['wood'], n=4, phase=45)
 

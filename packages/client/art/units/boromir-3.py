@@ -1,0 +1,613 @@
+"""Boromir's last stand at Parth Galen: Boromir's 3★ model, the book moment (docs/viewer-spec.md
+section 4, "Star levels").
+
+Built on boromir.py, the same Boromir: a Man of heroic proportions with dark hair, in the black of
+Gondor over a long mail coat, the pale baldric across his breast and the team colour on his mantle
+and cloak. In the woods of Parth Galen, holding off the Uruk-hai from Merry and Pippin, he "had
+blown his great horn till the woods rang", and at first the Orcs drew back (The Two Towers, III 3);
+when Aragorn found him he was "pierced with many black-feathered arrows" (III 1). Here he stands at
+that height:
+- the Horn of Gondor at his lips, sounding, in his left hand, its bell high beside his head;
+- his round shield brought round from his back onto his left arm, its face to the foe, with
+  black-feathered Orc arrows standing in it rather than in him;
+- his long sword raised in his right hand, its outer edge notched;
+- his cloak long, to his ankles, and swept back behind him, so that with the shield off his back,
+  his back is all team colour;
+- the belt Galadriel gave him (The Fellowship of the Ring, II 8), which Faramir saw on him "as it
+  were of linked golden leaves" (The Two Towers, IV 5), in place of his leather belt.
+His fittings, the shield's rim and boss, the horn's tip and bands, the sword's guard and pommel, the
+baldric's mount and the buckle, use `trim`, as on the 1★.
+
+    blender --background --factory-startup --python-exit-code 1 --python boromir-3.py [-- <out.glb>]
+
+Coordinates are Blender's: z up, the model faces -Y, so his right hand is at -X.
+"""
+
+import math
+import os
+import sys
+
+from mathutils import Matrix, Vector
+from mathutils.bvhtree import BVHTree
+
+sys.path.insert(0, os.path.join(os.path.dirname(os.path.abspath(__file__)), '..'))
+from kit import (  # noqa: E402
+    BOOK_BUDGET,
+    BOOTS,
+    CLOTH,
+    EYES,
+    LEATHER,
+    MAIL,
+    STEEL,
+    V,
+    bent_tube,
+    box,
+    cone,
+    ellipse,
+    finish,
+    frame,
+    loft,
+    material,
+    nearest_on_line,
+    newell,
+    on_surface,
+    part,
+    path_rings,
+    reset,
+    team_material,
+    trim_material,
+    tube,
+    wind,
+)
+
+# Boromir's own colours (sRGB); the rest come from the kit.
+SKIN = 0xD9A280  # fair
+HAIR = 0x3A2B22  # dark brown
+SABLE = 0x2B2B30  # the black of Gondor, as Aragorn's: his surcoat and the face of his shield
+IVORY = 0xD8C9A3  # the horn of a wild ox of Araw
+HOLLOW = 0x3B2E24  # the shadowed inside of its bell
+BUFF = 0xC4B59A  # the pale leather of the baldric
+GOLD = 0xBE9A4C  # the belt of gold Galadriel gave him: muted, like the trim at 3 stars
+ARROW = 0x4F3B2A  # the Orc arrows' dark shafts
+FEATHERS = 0x1F1C1C  # and their black feathers
+
+M = {}  # materials by name, made once the scene is reset
+
+
+def make_materials():
+    M.update(
+        team=team_material(),
+        sable=material('sable', SABLE, roughness=0.9),
+        steel=material('steel', STEEL, roughness=0.5, metallic=0.1),
+        mail=material('mail', MAIL, roughness=0.8, metallic=0.05),
+        skin=material('skin', SKIN, roughness=0.85),
+        hair=material('hair', HAIR, roughness=0.9),
+        leather=material('leather', LEATHER, roughness=0.85),
+        baldric=material('baldric', BUFF, roughness=0.8),
+        boots=material('boots', BOOTS, roughness=0.9),
+        cloth=material('cloth', CLOTH, roughness=0.9),
+        horn=material('horn', IVORY, roughness=0.6),
+        hollow=material('hollow', HOLLOW, roughness=0.9),
+        eyes=material('eyes', EYES, roughness=0.6),
+        gold=material('gold', GOLD, roughness=0.5, metallic=0.1),
+        shaft=material('shaft', ARROW, roughness=0.85),
+        feathers=material('feathers', FEATHERS, roughness=0.95),
+        # Fittings: the client recolours this iron, silver or gold by star level.
+        trim=trim_material(),
+    )
+
+
+# Legs --------------------------------------------------------------------------------------------
+
+# Feet apart and planted, the sword-side (right) foot forward, toes turned out a little.
+R_HIP, R_ANKLE, R_YAW = V(-0.095, -0.01, 0.66), V(-0.165, -0.1, 0.11), -10
+L_HIP, L_ANKLE, L_YAW = V(0.095, 0.02, 0.66), V(0.165, 0.095, 0.11), 16
+
+# A tall boot. The foot from the sole up, in its own frame (toes towards -y): the height of each ring
+# and the right half of it, side, heel and toe, mirrored counter-clockwise by leg().
+FOOT = [
+    (0.0, [(0.074, -0.016), (0.062, 0.082), (0.056, -0.172)]),  # the sole
+    (0.07, [(0.074, -0.008), (0.064, 0.084), (0.056, -0.132)]),  # the instep slopes back from the toe
+    (0.17, [(0.068, 0.004), (0.06, 0.068), (0.054, -0.054)]),  # round the ankle
+]
+# Then up the shin to below the knee, round the leg: the height and the radius of each ring.
+SHAFT = [(0.40, 0.08)]
+
+
+def leg(side, hip, ankle, yaw):
+    turn = Matrix.Rotation(math.radians(yaw), 3, 'Z')
+    at = V(ankle.x, ankle.y, 0)
+    up = hip - ankle
+
+    def axis(z):
+        return ankle + up * ((z - ankle.z) / up.z) if z > ankle.z else V(at.x, at.y, z)
+
+    rings = []
+    for z, (s, heel, toe) in FOOT:
+        outline = [s, heel, (-heel[0], heel[1]), (-s[0], s[1]), (-toe[0], toe[1]), toe]
+        rings.append([at + turn @ V(x, y, z) for x, y in outline])
+    for z, r in SHAFT:
+        c = axis(z)
+        rings.append([c + turn @ V(r * math.cos(a), r * math.sin(a), 0)
+                      for a in (math.radians(60 * i) for i in range(6))])
+    verts, faces, _ = loft(rings)
+    part(f'boot-{side}', verts, faces, M['boots'], inside=lambda c: axis(c.z))
+    # The thigh, in dark breeches, from the hip into the boot.
+    tube(f'thigh-{side}', hip, axis(0.38), [(0, 0.095), (1, 0.074)], M['cloth'])
+
+
+def legs():
+    leg('right', R_HIP, R_ANKLE, R_YAW)
+    leg('left', L_HIP, L_ANKLE, L_YAW)
+
+
+# Body --------------------------------------------------------------------------------------------
+
+# The surcoat over the mail as a barrel of octagons: z, half-width, half-depth and centre y. His mail
+# coat is long, showing below the surcoat's hem to his knees, and the belt is the band between the
+# fourth and fifth rings. A broad chest: he is the strongest of the Men of the Fellowship.
+TORSO = [
+    (0.44, 0.226, 0.192, 0.0),  # the mail's hem
+    (0.505, 0.24, 0.205, 0.0),  # the surcoat's hem, flared over the thighs
+    (0.645, 0.196, 0.15, 0.0),  # hips
+    (0.70, 0.184, 0.138, -0.004),  # belt, lower edge
+    (0.76, 0.19, 0.14, -0.004),  # belt, upper edge
+    (0.89, 0.24, 0.165, -0.01),  # chest
+    (0.985, 0.232, 0.142, 0.0),  # shoulders
+    (1.0, 0.07, 0.066, 0.01),  # neck, under the collar
+]
+TORSO_BANDS = [2, 0, 0, 1, 0, 0, 0]  # the mail, then the surcoat, except the belt, which is gold
+BELT = 3  # the ring at the belt's lower edge
+LEAF = (0.5, 0.024, 0.008)  # each leaf's half-length, as a share of its face's width; its half-height; its rise
+
+
+def torso():
+    """Builds the body and returns it, to lay the baldric on."""
+    rings = [ellipse(0, cy, z, rx, ry, 8, 22.5) for z, rx, ry, cy in TORSO]
+    verts, faces, bands = loft(rings)
+    face_mats = [TORSO_BANDS[b] for b in bands]
+    body = part('torso', verts, faces, [M['sable'], M['gold'], M['mail']], face_mats,
+                inside=lambda c: V(0, 0, c.z))
+
+    # The belt of Lórien, "as it were of linked golden leaves": a leaf on each face of it from his
+    # sides to the buckle in front, each a lozenge with a raised rib, tip to tip. Behind, the cloak
+    # hides it.
+    length, height, rise = LEAF
+    low, high = rings[BELT], rings[BELT + 1]
+    for i in range(8):
+        a, b = low[i], low[(i + 1) % 8]
+        c, d = high[(i + 1) % 8], high[i]
+        middle = (a + b + c + d) / 4
+        if (middle.y < -0.1 and abs(middle.x) < 0.05) or middle.y > 0.05:
+            continue  # the buckle, or under the cloak
+        along = (b + c - a - d) / 2
+        up = V(0, 0, 1)
+        out = along.cross(up).normalized()
+        if out.dot(V(middle.x, middle.y, 0)) < 0:
+            out = -out
+        centre = middle + 0.003 * out
+        tips = [centre - length * along, centre - height * up, centre + length * along, centre + height * up]
+        leaf = tips + [centre + rise * out]
+        part(f'leaf-{i}', leaf, [(0, 1, 4), (1, 2, 4), (2, 3, 4), (3, 0, 4)], M['gold'], outward=out)
+
+    # The belt buckle, its face smaller than its back so the edges read as a bevel.
+    axes = [V(0, -1, 0), V(1, 0, 0), V(0, 0, 1)]
+    box('buckle', V(0, -0.142, 0.73), axes, (0.014, 0.032, 0.03), M['trim'], 0.75)
+    return body
+
+
+def strap(name, centres, half, mat, bodies, lift=0.008):
+    """A flat strap along the line through `centres`, laid on the surfaces of `bodies`: each point is
+    moved to `lift` off the nearest surface, with the strap's width square to the line and to the
+    surface there, and then each quad is pulled out wherever it would sink into a ridge between its
+    corners. Returns the strap's vertices, two to a point, the first of each on the same side."""
+    points, polygons = [], []
+    for body in bodies:
+        base = len(points)
+        points += [v.co.copy() for v in body.data.vertices]
+        polygons += [[base + i for i in p.vertices] for p in body.data.polygons]
+    tree = BVHTree.FromPolygons(points, polygons)
+
+    def off(p):
+        """How far p is in front of the nearest surface, and that surface's normal."""
+        near, normal, _, _ = tree.find_nearest(p)
+        return (p - near).dot(normal), normal
+
+    centres = [Vector(c) for c in centres]
+    verts = []
+    for k, c in enumerate(centres):
+        near, normal, _, _ = tree.find_nearest(c)
+        ahead = (centres[min(k + 1, len(centres) - 1)] - centres[max(k - 1, 0)]).normalized()
+        across = ahead.cross(normal).normalized()
+        middle = near + lift * normal
+        verts += [middle + half * across, middle - half * across]
+    faces = [(2 * k, 2 * k + 1, 2 * k + 3, 2 * k + 2) for k in range(len(centres) - 1)]
+    for _ in range(4):
+        for face in faces:
+            corners = [verts[i] for i in face]
+            samples = corners + [(corners[i] + corners[(i + 1) % 4]) / 2 for i in range(4)]
+            samples.append(sum(corners, Vector()) / 4)
+            for p in samples:
+                gap, normal = off(p)
+                if gap < lift * 0.75:
+                    for i in face:
+                        verts[i] += (lift - gap) * normal
+                    break
+    outward = [off(sum((verts[i] for i in f), Vector()) / 4)[1] for f in faces]
+    wound = [f if newell([verts[i] for i in f]).dot(n) > 0 else tuple(reversed(f)) for f, n in zip(faces, outward)]
+    part(name, verts, wound, mat)
+    return verts
+
+
+# The baldric's line, from under the cloak at his left hip up across his breast, over the mantle and
+# his right shoulder, and down his back under the cloak: it bore the horn, now at his lips, and the
+# shield is off his back. Each point is laid on the body or the mantle by strap().
+BALDRIC = [
+    V(0.215, 0.05, 0.625),  # round his left hip, under the edge of the cloak
+    V(0.2, -0.06, 0.64),
+    V(0.15, -0.13, 0.665),  # the left hip
+    V(0.085, -0.15, 0.735),
+    V(0.02, -0.155, 0.81),  # the breast, under the mantle's hem
+    V(-0.03, -0.2, 0.866),  # over the mantle's hem
+    V(-0.09, -0.17, 0.93),
+    V(-0.14, -0.1, 0.99),
+    V(-0.165, 0.0, 1.04),  # over the shoulder, by his neck
+    V(-0.16, 0.1, 1.02),
+    V(-0.15, 0.17, 0.96),
+    V(-0.12, 0.17, 0.85),  # under the mantle's hem and the cloak
+]
+
+
+def baldric(bodies):
+    verts = strap('baldric', BALDRIC, 0.028, M['baldric'], bodies)
+    # A metal mount on it over his right breast, between its seventh and eighth points: a lozenge, a
+    # little proud of it.
+    a, b, c, d = verts[12:16]
+    centre = (a + b + c + d) / 4
+    along = ((c + d) - (a + b)).normalized()
+    side = (a - b).normalized()
+    out = along.cross(side)
+    if out.y > 0:
+        out = -out
+    centre += 0.004 * out
+    verts = [centre + 0.04 * along, centre + 0.033 * side, centre - 0.04 * along, centre - 0.033 * side,
+             centre + 0.008 * out]
+    part('mount', verts, [(0, 1, 4), (1, 2, 4), (2, 3, 4), (3, 0, 4)], M['trim'], outward=out)
+
+
+# Head --------------------------------------------------------------------------------------------
+
+# The head as rings of eight from the neck up. Each ring is z, then the left half, mirrored to the
+# right: the side, the back corner, the back's y, the front corner and the front's y. A strong jaw.
+HEAD = [
+    (1.03, (0.08, 0.012), (0.058, 0.064), 0.078, (0.056, -0.05), -0.062),  # the neck, in the collar
+    (1.085, (0.104, 0.004), (0.074, 0.076), 0.092, (0.076, -0.09), -0.116),  # under the jaw; the chin
+    (1.16, (0.12, -0.002), (0.093, 0.088), 0.106, (0.09, -0.1), -0.13),  # the mouth
+    (1.245, (0.128, 0.002), (0.102, 0.096), 0.118, (0.096, -0.104), -0.126),  # cheekbones and eyes
+    (1.315, (0.13, 0.008), (0.104, 0.102), 0.124, (0.094, -0.108), -0.127),  # the brow
+    (1.35, (0.128, 0.011), (0.102, 0.102), 0.124, (0.088, -0.102), -0.118),  # the hairline
+    (1.39, (0.104, 0.016), (0.084, 0.09), 0.108, (0.072, -0.082), -0.092),  # the top of the head
+]
+CROWN = V(0, 0.018, 1.428)
+# Which faces of each band are skin, by their place round the ring: 4 to 7 are his right side, the
+# right and left of his face and his left side; the rest are hair.
+SKIN_FACES = [{4, 5, 6, 7}, {4, 5, 6, 7}, {4, 5, 6, 7}, {5, 6}, {5, 6}, set()]
+
+
+def head_ring(z, side, back_corner, back_y, front_corner, front_y):
+    (sx, sy), (bx, by), (fx, fy) = side, back_corner, front_corner
+    return [V(sx, sy, z), V(bx, by, z), V(0, back_y, z), V(-bx, by, z), V(-sx, sy, z), V(-fx, fy, z),
+            V(0, front_y, z), V(fx, fy, z)]
+
+
+def head():
+    rings = [head_ring(*r) for r in HEAD]
+    verts, faces, bands = loft(rings)
+    face_mats = [0 if i % 8 in SKIN_FACES[b] else 1 for i, b in zip(range(len(faces)), bands)]
+    apex, last = len(verts), (len(rings) - 1) * 8
+    verts.append(CROWN)
+    faces += [(last + i, last + (i + 1) % 8, apex) for i in range(8)]
+    face_mats += [1] * 8
+    part('head', verts, faces, [M['skin'], M['hair']], face_mats, inside=V(0, 0.0, 1.22))
+
+    # The planes of his face, the two either side of the middle, for laying details on.
+    face = []
+    for r in range(1, 4):
+        lo, hi = rings[r], rings[r + 1]
+        for a, b in ((5, 6), (6, 7)):
+            face += [(lo[a], lo[b], hi[b]), (lo[a], hi[b], hi[a])]
+
+    # Grey eyes under level brows, laid just proud of the face.
+    for s in (-1, 1):
+        corners = [(s * 0.024, 1.27), (s * 0.08, 1.274), (s * 0.052, 1.252)]
+        verts = [V(x, on_surface(face, x, z) - 0.004, z) for x, z in corners]
+        part(f'eye-{s}', verts, [(0, 1, 2)], M['eyes'], outward=V(0, -1, 0))
+
+    # A firm mouth, a short dark line.
+    corners = [(-0.034, 1.152), (0, 1.156), (0.034, 1.152), (0.028, 1.145), (0, 1.148), (-0.028, 1.145)]
+    verts = [V(x, on_surface(face, x, z) - 0.003, z) for x, z in corners]
+    part('mouth', verts, [(0, 1, 4, 5), (1, 2, 3, 4)], M['eyes'], outward=V(0, -1, 0))
+
+    # A straight, noble nose from under the brow to its tip.
+    top, tip = V(0, -0.12, 1.292), V(0, -0.164, 1.198)
+    left, right, under = V(-0.028, -0.114, 1.196), V(0.028, -0.114, 1.196), V(0, -0.124, 1.184)
+    verts = [top, tip, left, right, under]
+    part('nose', verts, [(0, 2, 1), (0, 1, 3), (2, 4, 1), (4, 3, 1)], M['skin'], inside=V(0, -0.08, 1.24))
+
+    # Brows: a bar jutting over the eyes, level, proud rather than frowning.
+    sections = [
+        [V(x, y, 1.32 + dz), V(x, y - 0.024, 1.303 + dz), V(x, y + 0.004, 1.288 + dz)]
+        for x, y, dz in ((-0.096, -0.09, 0.004), (0, -0.122, -0.004), (0.096, -0.09, 0.004))
+    ]
+    verts, faces, _ = loft(sections)
+    faces += [(0, 1, 2), (6, 7, 8)]
+    part('brows', verts, faces, M['hair'], inside=V(0, -0.07, 1.3))
+
+
+def hair():
+    # Dark hair to his collar, fuller than Aragorn's at the ends, down the back and sides of his head.
+    # Each level runs round him from just in front of his left ear, past the back, to his right.
+    angles = [math.radians(a) for a in (-15, 20, 55, 90, 125, 160, 195)]
+    top = [(0.138, -0.034, 1.35), (0.137, 0.046, 1.362), (0.092, 0.116, 1.376), (0, 0.132, 1.385)]
+    levels = [  # half-width, half-depth, centre y and the height of each point
+        (0.15, 0.142, 0.006, [1.18, 1.17, 1.165, 1.16, 1.165, 1.17, 1.18]),
+        (0.184, 0.176, 0.034, [1.1, 1.055, 1.07, 1.04, 1.07, 1.055, 1.1]),
+    ]
+    rings = [[V(*p) for p in top] + [V(-x, y, z) for x, y, z in reversed(top[:-1])]]
+    rings += [[V(rx * math.cos(a), cy + ry * math.sin(a), z) for a, z in zip(angles, zs)] for rx, ry, cy, zs in levels]
+    verts, faces, _ = loft(rings, closed=False)
+    part('hair', verts, faces, M['hair'], inside=lambda c: V(0, 0.0, c.z))
+
+
+# Team colour: the mantle and the cloak ------------------------------------------------------------
+
+
+def mantle():
+    # Eight points round the neck and the shoulders, starting at his left shoulder (+X); the front
+    # dips at his throat and the back rises behind his neck.
+    neck_z = [1.06, 1.075, 1.09, 1.075, 1.06, 1.035, 1.015, 1.035]
+    neck = ellipse(0, 0.012, 0, 0.098, 0.094, 8, 0, neck_z)
+    dome = ellipse(0, 0.01, 0, 0.235, 0.172, 8, 0, [z - 0.045 for z in neck_z])
+    shoulder_z = [0.955, 0.965, 0.975, 0.965, 0.955, 0.94, 0.925, 0.94]
+    shoulder = ellipse(0, 0.008, 0, 0.31, 0.21, 8, 0, shoulder_z)
+    hem = ellipse(0, 0.008, 0, 0.3, 0.205, 8, 0, [z - 0.07 for z in shoulder_z])
+    verts, faces, _ = loft([hem, shoulder, dome, neck])
+    return part('mantle', verts, faces, M['team'], inside=V(0, 0.01, 0.9))
+
+
+def cloak():
+    # His long cloak, down his back to his ankles and swept back behind him, in five folds, the hem
+    # lowest in the middle; with the shield on his arm it is all of his back. Each level: z at the
+    # middle and at the edges, half-width, half-depth, centre y, how far short of the sides it stops
+    # (degrees) and how deep the folds are.
+    levels = [
+        (0.94, 0.94, 0.275, 0.18, 0.02, 24, 0.0),
+        (0.64, 0.67, 0.318, 0.25, 0.045, 12, 0.035),
+        (0.37, 0.43, 0.36, 0.3, 0.12, 4, 0.055),
+        (0.12, 0.22, 0.39, 0.33, 0.23, 0, 0.07),
+    ]
+    rings = []
+    for middle, edge, rx, ry, cy, spread, fold in levels:
+        ring = []
+        for i in range(11):
+            a = math.radians(spread + (180 - 2 * spread) * i / 10)
+            k = 1 + (fold / ry if i % 2 else 0)
+            z = edge + (middle - edge) * math.sin(a) ** 2
+            ring.append(V(k * rx * math.cos(a), cy + k * ry * math.sin(a), z))
+        rings.append(ring)
+    verts, faces, _ = loft(rings, closed=False)
+    part('cloak', verts, faces, M['team'], inside=lambda c: V(0, 0, c.z))
+
+
+# The round shield, brought round onto his left arm, with black-feathered arrows standing in it ----
+
+SHIELD_FACE = V(0.5, -0.86, 0.1)  # the way its face looks: forward and out to his left, a little up
+SHIELD_UP = V(0, 0, 1)
+# Where its middle is from his left elbow, which is behind its upper part: along the face towards its
+# outer edge, up it, and out from it.
+SHIELD_FROM_ELBOW = (0.1, -0.09, 0.085)
+# The arrows in its face: where each stands, as its distance from the middle and the angle round
+# from the shield's top towards its outer edge (degrees), the way it leans off square to the face
+# (towards the shield's outer edge and its top) and how far it stands out.
+ARROWS = [
+    (0.12, 30, 0.45, 0.35, 0.3),
+    (0.16, 150, 0.3, -0.45, 0.27),
+    (0.1, 300, -0.15, 0.5, 0.29),
+    (0.17, 85, 0.65, 0.05, 0.28),
+    (0.15, 215, -0.1, -0.2, 0.25),
+]
+FLETCH = (0.085, 0.03)  # how long the feathers are along the shaft, and how far they stand out
+
+
+def shield():
+    # Built facing -Y round the origin, as one profile turned round the axis: from the edge, over the
+    # raised metal rim, down the black face to the metal boss, then turned onto his arm. The rim is a
+    # ridge, so no one point is inside every face: the profile is wound as a whole instead.
+    n = 10
+    profile = [  # radius, y
+        (0.25, 0.0),  # outer edge
+        (0.243, -0.032),  # crest of the rim
+        (0.214, -0.022),  # inner edge of the rim, where the face starts
+        (0.076, -0.04),  # foot of the boss
+        (0.056, -0.086),  # shoulder of the boss
+    ]
+    band_mats = [1, 1, 0, 1]  # sable, trim
+
+    def ring(r, y):
+        angles = (math.tau * (i + 0.5) / n for i in range(n))
+        return [V(r * math.cos(a), y, r * math.sin(a)) for a in angles]
+
+    verts, faces, bands = loft([ring(r, y) for r, y in profile])
+    face_mats = [band_mats[b] for b in bands]
+    apex, last = len(verts), (len(profile) - 1) * n
+    verts.append(V(0, -0.102, 0))
+    faces += [(last + i, last + (i + 1) % n, apex) for i in range(n)]
+    face_mats += [1] * n
+    faces.append(tuple(reversed(range(n))))  # the leather-covered boards, wound to match the rim
+    face_mats.append(2)
+    if newell([verts[i] for i in faces[-2]]).y > 0:  # the boss's tip must face outwards
+        faces = [tuple(reversed(f)) for f in faces]
+    out = SHIELD_FACE.normalized()
+    top = (SHIELD_UP - SHIELD_UP.dot(out) * out).normalized()
+    edge = top.cross(out)  # across the face, towards its outer edge
+    turn = Matrix((edge, -out, top)).transposed()  # local x, y and z to the shield's own axes
+    along, up, off = SHIELD_FROM_ELBOW
+    centre = elbow(L_SHOULDER, horn_at(HORN_GRIP)[0], L_POLE) + along * edge + up * top + off * out
+    verts = [centre + turn @ v for v in verts]
+    part('shield', verts, faces, [M['sable'], M['trim'], M['leather']], face_mats)
+
+    for k, (r, angle, lean_out, lean_up, length) in enumerate(ARROWS):
+        a = math.radians(angle)
+        base = centre + turn @ V(r * math.sin(a), -0.03, r * math.cos(a))
+        ahead = (out + lean_out * edge + lean_up * top).normalized()
+        arrow(f'arrow-{k}', base - 0.02 * ahead, ahead, length)
+
+
+def arrow(name, start, ahead, length):
+    """An Orc arrow standing out of a surface: a shaft with black feathers at its end."""
+    end = start + length * ahead
+    tube(name, start, end, [(0, 0.008), (1, 0.008)], M['shaft'], n=3)
+    long, high = FLETCH
+    u, v = frame(ahead)
+    for i, across in enumerate((u, v)):
+        verts = [end - 0.008 * ahead + high * across, end - 0.008 * ahead - high * across,
+                 end - long * ahead - 0.35 * high * across, end - long * ahead + 0.35 * high * across]
+        part(f'{name}-feathers-{i}', verts, [(0, 1, 2, 3)], M['feathers'], outward=across.cross(ahead))
+
+
+# Arms --------------------------------------------------------------------------------------------
+
+R_SHOULDER, L_SHOULDER = V(-0.225, 0.015, 0.955), V(0.225, 0.015, 0.96)
+UPPER_ARM, FOREARM = 0.21, 0.23  # shoulder to elbow, and elbow to the middle of the fist
+
+
+def elbow(shoulder, fist, pole):
+    """Where the elbow goes for an arm from `shoulder` to `fist`, bent towards `pole`."""
+    d = fist - shoulder
+    reach = min(d.length, UPPER_ARM + FOREARM - 1e-3)
+    along = (UPPER_ARM**2 - FOREARM**2 + reach**2) / (2 * reach)
+    out = math.sqrt(max(UPPER_ARM**2 - along**2, 0.0))
+    d.normalize()
+    bend = (pole - pole.dot(d) * d).normalized()
+    return shoulder + along * d + out * bend
+
+
+def arm(side, shoulder, fist, pole, grip):
+    """A mail sleeve, a steel vambrace and a fist closed round a grip running along `grip`."""
+    bend = elbow(shoulder, fist, pole)
+    wrist = fist + (bend - fist).normalized() * 0.045
+    tube(f'sleeve-{side}', shoulder, bend, [(0, 0.08), (1.1, 0.066)], M['mail'])
+    forearm = [(-0.15, 0.06), (0.4, 0.072), (1.0, 0.062)]
+    tube(f'forearm-{side}', bend, wrist, forearm, [M['mail'], M['steel']], [0, 1])
+    along = Vector(grip).normalized()
+    ahead = wrist - bend
+    ahead = (ahead - ahead.dot(along) * along).normalized()
+    box(f'fist-{side}', fist, [ahead, along, ahead.cross(along)], (0.05, 0.057, 0.055), M['skin'], 0.88)
+
+
+# His long sword, notched, raised in his right hand ----------------------------------------------
+
+R_FIST = V(-0.4, -0.2, 1.0)
+R_POLE = V(-1, 0.4, -0.6)  # the way his right elbow points: out, back and down
+SWORD = V(-0.32, -0.22, 0.92).normalized()
+BLADE, POINT = 0.66, 0.8  # how far the blade runs straight from the guard, and to its point
+NOTCHES = [0.3, 0.55]  # where its outer edge is notched, as fractions of the straight
+NOTCH = (0.024, 0.016)  # how far each notch reaches along the edge either side, and how deep
+
+
+def sword():
+    along = SWORD
+    across = along.cross(V(0, 1, 0)).normalized()  # the edges, the first his outer one
+    thick = across.cross(along)
+    guard = R_FIST + 0.075 * along
+
+    def width(t):
+        return 0.044 + (0.036 - 0.044) * t / BLADE
+
+    # The blade: a flattened diamond in section, narrowing a little to a long point, with notches
+    # hacked in its outer edge.
+    def section(t, cut=0.0):
+        c, w, d = guard + t * along, width(t), 0.012
+        return [c + (w - cut) * across, c + d * thick, c - w * across, c - d * thick]
+
+    rings = [section(0)]
+    reach, deep = NOTCH
+    for f in NOTCHES:
+        t = f * BLADE
+        rings += [section(t - reach), section(t, deep), section(t + reach)]
+    rings.append(section(BLADE))
+    verts, faces, _ = loft(rings)
+    tip, last = len(verts), (len(rings) - 1) * 4
+    verts.append(guard + POINT * along)
+    faces += [(last + i, last + (i + 1) % 4, tip) for i in range(4)]
+    part('blade', verts, faces, M['steel'], inside=nearest_on_line(guard, guard + along))
+
+    # The cross-guard on top of his fist, and the pommel below it.
+    box('guard', guard, [along, across, thick], (0.017, 0.1, 0.022), M['trim'], 0.8)
+    cone('pommel', R_FIST - 0.085 * along, R_FIST - 0.125 * along, 0.03, M['trim'], n=4,
+         back=R_FIST - 0.05 * along)
+
+    arm('right', R_SHOULDER, R_FIST, R_POLE, along)
+
+
+# The Horn of Gondor at his lips, sounding --------------------------------------------------------
+
+# Its centre line, a crescent from the metal-tipped mouthpiece at his lips, out through his fist and
+# up to the bell, high beside his head, which opens upwards, outwards and forwards: the control
+# points of a cubic.
+HORN_CURVE = [V(0.0, -0.15, 1.152), V(0.05, -0.36, 1.12), V(0.36, -0.42, 1.24), V(0.47, -0.3, 1.56)]
+HORN = [  # how far along the curve, the radius, and the material of the band from there
+    (0.0, 0.022, 'trim'),  # the tip
+    (0.08, 0.025, 'horn'),
+    (0.3, 0.038, 'horn'),
+    (0.55, 0.054, 'trim'),  # a band
+    (0.62, 0.058, 'horn'),
+    (0.86, 0.08, 'trim'),  # the rim of the bell
+    (1.0, 0.1, None),
+]
+HORN_GRIP = 0.3  # where his fist holds it
+L_POLE = V(1, 0.1, -0.8)  # the way his left elbow points: out and down, behind the shield
+
+
+def horn_at(t):
+    """The point of the horn's centre line at t, and the way it runs there."""
+    a, b, c, d = HORN_CURVE
+    p = (1 - t) ** 3 * a + 3 * (1 - t) ** 2 * t * b + 3 * (1 - t) * t * t * c + t**3 * d
+    ahead = 3 * (1 - t) ** 2 * (b - a) + 6 * (1 - t) * t * (c - b) + 3 * t * t * (d - c)
+    return p, ahead.normalized()
+
+
+def great_horn():
+    points = [horn_at(t)[0] for t, _, _ in HORN]
+    radii = [r for _, r, _ in HORN]
+    mats = ['trim', 'horn']
+    band_mats = [mats.index(m) for _, _, m in HORN[:-1]]
+    bent_tube('horn', points, radii, [M['trim'], M['horn']], band_mats, n=6, start='cap')
+
+    # The dark hollow of the bell: a shallow funnel inside the rim.
+    bell, ahead = horn_at(1.0)
+    verts = path_rings(points, radii, 6)[-1] + [bell - 0.08 * ahead]
+    faces = wind(verts, [(i, (i + 1) % 6, 6) for i in range(6)], outward=ahead)
+    part('horn-hollow', verts, faces, M['hollow'])
+
+    fist, along = horn_at(HORN_GRIP)
+    arm('left', L_SHOULDER, fist, L_POLE, along)
+
+
+def main():
+    reset()
+    make_materials()
+    legs()
+    body = torso()
+    head()
+    hair()
+    cape = mantle()
+    baldric([body, cape])
+    cloak()
+    shield()
+    sword()
+    great_horn()
+    finish('boromir-3', budget=BOOK_BUDGET)
+
+
+main()

@@ -10,6 +10,12 @@ his head and inside his hex.
 Team colour is on what grows on him: the leaves on his head, the moss over his shoulders and the
 mossy ends of his beard.
 
+An Ent wears no buckles or clasps, so his trim grows on him: patches of lichen on his bark, on the
+plates of his trunk and legs and the back of his head, seen from the front and from behind. They
+use `trim`, which the client colours iron, silver or gold by star level (docs/viewer-spec.md
+section 4, "Star levels"), as lichen grows grey, silver or gold on an old tree. His 2★ model is
+treebeard-2.py and his 3★ model treebeard-3.py.
+
     blender --background --factory-startup --python-exit-code 1 --python treebeard.py [-- <out.glb>]
 
 Coordinates are Blender's: z up, the model faces -Y, so his right hand is at -X.
@@ -23,6 +29,7 @@ from itertools import pairwise
 
 import bpy
 from mathutils import Matrix, Vector
+from mathutils.bvhtree import BVHTree
 
 sys.path.insert(0, os.path.join(os.path.dirname(os.path.abspath(__file__)), '..'))
 from kit import (  # noqa: E402
@@ -39,6 +46,7 @@ from kit import (  # noqa: E402
     part,
     reset,
     team_material,
+    trim_material,
 )
 
 # Treebeard's colours (sRGB). Nothing here may read as blue or red: the team colour is the only
@@ -71,6 +79,8 @@ def make_materials():
         beard=material('beard', BEARD, roughness=0.95),
         stone=material('stone', STONE, roughness=0.9),
         eyes=material('eyes', EYE, roughness=0.5, emission=GLINT, emission_strength=1.0),
+        # Lichen: the renderer recolours this iron, silver or gold by star level.
+        trim=trim_material(),
     )
 
 
@@ -486,10 +496,141 @@ def open_hand():
     arm('left', L_SHOULDER, L_ELBOW, L_WRIST)
 
 
+# Lichen: his trim ----------------------------------------------------------------------------------
+
+# Each patch is a flat, lobed crust on one plate of his bark, longer along the plate than across it:
+# a rosette and a smaller one grown into its side, which make an irregular blotch. It lies in the
+# plane of the plate, a little off it, bridging the furrows beside it as lichen crusts over a crack,
+# and rises with the bark only where the bark rises above that plane, so no ridge pokes through it.
+LICHEN_LIFT = 0.006  # how far it stands off the plate
+LICHEN_DOME = 0.008  # how much higher its middle is: enough to break the light, not a point
+# Each rosette: where its middle is, from the patch's middle (in sizes, along and across), its own
+# size (in sizes), how many points round its edge, and how much lower it lies, so the two never
+# fight. Its edge is irregular and only gently lobed: deep notches would read as a star.
+ROSETTES = [((0.0, 0.0), 1.0, 9, 0.0), ((0.8, 0.0), 0.6, 6, 0.002)]
+LOBES = (1.0, 0.86)  # how far out the points of an edge reach, in turn
+
+
+def surface(name):
+    """A part's faces, for finding the bark under a patch."""
+    data = bpy.data.objects[name].data
+    return BVHTree.FromPolygons([v.co.copy() for v in data.vertices], [tuple(p.vertices) for p in data.polygons])
+
+
+def lichen_patch(name, tree, target, axis, along, size, seed):
+    """A patch of lichen on the bark in `tree`, where a line from `axis` out through `target` meets
+    it: `size` is half its length, which runs along `along`, and half its width, and `seed` gives
+    its outline."""
+    out = (target - axis).normalized()
+    hit, normal, _, _ = tree.ray_cast(target + 0.3 * out, -out)
+    if hit is None:
+        raise RuntimeError(f'{name}: no bark under it')
+    n = normal.normalized() if normal.dot(out) > 0 else -normal.normalized()
+    u = (along - along.dot(n) * n).normalized()
+    v = n.cross(u)
+    jitter = random.Random(seed)
+    spin = Matrix.Rotation(jitter.uniform(0, math.tau), 3, n)  # which way the smaller rosette grows
+
+    def on_bark(p, lift):
+        """`p`, in the plate's plane, lifted off it, or off the bark where the bark is higher."""
+        under, _, _, _ = tree.ray_cast(p + 0.15 * n, -n, 0.3)
+        rise = max(0.0, (under - p).dot(n)) if under is not None else 0.0
+        return p + (rise + lift) * n
+
+    verts, faces = [], []
+    for (du, dv), k, points, sink in ROSETTES:
+        centre = hit + spin @ (du * size[0] * u + dv * size[1] * v)
+        first = len(verts)
+        verts.append(on_bark(centre, LICHEN_LIFT + LICHEN_DOME - sink))
+        for i in range(points):
+            a = math.tau * (i + jitter.uniform(-0.2, 0.2)) / points
+            reach = k * LOBES[i % 2] * jitter.uniform(0.8, 1.06)
+            verts.append(on_bark(centre + reach * (size[0] * math.cos(a) * u + size[1] * math.sin(a) * v),
+                                 LICHEN_LIFT - sink))
+        faces += [(first, first + 1 + i, first + 1 + (i + 1) % points) for i in range(points)]
+    part(name, verts, faces, M['trim'], outward=n)
+
+
+def trunk_plate(z, near):
+    """The middle of the plate of trunk bark at height `z` facing nearest to `near` (degrees
+    counter-clockwise from his left, +X, seen from above; his front is 270): the point, the
+    trunk's axis beside it and the way the plate runs, winding up with the grain."""
+
+    def plates(height):
+        """The middle of each plate at `height`, between the rings of TRUNK, and the axis there."""
+        for (z0, *low), (z1, *high) in pairwise(TRUNK):
+            if z0 <= height <= z1:
+                rx, ry, cy = (a + (b - a) * (height - z0) / (z1 - z0) for a, b in zip(low, high))
+                break
+        turn = math.radians(TWIST * (height - TRUNK[0][0]))
+        edges = [V(rx * math.cos(turn + math.tau * f), cy + ry * math.sin(turn + math.tau * f), height)
+                 for r in range(7) for f in (r / 7, (r + 0.5) / 7)]
+        return [(edges[2 * r] + edges[2 * r + 1]) / 2 for r in range(7)], V(0, cy, height)
+
+    middles, axis = plates(z)
+    facing = V(math.cos(math.radians(near)), math.sin(math.radians(near)), 0)
+    r = max(range(7), key=lambda r: (middles[r] - axis).normalized().dot(facing))
+    along = plates(z + 0.02)[0][r] - plates(z - 0.02)[0][r]
+    return middles[r], axis, along
+
+
+def leg_plate(side, t, near):
+    """The middle of the plate of bark on a leg, `t` of the way from the hip to the ankle, facing
+    nearest to `near` (degrees, as for trunk_plate()): the point, the leg's axis there and the way
+    the plate runs down the leg."""
+    _, hip, knee, ankle, _ = next(leg for leg in LEGS if leg[0] == side)
+    path = [hip, knee, knee.lerp(ankle, 0.55), ankle]
+    edges = path_rings(path, LEG_RADII, [(f / 5, 1.0) for r in range(5) for f in (r, r + 0.5)], phase=10)
+    middles = [[(ring[2 * r] + ring[2 * r + 1]) / 2 for r in range(5)] for ring in edges]
+    k = min(int(t * 3), 2)  # which length of the leg: the thigh, the upper shin or the lower shin
+    s = t * 3 - k
+    axis = path[k].lerp(path[k + 1], s)
+    facing = V(math.cos(math.radians(near)), math.sin(math.radians(near)), 0)
+    points = [middles[k][r].lerp(middles[k + 1][r], s) for r in range(5)]
+    r = max(range(5), key=lambda r: (points[r] - axis).normalized().dot(facing))
+    return points[r], axis, middles[k + 1][r] - middles[k][r]
+
+
+# Where the lichen grows: on which part, where on it, how big (half its length and width) and its
+# seed. From the front it shows beside his beard and on his legs; from behind on his back, his legs
+# and the back of his head.
+LEG_LICHEN = [
+    ('leg-left', 0.22, 260, (0.1, 0.065), 31),  # the front of his left thigh
+    ('leg-right', 0.8, 255, (0.09, 0.06), 32),  # the front of his right shin
+    ('leg-right', 0.3, 110, (0.1, 0.065), 33),  # the back of his right thigh
+    ('leg-left', 0.75, 70, (0.09, 0.06), 34),  # the back of his left calf
+]
+TRUNK_LICHEN = [
+    (1.1, 330, (0.15, 0.1), 41),  # his left side, in front
+    (0.98, 228, (0.13, 0.09), 42),  # his right hip, in front, under the boulder
+    (1.08, 76, (0.15, 0.1), 43),  # the small of his back
+    (1.33, 138, (0.14, 0.095), 44),  # his right shoulder blade
+]
+HEAD_LICHEN = [(V(-0.04, 0.0, 1.87), 100, (0.08, 0.065), 51)]  # the back of his head, under the leaves
+
+
+def leg_lichen():
+    for k, (name, t, near, size, seed) in enumerate(LEG_LICHEN):
+        point, axis, along = leg_plate(name.split('-')[1], t, near)
+        lichen_patch(f'lichen-leg-{k}', surface(name), point, axis, along, size, seed)
+
+
+def body_lichen():
+    trunk = surface('trunk')
+    for k, (z, near, size, seed) in enumerate(TRUNK_LICHEN):
+        point, axis, along = trunk_plate(z, near)
+        lichen_patch(f'lichen-trunk-{k}', trunk, point, axis, along, size, seed)
+    head = surface('head')
+    for k, (axis, near, size, seed) in enumerate(HEAD_LICHEN):
+        out = V(math.cos(math.radians(near)), math.sin(math.radians(near)), 0)
+        lichen_patch(f'lichen-head-{k}', head, axis + 0.2 * out, axis, V(0, 0, 1), size, seed)
+
+
 def main():
     reset()
     make_materials()
     legs()
+    leg_lichen()
     lower = set(bpy.context.scene.objects)
     trunk()
     moss()
@@ -498,6 +639,7 @@ def main():
     leaves()
     boulder()
     open_hand()
+    body_lichen()
     lean([o for o in bpy.context.scene.objects if o not in lower], HIPS, LEAN)
     for o in bpy.context.scene.objects:
         o.data.transform(Matrix.Scale(SCALE, 4))
