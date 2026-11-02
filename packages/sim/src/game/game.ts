@@ -35,6 +35,8 @@ export type Action =
   | { readonly type: 'lock'; readonly locked: boolean }
   /** Gives the player's item at this index to the unit at `to`. */
   | { readonly type: 'equip'; readonly item: number; readonly to: Place }
+  /** Combines the player's component at `item` with the one at `with`, whose place the combined item takes. */
+  | { readonly type: 'combine'; readonly item: number; readonly with: number }
   /** Takes the Gift at this index of the player's offer. */
   | { readonly type: 'gift'; readonly option: number }
   | { readonly type: 'rerollGifts' }
@@ -176,6 +178,8 @@ class GameImpl implements Game, GameState {
         return player.setLock(action.locked);
       case 'equip':
         return player.equip(action.item, action.to);
+      case 'combine':
+        return player.combineItems(action.item, action.with);
       case 'gift':
         return player.pickGift(action.option);
       case 'rerollGifts':

@@ -2,6 +2,7 @@
 // docs/server-spec.md section 10). It shows what the game's messages tell it, and sends the
 // person's actions back. The HUD, shop bar, panels and dragging are drawn by the modules in play/.
 
+import { ownedUnits } from '@lotr-tactics/sim';
 import type { ServerMessage } from '@lotr-tactics/server';
 import { LocalConnection, SocketConnection, savedSeat, socketUrl, type Connection } from './connection.js';
 import { PlayFlow } from './flow.js';
@@ -15,7 +16,10 @@ import { renderPlayers, renderTraits } from './play/side-panels.js';
 import { renderViewingBar } from './play/viewing-bar.js';
 import { FightScene } from './scene.js';
 import { blockDisabledClicks, fillIcons, isEnabled, setText, show, toggle } from './ui/dom.js';
+import { fighterTip, ownedUnitTip } from './tips.js';
 import { tipCard } from './ui/tip-card.js';
+import { hoverUnits } from './ui/unit-hover.js';
+import { displayName } from './units.js';
 import { initTooltips, updateTip } from './ui/tooltip.js';
 import './style.css';
 
@@ -59,6 +63,20 @@ const flow = new PlayFlow({
 const hud = new HudBar(flow);
 const shop = new ShopBar(flow, (item, event) => drag.startItem(item, event));
 const drag = new DragAndDrop(flow, scene, view, shop, element('drag-hint'));
+// Hovering a unit shows its stats and ability: in a fight as it is now, and in planning with its items.
+hoverUnits(view, scene, (pick) => {
+  const step = flow.show;
+  if (pick.kind === 'fight') {
+    const unit = step.kind === 'fight' ? step.playback.combat.state.units[pick.id] : undefined;
+    return unit?.alive === true ? fighterTip(unit, displayName(unit.unitId)) : null;
+  }
+  if (!flow.inGame) return null;
+  const owner = flow.viewed() ?? flow.me();
+  const unit = ownedUnits(owner).find((u) => u.unit.id === pick.id)?.unit;
+  if (unit === undefined) return null;
+  const ring = flow.ringOf(owner.seat);
+  return ownedUnitTip(unit, ring?.bearer === unit.id ? ring.corruption : null);
+});
 
 // Menu and lobby
 

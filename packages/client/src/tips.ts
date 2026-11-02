@@ -3,7 +3,26 @@
 // parts and built from the data through items.ts, gifts.ts, ring.ts and traits.ts, so the numbers
 // shown are always the sim's. No Three.js or DOM, so it can be tested.
 
-import { GIFTS, UNITS, baseStats, type ComponentId, type GiftId, type ItemId, type TraitId, type UnitId } from '@lotr-tactics/sim';
+import {
+  GIFTS,
+  ITEMS,
+  MONSTERS,
+  UNITS,
+  baseStats,
+  finalStats,
+  itemModifiers,
+  type AbilityDef,
+  type BaseStats,
+  type ComponentId,
+  type GiftId,
+  type ItemId,
+  type OwnedUnit,
+  type Stats,
+  type TraitId,
+  type UnitId,
+  type UnitState,
+} from '@lotr-tactics/sim';
+import { describeAbility, type Caster } from './abilities.js';
 import { TIER_NAMES, giftEffects } from './gifts.js';
 import { GIFT_TIER_ICONS, type IconName } from './icons.js';
 import { itemInfo } from './items.js';
@@ -37,6 +56,8 @@ export interface Tip {
   readonly levels?: readonly { readonly count: number; readonly text: string; readonly active: boolean }[];
   /** A unit's traits. */
   readonly traits?: readonly TraitId[];
+  /** A unit's ability: its name, the mana it costs, and what it does. */
+  readonly ability?: { readonly name: string; readonly mana: string | null; readonly lines: readonly string[] };
   /** A keyboard shortcut. */
   readonly key?: string;
   /** A hint on how to use the thing, or the reason it can't be used now. */
@@ -97,7 +118,7 @@ export function traitTip(
   };
 }
 
-/** A unit as the shop and the Council offer it: its cost, traits, ability and 1★ stats. */
+/** A unit as the shop and the Council offer it: its cost, traits, 1★ stats and what its ability does at 1★. */
 export function unitTip(id: UnitId, note?: Tip['note']): Tip {
   const def = UNITS[id];
   const stats = baseStats(def, 1);
@@ -106,14 +127,78 @@ export function unitTip(id: UnitId, note?: Tip['note']): Tip {
     subtitle: `${def.cost}-cost unit`,
     tone: `cost-${def.cost}`,
     traits: [def.origin, ...def.classes],
-    stats: [
-      `${stats.maxHealth} Health`,
-      `${stats.attackDamage} Attack Damage`,
-      `${stats.range === 1 ? 'Melee' : `Range ${stats.range}`}`,
-      `${stats.maxMana} Mana`,
-    ],
-    body: [{ text: `Ability: ${def.ability.name}` }],
+    stats: statLines(stats),
+    ability: abilityOf(def.ability, { cost: def.cost, star: 1, abilityPower: stats.abilityPower }, stats),
     ...(note === undefined ? {} : { note }),
+  };
+}
+
+/**
+ * One of a player's units on the bench or the board: its stats at its star level with its items,
+ * before traits, and what its ability does at that level. `ring` is the One Ring's Corruption on its bearer.
+ */
+export function ownedUnitTip(unit: OwnedUnit, ring: number | null = null): Tip {
+  const def = UNITS[unit.unitId];
+  const base = baseStats(def, unit.star);
+  const stats = finalStats(base, itemModifiers(unit.items));
+  return {
+    title: def.name,
+    subtitle: `${unit.star}★ · ${def.cost}-cost unit`,
+    tone: `cost-${def.cost}`,
+    traits: [def.origin, ...def.classes],
+    stats: statLines(stats),
+    ability: abilityOf(def.ability, { cost: def.cost, star: unit.star, abilityPower: stats.abilityPower }, base),
+    body: [
+      ...(unit.items.length === 0 ? [] : [{ text: `Items: ${unit.items.map((i) => ITEMS[i].name).join(', ')}.` }]),
+      ...(ring === null ? [] : [{ text: `Bears the One Ring, at Corruption ${ring}.` }]),
+    ],
+    note: { text: 'Stats with items, before traits.', reason: false },
+  };
+}
+
+/** A unit in a fight, as it is now: Health, shield, mana, current stats and its ability at its Ability Power. */
+export function fighterTip(unit: UnitState, name: string): Tip {
+  const roster = Object.hasOwn(UNITS, unit.unitId) ? UNITS[unit.unitId as UnitId] : null;
+  const monster = roster === null && Object.hasOwn(MONSTERS, unit.unitId) ? MONSTERS[unit.unitId as keyof typeof MONSTERS] : null;
+  const def = roster ?? monster;
+  const shield = unit.statuses.shield;
+  const live = [
+    `${Math.ceil(unit.health)}/${Math.round(unit.stats.maxHealth)} Health`,
+    ...(shield > 0 ? [`${Math.round(shield)} Shield`] : []),
+    ...(unit.base.maxMana > 0 ? [`${Math.floor(unit.mana)}/${unit.base.maxMana} Mana`] : []),
+  ];
+  const ability = def?.ability === undefined ? null : abilityOf(def.ability, { cost: def.cost, star: unit.star, abilityPower: unit.stats.abilityPower }, unit.base, true);
+  return {
+    title: name,
+    subtitle: roster !== null ? `${unit.star}★ · ${roster.cost}-cost unit` : monster !== null ? 'Monster' : 'Summon',
+    ...(roster === null ? {} : { tone: `cost-${roster.cost}`, traits: [roster.origin, ...roster.classes] }),
+    stats: [...live, ...statLines(unit.stats).slice(1)],
+    ...(ability === null ? {} : { ability }),
+    body: unit.items.length === 0 ? [] : [{ text: `Items: ${unit.items.map((i) => ITEMS[i].name).join(', ')}.` }],
+  };
+}
+
+/** Stats as a unit card lists them. Mana is with the ability. */
+function statLines(stats: Stats): string[] {
+  return [
+    `${Math.round(stats.maxHealth)} Health`,
+    `${Math.round(stats.attackDamage)} Attack Damage`,
+    `${stats.attackSpeed.toFixed(2)} Attack Speed`,
+    `${Math.round(stats.armor)} Armor`,
+    `${Math.round(stats.magicResist)} Magic Resist`,
+    ...(stats.abilityPower === 100 ? [] : [`${Math.round(stats.abilityPower)} Ability Power`]),
+    `${Math.round(stats.critChancePct)}% Crit`,
+    ...(stats.dodgePct > 0 ? [`${Math.round(stats.dodgePct)}% Dodge`] : []),
+    stats.range === 1 ? 'Melee' : `Range ${stats.range}`,
+  ];
+}
+
+/** An ability with the mana it costs; before a fight, with the mana the unit starts with too. */
+function abilityOf(ability: AbilityDef, caster: Caster, base: BaseStats, fighting = false): NonNullable<Tip['ability']> {
+  return {
+    name: ability.name,
+    mana: base.maxMana <= 0 ? null : fighting ? `${base.maxMana} mana` : `${base.startMana}/${base.maxMana} mana`,
+    lines: describeAbility(ability, caster),
   };
 }
 

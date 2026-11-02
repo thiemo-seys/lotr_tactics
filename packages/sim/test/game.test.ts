@@ -4,6 +4,7 @@ import { PVE_ROUNDS } from '../src/data/pve.js';
 import { UNITS, type UnitId } from '../src/data/units.js';
 import { createGame, type Action, type Game, type RoundReport } from '../src/game/game.js';
 import { UNIT_IDS, copiesIn } from '../src/game/pool.js';
+import { combine } from '../src/combat/items.js';
 import { createRng, randomInt } from '../src/rng.js';
 import { field, playerOf, poolOf, skipTo } from './fixtures.js';
 
@@ -137,6 +138,16 @@ describe('stage 1', () => {
       expect([p.level, p.xp, p.gold]).toEqual([3, 2, 13]);
       expect(p.items).toHaveLength(4);
     }
+  });
+
+  it('combines two components among a player\'s items during planning, in the place of the one combined into', () => {
+    const game = createGame({ seed: 5, players: 2 });
+    skipTo(game, 1, 2);
+    expect(game.state.phase).toBe('planning');
+    playerOf(game, 0).items.splice(0, Infinity, 'blade', 'staff', 'bow');
+    expect(game.act(0, { type: 'combine', item: 2, with: 0 })).toEqual({ ok: true });
+    expect(game.state.players[0]!.items).toEqual([combine('blade', 'bow'), 'staff']);
+    expect(game.act(0, { type: 'combine', item: 1, with: 0 })).toEqual({ ok: false, reason: 'Only two components combine.' });
   });
 
   it('lets players give items to their units during planning only, and fights with them', () => {

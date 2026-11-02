@@ -238,6 +238,7 @@ A combined item gives the stats of both its components, plus its effect.
 
 - PvE rounds and the Council of Elrond give components (section 9). A player keeps them until they give them to a unit.
 - A unit holds up to 3 items. Giving a component to a unit that already holds a lone component combines the two into the recipe's item, so a unit never holds more than one lone component.
+- During planning, two components the player holds can also be combined into the recipe's item before giving it to a unit.
 - Items can't be taken off a unit. Selling the unit gives its items back to the player.
 - When copies merge, the merged unit gets their items. Any beyond 3 go back to the player.
 - Units on the bench keep their items; only units on the board fight with them.

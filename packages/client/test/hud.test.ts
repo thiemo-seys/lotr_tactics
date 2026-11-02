@@ -1,6 +1,6 @@
-import { PLAYER, XP, type OwnedUnit, type PlayerView } from '@lotr-tactics/sim';
+import { PLAYER, XP, roundType, roundsInStage, type OwnedUnit, type PlayerView } from '@lotr-tactics/sim';
 import { describe, expect, it } from 'vitest';
-import { URGENT_SECONDS, hudStats, ringStatus, streakOf, timerView } from '../src/hud.js';
+import { URGENT_SECONDS, hudStats, ringStatus, stageTrack, streakOf, timerView } from '../src/hud.js';
 
 const unit: OwnedUnit = { id: 1, unitId: 'sam', star: 1, items: [] };
 
@@ -61,5 +61,19 @@ describe('the HUD', () => {
     expect(ringStatus(null)).toBeNull();
     expect(ringStatus({ bearer: null, corruption: 7 })).toEqual({ corruption: 7, tier: 'Grip', unworn: true });
     expect(ringStatus({ bearer: 4, corruption: 1 })).toEqual({ corruption: 1, tier: 'Gift', unworn: false });
+  });
+});
+
+describe('the stage tracker', () => {
+  it('lists every round of the stage with its type, marking those played, the one on screen and those to come', () => {
+    const track = stageTrack(2, 3, (stage, round) => (stage === 2 && round === 1 ? 'Victory' : round === 2 ? 'Defeat' : null));
+    expect(track).toHaveLength(roundsInStage(2));
+    expect(track.map((n) => n.type)).toEqual(track.map((n) => roundType(2, n.round)));
+    expect(track.map((n) => n.state)).toEqual(['done', 'done', 'current', ...Array(track.length - 3).fill('next')]);
+    expect(track.slice(0, 3).map((n) => n.outcome)).toEqual(['Victory', 'Defeat', null]);
+  });
+
+  it('never shows a result for a round to come', () => {
+    expect(stageTrack(1, 1, () => 'Victory').slice(1).every((n) => n.outcome === null)).toBe(true);
   });
 });

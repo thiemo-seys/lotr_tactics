@@ -48,6 +48,8 @@ export function checkAction(player: PlayerView, context: ActionContext, action: 
       return checkLock(action.locked);
     case 'equip':
       return checkEquip(player, action.item, action.to);
+    case 'combine':
+      return checkCombine(player, action.item, action.with);
     case 'gift':
       return checkGift(player, action.option);
     case 'rerollGifts':
@@ -125,6 +127,14 @@ export function checkEquip(player: PlayerView, item: number, to: Place): ActionR
   const given = player.items[item]!;
   if (isRingOfPower(given) && unit.items.some(isRingOfPower)) return fail('A unit can wear only one Ring of Power.');
   if (addItem(unit.items, given) === null) return fail(`A unit can hold at most ${MAX_ITEMS} items.`);
+  return OK;
+}
+
+/** Combining two of the player's components into the recipe's item, off a unit (section 7.7). */
+export function checkCombine(player: PlayerView, item: number, other: number): ActionResult {
+  if (!isIndex(item, player.items.length) || !isIndex(other, player.items.length)) return fail('There is no such item.');
+  if (item === other) return fail("An item can't combine with itself.");
+  if (!isComponent(player.items[item]!) || !isComponent(player.items[other]!)) return fail('Only two components combine.');
   return OK;
 }
 

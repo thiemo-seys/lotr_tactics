@@ -48,7 +48,8 @@ packages/client/
     ring.ts        the One Ring's tier and effects at a Corruption
     traits.ts      what each trait does at each breakpoint, and the trait tracker's rows from the sim's count
     tips.ts        what each tooltip says: items, rings, Gifts, traits, units and actions
-    hud.ts         the HUD's stats, streak, timer and One Ring status
+    abilities.ts   what an ability does, in words, from its steps and the sim's ability values
+    hud.ts         the HUD's stats, streak, timer, One Ring status and stage tracker
     players.ts     the players list's rows
     icons.ts       the icon set, and the icon for each trait, component, Gift tier, round type and status
     log.ts         event log text
@@ -59,6 +60,7 @@ packages/client/
       tip-card.ts  a tooltip's contents
       chips.ts     item and ring chips, trait badges and costs
       labels.ts    the overlay above each unit
+      unit-hover.ts  the card for the unit under the pointer in the 3D view
     play/          the play page's parts
       hud-bar.ts      the HUD
       shop-bar.ts     Buy XP, Reroll and Lock, the shop's unit cards, the items, Ready, and selling
@@ -95,6 +97,7 @@ packages/client/
   - a mana bar
   - icons for stun, stun immunity and untargetable
   - It only writes to the page when a value has changed, and allocates nothing otherwise.
+- **Hovering** a unit, its model or pawn, shows its card above its label (ui/unit-hover.ts): its name, star level, cost and traits, its current Health, shield and mana, its current stats, and its ability with the mana it costs and what it does, written from the ability's steps with the numbers the sim's `abilityValue` gives at its star level and Ability Power (abilities.ts). The card follows the fight a few times a second. Monsters are named as monsters and summons as summons.
 - **Facing:** each unit turns towards its target.
 - **Untargetable:** the unit is drawn faded.
 - **Death:** the unit sinks and fades out over half a second of fight time.

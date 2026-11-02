@@ -569,43 +569,200 @@ kbd {
   color: var(--gold);
 }
 
-.round-chip {
-  display: flex;
-  gap: 9px;
-  align-items: center;
-  padding-right: 4px;
+/* The play page's top bar: the person's stats, the stage tracker in the middle, and the buttons. */
+#hud {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto minmax(0, 1fr);
+  flex-wrap: nowrap;
 }
 
-.round-icon {
+.hud-side {
+  display: flex;
+  min-width: 0;
+  align-items: center;
+}
+
+.hud-end {
+  justify-content: flex-end;
+}
+
+/* The stage tracker: the stage, its rounds as icons by type, and the round on screen. */
+.round-track {
+  display: flex;
+  gap: 12px;
+  align-items: center;
+  justify-self: center;
+  padding: 3px 14px 3px 10px;
+  background: rgba(0, 0, 0, 0.28);
+  border: 1px solid #2b3546;
+  border-radius: var(--radius-pill);
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.04);
+}
+
+.round-track:has(.brand) {
+  background: none;
+  border-color: transparent;
+  box-shadow: none;
+}
+
+.stage-label {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  line-height: 1;
+}
+
+.stage-eyebrow {
+  font: 600 9.5px/1 var(--font-body);
+  color: var(--text-muted);
+  text-transform: uppercase;
+  letter-spacing: 0.12em;
+}
+
+.stage-number {
+  margin-top: 2px;
+  font: 700 20px/1 var(--font-display);
+  color: var(--gold-bright);
+}
+
+.stage-rounds {
+  position: relative;
+  display: flex;
+  gap: 10px;
+  align-items: center;
+  padding: 0;
+  margin: 0;
+  list-style: none;
+}
+
+/* The line the rounds sit on. */
+.stage-rounds::before {
+  position: absolute;
+  top: 50%;
+  right: 10px;
+  left: 10px;
+  height: 2px;
+  content: '';
+  background: #2b3546;
+  transform: translateY(-50%);
+}
+
+.round-node {
+  --type: var(--gold);
+  --type-deep: var(--gold-deep);
+  position: relative;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.round-node.pvp {
+  --type: #e0605a;
+  --type-deep: #92302c;
+}
+
+.round-node.pve {
+  --type: #4fbf7d;
+  --type-deep: #23704a;
+}
+
+.round-node .round-icon {
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  width: 34px;
-  height: 34px;
-  color: var(--gold-ink);
-  background: var(--gold-gradient);
-  border: 1px solid #f5d98d;
+  width: 24px;
+  height: 24px;
+  color: var(--type);
+  background: #141a24;
+  border: 1.5px solid color-mix(in srgb, var(--type) 55%, #2b3546);
   border-radius: 50%;
-  box-shadow: 0 0 12px rgba(214, 176, 90, 0.3), inset 0 1px 0 rgba(255, 255, 255, 0.5);
+  transition:
+    transform var(--normal) var(--ease),
+    box-shadow var(--normal) var(--ease);
 }
 
-.round-icon .icon {
-  width: 20px;
-  height: 20px;
+/* PvP rounds are diamonds, the others circles, so the two read apart by shape as well as colour. */
+.round-node.pvp .round-icon {
+  border-radius: 5px;
+  transform: rotate(45deg) scale(0.9);
 }
 
-.round-icon.pvp {
-  color: #fff3f0;
-  background: linear-gradient(180deg, #e0605a, #92302c);
-  border-color: #f08a84;
-  box-shadow: 0 0 12px rgba(217, 83, 79, 0.35), inset 0 1px 0 rgba(255, 255, 255, 0.35);
+.round-node .round-icon .icon {
+  width: 14px;
+  height: 14px;
 }
 
-.round-icon.pve {
-  color: #effff4;
-  background: linear-gradient(180deg, #4fbf7d, #23704a);
-  border-color: #7fdca5;
-  box-shadow: 0 0 12px rgba(63, 189, 112, 0.3), inset 0 1px 0 rgba(255, 255, 255, 0.35);
+.round-node.pvp .round-icon .icon {
+  transform: rotate(-45deg);
+}
+
+.round-node.done .round-icon {
+  opacity: 0.55;
+}
+
+.round-node.next .round-icon {
+  color: color-mix(in srgb, var(--type) 70%, #7d8796);
+  border-style: dashed;
+}
+
+.round-node.current .round-icon {
+  width: 32px;
+  height: 32px;
+  color: #fff;
+  background: linear-gradient(180deg, var(--type), var(--type-deep));
+  border-color: color-mix(in srgb, var(--type) 60%, white);
+  box-shadow: 0 0 14px color-mix(in srgb, var(--type) 50%, transparent), inset 0 1px 0 rgba(255, 255, 255, 0.4);
+  animation: round-now 2s var(--ease) infinite;
+}
+
+.round-node.current.pvp .round-icon {
+  transform: rotate(45deg) scale(0.85);
+}
+
+.round-node.current .round-icon .icon {
+  width: 19px;
+  height: 19px;
+}
+
+@keyframes round-now {
+  0%,
+  100% {
+    box-shadow: 0 0 10px color-mix(in srgb, var(--type) 40%, transparent), inset 0 1px 0 rgba(255, 255, 255, 0.4);
+  }
+
+  50% {
+    box-shadow: 0 0 18px color-mix(in srgb, var(--type) 75%, transparent), inset 0 1px 0 rgba(255, 255, 255, 0.4);
+  }
+}
+
+/* The person's result in a round played: a small badge on its icon. */
+.round-result {
+  position: absolute;
+  right: -5px;
+  bottom: -5px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 13px;
+  height: 13px;
+  color: #fff;
+  background: #6b7280;
+  border: 1px solid #11161e;
+  border-radius: 50%;
+}
+
+.round-result .icon {
+  width: 9px;
+  height: 9px;
+  stroke-width: 3;
+}
+
+.round-node.victory .round-result {
+  background: #2f9d5c;
+}
+
+.round-node.defeat .round-result {
+  background: #c2413c;
 }
 
 .round-text {
@@ -615,7 +772,7 @@ kbd {
 }
 
 .round-number {
-  font: 800 18px/1 var(--font-body);
+  font: 800 16px/1 var(--font-body);
   font-variant-numeric: tabular-nums;
   color: var(--text-strong);
   letter-spacing: 0.02em;
@@ -623,10 +780,58 @@ kbd {
 
 .round-name {
   margin-top: 3px;
-  font: 600 10.5px/1 var(--font-body);
-  color: var(--text-muted);
+  font: 700 10px/1 var(--font-body);
+  color: var(--gold);
   text-transform: uppercase;
   letter-spacing: 0.1em;
+}
+
+.round-name.pvp {
+  color: #f08a84;
+}
+
+.round-name.pve {
+  color: #7fdca5;
+}
+
+/* The person's level, XP, gold and the timer, at the bottom by the shop. */
+.player-bar {
+  position: relative;
+  z-index: var(--z-overlay);
+  display: flex;
+  gap: 14px;
+  align-items: center;
+  justify-content: center;
+  padding: 6px 12px;
+  background: linear-gradient(180deg, rgba(14, 18, 25, 0.6), #161c27);
+  border-top: 1px solid #222b39;
+}
+
+.player-bar .pill {
+  height: 36px;
+}
+
+.player-bar .xp-bar {
+  width: 150px;
+  height: 6px;
+  border-radius: 3px;
+}
+
+.player-bar .stat.gold {
+  padding: 0 16px 0 12px;
+  font-size: 18px;
+  border-color: color-mix(in srgb, var(--gold) 50%, var(--border));
+  background: linear-gradient(180deg, #2a2412, var(--surface-2));
+}
+
+.player-bar .stat.gold .icon {
+  width: 21px;
+  height: 21px;
+}
+
+.player-bar .timer {
+  height: 36px;
+  min-width: 86px;
 }
 
 /* The timer drains as its step runs out, and turns red in its last seconds. */
@@ -1310,6 +1515,45 @@ kbd {
   padding-left: 9px;
   color: #ffc9c2;
   border-left: 2px solid var(--danger);
+}
+
+.tip-ability {
+  margin-top: 9px;
+  padding: 7px 9px 8px;
+  background: rgba(150, 120, 240, 0.08);
+  border: 1px solid rgba(160, 135, 245, 0.24);
+  border-radius: var(--radius-sm);
+}
+
+.tip-ability-head {
+  display: flex;
+  gap: 6px;
+  align-items: center;
+}
+
+.tip-ability-head .icon {
+  width: 15px;
+  height: 15px;
+  color: #c4b5fd;
+}
+
+.tip-ability-name {
+  flex: 1;
+  font: 700 12.5px/1.2 var(--font-display);
+  color: #e4dcff;
+  letter-spacing: 0.02em;
+}
+
+.tip-ability-mana {
+  font: 600 10.5px/1 var(--font-body);
+  font-variant-numeric: tabular-nums;
+  color: #8fb8ff;
+}
+
+.tip-ability-text {
+  margin: 5px 0 0;
+  font-size: 12px;
+  line-height: 1.4;
 }
 
 .tip-levels {
@@ -2712,6 +2956,36 @@ body.play input {
   border-color: rgba(236, 106, 103, 0.45);
 }
 
+/* A unit the person already has on the bench or the board: a gold border, glowing when buying it makes a 2★. */
+.unit-card.has-copy {
+  border-color: var(--gold-bright);
+  box-shadow: var(--shadow-2), 0 0 0 1px var(--gold-bright), 0 0 14px rgba(243, 210, 122, 0.45), inset 0 0 0 1px rgba(0, 0, 0, 0.45);
+}
+
+.unit-card.has-copy::after {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  content: '';
+  border: 1px solid rgba(255, 240, 200, 0.55);
+  border-radius: 8px;
+}
+
+.unit-card.completes-star {
+  animation: completes-star 1.4s var(--ease) infinite;
+}
+
+@keyframes completes-star {
+  0%,
+  100% {
+    box-shadow: var(--shadow-2), 0 0 0 1px var(--gold-bright), 0 0 12px rgba(243, 210, 122, 0.45);
+  }
+
+  50% {
+    box-shadow: var(--shadow-2), 0 0 0 3px var(--gold-bright), 0 0 26px rgba(243, 210, 122, 0.85);
+  }
+}
+
 .unit-card.empty {
   align-items: center;
   justify-content: center;
@@ -2758,6 +3032,16 @@ body.play input {
   align-content: flex-start;
   max-height: 70px;
   overflow-y: auto;
+}
+
+/* The item a dragged item would combine with: gold if it can, red if not. */
+#items .chip.combine-target {
+  box-shadow: 0 0 0 2px var(--gold-bright), 0 0 14px rgba(243, 210, 122, 0.8);
+  transform: scale(1.12);
+}
+
+#items .chip.combine-refused {
+  box-shadow: 0 0 0 2px var(--danger);
 }
 
 .tray-empty {

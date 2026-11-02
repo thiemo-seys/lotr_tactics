@@ -1,9 +1,10 @@
 // Dragging while planning (docs/game-spec.md section 12): units between the bench and the board,
-// onto the shop bar to sell them, and the person's items and the One Ring onto units. While
+// onto the shop bar to sell them, the person's items and the One Ring onto units, and a component
+// onto another of the person's components to combine them. While
 // dragging, the scene marks where the drop would go, in gold if the game's rules allow it and in
 // red with the reason if not; the rules are the sim's own `checkAction`.
 
-import { UNITS, placeOf, unitAt, type Action, type OwnedUnit, type Place } from '@lotr-tactics/sim';
+import { ITEMS, UNITS, combine, placeOf, unitAt, type Action, type ComponentId, type OwnedUnit, type Place } from '@lotr-tactics/sim';
 import type { PlayFlow } from '../flow.js';
 import { placeAtPoint } from '../layout.js';
 import type { FightScene } from '../scene.js';
@@ -84,6 +85,7 @@ export class DragAndDrop {
     this.scene.markPlace(null);
     this.scene.markUnit(null);
     this.shop.selling(null);
+    this.shop.markItem(null);
     show(this.hint, false);
     suppressTips(false);
     toggle(document.body, 'grabbing', false);
@@ -93,6 +95,19 @@ export class DragAndDrop {
     const { clientX: x, clientY: y } = event;
     if (this.item !== null) {
       this.item.ghost.style.transform = `translate(${x}px, ${y}px)`;
+      // Onto another of the person's items: the two combine.
+      const other = this.combineWith(this.item.item, x, y);
+      if (other !== null) {
+        const result = this.flow.check({ type: 'combine', item: this.item.item as number, with: other });
+        const items = this.flow.me().items;
+        this.scene.markPlace(null);
+        this.scene.markUnit(null);
+        this.shop.markItem(other, result.ok);
+        setText(this.item.caption, result.ok ? `Combine into ${ITEMS[combine(items[other] as ComponentId, items[this.item.item as number] as ComponentId)].name}` : result.reason);
+        toggle(this.item.ghost, 'refused', !result.ok);
+        return;
+      }
+      this.shop.markItem(null);
       const to = this.overView(x, y) ? this.unitPlaceAt(x, y) : null;
       const target = to === null ? null : unitAt(this.flow.me(), to);
       const result = to === null ? null : this.flow.check(this.itemAction(this.item.item, to));
@@ -128,6 +143,11 @@ export class DragAndDrop {
       this.item = null;
       ghost.remove();
       this.end();
+      const other = this.combineWith(item, x, y);
+      if (other !== null) {
+        this.flow.act({ type: 'combine', item: item as number, with: other });
+        return;
+      }
       const to = this.overView(x, y) ? this.unitPlaceAt(x, y) : null;
       if (to !== null) this.flow.act(this.itemAction(item, to));
       return;
@@ -151,6 +171,13 @@ export class DragAndDrop {
   private hover(x: number, y: number): void {
     const canGrab = this.canDrag() && this.overView(x, y) && this.unitPlaceAt(x, y) !== null;
     toggle(this.view, 'can-grab', canGrab);
+  }
+
+  /** Another of the person's items under the pointer, that a dragged item would combine with; the Ring combines with nothing. */
+  private combineWith(item: TrayItem, x: number, y: number): number | null {
+    if (item === 'ring') return null;
+    const other = this.shop.itemAt(x, y);
+    return other === null || other === item ? null : other;
   }
 
   private itemAction(item: TrayItem, to: Place): Action {

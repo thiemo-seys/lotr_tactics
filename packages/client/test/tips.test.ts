@@ -1,6 +1,6 @@
-import { COMPONENTS, GIFT_IDS, ITEM_IDS, UNITS, type UnitId } from '@lotr-tactics/sim';
+import { COMPONENTS, GIFT_IDS, ITEM_IDS, ITEMS, UNITS, baseStats, createCombat, type UnitId } from '@lotr-tactics/sim';
 import { describe, expect, it } from 'vitest';
-import { actionTip, giftTip, itemTip, ringTip, traitTip, unitTip } from '../src/tips.js';
+import { actionTip, fighterTip, giftTip, itemTip, ownedUnitTip, ringTip, traitTip, unitTip } from '../src/tips.js';
 
 describe('tooltips', () => {
   it('lay out items: recipe, stats and effect from the item data', () => {
@@ -55,9 +55,34 @@ describe('tooltips', () => {
       const tip = unitTip(id);
       expect(tip.tone).toBe(`cost-${UNITS[id].cost}`);
       expect(tip.traits).toEqual([UNITS[id].origin, ...UNITS[id].classes]);
-      expect(tip.body![0]!.text).toBe(`Ability: ${UNITS[id].ability.name}`);
+      expect(tip.ability!.name).toBe(UNITS[id].ability.name);
+      expect(tip.ability!.lines.length).toBeGreaterThan(0);
       expect(tip.stats!.every((s) => !s.includes('NaN'))).toBe(true);
     }
+  });
+
+  it('show an owned unit at its star level with its items, and its ability at that level', () => {
+    const plain = ownedUnitTip({ id: 1, unitId: 'gimli', star: 2, items: [] });
+    const base = baseStats(UNITS.gimli, 2);
+    expect(plain).toMatchObject({ title: 'Gimli', subtitle: '2★ · 3-cost unit', tone: 'cost-3', body: [] });
+    expect(plain.stats![0]).toBe(`${base.maxHealth} Health`);
+    expect(plain.ability!.lines).toEqual(['Adjacent enemies: 405 physical damage.', 'Itself: a 338 shield for 4s.']);
+    const armed = ownedUnitTip({ id: 1, unitId: 'gimli', star: 2, items: ['mail'] }, 3);
+    expect(armed.stats![3]).not.toBe(plain.stats![3]);
+    expect(armed.body!.map((l) => l.text)).toEqual([`Items: ${ITEMS.mail.name}.`, 'Bears the One Ring, at Corruption 3.']);
+  });
+
+  it('show a fighting unit as it is now', () => {
+    const combat = createCombat({
+      seed: 1,
+      stage: 2,
+      teams: { A: [{ unitId: 'gimli', star: 1, col: 3, row: 3, items: [] }], B: [{ unitId: 'goblin', star: 1, col: 3, row: 3, items: [] }] },
+    });
+    const [gimli, goblin] = combat.state.units;
+    const tip = fighterTip(gimli!, 'Gimli');
+    expect(tip.stats![0]).toBe(`${gimli!.health}/${gimli!.stats.maxHealth} Health`);
+    expect(tip.ability!.name).toBe('And my axe!');
+    expect(fighterTip(goblin!, 'Moria goblin')).toMatchObject({ subtitle: 'Monster' });
   });
 
   it('give a disabled action its reason', () => {

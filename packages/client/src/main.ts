@@ -6,7 +6,10 @@ import { describe } from './log.js';
 import { Playback } from './playback.js';
 import { FightScene } from './scene.js';
 import { el, fillIcons, icon, rebuild, setText, show, toggle } from './ui/dom.js';
+import { fighterTip } from './tips.js';
 import { tipCard } from './ui/tip-card.js';
+import { hoverUnits } from './ui/unit-hover.js';
+import { displayName } from './units.js';
 import { initTooltips, updateTip } from './ui/tooltip.js';
 import './style.css';
 
@@ -46,6 +49,10 @@ const scene = new FightScene(element('view'));
 let settings = readSettings();
 showSettings(settings);
 let playback = start();
+hoverUnits(element('view'), scene, (pick) => {
+  const unit = pick.kind === 'fight' ? playback.combat.state.units[pick.id] : undefined;
+  return unit?.alive === true ? fighterTip(unit, displayName(unit.unitId)) : null;
+});
 
 element('new-fight').addEventListener('click', () => {
   settings = {

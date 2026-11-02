@@ -1,9 +1,11 @@
-// The play page's HUD (docs/game-spec.md section 12): the round with its type, a timer that drains
-// and turns urgent, the person's stats as pills, the streak and the One Ring's status.
+// The play page's HUD (docs/game-spec.md section 12): at the top, HP, the board count, the streak
+// and the One Ring's status, with the stage tracker in the middle, the stage's rounds as icons by
+// type; at the bottom, by the shop, the level with its XP, gold and a timer that drains and turns
+// urgent.
 
 import { RING, XP, roundType } from '@lotr-tactics/sim';
 import type { PlayFlow } from '../flow.js';
-import { hudStats, plural, ringStatus, timerView } from '../hud.js';
+import { hudStats, plural, ringStatus, stageTrack, timerView, type StageNode } from '../hud.js';
 import { ROUND_ICONS } from '../icons.js';
 import { actionTip, ringTip, textTip } from '../tips.js';
 import { el, icon, rebuild, setText, show, toggle } from '../ui/dom.js';
@@ -24,7 +26,8 @@ export class HudBar {
   private readonly seconds = this.timer.querySelector('.seconds') as HTMLElement;
   private readonly drain = this.timer.querySelector('.drain i') as HTMLElement;
   private readonly stats = element('stats');
-  private readonly pill = (name: string) => this.stats.querySelector(`.${name}`) as HTMLElement;
+  private readonly playerBar = element('player-bar');
+  private readonly pill = (name: string) => element(`stat-${name}`);
   private readonly value = (name: string) => this.pill(name).querySelector('.value') as HTMLElement;
   private readonly xpText = this.pill('level').querySelector('.xp-text') as HTMLElement;
   private readonly xpBar = this.pill('level').querySelector('.xp-bar i') as HTMLElement;
@@ -64,17 +67,12 @@ export class HudBar {
         null,
       ),
     );
-    setTip(this.round, () => {
-      if (!flow.inGame) return null;
-      const { stage, round } = flow.shownRound();
-      const type = roundType(stage, round);
-      return textTip(`Stage ${stage}, round ${round}`, `${ROUND_NAMES[type]}. ${ROUND_HINTS[type]}`);
-    });
   }
 
   render(now: number): void {
     const { flow } = this;
     show(this.stats, flow.inGame);
+    show(this.playerBar, flow.inGame);
     if (!flow.inGame) {
       rebuild(this.round, 'title', () => [el('span', 'brand', icon('one-ring'), 'LOTR Tactics')]);
       show(this.timer, false);
@@ -82,9 +80,11 @@ export class HudBar {
     }
     const { stage, round } = flow.shownRound();
     const type = roundType(stage, round);
-    rebuild(this.round, `${stage}-${round}`, () => [
-      el('span', `round-icon ${type}`, icon(ROUND_ICONS[type])),
-      el('span', 'round-text', el('span', 'round-number', `${stage}-${round}`), el('span', 'round-name', ROUND_NAMES[type])),
+    const track = stageTrack(stage, round, (s, r) => flow.outcome(s, r));
+    rebuild(this.round, JSON.stringify(track), () => [
+      el('span', 'stage-label', el('span', 'stage-eyebrow', 'Stage'), el('span', 'stage-number', String(stage))),
+      el('ol', 'stage-rounds', ...track.map((node) => roundNode(stage, node))),
+      el('span', 'round-text', el('span', 'round-number', `${stage}-${round}`), el('span', `round-name ${type}`, ROUND_NAMES[type])),
     ]);
 
     const timer = timerView(flow.secondsLeft(now), flow.timerShare(now));
@@ -130,4 +130,21 @@ export class HudBar {
     }
     show(this.mountDoom, flow.show.kind === 'planning' && flow.check({ type: 'destroyRing' }).ok);
   }
+}
+
+const OUTCOME_ICONS = { Victory: 'ready', Defeat: 'cross', Draw: 'level' } as const;
+
+/** A round in the stage tracker: its type's icon in the type's colour, marked as played, on screen or to come, with the person's result. */
+function roundNode(stage: number, node: StageNode): HTMLElement {
+  const item = el(
+    'li',
+    `round-node ${node.type} ${node.state}${node.outcome === null ? '' : ` ${node.outcome.toLowerCase()}`}`,
+    el('span', 'round-icon', icon(ROUND_ICONS[node.type])),
+    node.outcome === null || node.state === 'current' ? null : el('span', 'round-result', icon(OUTCOME_ICONS[node.outcome])),
+  );
+  item.tabIndex = 0;
+  const when = node.state === 'done' ? 'Played.' : node.state === 'current' ? 'This round.' : 'To come.';
+  item.setAttribute('aria-label', `Round ${stage}-${node.round}: ${ROUND_NAMES[node.type]}. ${when}${node.outcome === null ? '' : ` ${node.outcome}.`}`);
+  setTip(item, textTip(`Round ${stage}-${node.round} · ${ROUND_NAMES[node.type]}`, ROUND_HINTS[node.type], ...(node.outcome === null ? [when] : [`${when} ${node.outcome}.`])));
+  return item;
 }

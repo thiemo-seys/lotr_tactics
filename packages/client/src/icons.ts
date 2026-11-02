@@ -63,6 +63,8 @@ export const ICONS = {
   connected: '<circle class="s" cx="12" cy="12" r="3"/><path d="M7.4 7.4a6.5 6.5 0 0 0 0 9.2M16.6 7.4a6.5 6.5 0 0 1 0 9.2M4.6 4.6a10.5 10.5 0 0 0 0 14.8M19.4 4.6a10.5 10.5 0 0 1 0 14.8"/>',
   away: '<path class="f" d="M19.5 14.6A8 8 0 1 1 9.4 4.5a6.4 6.4 0 0 0 10.1 10.1z"/>',
   empty: '<circle cx="12" cy="8" r="4" stroke-dasharray="2.5 2.2"/><path d="M4.5 20.5c.6-4 3.6-6.5 7.5-6.5s6.9 2.5 7.5 6.5" stroke-dasharray="2.5 2.2"/>',
+  ability: '<path class="f" d="M12 2.5l2 6.3 6.3-1.6-4.3 4.8 4.3 4.8-6.3-1.6-2 6.3-2-6.3-6.3 1.6 4.3-4.8-4.3-4.8 6.3 1.6z"/><circle cx="12" cy="12" r="2.2"/>',
+  cross: '<path d="M6.5 6.5l11 11M17.5 6.5l-11 11"/>',
   alert: '<circle class="f" cx="12" cy="12" r="9"/><path d="M12 7.5v5.5M12 16.4v.1"/>',
   // The One Ring and the Rings of Power
   'one-ring': `${band(13)}<path class="s" d="M19.5 1.9Q20 4 22.1 4.5Q20 5 19.5 7.1Q19 5 16.9 4.5Q19 4 19.5 1.9z"/>`,
