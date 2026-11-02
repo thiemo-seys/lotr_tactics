@@ -271,6 +271,22 @@ describe("other players' boards", () => {
     expect(flow.viewed()).toBeNull();
   });
 
+  it("starts planning after a Council on the person's own board, and keeps the view through later states of a step", () => {
+    const flow = viewing('council', [null, null, null]);
+    const state = (kind: 'council' | 'planning', round: number): MatchView => ({ ...flow.state!, round, step: { kind, ms: 30000 }, council: null });
+    flow.receive({ type: 'state', state: state('council', 4) }, 0);
+    flow.viewBoard(2);
+    // A later state of the Council, such as another group's turn.
+    flow.receive({ type: 'state', state: state('council', 4) }, 1000);
+    expect(flow.viewed()?.seat).toBe(2);
+    // The Council is over and the next round's planning starts, with no fights between them.
+    flow.receive({ type: 'state', state: state('planning', 5) }, 2000);
+    expect([flow.show.kind, flow.viewed()]).toEqual(['planning', null]);
+    flow.viewBoard(2);
+    flow.receive({ type: 'state', state: state('planning', 5) }, 3000);
+    expect(flow.viewed()?.seat).toBe(2);
+  });
+
   it('can be looked at in a Council too, but not once the game is over for the person', () => {
     const council = viewing('council', [null, null, null]);
     council.viewBoard(2);

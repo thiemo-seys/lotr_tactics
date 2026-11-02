@@ -504,7 +504,7 @@ The play page, `play.html` in `packages/client`, next to the fight viewer (`view
   - The trait tracker counts their board and their crest Gifts, and its title and tooltips name them.
   - A bar at the top names them and shows their HP, level and units on the board, gold, and the items not on a unit, with the One Ring while they hold it unworn.
   - Their row in the players list is marked in red.
-  - The bar's Your board button, Escape and the person's own row bring the person's board back, and so do the round's fights, so each round starts on the person's own board.
+  - The bar's Your board button, Escape and the person's own row bring the person's board back, and so do the round's fights and the end of a Council, so each round starts on the person's own board.
   - Looking changes nothing in the game. The HUD and the shop bar stay the person's own, and the shop works as usual, but units and items can't be dragged, and a Gift offer waits, until the person's own board is back.
 - **Council:** the options as cards with the unit, its traits and what it brings as an item chip, who took each option, and the timer; the person's turn is marked. The person picks one when it's their group's turn.
 - **Rings of Power** show like other items, as round chips in the ring's gold with its stone, each naming its effect when hovered.
