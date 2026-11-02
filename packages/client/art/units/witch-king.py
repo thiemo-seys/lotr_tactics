@@ -17,6 +17,13 @@ its flanks and the breast strap, its left foreleg raised and its head turned to 
 the fire. The team colour is the mantle, the rim of the hood and the horse's cloth, seen from in
 front, from behind and from above; above it, the crown and the mace show from every side.
 
+His fittings use `trim`, which the client colours iron, silver or gold by star level
+(docs/viewer-spec.md section 4, "Star levels"): the mace's pommel, a band on its haft and the socket
+under its head, which show from every side; a lozenge clasp closing the mantle at his throat and the
+buckle of the belt on his hauberk, from in front; the stirrup irons under his boots, from in front
+and behind; and the horse's browband. The crown of steel stays steel: it is a crown, not a fitting.
+His 2★ model is witch-king-2.py and his 3★ model witch-king-3.py.
+
     blender --background --factory-startup --python-exit-code 1 --python witch-king.py [-- <out.glb>]
 
 Coordinates are Blender's: z up, the model faces -Y, so his right hand is at -X.
@@ -46,6 +53,7 @@ from kit import (  # noqa: E402
     reset,
     segment,
     team_material,
+    trim_material,
     tube,
 )
 from mounts import Surface, horse  # noqa: E402
@@ -60,13 +68,12 @@ STEEL = 0xADB2B3  # the crown and the mace's head
 IRON = 0x575557  # the mace's haft
 COAT = 0x423F41  # the black horse, as dark as the coat can be and still show its facets
 POINTS = 0x262426  # its mane, tail and legs, blacker still
-TARNISH = 0x7D6C4F  # the old brass of the horse's browband
 
 M = {}  # materials by name, made once the scene is reset
 
 
 def make_materials():
-    # Made before the horse, so that its bridle takes this dark leather and its browband old brass.
+    # Made before the horse, so that its bridle takes this dark leather.
     M.update(
         team=team_material(),
         cloak=material('cloak', CLOAK, roughness=0.9),
@@ -77,7 +84,8 @@ def make_materials():
         steel=material('steel', STEEL, roughness=0.45, metallic=0.12),
         iron=material('iron', IRON, roughness=0.5, metallic=0.1),
         leather=material('leather', BOOTS, roughness=0.85),
-        brass=material('brass', TARNISH, roughness=0.6, metallic=0.1),
+        # Fittings: the renderer recolours this iron, silver or gold by star level.
+        trim=trim_material(),
     )
 
 
@@ -170,6 +178,29 @@ def legs(mount):
     return thighs
 
 
+# The stirrup irons: a flat loop round the ball of each foot, square to it, its tread under the sole
+# and its eye over the instep, so that it shows from in front and from behind. Heights of the bottom
+# of the tread and the top of the eye, half the tread's width and how thick the iron is.
+STIRRUP_TREAD, STIRRUP_EYE = 0.342, 0.505
+STIRRUP_HALF = 0.066
+STIRRUP_BAR = 0.017
+
+
+def stirrups(mount):
+    for s, ankle in zip((-1, 1), mount.stirrups):
+        along = V(s * 0.25, -1, -0.1).normalized()  # the foot, as legs() lays it
+        across = V(1, s * 0.25, 0).normalized()
+        ball = ankle + V(0, -0.05, -0.03) + 0.02 * along
+        foot = V(ball.x, ball.y, 0)
+        outer = [foot + V(0, 0, STIRRUP_EYE)]
+        outer += [foot + k * STIRRUP_HALF * across + V(0, 0, STIRRUP_TREAD) for k in (-1, 1)]
+        inner = [foot + V(0, 0, STIRRUP_EYE - 1.7 * STIRRUP_BAR)]
+        inner += [foot + k * (STIRRUP_HALF - STIRRUP_BAR) * across + V(0, 0, STIRRUP_TREAD + STIRRUP_BAR)
+                  for k in (-1, 1)]
+        part(f'stirrup-{s}', outer + inner, [(0, 1, 4, 3), (1, 2, 5, 4), (2, 0, 3, 5)], M['trim'],
+             outward=along)
+
+
 # Cloak and hauberk -------------------------------------------------------------------------------
 
 # The black cloak from the saddle up, as he sits upright, parted from his lap to his chest where the
@@ -182,22 +213,53 @@ CLOAK_RINGS = [
     (1.13, 0.215, 0.155, 0.045, 10),  # the chest
 ]
 SHOULDER_Z, SHOULDER_Y = 1.27, 0.035  # the top of his shoulders, under the mantle
+# The faces of the chest's band, counted from the left edge of the opening, that the mantle hides
+# all round but beside the opening: they are left out, which leaves room in the budget for trim.
+UNDER_MANTLE = range(1, N_CLOAK - 2)
+# The belt on the hauberk, at the waist: the heights of its lower and upper edges.
+BELT = (0.928, 0.97)
 
 
 def cloak():
     rings = [around(rx, ry, cy, opening, z) for z, rx, ry, cy, opening in CLOAK_RINGS]
-    verts, faces, _ = loft(rings, closed=False)
+    verts, faces, bands = loft(rings, closed=False)
+    chest = len(rings) - 2
+    faces = [f for k, (f, b) in enumerate(zip(faces, bands))
+             if b != chest or k % (N_CLOAK - 1) not in UNDER_MANTLE]
     axis = [V(0, cy, z) for z, _, _, cy, _ in CLOAK_RINGS]
     part('cloak', verts, faces, M['cloak'], inside=nearest_on_polyline(axis))
 
-    # The hauberk behind the opening, a little wider than it, from his lap to his chest.
+    # The hauberk behind the opening, a little wider than it, from his lap to his chest, with a belt
+    # of dark leather round the waist.
+    hips, waist = CLOAK_RINGS[0], CLOAK_RINGS[1]
+    t = (BELT[0] - hips[0]) / (waist[0] - hips[0])
+    belt = tuple(p + t * (q - p) for p, q in zip(hips, waist))
     rows = []
-    for z, rx, ry, cy, opening in [(0.775,) + CLOAK_RINGS[0][1:]] + CLOAK_RINGS[:3]:
+    for z, rx, ry, cy, opening in [(0.775,) + hips[1:], hips, belt] + CLOAK_RINGS[1:3]:
         spread = math.radians(opening + 8)
         rows.append([V(0.94 * rx * math.cos(a), cy + 0.94 * ry * math.sin(a), z)
                      for a in (-math.pi / 2 - spread, -math.pi / 2, -math.pi / 2 + spread)])
-    verts, faces, _ = loft(rows, closed=False)
-    part('hauberk', verts, faces, M['mail'], inside=lambda c: V(0, 0.1, c.z))
+    verts, faces, bands = loft(rows, closed=False)
+    part('hauberk', verts, faces, [M['mail'], M['leather']], [1 if b == 2 else 0 for b in bands],
+         inside=lambda c: V(0, 0.1, c.z))
+
+    # Its buckle, in the middle of the belt where the cloak parts: a plate standing out from it, its
+    # face smaller than its foot so the edges read as a bevel.
+    front = rows[2][1].lerp(rows[3][1], 0.5)
+    plate('buckle', front, V(0, -1, 0), V(0, 0, 1), (0.028, 0.024), 0.01, M['trim'])
+
+
+def plate(name, centre, out, up, half, depth, mat, taper=0.7):
+    """A small fitting standing `depth` out from a surface at `centre` along `out`: a plate of
+    half-sizes `half` across and along `up`, its face smaller than its foot by `taper`, and no back."""
+    out, up = Vector(out).normalized(), Vector(up).normalized()
+    across = up.cross(out).normalized()
+    up = out.cross(across)
+    w, h = half
+    foot = [centre + w * x * across + h * y * up for x, y in ((-1, -1), (1, -1), (1, 1), (-1, 1))]
+    face = [centre + depth * out + taper * (p - centre) for p in foot]
+    faces = [(4, 5, 6, 7)] + [(i, (i + 1) % 4, 4 + (i + 1) % 4, 4 + i) for i in range(4)]
+    return part(name, foot + face, faces, mat, inside=centre - 0.01 * out)
 
 
 # The skirts of the cloak over his thighs and the horse's back, from the front of his left knee
@@ -363,6 +425,12 @@ def mantle():
     cy = MANTLE[-1][4]
     part('mantle', verts, faces, M['team'], inside=lambda c: V(0, cy, c.z))
     ragged('mantle-rags', rings[-1], MANTLE_TIPS, M['team'], V(0, cy, 0))
+    # A lozenge clasp across the opening at his throat, under the hood, tipped up to the game's camera.
+    cone('clasp', CLASP, CLASP + 0.014 * CLASP_OUT, 0.032, M['trim'], n=4, squash=1.3, back=None)
+
+
+CLASP = V(0, SHOULDER_Y - 0.163, SHOULDER_Z - 0.075)  # the middle of its foot
+CLASP_OUT = V(0, -1, 0.4).normalized()
 
 
 # Arms --------------------------------------------------------------------------------------------
@@ -408,6 +476,7 @@ HEAD_RADIUS = 0.055  # the core of the head
 FLANGE_REACH = 0.155  # how far out from the haft the flanges reach
 FLANGE_LENGTH = 0.11  # half the length of a flange's root along the head
 SPIKE = 0.09  # the spike on top
+HAFT_BAND = (0.17, 0.205)  # along the haft from the fist: where the band of trim starts and ends
 
 
 def mace():
@@ -415,15 +484,20 @@ def mace():
     grip = fist('fist-right', wrist, elbow, MACE)
     butt, foot, top = grip - BUTT * MACE, grip + HEAD_FOOT * MACE, grip + HEAD_TOP * MACE
     tube('haft', butt, foot + 0.03 * MACE, [(0, 0.026), (1, 0.024)], M['iron'], n=6)
-    cone('pommel', butt, butt - 0.055 * MACE, 0.038, M['iron'], n=4, back=butt + 0.025 * MACE)
+    cone('pommel', butt, butt - 0.055 * MACE, 0.038, M['trim'], n=4, back=butt + 0.025 * MACE)
+    # A band of trim round the haft between his fist and the head.
+    low, high = (grip + t * MACE for t in HAFT_BAND)
+    tube('haft-band', low, high, [(0, 0.033), (1, 0.033)], M['trim'], n=6)
 
-    # The head: a six-sided core, drawn to a point below and to the spike on top.
+    # The head: a six-sided core, drawn to a point below, its socket on the haft in trim, and to the
+    # spike on top.
     rings = segment(foot + 0.03 * MACE, top, [(0, HEAD_RADIUS), (1, HEAD_RADIUS)], 6, 0)
     verts, faces, _ = loft(rings)
     verts += [foot - 0.005 * MACE, top + SPIKE * MACE]
     faces += [(i, (i + 1) % 6, 12) for i in range(6)]
     faces += [(6 + i, 6 + (i + 1) % 6, 13) for i in range(6)]
-    part('mace-head', verts, faces, M['steel'], inside=foot.lerp(top, 0.5))
+    face_mats = [0] * 6 + [1] * 6 + [0] * 6
+    part('mace-head', verts, faces, [M['steel'], M['trim']], face_mats, inside=foot.lerp(top, 0.5))
 
     # Six flanges, each a blade drawn out to a point from the core, between its corners.
     ring = rings[0]
@@ -501,6 +575,7 @@ def main():
     clear_caparison(caparison, body)
     thighs = legs(mount)
     covered = [body, caparison] + thighs
+    stirrups(mount)
     fixed = set(bpy.context.scene.objects)
     cloak()
     hood()
