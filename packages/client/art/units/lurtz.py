@@ -12,6 +12,13 @@ quiver of them rides his back. The team colour is his short ragged cape, open at
 ragged flaps of his war-kilt before and behind; the White Hand is on the front flap, small and pale,
 as Gorbag bears the Moon of Morgul on his, and again between his shoulder blades.
 
+His fittings use `trim`, which the client colours iron, silver or gold by star level
+(docs/viewer-spec.md section 4, "Star levels"): the helm's brow band and the ring that binds his
+scalp-lock where it comes through the crown, the belt buckle, the bands round the quiver, the band
+at the top of each bracer and the ferrules either side of the bow's grip. The white S-rune and the
+White Hand are devices, not fittings, and stay white. His 2★ model is lurtz-2.py and his 3★ model
+lurtz-3.py.
+
     blender --background --factory-startup --python-exit-code 1 --python lurtz.py [-- <out.glb>]
 
 Coordinates are Blender's: z up, the model faces -Y, so his right hand is at -X.
@@ -43,6 +50,7 @@ from kit import (  # noqa: E402
     reset,
     segment,
     team_material,
+    trim_material,
     tube,
 )
 
@@ -76,6 +84,7 @@ def make_materials():
         white=material('white', WHITE, roughness=0.5),
         bone=material('bone', BONE, roughness=0.7),
         eyes=material('eyes', GLARE, roughness=0.5),
+        trim=trim_material(),  # fittings, recoloured by star
     )
 
 
@@ -190,7 +199,7 @@ def torso():
     part('torso', verts, faces, [M['jerkin'], M['leather']], [TORSO_BANDS[b] for b in bands],
          inside=lambda c: V(0, 0.005, c.z))
     axes = [V(0, -1, 0), V(1, 0, 0), V(0, 0, 1)]
-    box('buckle', V(0, -0.148, 0.64), axes, (0.014, 0.034, 0.034), M['iron'], 0.75)
+    box('buckle', V(0, -0.148, 0.64), axes, (0.014, 0.034, 0.034), M['trim'], 0.75)
 
 
 # The White Hand of Saruman, in (u, v) with u across and v up, about a unit tall: an open right hand,
@@ -312,6 +321,9 @@ def quiver():
     foot, top = QUIVER_FOOT, QUIVER_TOP
     along = (top - foot).normalized()
     tube('quiver', foot, top, [(0, 0.048), (1, 0.06)], M['leather'], n=6)
+    # Two bands round it, above the foot and below the mouth.
+    for name, (a, b) in (('quiver-band-foot', (0.08, 0.17)), ('quiver-band-mouth', (0.8, 0.89))):
+        tube(name, foot, top, [(t, 0.055 + 0.012 * t) for t in (a, b)], M['trim'], n=6)
     ring = segment(foot, top, [(0, 0.048)], 6)[0]
     part('quiver-foot', ring + [foot - 0.03 * along], [(i, (i + 1) % 6, 6) for i in range(6)], M['leather'],
          inside=foot)
@@ -454,17 +466,19 @@ def head():
 
 def helm():
     rings = [[h(p.x, p.y, p.z) for p in ellipse(0, cy, z, rx, ry, 8, 22.5)] for z, rx, ry, cy in HELM]
-    verts, faces, _ = loft(rings)
+    verts, faces, bands = loft(rings)
     last = len(verts) - 8
     verts.append(h(*HELM_TOP))
     faces += [(last + i, last + (i + 1) % 8, len(verts) - 1) for i in range(8)]
-    part('helm', verts, faces, M['iron'], inside=h(0, 0, 0.2))
+    face_mats = [1 if b == 0 else 0 for b in bands] + [0] * 8  # the brow band, from the rim up, is trim
+    part('helm', verts, faces, [M['iron'], M['trim']], face_mats, inside=h(0, 0, 0.2))
 
     # A black scalp-lock through the crown of the helm, as Gorbag wears his, lying back over it in
-    # a flat tail to below the rim.
+    # a flat tail to below the rim, bound by a ring where it comes out.
     path = [h(0, 0.0, 0.335), h(0, 0.075, 0.347), h(0, 0.16, 0.292), h(0, 0.183, 0.19)]
     radii = [(0.03, 0.024), (0.048, 0.03), (0.054, 0.028), (0.046, 0.024)]
     bent_tube('scalp-lock', path, radii, M['hair'], n=4, side=V(1, 0, 0), end=h(0, 0.18, 0.07))
+    tube('lock-ring', path[0], path[1], [(0.05, 0.043), (0.42, 0.045)], M['trim'], n=6, squash=0.8)
 
     # The S-rune in white metal on the flat front of the dome, three strokes laid just proud of it.
     lo, hi = rings[1], rings[2]
@@ -500,9 +514,10 @@ REST = 0.035  # from the middle of the grip up the bow to where the arrow crosse
 BOW_RADIUS = 0.8  # drawn, the stave bends round an arc of this radius
 
 # The stave from the lower tip to the upper: (degrees round the arc from the grip, half-thickness,
-# half-width). The tips are points; the band between the middle two rings is the leather grip.
-STAVE = [(-44, 0, 0), (-35, 0.02, 0.018), (-23, 0.027, 0.023), (-9, 0.034, 0.028),
-         (9, 0.034, 0.028), (23, 0.027, 0.023), (35, 0.02, 0.018), (44, 0, 0)]
+# half-width). The tips are points; the band between the middle two rings is the leather grip, and
+# the bands either side of it, just clear of his fist, are its ferrules.
+STAVE = [(-44, 0, 0), (-35, 0.02, 0.018), (-23, 0.027, 0.023), (-10, 0.036, 0.03), (-6, 0.036, 0.03),
+         (6, 0.036, 0.03), (10, 0.036, 0.03), (23, 0.027, 0.023), (35, 0.02, 0.018), (44, 0, 0)]
 
 
 def bow_axes():
@@ -538,14 +553,15 @@ def bow():
     verts, faces, bands = loft(rings)
     grip_band = len(rings) // 2 - 1
     # Pale sapwood on the back, the faces either side of the first point of each ring; the darker
-    # heartwood on the belly; leather round the grip.
-    face_mats = [2 if b == grip_band else (1 if k % 4 in (0, 3) else 0) for k, b in enumerate(bands)]
+    # heartwood on the belly; leather round the grip, and its ferrules.
+    face_mats = [2 if b == grip_band else 3 if abs(b - grip_band) == 1 else (1 if k % 4 in (0, 3) else 0)
+                 for k, b in enumerate(bands)]
     for (degrees, _, _), first in ((STAVE[0], 0), (STAVE[-1], 4 * (len(rings) - 1))):
         verts.append(on_stave(degrees)[0])
         faces += [(first + i, first + (i + 1) % 4, len(verts) - 1) for i in range(4)]
         face_mats += [1, 0, 0, 1]
     path = [on_stave(d)[0] for d, _, _ in STAVE]
-    part('bow', verts, faces, [M['wood'], M['sapwood'], M['leather']], face_mats,
+    part('bow', verts, faces, [M['wood'], M['sapwood'], M['leather'], M['trim']], face_mats,
          inside=nearest_on_polyline(path))
 
     # The string, from near each tip back to the nock.
@@ -577,8 +593,9 @@ def arm(side, shoulder, fist, pole, fist_up, bracer):
     elbow = bend(shoulder, fist - 0.055 * reach, UPPER_ARM, FOREARM, pole)
     wrist = fist - 0.055 * (fist - elbow).normalized()
     tube(f'upper-arm-{side}', shoulder, elbow, [(-0.12, 0.084), (1.08, 0.068)], M['skin'])
-    tube(f'forearm-{side}', elbow, wrist, [(-0.1, 0.064), (0.35, 0.075), (1.0, 0.067)],
-         [M['skin'], M[bracer]], [0, 1])
+    # The bracer from the middle of the forearm to the wrist, a band round its top.
+    tube(f'forearm-{side}', elbow, wrist, [(-0.1, 0.064), (0.35, 0.077), (0.46, 0.076), (1.0, 0.067)],
+         [M['skin'], M['trim'], M[bracer]], [0, 1, 2])
     ahead = (fist - elbow).normalized()
     up = (fist_up - fist_up.dot(ahead) * ahead).normalized()
     box(f'fist-{side}', fist, [ahead, up, ahead.cross(up)], (0.05, 0.058, 0.054), M['skin'], 0.85)
