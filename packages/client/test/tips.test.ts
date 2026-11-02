@@ -66,7 +66,7 @@ describe('tooltips', () => {
     const base = baseStats(UNITS.gimli, 2);
     expect(plain).toMatchObject({ title: 'Gimli', subtitle: '2★ · 3-cost unit', tone: 'cost-3', body: [] });
     expect(plain.stats![0]).toBe(`${base.maxHealth} Health`);
-    expect(plain.ability!.lines).toEqual(['Adjacent enemies: 405 physical damage.', 'Itself: a 338 shield for 4s.']);
+    expect(plain.ability!.lines).toEqual(['Deals 405 physical damage to adjacent enemies.', 'Gains a 338 shield for 4s.']);
     const armed = ownedUnitTip({ id: 1, unitId: 'gimli', star: 2, items: ['mail'] }, 3);
     expect(armed.stats![3]).not.toBe(plain.stats![3]);
     expect(armed.body!.map((l) => l.text)).toEqual([`Items: ${ITEMS.mail.name}.`, 'Bears the One Ring, at Corruption 3.']);

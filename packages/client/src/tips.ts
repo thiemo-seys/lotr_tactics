@@ -128,7 +128,7 @@ export function unitTip(id: UnitId, note?: Tip['note']): Tip {
     tone: `cost-${def.cost}`,
     traits: [def.origin, ...def.classes],
     stats: statLines(stats),
-    ability: abilityOf(def.ability, { cost: def.cost, star: 1, abilityPower: stats.abilityPower }, stats),
+    ability: abilityOf(def.ability, { cost: def.cost, star: 1, abilityPower: stats.abilityPower, origin: def.origin }, stats),
     ...(note === undefined ? {} : { note }),
   };
 }
@@ -147,7 +147,7 @@ export function ownedUnitTip(unit: OwnedUnit, ring: number | null = null): Tip {
     tone: `cost-${def.cost}`,
     traits: [def.origin, ...def.classes],
     stats: statLines(stats),
-    ability: abilityOf(def.ability, { cost: def.cost, star: unit.star, abilityPower: stats.abilityPower }, base),
+    ability: abilityOf(def.ability, { cost: def.cost, star: unit.star, abilityPower: stats.abilityPower, origin: def.origin }, base),
     body: [
       ...(unit.items.length === 0 ? [] : [{ text: `Items: ${unit.items.map((i) => ITEMS[i].name).join(', ')}.` }]),
       ...(ring === null ? [] : [{ text: `Bears the One Ring, at Corruption ${ring}.` }]),
@@ -167,7 +167,7 @@ export function fighterTip(unit: UnitState, name: string): Tip {
     ...(shield > 0 ? [`${Math.round(shield)} Shield`] : []),
     ...(unit.base.maxMana > 0 ? [`${Math.floor(unit.mana)}/${unit.base.maxMana} Mana`] : []),
   ];
-  const ability = def?.ability === undefined ? null : abilityOf(def.ability, { cost: def.cost, star: unit.star, abilityPower: unit.stats.abilityPower }, unit.base, true);
+  const ability = def?.ability === undefined ? null : abilityOf(def.ability, { cost: def.cost, star: unit.star, abilityPower: unit.stats.abilityPower, ...(roster === null ? {} : { origin: roster.origin }) }, unit.base, true);
   return {
     title: name,
     subtitle: roster !== null ? `${unit.star}★ · ${roster.cost}-cost unit` : monster !== null ? 'Monster' : 'Summon',
