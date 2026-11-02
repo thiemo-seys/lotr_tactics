@@ -2,7 +2,7 @@
 // view gives them, the streak, the timer and the One Ring's status. No Three.js or DOM, so it can
 // be tested.
 
-import { PLAYER, XP, xpForNextLevel, type PlayerView } from '@lotr-tactics/sim';
+import { PLAYER, XP, roundType, roundsInStage, xpForNextLevel, type PlayerView, type RoundType } from '@lotr-tactics/sim';
 import type { PlanningRing } from './flow.js';
 import { ringTier, type RingTier } from './ring.js';
 
@@ -73,6 +73,28 @@ export interface RingStatus {
 
 export function ringStatus(ring: PlanningRing | null): RingStatus | null {
   return ring === null ? null : { corruption: ring.corruption, tier: ringTier(ring.corruption), unworn: ring.bearer === null };
+}
+
+/** How the person's fight in a round went, once its results have been shown. */
+export type RoundOutcome = 'Victory' | 'Defeat' | 'Draw';
+
+/** One round of a stage in the stage tracker. */
+export interface StageNode {
+  readonly round: number;
+  readonly type: RoundType;
+  /** Played, the one on screen, or still to come. */
+  readonly state: 'done' | 'current' | 'next';
+  /** The person's result in a round played or on screen, if they fought in it and it has been shown. */
+  readonly outcome: RoundOutcome | null;
+}
+
+/** Every round of the stage on screen, in order, each with its type and how far the game has come. */
+export function stageTrack(stage: number, round: number, outcome: (stage: number, round: number) => RoundOutcome | null): StageNode[] {
+  return Array.from({ length: roundsInStage(stage) }, (_, i) => {
+    const r = i + 1;
+    const state = r < round ? 'done' : r === round ? 'current' : 'next';
+    return { round: r, type: roundType(stage, r), state, outcome: state === 'next' ? null : outcome(stage, r) };
+  });
 }
 
 /** A whole number of HP or damage as the HUD writes it. */

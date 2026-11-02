@@ -1,10 +1,10 @@
 // One player's bench, board, shop, gold and XP (docs/game-spec.md sections 5–8).
 
 import type { PlacedUnit } from '../combat/combat.js';
-import { COMBINED_ITEM_IDS, isRingOfPower, itemEffects } from '../combat/items.js';
+import { COMBINED_ITEM_IDS, combine, isRingOfPower, itemEffects } from '../combat/items.js';
 import { INCOME, PLAYER, SHOP, STREAK_GOLD, XP } from '../data/economy.js';
 import { GIFTS, type GiftId, type GiftTier } from '../data/gifts.js';
-import { COMPONENTS, type ItemId, type RingOfPowerId } from '../data/items.js';
+import { COMPONENTS, type ComponentId, type ItemId, type RingOfPowerId } from '../data/items.js';
 import { UNITS, type Cost, type UnitId } from '../data/units.js';
 import { BOARD_COLS } from '../hex.js';
 import { randomInt, type Rng } from '../rng.js';
@@ -18,6 +18,7 @@ import {
   addItem,
   checkBuy,
   checkBuyXp,
+  checkCombine,
   checkEquip,
   checkGift,
   checkLock,
@@ -185,6 +186,15 @@ export class Player implements PlayerView {
     const items = addItem(unit.items, this.items[item]!)!;
     this.items.splice(item, 1);
     this.setAt(to, { ...unit, items });
+    return OK;
+  }
+
+  /** Combines two of the player's components: the item takes the place of the one at `other` (section 7.7). */
+  combineItems(item: number, other: number): ActionResult {
+    const check = checkCombine(this, item, other);
+    if (!check.ok) return check;
+    this.items[other] = combine(this.items[other] as ComponentId, this.items[item] as ComponentId);
+    this.items.splice(item, 1);
     return OK;
   }
 

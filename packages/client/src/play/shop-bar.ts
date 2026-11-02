@@ -2,7 +2,7 @@
 // unit cards, the person's items and the One Ring to drag onto units, and Ready. Dropping a dragged
 // unit on the bar sells it.
 
-import { SHOP, UNITS, XP, ownedUnits, type ActionResult, type PlayerView, type Star, type UnitId } from '@lotr-tactics/sim';
+import { SHOP, UNITS, XP, isComponent, ownedUnits, type ActionResult, type PlayerView, type Star, type UnitId } from '@lotr-tactics/sim';
 import type { PlayFlow } from '../flow.js';
 import { TRAIT_ICONS } from '../icons.js';
 import { actionTip, unitTip } from '../tips.js';
@@ -85,7 +85,9 @@ export class ShopBar {
     rebuild(this.items, JSON.stringify([p.items, ring]), () => {
       const chips = [
         ...(ring === null ? [] : [this.trayChip(ringChip(ring.corruption, 'lg', `Drag onto a unit to ${ring.bearer === null ? 'give it' : 'move'} the Ring.`), 'ring')]),
-        ...p.items.map((id, index) => this.trayChip(itemChip(id, 'lg', 'Drag onto a unit to give it this item.'), index)),
+        ...p.items.map((id, index) =>
+          this.trayChip(itemChip(id, 'lg', isComponent(id) ? 'Drag onto a unit to give it this item, or onto another component to combine them.' : 'Drag onto a unit to give it this item.'), index),
+        ),
       ];
       return chips.length > 0 ? chips : [el('span', 'tray-empty', 'None yet')];
     });
@@ -103,7 +105,23 @@ export class ShopBar {
     if (name !== null) setText(this.sellText, `Drop to sell ${name}`);
   }
 
+  /** The index of the person's item whose chip is under a point, for dropping a dragged item on it. */
+  itemAt(x: number, y: number): number | null {
+    const chip = document.elementFromPoint(x, y)?.closest<HTMLElement>('#items [data-item]');
+    return chip === null || chip === undefined ? null : Number(chip.dataset.item);
+  }
+
+  /** Marks the item chip a dragged item would combine with, in gold if it can and red if not, or none. */
+  markItem(index: number | null, ok = true): void {
+    for (const chip of this.items.querySelectorAll<HTMLElement>('[data-item]')) {
+      const marked = index !== null && chip.dataset.item === String(index);
+      toggle(chip, 'combine-target', marked && ok);
+      toggle(chip, 'combine-refused', marked && !ok);
+    }
+  }
+
   private trayChip(chip: HTMLElement, item: TrayItem): HTMLElement {
+    if (item !== 'ring') chip.dataset.item = String(item);
     chip.classList.add('draggable');
     chip.tabIndex = 0;
     chip.addEventListener('pointerdown', (event) => this.drag(item, event));
@@ -111,12 +129,17 @@ export class ShopBar {
   }
 }
 
-/** A unit card for the shop: framed and coloured by cost, with its traits, cost, copies owned and, if it can't be bought, why. */
+/**
+ * A unit card for the shop: framed and coloured by cost, with its traits, cost, copies owned and,
+ * if it can't be bought, why. A unit the person already has on the bench or the board gets a gold
+ * border, which glows when buying it would make a 2★ from two 1★ copies.
+ */
 function unitCard(id: UnitId, owned: readonly Star[], buy: ActionResult, onBuy: () => void): HTMLElement {
   const def = UNITS[id];
+  const mark = owned.length === 0 ? '' : owned.filter((star) => star === 1).length >= 2 ? ' has-copy completes-star' : ' has-copy';
   const card = el(
     'button',
-    `unit-card cost-${def.cost}`,
+    `unit-card cost-${def.cost}${mark}`,
     el(
       'span',
       'portrait',
@@ -128,9 +151,11 @@ function unitCard(id: UnitId, owned: readonly Star[], buy: ActionResult, onBuy: 
     ),
     el('span', 'card-foot', ...[def.origin, ...def.classes].map(traitTag)),
   );
-  card.setAttribute('aria-label', `${def.name}, ${def.cost} gold${buy.ok ? '' : `: ${buy.reason}`}`);
+  const ownedText = owned.length === 0 ? '' : `, you have ${owned.length}${mark.includes('completes-star') ? ', buying it makes a 2★' : ''}`;
+  card.setAttribute('aria-label', `${def.name}, ${def.cost} gold${ownedText}${buy.ok ? '' : `: ${buy.reason}`}`);
   setEnabled(card, buy.ok);
-  setTip(card, unitTip(id, buy.ok ? { text: 'Click to buy.', reason: false } : { text: buy.reason, reason: true }));
+  const hint = mark.includes('completes-star') ? 'Click to buy: it combines into a 2★.' : owned.length > 0 ? `Click to buy. You have ${owned.length}.` : 'Click to buy.';
+  setTip(card, unitTip(id, buy.ok ? { text: hint, reason: false } : { text: buy.reason, reason: true }));
   card.addEventListener('click', onBuy);
   return card;
 }

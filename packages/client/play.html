@@ -8,35 +8,23 @@
   </head>
   <body class="play">
     <header id="hud" class="topbar">
-      <div class="hud-group">
-        <div id="round" class="round-chip"></div>
-        <div id="timer" class="timer" role="timer" hidden>
-          <span data-icon="timer"></span>
-          <span class="seconds"></span>
-          <span class="drain" aria-hidden="true"><i></i></span>
+      <div class="hud-side">
+        <div id="stats" class="hud-group stats" hidden>
+          <span id="stat-hp" class="pill stat hp"><span data-icon="hp"></span><span class="value"></span></span>
+          <span id="stat-board" class="pill stat board"><span data-icon="board"></span><span class="value"></span></span>
+          <span id="stat-streak" class="pill stat streak" hidden><span data-icon="streak-win" class="win"></span><span data-icon="streak-loss" class="loss"></span><span class="value"></span></span>
+          <span id="ring-status" class="pill stat ring-status" hidden><span data-icon="one-ring"></span><span class="value"></span></span>
+          <button id="mount-doom" class="btn btn-danger btn-sm" hidden><span data-icon="volcano"></span>Mount Doom</button>
         </div>
       </div>
-      <div id="stats" class="hud-group stats" hidden>
-        <span class="pill stat hp"><span data-icon="hp"></span><span class="value"></span></span>
-        <span class="pill stat gold"><span data-icon="gold"></span><span class="value"></span></span>
-        <span class="pill stat level">
-          <span class="level-badge"><span class="value"></span></span>
-          <span class="xp">
-            <span class="xp-text"></span>
-            <span class="xp-bar" aria-hidden="true"><i></i></span>
-          </span>
-        </span>
-        <span class="pill stat board"><span data-icon="board"></span><span class="value"></span></span>
-        <span class="pill stat streak" hidden><span data-icon="streak-win" class="win"></span><span data-icon="streak-loss" class="loss"></span><span class="value"></span></span>
-        <span id="ring-status" class="pill stat ring-status" hidden><span data-icon="one-ring"></span><span class="value"></span></span>
-        <button id="mount-doom" class="btn btn-danger btn-sm" hidden><span data-icon="volcano"></span>Mount Doom</button>
-      </div>
-      <span class="spacer"></span>
-      <div class="hud-group">
-        <button id="speed" class="btn btn-secondary btn-sm" hidden><span data-icon="speed"></span><span class="label">1×</span></button>
-        <button id="skip" class="btn btn-secondary btn-sm" hidden><span data-icon="skip"></span>Skip fight</button>
-        <button id="leave-game" class="btn btn-ghost btn-sm" hidden><span data-icon="leave"></span>Leave</button>
-        <a href="./index.html" class="btn btn-ghost btn-sm"><span data-icon="viewer"></span>Fight viewer</a>
+      <div id="round" class="round-track"></div>
+      <div class="hud-side hud-end">
+        <div class="hud-group">
+          <button id="speed" class="btn btn-secondary btn-sm" hidden><span data-icon="speed"></span><span class="label">1×</span></button>
+          <button id="skip" class="btn btn-secondary btn-sm" hidden><span data-icon="skip"></span>Skip fight</button>
+          <button id="leave-game" class="btn btn-ghost btn-sm" hidden><span data-icon="leave"></span>Leave</button>
+          <a href="./index.html" class="btn btn-ghost btn-sm"><span data-icon="viewer"></span>Fight viewer</a>
+        </div>
       </div>
     </header>
     <main>
@@ -99,6 +87,21 @@
       <section id="result" class="panel" aria-live="polite" hidden></section>
       <div id="banner" role="status" hidden></div>
     </main>
+    <div id="player-bar" class="player-bar" hidden>
+      <span id="stat-level" class="pill stat level">
+        <span class="level-badge"><span class="value"></span></span>
+        <span class="xp">
+          <span class="xp-text"></span>
+          <span class="xp-bar" aria-hidden="true"><i></i></span>
+        </span>
+      </span>
+      <span id="stat-gold" class="pill stat gold"><span data-icon="gold"></span><span class="value"></span></span>
+      <div id="timer" class="timer" role="timer" hidden>
+        <span data-icon="timer"></span>
+        <span class="seconds"></span>
+        <span class="drain" aria-hidden="true"><i></i></span>
+      </div>
+    </div>
     <footer id="shop-bar" hidden>
       <div class="shop-actions">
         <button id="buy-xp" class="btn btn-secondary shop-button"><span data-icon="level-up"></span><span class="label">Buy XP</span><span class="cost"></span><kbd>F</kbd></button>

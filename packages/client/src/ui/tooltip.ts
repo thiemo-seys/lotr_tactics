@@ -15,6 +15,13 @@ let card: HTMLElement | null = null;
 let render: (tip: Tip) => Node[] = () => [];
 let current: Element | null = null;
 let suppressed = false;
+/** The element the page says the pointer is on, outside the DOM's own hover: a unit in the 3D view. */
+let pointed: Element | null = null;
+/** Elements whose tip is asked for again while it shows, such as a fighting unit's. */
+const live = new WeakSet<Element>();
+/** What the card shows now, to redraw a live tip only when it changes. */
+let shownKey = '';
+let frame = 0;
 /** Where the element was when the card was last placed, so a still element costs no layout. */
 const last = { left: NaN, top: NaN, width: NaN, height: NaN };
 
@@ -67,6 +74,24 @@ export function initTooltips(draw: (tip: Tip) => Node[]): void {
   window.addEventListener('scroll', () => hideTip(), { capture: true, passive: true });
 }
 
+/**
+ * Shows an element's tip because the page says the pointer is on it, such as a unit's label for the
+ * unit under the pointer in the 3D view, or with null, hides that tip again. A tip the DOM's own
+ * hover shows, such as an item chip's, isn't replaced. A `live` tip is asked for again while it shows.
+ */
+export function pointTip(element: Element | null, tip: Source | null = null, isLive = false): void {
+  if (element === null) {
+    if (pointed !== null && current === pointed) hideTip();
+    pointed = null;
+    return;
+  }
+  if (tip !== null) sources.set(element, tip);
+  if (isLive) live.add(element);
+  const before = pointed;
+  pointed = element;
+  if (current !== element && (current === null || current === before)) open(element);
+}
+
 /** No tooltips while `on`, such as during a drag. */
 export function suppressTips(on: boolean): void {
   suppressed = on;
@@ -86,6 +111,21 @@ export function updateTip(): void {
   if (!current.isConnected || current.getClientRects().length === 0) {
     hideTip();
     return;
+  }
+  // A live tip, such as a fighting unit's Health, is asked for again a few times a second.
+  if (live.has(current) && ++frame % 6 === 0) {
+    const source = sources.get(current);
+    const tip = typeof source === 'function' ? source() : (source ?? null);
+    if (tip === null) {
+      hideTip();
+      return;
+    }
+    const key = JSON.stringify(tip);
+    if (key !== shownKey) {
+      shownKey = key;
+      card.replaceChildren(...render(tip));
+      last.left = NaN;
+    }
   }
   place(current, card);
 }
@@ -109,6 +149,7 @@ function open(element: Element): void {
   element.setAttribute('aria-describedby', 'tooltip');
   card.className = `tip-card${tip.tone === undefined ? '' : ` tone-${tip.tone}`}`;
   card.replaceChildren(...render(tip));
+  shownKey = live.has(element) ? JSON.stringify(tip) : '';
   card.hidden = false;
   last.left = NaN;
   place(element, card);

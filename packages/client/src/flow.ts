@@ -101,6 +101,8 @@ export class PlayFlow {
   /** The step the timer belongs to, and its time when first seen, to show how much is left. */
   private timerKey = '';
   private timerMs = 0;
+  /** The person's result in each round whose results have been shown, by `stage-round`. */
+  private outcomes = new Map<string, 'Victory' | 'Defeat' | 'Draw'>();
 
   constructor(private readonly hooks: FlowHooks) {}
 
@@ -114,6 +116,12 @@ export class PlayFlow {
     this.boardSeat = null;
     this.timerKey = '';
     this.timerMs = 0;
+    this.outcomes.clear();
+  }
+
+  /** The person's result in a round, once its results have been shown; null if they had no fight or it hasn't been shown yet. */
+  outcome(stage: number, round: number): 'Victory' | 'Defeat' | 'Draw' | null {
+    return this.outcomes.get(`${stage}-${round}`) ?? null;
   }
 
   /** A message from the game, arriving at `now` in milliseconds. */
@@ -346,6 +354,8 @@ export class PlayFlow {
   }
 
   private showResults(round: RoundRecord, now: number): void {
+    const fight = yourFight(round, this.you);
+    if (fight !== null) this.outcomes.set(`${round.stage}-${round.round}`, outcomeText(fight.result.outcome, yourTeam(fight, this.you)));
     this.show = { kind: 'results', round, until: now + TIMERS.results * 1000 };
   }
 }

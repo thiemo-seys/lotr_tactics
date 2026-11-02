@@ -49,6 +49,17 @@ export function tipCard(tip: Tip): Node[] {
   if (tip.stats !== undefined && tip.stats.length > 0) {
     nodes.push(el('ul', 'tip-stats', ...tip.stats.map((s) => el('li', '', s))));
   }
+  if (tip.ability !== undefined) {
+    const { name, mana, lines } = tip.ability;
+    nodes.push(
+      el(
+        'div',
+        'tip-ability',
+        el('div', 'tip-ability-head', icon('ability'), el('span', 'tip-ability-name', name), mana === null ? null : el('span', 'tip-ability-mana', mana)),
+        ...lines.map((line) => el('p', 'tip-ability-text', line)),
+      ),
+    );
+  }
   for (const line of tip.body ?? []) nodes.push(el('p', line.bad === true ? 'tip-text bad' : 'tip-text', line.text));
   if (tip.levels !== undefined && tip.levels.length > 0) {
     nodes.push(el('ol', 'tip-levels', ...tip.levels.map((l) => el('li', l.active ? 'active' : '', el('b', '', String(l.count)), el('span', '', l.text)))));

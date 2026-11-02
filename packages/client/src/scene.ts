@@ -74,6 +74,11 @@ interface Figure {
   opacity: number;
 }
 
+/** A unit under the pointer: one in the fight by its id, or a planning unit by its owned id, with its label. */
+export type UnitPick =
+  | { readonly kind: 'fight'; readonly id: number; readonly label: HTMLElement }
+  | { readonly kind: 'planning'; readonly id: number; readonly label: HTMLElement };
+
 const geometry = {
   hex: new THREE.CylinderGeometry(0.94, 0.94, 0.12, 6),
   body: new THREE.CylinderGeometry(0.3, 0.42, 0.9, 6),
@@ -235,6 +240,38 @@ export class FightScene {
     this.marked = unitId;
   }
 
+  /**
+   * The unit under a screen position: its model or pawn, or its label when `target`, the element
+   * under the pointer, is in one. Null if there is none, or it is dead.
+   */
+  unitAt(clientX: number, clientY: number, target: EventTarget | null = null): UnitPick | null {
+    const label = target instanceof Element ? target.closest('.unit-label') : null;
+    const pickOf = (group: THREE.Group, label: HTMLElement): UnitPick | null => {
+      if (!group.visible) return null;
+      if (typeof group.userData.unitId === 'number') return { kind: 'planning', id: group.userData.unitId, label };
+      if (typeof group.userData.fighter === 'number') {
+        const unit = this.playback?.combat.state.units[group.userData.fighter];
+        return unit?.alive === true ? { kind: 'fight', id: group.userData.fighter, label } : null;
+      }
+      return null;
+    };
+    if (label !== null) {
+      const figure = this.figures.find((f) => f.overlay.element === label);
+      return figure === undefined ? null : pickOf(figure.group, figure.overlay.element);
+    }
+    this.aimRay(clientX, clientY);
+    const groups = this.playback !== null ? this.units.map((u) => u.group) : [...this.planning.values()];
+    for (const hit of this.raycaster.intersectObjects(groups.filter((g) => g.visible), true)) {
+      for (let object: THREE.Object3D | null = hit.object; object !== null; object = object.parent) {
+        if (!(object instanceof THREE.Group) || !groups.includes(object)) continue;
+        const figure = this.figures.find((f) => f.group === object);
+        const pick = figure === undefined ? null : pickOf(object, figure.overlay.element);
+        if (pick !== null) return pick;
+      }
+    }
+    return null;
+  }
+
   /** The point on the ground under a screen position, or null if the ray misses it. */
   groundPoint(clientX: number, clientY: number): Point | null {
     this.aimRay(clientX, clientY);
@@ -380,6 +417,7 @@ export class FightScene {
   private createUnit(unit: UnitState): Figure {
     const look = unit.team === this.side ? 'A' : 'B';
     const figure = this.createFigure(unit.unitId, unit.star, unit.team, look, unit.summon, unit.items, unit.ring, true, unit.base.maxMana > 0);
+    figure.group.userData.fighter = unit.id;
     this.fightLayer.add(figure.group);
     return figure;
   }

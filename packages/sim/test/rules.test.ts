@@ -102,6 +102,15 @@ describe('checking actions', () => {
     expect(reason(p, { type: 'equip', item: 1, to: merry })).toBe('A unit can wear only one Ring of Power.');
   });
 
+  it('combines two of the player\'s components, and nothing else, off a unit', () => {
+    const p = view({ items: ['blade', 'bow', 'anduril', 'narya'] });
+    expect(reason(p, { type: 'combine', item: 0, with: 1 })).toBe('ok');
+    expect(reason(p, { type: 'combine', item: 0, with: 4 })).toBe('There is no such item.');
+    expect(reason(p, { type: 'combine', item: 1, with: 1 })).toBe("An item can't combine with itself.");
+    expect(reason(p, { type: 'combine', item: 0, with: 2 })).toBe('Only two components combine.');
+    expect(reason(p, { type: 'combine', item: 3, with: 1 })).toBe('Only two components combine.');
+  });
+
   it('picks and rerolls Gifts only from an offer, rerolling once', () => {
     expect(reason(view(), { type: 'gift', option: 0 })).toBe('There is no Gift to pick.');
     expect(reason(view(), { type: 'rerollGifts' })).toBe('There is no Gift to reroll.');

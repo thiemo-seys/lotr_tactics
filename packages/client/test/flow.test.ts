@@ -108,8 +108,11 @@ describe('the play flow', () => {
         rounds++;
         expect(calls.fights.at(-1)).toBe(yourTeam(show.fight, 0));
         expect(show.fight).toBe(yourFight(show.round, 0));
+        // The result isn't told before the fight has played.
+        expect(flow.outcome(show.round.stage, show.round.round)).toBeNull();
         flow.update(1000, host.time);
         expect(flow.show.kind).toBe('results');
+        expect(flow.outcome(show.round.stage, show.round.round)).toBe(flow.results(show.round, false).outcome);
       } else if (show.kind === 'results') {
         const results = flow.results(show.round, false);
         expect([results.stage, results.round]).toEqual([show.round.stage, show.round.round]);
