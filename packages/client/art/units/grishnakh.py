@@ -12,6 +12,11 @@ ragged hood, drawn to a point and pierced by his ears, and the short ragged cape
 and hump, seen from in front, from behind and from above; from behind, his ears, his arms and both
 blades show round it, and his jerkin and belt below it.
 
+His fittings, the blades' cross-guards and pommels, the belt buckle and the studs on the back of his
+belt and jerkin, use `trim`, which the client colours iron, silver or gold by star level
+(docs/viewer-spec.md section 4, "Star levels"). His 2★ model is grishnakh-2.py and his 3★ model
+grishnakh-3.py.
+
     blender --background --factory-startup --python-exit-code 1 --python grishnakh.py [-- <out.glb>]
 
 Coordinates are Blender's: z up, the model faces -Y, so his right hand is at -X.
@@ -45,6 +50,7 @@ from kit import (  # noqa: E402
     reset,
     segment,
     team_material,
+    trim_material,
     tube,
     wind,
 )
@@ -69,6 +75,7 @@ def make_materials():
         cloth=material('cloth', CLOTH, roughness=0.9),
         iron=material('iron', IRON, roughness=0.6, metallic=0.1),
         steel=material('steel', STEEL, roughness=0.5, metallic=0.1),
+        trim=trim_material(),  # fittings, recoloured by star
         bone=material('bone', BONE, roughness=0.7),
         eyes=material('eyes', EYES, roughness=0.6),
     )
@@ -187,6 +194,45 @@ def torso():
     face_mats.append(3)
     mats = [M['cloth'], M['leather'], M['tunic'], M['skin']]
     part('torso', verts, faces, mats, face_mats, inside=lambda c: V(0, 0.03, min(max(c.z, 0.4), 0.85)))
+
+
+def on_torso(degrees, z):
+    """The point of the upright torso at `degrees` round from +X (90 is the middle of his back) and
+    height z, on its octagons, and the way out of it there."""
+    for (z0, rx0, ry0, cy0), (z1, rx1, ry1, cy1) in zip(TORSO, TORSO[1:]):
+        if z0 <= z <= z1:
+            break
+    t = (z - z0) / (z1 - z0)
+    k = math.floor((degrees - 22.5) / 45)
+    s = (degrees - 22.5 - 45 * k) / 45  # how far along the face from its first corner
+    corners = []
+    for a in (math.radians(22.5 + 45 * k), math.radians(22.5 + 45 * (k + 1))):
+        low = V(rx0 * math.cos(a), cy0 + ry0 * math.sin(a), z0)
+        high = V(rx1 * math.cos(a), cy1 + ry1 * math.sin(a), z1)
+        corners.append((low, high))
+    (a_low, a_high), (b_low, b_high) = corners
+    p = a_low.lerp(a_high, t).lerp(b_low.lerp(b_high, t), s)
+    out = (b_low - a_low).cross(a_high - a_low).normalized()
+    if out.dot(p - V(0, 0.03, z)) < 0:
+        out = -out
+    return p, out
+
+
+def stud(name, degrees, z, size=0.017):
+    """A stud of trim, a low four-sided point, on the upright torso."""
+    at, out = on_torso(degrees, z)
+    cone(name, at - 0.004 * out, at + 1.3 * size * out, size, M['trim'], n=4, phase=45, back=None)
+
+
+def fittings():
+    """The belt buckle in front, and studs on the back of his belt and of his jerkin below the cape,
+    where they show from behind between its rags."""
+    at, out = on_torso(270, 0.46)
+    box('buckle', at + 0.006 * out, [out, V(1, 0, 0), V(0, 0, 1)], (0.01, 0.045, 0.036), M['trim'], 0.7)
+    for degrees in (45, 90, 135):
+        stud(f'belt-stud-{degrees}', degrees, 0.46)
+    for degrees in (67.5, 112.5):
+        stud(f'jerkin-stud-{degrees}', degrees, 0.56)
 
 
 # The cape over his hump: a ragged mantle round his neck and over his shoulders and the top of the hump,
@@ -389,10 +435,10 @@ def blade(name, root, along, edge, stations, tip, curve=0.0):
     faces = wind(verts, faces, inside=nearest_on_polyline(path))
     faces += wind(verts, [(0, 1, 2, 3)], outward=-along)  # the root, against the guard
     part(name, verts, faces, M['steel'])
-    # A crossguard of iron, a leather grip in the fist and an iron pommel below it.
-    box(f'{name}-guard', root - 0.008 * along, [along, edge, flat], (0.012, 0.05, 0.024), M['iron'])
+    # A crossguard, a leather grip in the fist and a pommel below it.
+    box(f'{name}-guard', root - 0.008 * along, [along, edge, flat], (0.012, 0.05, 0.024), M['trim'])
     tube(f'{name}-grip', root - 0.15 * along, root, [(0, 0.022), (1, 0.022)], M['leather'], n=5)
-    cone(f'{name}-pommel', root - 0.14 * along, root - 0.19 * along, 0.03, M['iron'], n=5, back=root - 0.12 * along)
+    cone(f'{name}-pommel', root - 0.14 * along, root - 0.19 * along, 0.03, M['trim'], n=5, back=root - 0.12 * along)
 
 
 # The long knife, straight and broad, its point clipped back to the spine; the dagger, curving up.
@@ -421,6 +467,7 @@ def main():
     legs()
     before = set(bpy.context.scene.objects)
     torso()
+    fittings()
     cape()
     hunch(new_objects(before))
     before = set(bpy.context.scene.objects)
