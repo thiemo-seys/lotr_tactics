@@ -11,6 +11,12 @@ The team colour is his hat, seen from every side and from above, and his scarf: 
 neck, one end down his chest beside the beard and the other thrown back over his shoulder. A dark
 band round the hat keeps brim and crown apart from above. Everything else is grey, white and earth.
 
+His fittings use `trim`, which the client colours iron, silver or gold by star level
+(docs/viewer-spec.md section 4, "Star levels"): Glamdring's cross-guard and pommel and the locket
+at the scabbard's mouth, the clasp that pins his cloak at his right shoulder, the buckle of his belt
+beside the beard, and on the staff a band binding it below the knob and a ferrule at its foot, which
+show from behind as well. His 2★ model is gandalf-2.py and his 3★ model gandalf-3.py.
+
     blender --background --factory-startup --python-exit-code 1 --python gandalf.py [-- <out.glb>]
 
 Coordinates are Blender's: z up, the model faces -Y, so his right hand, on the staff, is at -X.
@@ -28,10 +34,10 @@ from kit import (  # noqa: E402
     BOOTS,
     EYES,
     LEATHER,
-    STEEL,
     WOOD,
     V,
     box,
+    cone,
     ellipse,
     finish,
     lean,
@@ -42,6 +48,7 @@ from kit import (  # noqa: E402
     reset,
     segment,
     team_material,
+    trim_material,
     tube,
 )
 
@@ -69,8 +76,8 @@ def make_materials():
         leather=material('leather', LEATHER, roughness=0.85),
         hatband=material('hatband', HATBAND, roughness=0.9),
         wood=material('wood', WOOD, roughness=0.85),
-        steel=material('steel', STEEL, roughness=0.5, metallic=0.1),
         light=material('light', LIGHT, roughness=0.6, emission=LIGHT, emission_strength=1.0),
+        trim=trim_material(),  # fittings, recoloured by star
     )
 
 
@@ -224,6 +231,29 @@ def cloak():
         rings.append(ring)
     verts, faces, _ = loft(rings, closed=False)
     part('cloak', verts, faces, M['cloak'], inside=lambda c: V(0, 0, c.z))
+
+
+BUCKLE_AT = 0.5  # how far along the belt's front-right facet the buckle is, from the front
+CLASP = (V(-0.198, -0.138, 0.962), V(-0.62, -0.74, 0.25))  # the cloak's clasp: where, and facing
+
+
+def fittings():
+    """The buckle of his belt, on its front-right face beside the beard, and the clasp that pins his
+    cloak at the front of his right shoulder, where the mantle turns from his chest to his arm."""
+    # The belt's facet between the octagon's points at 202.5 and 247.5 degrees, half-way up.
+    z = (ROBE_RINGS[0][0] + ROBE_RINGS[1][0]) / 2
+    rx = (ROBE_RINGS[0][1] + ROBE_RINGS[1][1]) / 2
+    ry = (ROBE_RINGS[0][2] + ROBE_RINGS[1][2]) / 2
+    a, b = (V(rx * math.cos(math.radians(d)), ry * math.sin(math.radians(d)), z) for d in (247.5, 202.5))
+    along = (b - a).normalized()
+    out = V(0, 0, 1).cross(along)
+    centre = a.lerp(b, BUCKLE_AT) + 0.008 * out
+    box('buckle', centre, [out, along, V(0, 0, 1)], (0.009, 0.024, 0.032), M['trim'], 0.7)
+
+    # The clasp: a round boss on the mantle's corner, facing out, forward and a little up.
+    centre, out = CLASP
+    out = out.normalized()
+    cone('clasp', centre - 0.004 * out, centre + 0.016 * out, 0.03, M['trim'], n=6, back=None)
 
 
 def scarf():
@@ -407,15 +437,20 @@ def arm(side, shoulder, elbow, wrist, fist, grip, thumb=False):
 
 STAFF_GRIP = V(-0.43, -0.148, 0.955)  # in his fist
 STAFF_UP = V(-0.085, 0.03, 1.0).normalized()  # leaning out from him a little
-STAFF = [  # distance along the staff from his fist (None for the foot, on the ground), radius, kink
-    (None, 0.022, V(0, 0, 0)),
+STAFF = [  # distance along the staff from his fist (None for the foot, on the ground, and 'ferrule'
+    # for the top of the ferrule above it), radius, kink
+    (None, 0.026, V(0, 0, 0)),
+    ('ferrule', 0.028, V(0, 0, 0)),
     (-0.485, 0.035, V(0.012, -0.008, 0)),
     (0.0, 0.028, V(0, 0, 0)),
-    (0.447, 0.034, V(-0.01, 0.01, 0)),
-    (0.688, 0.027, V(0.004, 0.0, 0)),
-    (0.768, 0.054, V(0, 0, 0)),
+    (0.447, 0.032, V(-0.01, 0.01, 0)),
+    (0.605, 0.036, V(-0.002, 0.006, 0)),  # the band binding it below the knob
+    (0.688, 0.036, V(0.004, 0.0, 0)),
+    (0.768, 0.054, V(0, 0, 0)),  # the knob
     (0.838, 0.042, V(0.006, 0.004, 0)),
 ]
+STAFF_BANDS = [1, 0, 0, 0, 0, 1, 0, 0]  # the ferrule, the wood, the band, then the wood of the knob
+FERRULE = 0.08  # how far the shod foot runs up the staff
 STAFF_TWIST = 22  # degrees each ring turns from the last
 LIGHT_R, LIGHT_H = 0.04, 0.062
 
@@ -423,9 +458,12 @@ LIGHT_R, LIGHT_H = 0.04, 0.062
 def staff_stations():
     """The staff's (centre, radius) stations, its foot on the ground."""
     stations = []
+    foot = -STAFF_GRIP.z / STAFF_UP.z
     for t, r, kink in STAFF:
         if t is None:
-            t = -STAFF_GRIP.z / STAFF_UP.z
+            t = foot
+        elif t == 'ferrule':
+            t = foot + FERRULE
         stations.append((STAFF_GRIP + t * STAFF_UP + kink, r))
     return stations
 
@@ -434,17 +472,19 @@ def staff():
     stations = staff_stations()
     rings = rod_rings(stations, 5, STAFF_TWIST)
     rings[0] = [V(p.x, p.y, 0.0) for p in rings[0]]  # the foot flat on the ground
-    verts, faces, _ = loft(rings)
+    verts, faces, bands = loft(rings)
+    face_mats = [STAFF_BANDS[b] for b in bands]
     apex = len(verts)
     top = stations[-1][0]
     verts.append(top + 0.025 * STAFF_UP)
     last = (len(stations) - 1) * 5
     faces += [(last + i, last + (i + 1) % 5, apex) for i in range(5)]
+    face_mats += [0] * 5
     axis = [p for p, _ in stations] + [verts[apex]]
-    part('staff', verts, faces, M['wood'], inside=nearest_on_polyline(axis))
+    part('staff', verts, faces, [M['wood'], M['trim']], face_mats, inside=nearest_on_polyline(axis))
 
     # A short side shoot below the knob, cut off: the staff was a living branch.
-    root = stations[4][0].lerp(stations[5][0], 0.3)
+    root = stations[-3][0].lerp(stations[-2][0], 0.3)
     twig = root + V(-0.075, 0.012, 0.055)
     tube('twig', root, twig, [(0, 0.02), (1, 0.013)], M['wood'], n=5)
     ring = segment(root, twig, [(1, 0.013)], 5)[0]
@@ -471,15 +511,17 @@ HILT_DIR = V(-0.05, -0.7, 0.71).normalized()  # from the crossguard to the pomme
 def glamdring():
     across = (V(1, 0, 0) - V(1, 0, 0).dot(HILT_DIR) * HILT_DIR).normalized()
     flat = HILT_DIR.cross(across)
-    # The scabbard runs back under his cloak, where the rest of it is hidden.
+    # The scabbard runs back under his cloak, where the rest of it is hidden; a locket of metal
+    # binds its mouth, under the cross-guard.
     axes = [-HILT_DIR, across, flat]
     box('scabbard', HILT - 0.19 * HILT_DIR, axes, (0.18, 0.03, 0.018), M['leather'], 0.75)
-    box('crossguard', HILT, [HILT_DIR, across, flat], (0.014, 0.078, 0.02), M['steel'], 0.8)
+    box('locket', HILT - 0.04 * HILT_DIR, axes, (0.026, 0.036, 0.024), M['trim'], 0.9)
+    box('crossguard', HILT, [HILT_DIR, across, flat], (0.014, 0.078, 0.02), M['trim'], 0.8)
     pommel = HILT + 0.15 * HILT_DIR
     verts = [pommel + 0.026 * d for d in (across, flat, -across, -flat)]
     verts += [pommel + 0.03 * HILT_DIR, pommel - 0.02 * HILT_DIR]
     faces = [(i, (i + 1) % 4, 4) for i in range(4)] + [(i, (i + 1) % 4, 5) for i in range(4)]
-    part('pommel', verts, faces, M['steel'], inside=pommel)
+    part('pommel', verts, faces, M['trim'], inside=pommel)
 
     fist = HILT + 0.075 * HILT_DIR
     wrist = fist + (L_ELBOW - fist).normalized() * 0.05
@@ -497,6 +539,7 @@ def main():
     mantle()
     cloak()
     scarf()
+    fittings()
     hair()
     face()
     moustache()
