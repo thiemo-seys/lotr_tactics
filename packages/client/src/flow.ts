@@ -319,7 +319,12 @@ export class PlayFlow {
       case 'council':
       case 'planning':
         if (next.me.placement !== null) this.show = { kind: 'over' };
-        else if (this.show.kind !== next.step.kind) this.show = { kind: next.step.kind };
+        else if (this.show.kind !== next.step.kind) {
+          this.show = { kind: next.step.kind };
+          // A new step starts on the person's own board. Planning after a Council is the next
+          // round, which no fights came before to bring it back.
+          this.boardSeat = null;
+        }
         return;
       case 'fight':
         // The round arrived just before this step, and started the fight.
