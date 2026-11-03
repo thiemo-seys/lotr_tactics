@@ -32,6 +32,7 @@ export function checkAction(player: PlayerView, context: ActionContext, action: 
   if (player.placement !== null) return fail('That player is out of the game.');
   if (typeof action !== 'object' || action === null) return fail('Unknown action.');
   if (action.type === 'pick') return checkPick(player, context, action.option);
+  if (context.phase === 'fight') return checkDuringFights(player, action);
   if (context.phase !== 'planning') return fail('Units can only be bought and moved during planning.');
   switch (action.type) {
     case 'buy':
@@ -61,6 +62,44 @@ export function checkAction(player: PlayerView, context: ActionContext, action: 
     default:
       return fail('Unknown action.');
   }
+}
+
+/**
+ * While the fights play (section 9.4): shopping, buying XP, the bench and the player's items, but
+ * not the board, which stays as it fought, nor Gifts or the One Ring.
+ */
+function checkDuringFights(player: PlayerView, action: Action): ActionResult {
+  switch (action.type) {
+    case 'buy':
+      return checkBuy(player, action.slot);
+    case 'sell':
+      return onBench(action.from) ?? checkSell(player, action.from);
+    case 'move':
+      return onBench(action.from) ?? onBench(action.to) ?? checkMove(player, action.from, action.to);
+    case 'reroll':
+      return checkReroll(player);
+    case 'buyXp':
+      return checkBuyXp(player);
+    case 'lock':
+      return checkLock(action.locked);
+    case 'equip':
+      return onBench(action.to) ?? checkEquip(player, action.item, action.to);
+    case 'combine':
+      return checkCombine(player, action.item, action.with);
+    case 'gift':
+    case 'rerollGifts':
+    case 'ring':
+    case 'destroyRing':
+      return fail('Wait for the fights to finish.');
+    default:
+      return fail('Unknown action.');
+  }
+}
+
+/** Null for a bench slot; otherwise why the place can't be used while the fights play. */
+function onBench(place: Place): ActionResult | null {
+  if (!isPlace(place)) return fail('There is no such place.');
+  return 'bench' in place ? null : fail('Units on the board are fighting.');
 }
 
 /** A Council pick (section 9.6): in the player's group's turn, once, of an option still there. */

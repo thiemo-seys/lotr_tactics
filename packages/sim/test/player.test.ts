@@ -413,13 +413,12 @@ describe('gold', () => {
     }
   });
 
-  it('pays win gold and streak gold after PvP fights', () => {
+  it('earns win gold and streak gold after PvP fights', () => {
     const { player } = setup(0);
     const results = [true, true, true, true, true, true, false, false, false, false, true];
     const gold = results.map((won) => {
-      const before = player.gold;
-      player.recordPvp(won);
-      return [player.streak, player.gold - before];
+      const earned = player.recordPvp(won);
+      return [player.streak, earned];
     });
     expect(gold).toEqual([
       [1, 1],

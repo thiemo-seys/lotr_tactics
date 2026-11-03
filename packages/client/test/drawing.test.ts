@@ -83,6 +83,15 @@ describe('when the scene draws a frame', () => {
     expect(frames(5, () => redraws.due(null, 1, false))).toEqual([true, true, true, true, true]);
   });
 
+  it('draws a paused or finished fight in every frame while a unit on the bench idles, unless under reduced motion', () => {
+    const redraws = new Redraws();
+    const p = fight();
+    p.playing = false;
+    redraws.due(p, 0, false);
+    expect(frames(3, () => redraws.due(p, 2, false))).toEqual([true, true, true]);
+    expect(frames(3, () => redraws.due(p, 2, true))).toEqual([false, false, false]);
+  });
+
   it('draws planning only on a change under reduced motion, as `idle` holds its first frame', () => {
     const redraws = new Redraws();
     expect(frames(5, () => redraws.due(null, 9, true))).toEqual([true, false, false, false, false]);

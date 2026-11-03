@@ -33,11 +33,12 @@ export class Redraws {
 
   /**
    * Whether to draw a frame showing `fight` at its display time, or, with `fight` null, the planning
-   * board and bench (or the board alone), where `idlers` units play `idle` unless `still`, reduced
-   * motion, holds them on its first frame. If so, the frame counts as drawn.
+   * board and bench (or the board alone), where `idlers` units, on the bench during a fight too,
+   * play `idle` unless `still`, reduced motion, holds them on its first frame. If so, the frame
+   * counts as drawn.
    */
   due(fight: Playback | null, idlers: number, still: boolean): boolean {
-    const moving = fight !== this.fight || (fight === null ? idlers > 0 && !still : fight.time !== this.time);
+    const moving = fight !== this.fight || (fight !== null && fight.time !== this.time) || (idlers > 0 && !still);
     if (!moving && !this.changed) return false;
     this.changed = false;
     this.fight = fight;

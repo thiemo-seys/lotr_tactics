@@ -117,6 +117,8 @@ export class PlayFlow {
   private stateAt = 0;
   /** The last view from planning, which the round it plans is fought from. */
   private planned: MatchView | null = null;
+  /** The latest view with the fights' outcome taken out, while the person's fight plays (`shownView`), made once for each view. */
+  private masked: { readonly state: MatchView | null; readonly planned: MatchView; readonly view: MatchView } | null = null;
   /** The person's side in a fight, for the trait tracker, made once for each fight. */
   private fightTeam: { readonly fight: FightRecord; readonly team: TrackedTeam } | null = null;
   /** The step the timer belongs to, and its time when first seen, to show how much is left. */
@@ -134,6 +136,7 @@ export class PlayFlow {
     this.lobby = null;
     this.state = null;
     this.planned = null;
+    this.masked = null;
     this.fightTeam = null;
     this.show = { kind: 'menu' };
     this.menuMessage = menuMessage;
@@ -202,9 +205,21 @@ export class PlayFlow {
     }
   }
 
-  /** Sends one of the person's actions: in planning, or a pick in a Council. */
+  /** Sends one of the person's actions: in planning or while the fights play, or a pick in a Council. */
   act(action: Action): void {
-    if (this.show.kind === 'planning' || (this.show.kind === 'council' && action.type === 'pick')) this.hooks.send({ type: 'act', action });
+    if (action.type === 'pick' ? this.show.kind === 'council' : this.canShop) this.hooks.send({ type: 'act', action });
+  }
+
+  /**
+   * Whether the person can shop and use their bench now: in planning, and while the round's fights
+   * play, through their results, until the next step (game-spec.md section 9.4).
+   */
+  get canShop(): boolean {
+    const { show } = this;
+    if (show.kind === 'planning') return true;
+    if (this.state === null || this.state.me.placement !== null) return false;
+    const watching = show.kind === 'fight' || show.kind === 'results' || show.kind === 'waiting';
+    return watching && this.state.step.kind === 'fight' && show.round.stage === this.state.stage && show.round.round === this.state.round;
   }
 
   /** The person is Ready to end planning. */
@@ -295,15 +310,27 @@ export class PlayFlow {
   }
 
   /**
-   * The game's view as the HUD and the players list show it. A fight step's views have moved on to
-   * the next round, with the fight's damage, gold and streak in them (server-spec.md section 5.1),
-   * so while the person's fight plays this is the view from the planning it was fought from, if the
-   * page saw it. Otherwise it is the latest.
+   * The game's view as the HUD and the players list show it. A fight step's views have the fights'
+   * damage, streaks and knock-outs in them (server-spec.md section 5.1), so while the person's fight
+   * plays, those are as they were in the planning it was fought from, if the page saw it; the rest,
+   * such as gold, the shop and the bench, is the latest, since the person can shop. Otherwise it is
+   * the latest view.
    */
   shownView(): MatchView {
-    const { show, planned } = this;
+    const { show, planned, state } = this;
     const fought = show.kind === 'fight' && planned !== null && planned.stage === show.round.stage && planned.round === show.round.round;
-    return fought ? planned : this.state!;
+    if (!fought) return state!;
+    if (this.masked?.state !== state || this.masked.planned !== planned) {
+      const before = (p: PublicPlayer) => planned.players[p.seat] ?? p;
+      const outcome = { hp: planned.me.hp, streak: planned.me.streak, placement: planned.me.placement };
+      const view: MatchView = {
+        ...state!,
+        me: { ...state!.me, ...outcome },
+        players: state!.players.map((p) => ({ ...p, hp: before(p).hp, streak: before(p).streak, placement: before(p).placement })),
+      };
+      this.masked = { state, planned, view };
+    }
+    return this.masked.view;
   }
 
   /**
@@ -383,7 +410,7 @@ export class PlayFlow {
       name: this.seatName(seat),
       you: seat === you,
       damage: damage.get(seat) ?? 0,
-      knockedOut: round.eliminated.includes(seat) ? (state!.players[seat]?.placement ?? null) : null,
+      knockedOut: round.eliminated.includes(seat) ? (round.places[round.eliminated.indexOf(seat)] ?? null) : null,
     }));
     rows.sort((a, b) => Number(b.you) - Number(a.you) || b.damage - a.damage || a.seat - b.seat);
     return {

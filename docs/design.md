@@ -238,7 +238,7 @@ A combined item gives the stats of both its components, plus its effect.
 
 - PvE rounds and the Council of Elrond give components (section 9). A player keeps them until they give them to a unit.
 - A unit holds up to 3 items. Giving a component to a unit that already holds a lone component combines the two into the recipe's item, so a unit never holds more than one lone component.
-- During planning, two components the player holds can also be combined into the recipe's item before giving it to a unit.
+- During planning, and while the fights play, two components the player holds can also be combined into the recipe's item before giving it to a unit.
 - Items can't be taken off a unit. Selling the unit gives its items back to the player.
 - When copies merge, the merged unit gets their items. Any beyond 3 go back to the player.
 - Units on the bench keep their items; only units on the board fight with them.
@@ -353,6 +353,8 @@ All numbers are *(placeholder)*.
 - 5 units per shop. It refreshes for free each round and can be locked to carry over to the next round.
 - A reroll costs 2 gold.
 - Buying a third copy merges it immediately, even if the bench is full.
+- **During fights**, as in TFT, players can still buy, reroll, buy XP, lock the shop, and use their bench and items: move and sell bench units, give items to them and combine components. The board stays as it fought: board units can't be moved, sold or given items until the fight ends. A purchase that completes a merge with a copy on the board merges at once; the fight already under way is unchanged, and the merged unit shows once it ends. Gifts and the One Ring wait for planning. A player the fight knocks out can shop too, and is out once it ends.
+- The gold a fight earns (win and streak gold, PvE loot and the Seven's gold) and PvE loot items arrive when the fights end, so they can't be spent during the fight that earns them, and they count towards the next round's interest.
 
 ### Levels
 
@@ -558,7 +560,7 @@ PvE rounds drop item components and gold.
 ### Timers
 
 - Planning phase: 30 seconds.
-- Fight: 30 seconds plus 15 seconds of overtime.
+- Fight: 30 seconds plus 15 seconds of overtime. The shop stays open while it plays.
 - Target game length: about 30 minutes; most games end around stage 6.
 
 ---

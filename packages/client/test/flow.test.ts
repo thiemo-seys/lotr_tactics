@@ -80,7 +80,7 @@ describe('the play flow', () => {
       input: { seed: 1, stage: 2, teams: { A: [], B: [] } },
       result: { outcome: 'A', survivors: { A: [], B: [] }, finalTick: 0 },
     });
-    const round: RoundRecord = { stage: 2, round: 1, fights: [fight('pvp', 1, 2), fight('ghost', 3, 0)], damage: [], eliminated: [] };
+    const round: RoundRecord = { stage: 2, round: 1, fights: [fight('pvp', 1, 2), fight('ghost', 3, 0)], damage: [], eliminated: [], places: [] };
     flow.receive({ type: 'round', round }, 5000);
     expect(flow.show).toEqual({ kind: 'results', round, until: 5000 + TIMERS.results * 1000 });
     expect(calls.fights).toEqual([]);
@@ -114,9 +114,16 @@ describe('the play flow', () => {
         rounds++;
         expect(calls.fights.at(-1)).toBe(yourTeam(show.fight, 0));
         expect(show.fight).toBe(yourFight(show.round, 0));
-        // The game has moved on, but the HUD shows the round being fought as it was planned.
-        expect(flow.shownView()).toBe(planned);
+        // The fight step's view has the fights' outcome in it, but the HUD shows HP, streaks and
+        // places as they were planned; the rest is live, since the person can shop.
+        const shown = flow.shownView();
+        expect([shown.me.hp, shown.me.streak, shown.me.placement]).toEqual([planned!.me.hp, planned!.me.streak, planned!.me.placement]);
+        expect(shown.players.map((p) => [p.hp, p.streak, p.placement])).toEqual(planned!.players.map((p) => [p.hp, p.streak, p.placement]));
+        expect([shown.me.gold, shown.me.shop, shown.me.bench]).toEqual([flow.state!.me.gold, flow.state!.me.shop, flow.state!.me.bench]);
+        expect(flow.shownView()).toBe(shown);
         expect([planned!.stage, planned!.round]).toEqual([show.round.stage, show.round.round]);
+        expect([flow.state!.stage, flow.state!.round, flow.state!.phase]).toEqual([show.round.stage, show.round.round, 'fight']);
+        expect(flow.canShop).toBe(flow.state!.me.placement === null);
         expect(flow.trackedTeam().board).toBe(show.fight.input.teams[yourTeam(show.fight, 0)]);
         // The result isn't told before the fight has played.
         expect(flow.outcome(show.round.stage, show.round.round)).toBeNull();
@@ -157,14 +164,14 @@ describe('the play flow', () => {
 });
 
 describe("while the person's fight plays", () => {
-  const state = (kind: 'planning' | 'fight' | 'council', stage: number, round: number, hp: number) =>
+  const state = (kind: 'planning' | 'fight' | 'council', stage: number, round: number, hp: number, gold = 10) =>
     ({
       stage,
       round,
       step: { kind, ms: 30000 },
       council: null,
-      me: { hp, placement: null, board: [null], gifts: [] },
-      players: [],
+      me: { seat: 0, hp, gold, streak: 0, placement: null, board: [null], gifts: [] },
+      players: [{ seat: 0, hp, gold, streak: 0, placement: null }],
       ready: [],
     }) as unknown as MatchView;
   const record = (home: number, away: number): RoundRecord => ({
@@ -186,6 +193,7 @@ describe("while the person's fight plays", () => {
     ],
     damage: [{ seat: 0, amount: 7 }],
     eliminated: [],
+    places: [],
   });
 
   it('show the HUD and players list from the planning it was fought from, then the latest once it ends', () => {
@@ -195,20 +203,41 @@ describe("while the person's fight plays", () => {
     flow.receive({ type: 'state', state: planning }, 10);
     expect(flow.shownView()).toBe(planning);
     flow.receive({ type: 'round', round: record(0, 1) }, 20);
-    // The fight step's views have the fight's damage and the next round in them.
-    flow.receive({ type: 'state', state: state('fight', 2, 2, 93) }, 20);
-    const later = state('fight', 2, 2, 93);
+    // The fight step's views have the fight's damage in them, and the person shops: 4 gold spent.
+    flow.receive({ type: 'state', state: state('fight', 2, 1, 93) }, 20);
+    expect(flow.canShop).toBe(true);
+    const later = state('fight', 2, 1, 93, 6);
     flow.receive({ type: 'state', state: later }, 30);
     expect(flow.show.kind).toBe('fight');
-    expect(flow.shownView()).toBe(planning);
-    expect(flow.shownView().me.hp).toBe(100);
+    expect([flow.shownView().me.hp, flow.shownView().players[0]!.hp]).toEqual([100, 100]);
+    expect(flow.shownView().me.gold).toBe(6);
     flow.skip(40);
+    expect(flow.canShop).toBe(true);
     expect(flow.show.kind).toBe('results');
     expect(flow.shownView()).toBe(later);
     // The next round's planning.
     const next = state('planning', 2, 2, 93);
     flow.receive({ type: 'state', state: next }, 5000);
     expect(flow.shownView()).toBe(next);
+  });
+
+  it('send shop actions while the fights play, until the next step, but no picks', () => {
+    const { flow, calls } = recorded();
+    flow.receive({ type: 'state', state: state('planning', 2, 1, 100) }, 0);
+    flow.receive({ type: 'round', round: record(0, 1) }, 10);
+    flow.receive({ type: 'state', state: state('fight', 2, 1, 93) }, 10);
+    flow.act({ type: 'reroll' });
+    flow.act({ type: 'pick', option: 0 });
+    flow.skip(20);
+    flow.act({ type: 'buyXp' });
+    // A Council comes next: no more shopping.
+    flow.receive({ type: 'state', state: state('council', 2, 2, 93) }, 5000);
+    expect(flow.canShop).toBe(false);
+    flow.act({ type: 'reroll' });
+    expect(calls.sent).toEqual([
+      { type: 'act', action: { type: 'reroll' } },
+      { type: 'act', action: { type: 'buyXp' } },
+    ]);
   });
 
   it('show the latest view when the page never saw the planning, as on joining mid-fight', () => {
@@ -265,8 +294,9 @@ describe('round results', () => {
     return flow;
   }
 
-  it('list the person first, then by damage, with knockouts and their places', () => {
-    const flow = inGame([null, null, 7, null, 8]);
+  it('list the person first, then by damage, with knockouts and their places from the round', () => {
+    // Players a round knocks out are placed only when its fight step ends, so the places come from the round.
+    const flow = inGame([null, null, null, null, null]);
     const round: RoundRecord = {
       stage: 3,
       round: 2,
@@ -277,7 +307,8 @@ describe('round results', () => {
         { seat: 1, amount: 6 },
         { seat: 0, amount: 6 },
       ],
-      eliminated: [4, 2],
+      eliminated: [2, 4],
+      places: [7, 8],
     };
     const results = flow.results(round, false);
     expect(results).toMatchObject({ stage: 3, round: 2, type: 'pvp', outcome: 'Defeat', taken: 6, waiting: false });
@@ -290,7 +321,7 @@ describe('round results', () => {
   });
 
   it('say when there was no fight of yours, and wait only while you are in', () => {
-    const round: RoundRecord = { stage: 3, round: 2, fights: [fight(2, 3, 'draw')], damage: [], eliminated: [] };
+    const round: RoundRecord = { stage: 3, round: 2, fights: [fight(2, 3, 'draw')], damage: [], eliminated: [], places: [] };
     expect(inGame([null, null, null, null]).results(round, true)).toMatchObject({ outcome: 'No fight', taken: 0, rows: [], waiting: true });
     expect(inGame([null, 4, null, null], 4).results(round, true).waiting).toBe(false);
     expect(inGame([null, null, null, null]).results({ ...round, fights: [fight(1, 3, 'draw')] }, false).outcome).toBe('Draw');
@@ -370,7 +401,7 @@ describe("other players' boards", () => {
 
     // The round's fights bring the person's own board back for the next step.
     flow.viewBoard(2);
-    const round: RoundRecord = { stage: 2, round: 1, fights: [], damage: [], eliminated: [] };
+    const round: RoundRecord = { stage: 2, round: 1, fights: [], damage: [], eliminated: [], places: [] };
     flow.receive({ type: 'round', round }, 0);
     expect([flow.canViewBoards, flow.viewed()]).toEqual([false, null]);
     flow.show = { kind: 'planning' };
@@ -501,6 +532,13 @@ describe('the damage meter', () => {
       } else if (show.kind === 'results') {
         expectRecap(show.round);
         flow.update(0, show.until);
+        // Waiting, until the game's answer to Ready arrives.
+        const waiting = flow.show;
+        expect(waiting.kind).toBe('waiting');
+        if (waiting.kind === 'waiting') {
+          expectRecap(waiting.round);
+          if (yourFight(waiting.round, 0) !== null) waitedAfterFight = true;
+        }
       }
       await flush();
     }

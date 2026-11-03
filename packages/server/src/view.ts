@@ -122,5 +122,6 @@ export function roundRecord(report: RoundReport): RoundRecord {
     })),
     damage: report.damage,
     eliminated: report.eliminated,
+    places: report.places,
   };
 }

@@ -67,13 +67,24 @@ describe('Match steps', () => {
     expect([t.match.stepKind, t.match.game.state.stage, t.match.game.state.round]).toEqual(['planning', 1, 3]);
   });
 
-  it('refuses actions during a fight step', () => {
+  it('lets people shop during a fight step, but not change the board, and starts the next round after it', () => {
     const t = toPlanning(5);
     timeOut(t);
     expect(t.match.stepKind).toBe('fight');
-    const gold = t.match.game.state.players[0]!.gold;
-    expect(t.match.act(0, { type: 'reroll' })).toEqual({ ok: false, reason: 'Wait for the fights to finish.' });
-    expect(t.match.game.state.players[0]!.gold).toBe(gold);
+    const view = last(t.inbox[0]!, 'state')!.state;
+    expect([view.stage, view.round, view.phase]).toEqual([1, 2, 'fight']);
+    const p = t.match.game.state.players[0]!;
+    const gold = p.gold;
+    const sent = t.inbox[0]!.length;
+    expect(t.match.act(0, { type: 'reroll' })).toEqual({ ok: true });
+    expect(p.gold).toBe(gold - 2);
+    // Everyone sees it at once.
+    expect(t.inbox[0]!.length).toBe(sent + 1);
+    expect(last(t.inbox[0]!, 'state')!.state.me.gold).toBe(gold - 2);
+    // A board place is refused whether or not a unit stands there.
+    expect(t.match.act(0, { type: 'sell', from: { col: 3, row: 3 } })).toEqual({ ok: false, reason: 'Units on the board are fighting.' });
+    timeOut(t);
+    expect([t.match.stepKind, t.match.game.state.stage, t.match.game.state.round]).toEqual(['planning', 1, 3]);
   });
 
   it('refuses Ready in a Council', () => {
@@ -138,11 +149,13 @@ describe('Seats', () => {
     t.match.setConnected(0, true);
     // Rejoining mid-fight sends the round, then the state.
     expect(t.inbox[0]!.map((m) => m.type)).toEqual(['round', 'state']);
-    // The game is already at 1-3 with its income paid; the bot leaves the seat alone from now on.
-    const before = JSON.stringify(t.match.view(0).me);
+    // The bot leaves the seat alone from now on: 1-3 brings only its income, 2 gold.
+    const before = t.match.view(0).me;
     timeOut(t);
-    expect(t.match.stepKind).toBe('planning');
-    expect(JSON.stringify(t.match.view(0).me)).toBe(before);
+    expect([t.match.stepKind, t.match.game.state.round]).toEqual(['planning', 3]);
+    const after = t.match.view(0).me;
+    expect(after.gold).toBe(before.gold + 2);
+    expect([after.bench, after.board]).toEqual([before.bench, before.board]);
   });
 
   it('lets the bot pick for a person who disconnects in their Council turn', () => {

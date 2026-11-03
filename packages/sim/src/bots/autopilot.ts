@@ -54,6 +54,8 @@ export class Autopilot {
     while (!this.game.isOver() && !done()) {
       if (this.game.state.phase === 'council') {
         if (!this.pick()) this.game.advance();
+      } else if (this.game.state.phase === 'fight') {
+        this.game.advance();
       } else {
         this.plan();
         afterPlanning?.(this.game.state);

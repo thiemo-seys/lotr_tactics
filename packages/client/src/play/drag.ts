@@ -1,6 +1,7 @@
 // Dragging while planning (docs/game-spec.md section 12): units between the bench and the board,
 // onto the shop bar to sell them, the person's items and the One Ring onto units, and a component
-// onto another of the person's components to combine them. While
+// onto another of the person's components to combine them. While the fights play, the same on the
+// bench, since the board is fighting. While
 // dragging, the scene marks where the drop would go, in gold if the game's rules allow it and in
 // red with the reason if not; the rules are the sim's own `checkAction`.
 
@@ -16,7 +17,12 @@ import type { ShopBar, TrayItem } from './shop-bar.js';
 /** How far the hint sits from the pointer. */
 const HINT_OFFSET = { x: 16, y: 18 };
 
+/** When a drag started: in planning, or while the fights play, when only the bench can be used. */
+type DragTime = 'planning' | 'fights';
+
 export class DragAndDrop {
+  /** When the drag under way started; a drag ends when that time does. */
+  private time: DragTime = 'planning';
   private unit: { readonly unit: OwnedUnit; readonly from: Place } | null = null;
   private item: { readonly item: TrayItem; readonly ghost: HTMLElement; readonly caption: HTMLElement } | null = null;
 
@@ -55,24 +61,42 @@ export class DragAndDrop {
     this.unit = null;
     this.item = null;
     this.end();
-    // A dragged unit goes back to its place, unless the fight that ended planning has taken the
-    // planning board's place: drawing the board again would hide the fight.
-    if (wasUnit && this.flow.inGame && !this.scene.showsFight) this.scene.showPlanning(this.flow.me(), true, this.flow.planningRing());
+    // A dragged unit goes back to its place.
+    if (wasUnit && this.flow.inGame) this.redrawOwn();
   }
 
   /**
-   * Cancels a drag that planning ended, which the next frame would cancel too: the pointer can move or
-   * be released between the game's message that ends planning and that frame. Whether it did.
+   * Draws the person's units again where the game has them: the planning board and bench, or the
+   * bench while a fight is on screen, whose board drawing it again would hide.
+   */
+  private redrawOwn(): void {
+    const p = this.flow.me();
+    if (this.scene.showsFight) this.scene.showBench(p.bench, true, this.flow.planningRing());
+    else if (this.flow.show.kind === 'planning') this.scene.showPlanning(p, true, this.flow.planningRing());
+  }
+
+  /** When it is now, for a drag: planning, or while the fights play. */
+  private now(): DragTime {
+    return this.flow.show.kind === 'planning' ? 'planning' : 'fights';
+  }
+
+  /**
+   * Cancels a drag whose time has ended, planning or the fights, which the next frame would cancel
+   * too: the pointer can move or be released between the game's message that ends it and that
+   * frame. Whether it did.
    */
   private cutOff(): boolean {
-    if ((this.unit === null && this.item === null) || this.flow.show.kind === 'planning') return false;
+    if ((this.unit === null && this.item === null) || (this.flow.canShop && this.now() === this.time)) return false;
     this.cancel();
     return true;
   }
 
-  /** Dragging is for planning on the person's own board, not while they look at another player's. */
+  /**
+   * Dragging is for planning and while the fights play, on the person's own board, not while they
+   * look at another player's.
+   */
   private canDrag(): boolean {
-    return this.flow.show.kind === 'planning' && this.flow.viewed() === null;
+    return this.flow.canShop && this.flow.viewed() === null;
   }
 
   private pressUnit(event: PointerEvent): void {
@@ -87,6 +111,7 @@ export class DragAndDrop {
   }
 
   private begin(): void {
+    this.time = this.now();
     this.scene.cameraControls = false;
     suppressTips(true);
     toggle(document.body, 'grabbing', true);
@@ -178,10 +203,10 @@ export class DragAndDrop {
       if (to !== null) this.flow.act({ type: 'move', from, to });
     }
     // Back where it was until the game says where it is now.
-    this.scene.showPlanning(this.flow.me(), true, this.flow.planningRing());
+    this.redrawOwn();
   }
 
-  /** The grab cursor over the person's own units while planning. */
+  /** The grab cursor over the person's own units they can move now. */
   private hover(x: number, y: number): void {
     const canGrab = this.canDrag() && this.overView(x, y) && this.unitPlaceAt(x, y) !== null;
     toggle(this.view, 'can-grab', canGrab);
@@ -213,14 +238,17 @@ export class DragAndDrop {
     return this.shop.bar.contains(document.elementFromPoint(x, y));
   }
 
-  /** The place of the person's unit under the mouse: its pawn, or else the hex or bench tile. */
+  /**
+   * The place of the person's unit under the mouse: its pawn, or else the hex or bench tile. Only
+   * the bench while the fights play: the units on the board are fighting.
+   */
   private unitPlaceAt(clientX: number, clientY: number): Place | null {
     const id = this.scene.planningUnitAt(clientX, clientY);
     const p = this.flow.me();
     const pawn = id === null ? null : placeOf(p, id);
-    if (pawn !== null) return pawn;
-    const point = this.scene.groundPoint(clientX, clientY);
-    const place = point === null ? null : placeAtPoint(point);
-    return place !== null && unitAt(p, place) !== null ? place : null;
+    const point = pawn !== null ? null : this.scene.groundPoint(clientX, clientY);
+    const place = pawn ?? (point === null ? null : placeAtPoint(point));
+    if (place === null || unitAt(p, place) === null) return null;
+    return this.now() === 'planning' || 'bench' in place ? place : null;
   }
 }

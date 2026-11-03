@@ -45,7 +45,11 @@ export type Action =
   | { readonly type: 'destroyRing' }
   | { readonly type: 'pick'; readonly option: number };
 
-export type Phase = 'council' | 'planning' | 'over';
+/**
+ * `fight` comes between a round's fights and the next round, while the fights play: players may
+ * shop and use their bench, but the board stays as it fought (section 9.4).
+ */
+export type Phase = 'council' | 'planning' | 'fight' | 'over';
 
 export interface CouncilOptionView {
   readonly unitId: UnitId;
@@ -105,14 +109,25 @@ export interface RoundReport {
   readonly damage: readonly { readonly seat: number; readonly amount: number }[];
   /** Seats eliminated this round, best place first. */
   readonly eliminated: readonly number[];
+  /** The place each seat in `eliminated` finishes in, in the same order. */
+  readonly places: readonly number[];
 }
 
 export interface Game {
   readonly state: GameState;
   /** Applies a player's action. One that isn't allowed returns ok: false and changes nothing. */
   act(seat: number, action: Action): ActionResult;
-  /** Ends planning and runs the fights, or ends the current Council group's turn (returning null). */
+  /**
+   * Ends the current step: a Council group's turn (returning null); planning, by running the fights
+   * and going on to the next round (returning the fights' report); or the fight phase, by going on
+   * to the next round (returning null).
+   */
   advance(): RoundReport | null;
+  /**
+   * Ends planning by running the fights, and stays in the fight phase, where players may shop and
+   * use their bench while the fights play, until `advance()` goes on to the next round.
+   */
+  fight(): RoundReport;
   isOver(): boolean;
 }
 
@@ -134,6 +149,10 @@ class GameImpl implements Game, GameState {
   readonly players: Player[];
   private readonly rng: Rng;
   private nextUnitId = 0;
+  /** Gold and items the fights earned, paid when the fight phase ends (section 9.4). */
+  private earned: { readonly player: Player; gold: number; readonly items: ItemId[] }[] = [];
+  /** The players this round's fights knocked out, best place first, placed when the fight phase ends (section 9.9). */
+  private knockedOut: Player[] = [];
 
   constructor(config: GameConfig) {
     validate(config);
@@ -207,11 +226,50 @@ class GameImpl implements Game, GameState {
       this.nextCouncilGroup();
       return null;
     }
+    if (this.phase === 'fight') {
+      this.endFights();
+      return null;
+    }
+    const report = this.fight();
+    this.endFights();
+    return report;
+  }
+
+  fight(): RoundReport {
+    if (this.phase !== 'planning') throw new Error('Fights start from planning.');
     // Offers left unpicked are picked at random before the fights.
     for (const player of this.living()) player.autoPickGift();
-    const report = this.fight();
-    if (!this.isOver()) this.goToNextRound();
+    const report = this.runFights();
+    this.phase = 'fight';
     return report;
+  }
+
+  /**
+   * Ends the fight phase: the fights' gold and loot are paid, the players they knocked out are
+   * placed, and the next round starts, unless the game is over.
+   */
+  private endFights(): void {
+    this.payEarnings();
+    this.eliminate();
+    if (!this.isOver()) this.goToNextRound();
+  }
+
+  private payEarnings(): void {
+    for (const { player, gold, items } of this.earned) {
+      player.gold += gold;
+      player.items.push(...items);
+    }
+    this.earned = [];
+  }
+
+  /** What a player has earned from this round's fights so far. */
+  private earnings(player: Player): { gold: number; items: ItemId[] } {
+    let entry = this.earned.find((e) => e.player === player);
+    if (entry === undefined) {
+      entry = { player, gold: 0, items: [] };
+      this.earned.push(entry);
+    }
+    return entry;
   }
 
   // Rounds
@@ -353,7 +411,7 @@ class GameImpl implements Game, GameState {
 
   // Fights and results (sections 9.4 and 9.9)
 
-  private fight(): RoundReport {
+  private runFights(): RoundReport {
     const living = this.living();
     for (const player of living) player.fillBoard();
     this.equipRing();
@@ -390,43 +448,49 @@ class GameImpl implements Game, GameState {
       const { outcome, survivors } = result;
       if (outcome !== 'A') hurt(home, playerDamage(this.stage, survivors.B));
       if (kind === 'pvp' && outcome !== 'B') hurt(away!, playerDamage(this.stage, survivors.A));
-      if (kind !== 'pve') this.players[home]!.recordPvp(outcome === 'A');
-      if (kind === 'pvp') this.players[away!]!.recordPvp(outcome === 'B');
+      if (kind !== 'pve') this.earnings(this.players[home]!).gold += this.players[home]!.recordPvp(outcome === 'A');
+      if (kind === 'pvp') this.earnings(this.players[away!]!).gold += this.players[away!]!.recordPvp(outcome === 'B');
     }
     for (const [seat, amount] of damage) this.players[seat]!.hp -= amount;
 
     if (this.type === 'pve') {
       const { loot } = pveRound(this.stage, this.round);
       for (const player of living.filter((p) => !p.eliminated)) {
-        for (let i = 0; i < loot.components; i++) player.items.push(COMPONENTS[randomInt(this.rng, COMPONENTS.length)]!);
-        player.gold += loot.gold;
+        const earned = this.earnings(player);
+        for (let i = 0; i < loot.components; i++) earned.items.push(COMPONENTS[randomInt(this.rng, COMPONENTS.length)]!);
+        earned.gold += loot.gold;
       }
     }
-    for (const player of living.filter((p) => !p.eliminated)) player.gold += player.ringGold();
+    for (const player of living.filter((p) => !p.eliminated)) this.earnings(player).gold += player.ringGold();
     this.ring.afterFights(fights, (seat) => this.players[seat]!.firstOnBoard('gollum')?.id ?? null);
     for (const { kind, home, away } of fights) {
       if (kind !== 'pve') remember(this.players[home]!, away!);
       if (kind === 'pvp') remember(this.players[away!]!, home);
     }
 
-    const eliminated = this.eliminate(living, hpBefore);
+    // The order the knocked-out players finish in is settled now; they are placed when the fight
+    // phase ends, so they can shop while the fights play, like everyone else.
+    // The shuffle settles full ties; the sort is stable.
+    this.knockedOut = shuffle(
+      this.rng,
+      living.filter((p) => p.eliminated),
+    ).sort((a, b) => b.hp - a.hp || hpBefore.get(b.seat)! - hpBefore.get(a.seat)!);
+    const left = living.length - this.knockedOut.length;
     return {
       stage: this.stage,
       round: this.round,
       fights,
       damage: [...damage].sort(([a], [b]) => a - b).map(([seat, amount]) => ({ seat, amount })),
-      eliminated: eliminated.map((p) => p.seat),
+      eliminated: this.knockedOut.map((p) => p.seat),
+      places: this.knockedOut.map((_, i) => left + 1 + i),
     };
   }
 
   /** Places the players knocked out this round and ends the game if one or none is left (section 9.9). */
-  private eliminate(living: readonly Player[], hpBefore: ReadonlyMap<number, number>): Player[] {
-    // The shuffle settles full ties; the sort is stable.
-    const out = shuffle(
-      this.rng,
-      living.filter((p) => p.eliminated),
-    ).sort((a, b) => b.hp - a.hp || hpBefore.get(b.seat)! - hpBefore.get(a.seat)!);
-    const left = living.length - out.length;
+  private eliminate(): void {
+    const out = this.knockedOut;
+    this.knockedOut = [];
+    const left = this.living().length - out.length;
     out.forEach((player, i) => {
       player.placement = left + 1 + i;
       // Rings of Power go back to the supply; the other items are lost.
@@ -439,7 +503,6 @@ class GameImpl implements Game, GameState {
       this.phase = 'over';
       this.turn++;
     }
-    return out;
   }
 }
 
