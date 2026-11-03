@@ -16,13 +16,23 @@ rim of the hood and the horse's cloth, seen from in front, from behind and from 
 the black hood rises over the mantle, and the black cloak falls over the saddle onto the cloth over
 the horse's quarters, so he reads as a Nazgûl rider whichever way he faces.
 
+He is rigged as Éomer is (eomer.py, the reference rider), he and his horse one model on one
+armature, and in the Ringwraith's way (ringwraith.py, the Nazgûl's reference): the hood is his head,
+turning inside the mantle's collar, the mantle rides his spine, and his sleeves bend at the elbow.
+His cloak and the robe in its opening bend at a ring inside the waist, his legs at the knee, at
+rings they had, so the rig costs no triangles; his skirts ride his hips over the horse's back. His
+clips are the library's mounted ones: the horse stands still as he breathes slow, gallops a stride a
+hex, tosses its head as he cuts down with the sword, goes down with him and rears when they win;
+his cast, Shadow ride, is a charge (charge), the horse springing out at full stretch as he levels
+the sword at the line.
+
 His fittings use `trim`, which the client colours iron, silver or gold by star level
 (docs/viewer-spec.md section 4, "Star levels"): the sword's cross-guard and pommel, a round clasp
 closing the mantle at his throat, the stirrups under his boots, the bosses where the breast strap
 meets the caparison and two on the caparison over the croup, and the horse's browband. The sword's
 fittings and the bosses on the croup show from behind, the clasp, the bosses on the breast and the
-browband from in front, and the stirrups from both. His 2★ model is khamul-2.py and his 3★
-khamul-3.py.
+browband from in front, and the stirrups from both. His 2★ model is khamul-2.py, which imports this
+script and builds him with a lance in place of the sword (build()), and his 3★ khamul-3.py.
 
     blender --background --factory-startup --python-exit-code 1 --python khamul.py [-- <out.glb>]
 
@@ -37,12 +47,14 @@ import bpy
 from mathutils import Matrix, Vector
 
 sys.path.insert(0, os.path.join(os.path.dirname(os.path.abspath(__file__)), '..'))
+from clips import fit  # noqa: E402
 from kit import (  # noqa: E402
     BOOTS,
     LEATHER,
     MOUNTED_BUDGET,
     V,
     bent_tube,
+    bone,
     box,
     cone,
     finish,
@@ -50,11 +62,14 @@ from kit import (  # noqa: E402
     material,
     nearest_on_polyline,
     part,
+    path_rings,
     reset,
     team_material,
     trim_material,
+    wind,
 )
 from mounts import Surface, horse  # noqa: E402
+from rig import Rig, hold, joint  # noqa: E402
 
 # Khamûl's own colours (sRGB), the Ringwraith's where they share them.
 CLOAK = 0x2C2A2B  # black, lifted just enough that the facets show
@@ -134,28 +149,46 @@ def boss(name, at, out):
 
 
 def fittings(caparison):
-    strap = bpy.data.objects['horse-strap'].data.vertices
-    for s, (low, high) in ((1, (0, 13)), (-1, (12, 25))):  # its ends, on his left and right
-        end = (strap[low].co + strap[high].co) / 2
-        boss(f'boss-breast-{s}', end + V(s * 0.004, 0.006, 0), V(s * 0.8, -0.6, 0))
-    surface = Surface(caparison)
-    for k, out in enumerate(CROUP_BOSSES):
-        boss(f'boss-croup-{k}', surface.onto(V(0, 0.34, 0.6), out), out)
+    # On the horse's body, with the strap and the caparison they sit on.
+    with bone('mount_body'):
+        strap = bpy.data.objects['horse-strap'].data.vertices
+        for s, (low, high) in ((1, (0, 13)), (-1, (12, 25))):  # its ends, on his left and right
+            end = (strap[low].co + strap[high].co) / 2
+            boss(f'boss-breast-{s}', end + V(s * 0.004, 0.006, 0), V(s * 0.8, -0.6, 0))
+        surface = Surface(caparison)
+        for k, out in enumerate(CROUP_BOSSES):
+            boss(f'boss-croup-{k}', surface.onto(V(0, 0.34, 0.6), out), out)
 
 
 # Legs: robed thighs astride the horse, tall boots hanging in high stirrups.
 HIP, KNEE, ANKLE = V(0.115, 0.04, 0.83), V(0.30, -0.15, 0.70), V(0.31, -0.10, 0.46)
+KNEE_OVERLAP = 0.03  # how far the thigh runs on past the knee, and the shin starts above it
 
 
 def legs():
+    """Each leg as it was built, through the hip, knee and ankle, but in two at the knee ring, as
+    Éomer's: the thigh carried on past it, the shin from above it. Returns the parts, which the
+    skirts clear."""
     objects = []
     for s in (-1, 1):
         flip = V(s, 1, 1)
+        side = 'l' if s > 0 else 'r'
         hip, knee, ankle = (p * flip for p in (HIP, KNEE, ANKLE))
-        objects.append(bent_tube(f'leg-{s}', [hip, knee, ankle], [0.075, 0.062, 0.05], [M['robe'], M['boots']],
-                                 [0, 1], side=V(0, 1, 0)))
+        rings = path_rings([hip, knee, ankle], [0.075, 0.062, 0.05], side=V(0, 1, 0))
+        thigh = [rings[0], [p + KNEE_OVERLAP / (knee - hip).length * (p - q) for p, q in zip(rings[1], rings[0])]]
+        shin = [[p + KNEE_OVERLAP / (knee - ankle).length * (p - q) for p, q in zip(rings[1], rings[2])], rings[2]]
+        for name, rings_, line, mat in (('thigh', thigh, [hip, knee], 'robe'), ('shin', shin, [knee, ankle], 'boots')):
+            verts, faces, _ = loft(rings_)
+            with bone(f'{name}_{side}'):
+                objects.append(part(f'{name}-{s}', verts, wind(verts, faces, inside=nearest_on_polyline(line)), M[mat]))
         axes = [V(s * 0.25, -1, -0.1), V(1, 0, 0), V(0, 0, 1)]
-        box(f'foot-{s}', ankle + V(0, -0.05, -0.03), axes, (0.08, 0.042, 0.04), M['boots'], 0.75)
+        heel = ankle + V(0, -0.05, -0.03)
+        with bone(f'foot_{side}'):
+            box(f'foot-{s}', heel, axes, (0.08, 0.042, 0.04), M['boots'], 0.75)
+        joint(f'hip_{side}', hip)
+        joint(f'knee_{side}', knee)
+        joint(f'ankle_{side}', ankle)
+        joint(f'toe_{side}', heel + 0.08 * Vector(axes[0]).normalized())
     return objects
 
 
@@ -179,7 +212,9 @@ def stirrups():
         inner += [centre + k * (STIRRUP_HALF - STIRRUP_BAR) * across + V(0, 0, STIRRUP_TREAD + STIRRUP_BAR)
                   for k in (-1, 1)]
         faces = [(0, 1, 4, 3), (1, 2, 5, 4), (2, 0, 3, 5)]
-        part(f'stirrup-{s}', outer + inner, faces, M['trim'], outward=along)
+        # Round the foot, so it keeps to the boot as his legs go with his hips.
+        with bone(f'foot_{"l" if s > 0 else "r"}'):
+            part(f'stirrup-{s}', outer + inner, faces, M['trim'], outward=along)
 
 
 # Cloak and robe ----------------------------------------------------------------------------------
@@ -195,6 +230,10 @@ CLOAK_RINGS = [
     (1.265, 0.18, 0.122, 0.035, 0),  # shoulders, under the mantle
 ]
 SHOULDER_Z, SHOULDER_Y = CLOAK_RINGS[-1][0], CLOAK_RINGS[-1][3]
+# The cloak and the robe bend at the waist: below it on his hips, and from a ring inside it up on
+# his spine, so they cost no more triangles. The pelvis is at the lean's pivot.
+WAIST_INSIDE = (0.935, 0.16, 0.133, 0.062, 20)
+PELVIS, WAIST = PIVOT, V(0, 0.06, 0.955)
 
 
 def ring_round(rx, ry, cy, opening, zs):
@@ -209,19 +248,28 @@ def ring_round(rx, ry, cy, opening, zs):
 
 
 def cloak():
-    rings = [ring_round(rx, ry, cy, opening, z) for z, rx, ry, cy, opening in CLOAK_RINGS]
-    verts, faces, _ = loft(rings, closed=False)
-    axis = [V(0, cy, z) for z, _, _, cy, _ in CLOAK_RINGS]
-    part('cloak', verts, faces, M['cloak'], inside=nearest_on_polyline(axis))
+    def ring(z, rx, ry, cy, opening):
+        return ring_round(rx, ry, cy, opening, z)
 
-    # The grey robe behind the opening, a little wider than it, from his chest down over his lap.
-    rows = []
-    for z, rx, ry, cy, opening in [(0.775,) + CLOAK_RINGS[0][1:]] + CLOAK_RINGS[:3]:
+    def row(z, rx, ry, cy, opening):
+        # The grey robe behind the opening, a little wider than it.
         spread = opening + 8
-        rows.append([V(0.93 * rx * math.cos(a), cy + 0.93 * ry * math.sin(a), z)
-                     for a in (math.radians(-90 - spread), math.radians(-90), math.radians(-90 + spread))])
-    verts, faces, _ = loft(rows, closed=False)
-    part('robe', verts, faces, M['robe'], inside=lambda c: V(0, 0.1, c.z))
+        return [V(0.93 * rx * math.cos(a), cy + 0.93 * ry * math.sin(a), z)
+                for a in (math.radians(-90 - spread), math.radians(-90), math.radians(-90 + spread))]
+
+    hips, waist, chest, shoulders = CLOAK_RINGS
+    lap = (0.775,) + hips[1:]
+    for name, bone_name, levels, robe in (('cloak', 'hips', [hips, waist], [lap, hips, waist]),
+                                          ('cloak-chest', 'spine', [WAIST_INSIDE, chest, shoulders],
+                                           [WAIST_INSIDE, chest])):
+        with bone(bone_name):
+            verts, faces, _ = loft([ring(*level) for level in levels], closed=False)
+            axis = [V(0, cy, z) for z, _, _, cy, _ in levels]
+            part(name, verts, faces, M['cloak'], inside=nearest_on_polyline(axis))
+            verts, faces, _ = loft([row(*level) for level in robe], closed=False)
+            part(f'robe-{bone_name}', verts, faces, M['robe'], inside=lambda c: V(0, 0.1, c.z))
+    joint('pelvis', PELVIS)
+    joint('waist', WAIST)
 
 
 # The skirts of the cloak, over his thighs and the horse's back, from the front of his left knee
@@ -274,7 +322,8 @@ def skirts(surface):
         out = V(p.x, p.y - 0.06, 0).normalized()
         verts.append(clear(p + flare * out - V(0, 0, drop)))
         faces.append((k, k + 1, len(verts) - 1))
-    part('skirts', verts, faces, M['cloak'], inside=lambda c: V(0, 0.06, c.z - 0.3))
+    with bone('hips'):
+        part('skirts', verts, faces, M['cloak'], inside=lambda c: V(0, 0.06, c.z - 0.3))
 
 
 # Hood --------------------------------------------------------------------------------------------
@@ -300,11 +349,21 @@ HOOD_BACK = 0.335  # where the back of the hood closes, behind the head
 VOID_DEPTH = 0.055  # how far back the darkness sits from the rim
 
 
+NECK = V(0, SHOULDER_Y + 0.025, SHOULDER_Z - 0.05)  # where the hood turns, inside the mantle's collar
+
+
 def hood_point(x, u, b):
     return FACE + HOOD_SCALE * (x * V(1, 0, 0) + u * UP + b * BACK)
 
 
 def hood():
+    with bone('head'):
+        hood_parts()
+    joint('neck', NECK)
+    joint('crown', hood_point(0, HOOD[2][0][0][1], HOOD[2][1]))  # the peak
+
+
+def hood_parts():
     rings = []
     for half, b in HOOD:
         left = [(x, u) for x, u in half]
@@ -359,6 +418,11 @@ def mantle_ring(front, back, rx, ry, cy, fold, opening):
 
 
 def mantle():
+    with bone('spine'):
+        mantle_parts()
+
+
+def mantle_parts():
     rings = [mantle_ring(*level) for level in MANTLE]
     verts, faces, _ = loft(rings, closed=False)
     cy = MANTLE[-1][4]
@@ -379,7 +443,8 @@ CLASP_OUT = V(0, -1, 0.35).normalized()  # facing forward and a little up, to th
 
 
 def clasp():
-    cone('clasp', CLASP - 0.018 * CLASP_OUT, CLASP, 0.034, M['trim'], n=6, phase=30)
+    with bone('spine'):  # with the mantle it closes
+        cone('clasp', CLASP - 0.018 * CLASP_OUT, CLASP, 0.034, M['trim'], n=6, phase=30)
 
 
 # Arms --------------------------------------------------------------------------------------------
@@ -390,31 +455,50 @@ L_SHOULDER, L_ELBOW, L_WRIST = V(0.17, 0.045, 1.115), V(0.29, 0.0, 0.96), V(0.18
 # Each sleeve: radius at the shoulder, the elbow, along the forearm and at the open cuff.
 SLEEVE = [0.06, 0.068, 0.088, 0.115]
 CUFF = 0.88  # how far from the elbow to the wrist the cuff ends
+ELBOW_OVERLAP = 0.03  # how far the upper sleeve runs on past the elbow, and the lower starts above it
 
 
 def sleeve(side, shoulder, elbow, wrist):
+    s = side[0]
     cuff = elbow.lerp(wrist, CUFF)
     middle = elbow.lerp(wrist, 0.45)
-    tube = bent_tube(f'sleeve-{side}', [shoulder, elbow, middle, cuff], SLEEVE, M['cloak'], phase=30)
-    # Rags hang from the cuff, its last ring.
+    # The sleeve as it was built, but in two at the elbow, as the Ringwraith's: the upper sleeve
+    # carried on past it along its band and the lower from above it, so the elbow can bend.
+    rings = path_rings([shoulder, elbow, middle, cuff], SLEEVE, 6, 30)
+    upper = [rings[0], [p + ELBOW_OVERLAP / (elbow - shoulder).length * (p - q) for p, q in zip(rings[1], rings[0])]]
+    lower = [[p + ELBOW_OVERLAP / (middle - elbow).length * (p - q) for p, q in zip(rings[1], rings[2])]] + rings[2:]
+    with bone(f'upper_arm_{s}'):
+        verts, faces, _ = loft(upper)
+        part(f'sleeve-{side}', verts, faces, M['cloak'], inside=nearest_on_polyline([shoulder, elbow]))
     along = (wrist - elbow).normalized()
-    ring = [tube.data.vertices[i].co.copy() for i in range(len(tube.data.vertices) - 6, len(tube.data.vertices))]
-    verts, faces = list(ring), []
-    for i in range(6):
-        a, b = ring[i], ring[(i + 1) % 6]
-        mid = (a + b) / 2
-        verts.append(mid + 0.05 * along + V(0, 0, -0.05) + 0.02 * (mid - cuff).normalized())
-        faces.append((i, (i + 1) % 6, len(verts) - 1))
-    part(f'cuff-{side}', verts, faces, M['cloak'], inside=lambda c: cuff + (c - cuff).dot(along) * along)
-    # The thin wrist, from the dark of the sleeve.
-    bent_tube(f'wrist-{side}', [elbow.lerp(wrist, 0.6), wrist], [0.03, 0.03], M['skin'], n=4, phase=45)
+    with bone(f'forearm_{s}'):
+        verts, faces, _ = loft(lower)
+        part(f'cuff-sleeve-{side}', verts, faces, M['cloak'], inside=nearest_on_polyline([elbow, middle, cuff]))
+        # Rags hang from the cuff, its last ring.
+        ring = rings[-1]
+        verts, faces = list(ring), []
+        for i in range(6):
+            a, b = ring[i], ring[(i + 1) % 6]
+            mid = (a + b) / 2
+            verts.append(mid + 0.05 * along + V(0, 0, -0.05) + 0.02 * (mid - cuff).normalized())
+            faces.append((i, (i + 1) % 6, len(verts) - 1))
+        part(f'cuff-{side}', verts, faces, M['cloak'], inside=lambda c: cuff + (c - cuff).dot(along) * along)
+        # The thin wrist, from the dark of the sleeve.
+        bent_tube(f'wrist-{side}', [elbow.lerp(wrist, 0.6), wrist], [0.03, 0.03], M['skin'], n=4, phase=45)
+    joint(f'shoulder_{s}', shoulder)
+    joint(f'elbow_{s}', elbow)
+    joint(f'wrist_{s}', wrist)
 
 
 def fist(name, wrist, elbow, up):
+    """A fist on the hand's bone, its joint at its middle, which it returns."""
+    s = 'l' if 'left' in name else 'r'
     ahead = (wrist - elbow).normalized()
     up = (up - up.dot(ahead) * ahead).normalized()
     centre = wrist + 0.05 * ahead
-    box(name, centre, [ahead, up, ahead.cross(up)], (0.048, 0.05, 0.052), M['skin'], 0.85)
+    with bone(f'hand_{s}'):
+        box(name, centre, [ahead, up, ahead.cross(up)], (0.048, 0.05, 0.052), M['skin'], 0.85)
+    joint(f'fist_{s}', centre)
     return centre
 
 
@@ -426,9 +510,27 @@ BLADE_LENGTH = 0.66
 BLADE_STATIONS = [(0.0, 0.034, 0.012), (0.6, 0.03, 0.011), (0.88, 0.021, 0.009)]
 
 
-def sword():
+def sword(made=None):
+    # The sword in his fist, or what his 2★ model holds in its place (`made`, a function of the grip);
+    # what the hand holds is the sword either way, so the clips aim it as they aim the sword.
     wrist, elbow = leaned(R_WRIST), leaned(R_ELBOW)
     grip = fist('fist-right', wrist, elbow, SWORD)
+    with bone('hand_r'):
+        point, edge = blade(grip, made)
+    # Held by the grip, its point up the blade and an edge out to his right.
+    hold('r', grip, point, point + 0.1 * edge)
+
+
+def blade(grip, made=None):
+    """Makes the sword, or `made` in its place, and returns where its point is and the way an edge
+    faces."""
+    if made is None:
+        return sword_blade(grip)
+    made(grip)
+    return grip + 0.075 * SWORD + BLADE_LENGTH * SWORD, SWORD.cross(V(0, 1, 0)).normalized()
+
+
+def sword_blade(grip):
     # The flat of the blade faces forward and back, where the game's camera sees it.
     width = SWORD.cross(V(0, 1, 0)).normalized()
     side = SWORD.cross(width).normalized()
@@ -451,23 +553,56 @@ def sword():
     end = grip - 0.1 * SWORD
     bent_tube('grip', [end, guard], [0.018, 0.018], M['leather'], n=4, phase=45)
     cone('pommel', end, end - 0.045 * SWORD, 0.028, M['trim'], n=4, phase=45, back=end + 0.015 * SWORD)
+    return guard + BLADE_LENGTH * SWORD, width
 
 
 def reins(mount):
-    # From the bits to his left hand, by way of points beside the neck.
+    # From the bits to his left hand, by way of points beside the neck: each end follows what holds
+    # it, the bit the horse's head and the other end his hand, and the middle the neck.
     hand = leaned(L_WRIST) + 0.05 * (leaned(L_WRIST) - leaned(L_ELBOW)).normalized()
     for s, bit in zip((-1, 1), mount.bits):
         mid = mount.turned(V(s * 0.125, -0.52, 0.92))
-        path = [bit, mid, hand + V(-s * 0.012, 0.0, -0.01)]
+        held = hand + V(-s * 0.012, 0.0, -0.01)
+        path = [bit, mid, held]
         width = V(0, 0, 0.012)
         verts = [p + width for p in path] + [p - width for p in path]
-        part(f'rein-{s}', verts, [(0, 1, 4, 3), (1, 2, 5, 4)], M['leather'], outward=V(s, 0, 0))
+
+        def end(p, bit=bit, held=held):
+            return 'mount_head' if (p - bit).length < 0.02 else 'hand_l' if (p - held).length < 0.02 else None
+
+        with bone('mount_neck', follows=end):
+            part(f'rein-{s}', verts, [(0, 1, 4, 3), (1, 2, 5, 4)], M['leather'], outward=V(s, 0, 0))
 
 
-def main():
+# His clips (../clips.py): the library's mounted ones, breathing slow and still as the Ringwraith
+# stands, with the charge for his cast and the sword lowered to his thigh when he is stunned. His
+# horse's head, turned to its left, curls further round to its left as it falls. His blows are
+# drawn back further out on his right (out, wide) and the sword is held high further out (out), so
+# his fist clears his big hood. fit() draws the long sword in where it would reach out of the hex,
+# as it is carried at the gallop and levelled. As his cut comes over the top the sword is turned in
+# across his front and further down (across, early), so it passes level pointing ahead rather than
+# out past his hex between frames, and is swept out past the horse's shoulder only as it comes down.
+# The victory's rear takes 1.0 s rather than the style's 1.2, so the horse is down and standing by
+# the time the fight's playback stops, 1 s after the end.
+CLIPS = fit({
+    'idle': ('saddle', {'breath': 0.8, 'sway': 0.6}),
+    'move': ('gallop', {}),
+    'attack': ('cut', {'out': 1.4, 'across': 40.0, 'early': 15.0}),
+    'cast': ('charge', {'wide': 0.15}),
+    'stun': ('reel', {'low': 1.0}),
+    'death': ('fall', {}),
+    'victory': ('rear', {'out': 0.35, 'seconds': 1.0}),
+}, between=True)
+
+
+def build(lance=None):
+    """Makes him and his horse in a fresh scene, every part bound to its bone and the joints marked,
+    and returns the rig to finish() them with. His 2★ model (khamul-2.py) passes its lance as
+    `lance`, a function of the grip in his right fist that makes it there in place of the sword,
+    once he leans, as the sword is made."""
     reset()
     make_materials()
-    mount = horse(COAT, POINTS, tack='caparison', raised='right', turn=40)
+    mount = horse(COAT, POINTS, tack='caparison', raised='right', turn=40, rigged=True)
     body, caparison = bpy.data.objects['horse-body'], bpy.data.objects['horse-caparison']
     clear_cloth(caparison, body)
     fittings(caparison)
@@ -485,9 +620,14 @@ def main():
         if obj not in fixed:
             obj.data.transform(LEANING)
     skirts(Surface(*covered))
-    sword()
+    sword(lance)
     reins(mount)
-    finish('khamul', budget=MOUNTED_BUDGET)
+    return Rig(kind='mounted', mount=mount.rig, clips=CLIPS)
 
 
-main()
+def main():
+    finish('khamul', budget=MOUNTED_BUDGET, rig=build())
+
+
+if __name__ == '__main__':
+    main()

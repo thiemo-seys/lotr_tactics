@@ -19,10 +19,17 @@ behind and from above, its two fronts framing his waistcoat, and the hood down h
 behind, as the near side is seen, his white curls show above it, his raised hand and the knife
 either side of it, and his waistcoat and breeches below it.
 
+He is rigged as Frodo is (frodo.py, ../rig.py), the Hobbits' reference rig. To bend, his body is two
+pieces that meet under his belly, the breeches and the waistcoat's lower band on his hips and the rest
+of the waistcoat on his spine from a ring deep inside that band, and each sleeve is two, at the elbow;
+neither costs a triangle. Dwalin's hood swings behind him on a bone of its own, `cape`; the short cape
+rides his spine. His clips (../clips.py) are a Hobbit's, with a quick stab of the knife, drawn back
+wide of his round belly, and for his cast, Riddles in the Dark, a stab under his raised finger.
+
 His fittings, the waistcoat's buttons, the clasp at his throat, the hood's tassel and the knife's
 cross-guard and pommel, use `trim`, which the client colours iron, silver or gold by star level
-(docs/viewer-spec.md section 4, "Star levels"). His 2★ model is bilbo-2.py and his 3★ model
-bilbo-3.py.
+(docs/viewer-spec.md section 4, "Star levels"). His 2★ model is bilbo-2.py, which imports this
+script and builds him with Sting in place of the seax (build()), and his 3★ model bilbo-3.py.
 
     blender --background --factory-startup --python-exit-code 1 --python bilbo.py [-- <out.glb>]
 
@@ -43,6 +50,7 @@ from kit import (  # noqa: E402
     LEATHER,
     V,
     bent_tube,
+    bone,
     box,
     cone,
     ellipse,
@@ -59,6 +67,7 @@ from kit import (  # noqa: E402
     tube,
     wind,
 )
+from rig import Rig, hold, joint  # noqa: E402
 
 # Bilbo's own colours (sRGB); the rest come from the kit.
 SKIN = 0xE0AA86  # a hobbit's, warm
@@ -154,27 +163,39 @@ def foot(name, ankle, yaw, inner):
     verts = edge + [middle]
     faces = [(i, (i + 1) % len(edge), len(edge)) for i in range(len(edge))]
     part(name + '-hair', verts, faces, M['foot_hair'], inside=middle - V(0, 0, 0.05))
+    joint(f'toe_{"r" if inner > 0 else "l"}', place((0, -0.19, 0.02)))  # the big toe's root
 
 
 R_HIP, L_HIP = V(-0.08, 0.008, 0.265), V(0.08, 0.0, 0.265)
+# The knees bent forward over the feet, so they bend that way as he runs.
 R_KNEE, L_KNEE = V(-0.115, 0.012, 0.172), V(0.11, -0.08, 0.174)
-ANKLE_Z = 0.06  # where the shin ends, inside the foot
+ANKLE_Z = 0.06  # where the shin ends, inside the foot, and the ankle the foot turns about
+SHIN_TOP = 0.02  # how far above the knee the bare shin starts, inside the cuff, so the knee can bend
 
 
 def leg(side, hip, knee, ankle):
+    s = side[0]
     ankle = V(ankle.x, ankle.y, ANKLE_Z)
     shin = (ankle - knee).normalized()
     # Breeches to below the knee, ending in a cuff wider than the bare shin. The cuff is long enough
     # that its rings don't cross behind the bent knee.
-    bent_tube(f'thigh-{side}', [hip, knee, knee + 0.035 * shin], [0.076, 0.063, 0.058], M['breeches'])
-    tube(f'shin-{side}', knee, ankle, [(0, 0.044), (1, 0.034)], M['skin'])
+    with bone(f'thigh_{s}'):
+        bent_tube(f'thigh-{side}', [hip, knee, knee + 0.035 * shin], [0.076, 0.063, 0.058], M['breeches'])
+    with bone(f'shin_{s}'):
+        top = -SHIN_TOP / (ankle - knee).length
+        tube(f'shin-{side}', knee, ankle, [(top, 0.046), (1, 0.034)], M['skin'])
+    joint(f'hip_{s}', hip)
+    joint(f'knee_{s}', knee)
+    joint(f'ankle_{s}', ankle)
 
 
 def legs():
     leg('right', R_HIP, R_KNEE, R_ANKLE)
     leg('left', L_HIP, L_KNEE, L_ANKLE)
-    foot('foot-right', R_ANKLE, R_YAW, 1)
-    foot('foot-left', L_ANKLE, L_YAW, -1)
+    with bone('foot_r'):
+        foot('foot-right', R_ANKLE, R_YAW, 1)
+    with bone('foot_l'):
+        foot('foot-left', L_ANKLE, L_YAW, -1)
 
 
 # Body --------------------------------------------------------------------------------------------
@@ -191,13 +212,20 @@ TORSO = [
     (0.52, 0.13, 0.1, 0.0),  # shoulders, closed above by his shirt, round the neck
 ]
 TORSO_BANDS = [0, 1, 1, 1, 1]  # breeches, waistcoat
+# In two pieces, which bend under the belly: the breeches and the waistcoat's lower band on his hips,
+# up to the ring under the belly (LOWER of TORSO's rings), and the rest of the waistcoat on his spine,
+# from a ring deep inside that band (INSIDE) up, so the bands are the ones the body had.
+LOWER = 3
+INSIDE = (0.285, 0.166, 0.148, -0.006)
+CHEST = [INSIDE] + TORSO[LOWER:]
+PELVIS, WAIST = V(0, 0.008, 0.255), V(0, -0.004, 0.3)
 BUTTONS = [0.318, 0.38, 0.442]  # heights of the bright buttons down the front
 BUTTON_SIZE = 0.026  # half the height of each button
 
 
-def torso_ring(z):
+def torso_ring(z, rings=TORSO):
     """The torso's half-width, half-depth and centre y at height z."""
-    for (z0, *low), (z1, *high) in pairwise(TORSO):
+    for (z0, *low), (z1, *high) in pairwise(rings):
         if z0 <= z <= z1:
             t = (z - z0) / (z1 - z0)
             return [lerp(a, b, t) for a, b in zip(low, high)]
@@ -205,8 +233,9 @@ def torso_ring(z):
 
 
 def torso_front(z):
-    """The front corner of the torso at height z."""
-    _, ry, cy = torso_ring(z)
+    """The front corner of the torso at height z: of the hips' piece below the ring under the belly,
+    and of the chest's above it."""
+    _, ry, cy = torso_ring(z, TORSO if z <= TORSO[LOWER - 1][0] else CHEST)
     return V(0, cy - ry, z)
 
 
@@ -223,7 +252,7 @@ def clear(p, gap):
 
 
 def torso():
-    rings = [ellipse(0, cy, z, rx, ry, 8, 0) for z, rx, ry, cy in TORSO]
+    rings = [ellipse(0, cy, z, rx, ry, 8, 0) for z, rx, ry, cy in TORSO[:LOWER]]
     verts, faces, bands = loft(rings)
     face_mats = [TORSO_BANDS[b] for b in bands]
     # The waistcoat's two points either side of the front, over the top of his breeches.
@@ -234,12 +263,18 @@ def torso():
         verts.append(p + 0.014 * out - V(0, 0, 0.062))
         faces.append((8 + a, 8 + 6, len(verts) - 1))
         face_mats.append(1)
-    faces.append(tuple(range(40, 48)))  # the shirt at his throat, round the neck
-    face_mats.append(2)
-    mats = [M['breeches'], M['waistcoat'], M['shirt']]
-    part('torso', verts, faces, mats, face_mats, inside=lambda c: V(0, -0.01, min(c.z, 0.5)))
+    with bone('hips'):
+        part('torso', verts, faces, [M['breeches'], M['waistcoat']], face_mats, inside=lambda c: V(0, -0.01, c.z))
+    rings = [ellipse(0, cy, z, rx, ry, 8, 0) for z, rx, ry, cy in CHEST]
+    verts, faces, bands = loft(rings)
+    face_mats = [0] * len(faces)
+    faces.append(tuple(range(24, 32)))  # the shirt at his throat, round the neck
+    face_mats.append(1)
+    with bone('spine'):
+        part('chest', verts, faces, [M['waistcoat'], M['shirt']], face_mats,
+             inside=lambda c: V(0, -0.01, min(c.z, 0.5)))
 
-    # Bright buttons down the front corner, each a little pyramid.
+    # Bright buttons down the front corner, each a little pyramid, the lowest on the hips' piece.
     for k, z in enumerate(BUTTONS):
         c = torso_front(z)
         ridge = (torso_front(z + 0.01) - torso_front(z - 0.01)).normalized()
@@ -248,9 +283,13 @@ def torso():
         across = [V(sx * s, 0, 0) - 0.4 * s * out for sx in (1, -1)]  # sunk to the faces either side
         verts = [c + s * ridge, c + across[0], c - s * ridge, c + across[1], c + 0.016 * out]
         faces = [(i, (i + 1) % 4, 4) for i in range(4)]
-        part(f'button-{k}', verts, faces, M['trim'], inside=c - 0.01 * out)
+        with bone('hips' if z < TORSO[LOWER - 1][0] else 'spine'):
+            part(f'button-{k}', verts, faces, M['trim'], inside=c - 0.01 * out)
 
-    tube('neck', V(0, 0.009, 0.5), V(0, -0.015, 0.63), [(0, 0.05), (1, 0.047)], M['skin'])
+    with bone('head'):
+        tube('neck', V(0, 0.009, 0.5), V(0, -0.015, 0.63), [(0, 0.05), (1, 0.047)], M['skin'])
+    joint('pelvis', PELVIS)
+    joint('waist', WAIST)
 
 
 # Head --------------------------------------------------------------------------------------------
@@ -397,15 +436,28 @@ L_SHOULDER, L_ELBOW, L_WRIST = V(0.14, 0.0, 0.49), V(0.278, -0.01, 0.44), V(0.27
 FINGER_TILT = 35  # degrees the raised finger leans from the forearm towards his head
 
 
+ELBOW = 0.02  # how far each half of a sleeve reaches past the elbow, inside the other, so it can bend
+
+
 def arm(side, shoulder, elbow, wrist, up):
-    """A full linen sleeve gathered at the wrist, and a big fist; `up` is where its thumb points.
-    Returns the fist's centre and its axes: ahead, up and across."""
-    bent_tube(f'sleeve-{side}', [shoulder, elbow, wrist], [0.052, 0.049, 0.041], M['shirt'])
+    """A full linen sleeve gathered at the wrist, in two that overlap at the elbow, and a big fist;
+    `up` is where its thumb points. Returns the fist's centre and its axes: ahead, up and across."""
+    s = side[0]
+    with bone(f'upper_arm_{s}'):
+        past = 1 + ELBOW / (elbow - shoulder).length
+        tube(f'sleeve-{side}', shoulder, elbow, [(0, 0.052), (past, 0.049)], M['shirt'])
+    with bone(f'forearm_{s}'):
+        tube(f'cuff-{side}', elbow, wrist, [(-ELBOW / (wrist - elbow).length, 0.05), (1, 0.041)], M['shirt'])
     ahead = (wrist - elbow).normalized()
     up = (up - up.dot(ahead) * ahead).normalized()
     across = ahead.cross(up)
     fist = wrist + 0.03 * ahead
-    box(f'fist-{side}', fist, [ahead, up, across], (0.038, 0.04, 0.042), M['skin'], 0.86)
+    with bone(f'hand_{s}'):
+        box(f'fist-{side}', fist, [ahead, up, across], (0.038, 0.04, 0.042), M['skin'], 0.86)
+    joint(f'shoulder_{s}', shoulder)
+    joint(f'elbow_{s}', elbow)
+    joint(f'wrist_{s}', wrist)
+    joint(f'fist_{s}', fist + 0.038 * ahead)  # the end of the hand
     return fist, ahead, up, across
 
 
@@ -418,9 +470,10 @@ def riddle_hand():
     point = math.cos(tilt) * ahead + math.sin(tilt) * up
     side = -math.sin(tilt) * ahead + math.cos(tilt) * up
     centre = fist + 0.036 * ahead + 0.008 * up + 0.036 * point
-    box('finger', centre, [point, side, palm], (0.038, 0.012, 0.013), M['skin'], 0.8)
-    box('thumb', fist + 0.006 * ahead + 0.01 * up + 0.044 * palm, [palm, up, ahead], (0.01, 0.027, 0.014),
-        M['skin'], 0.9)
+    with bone('hand_l'):
+        box('finger', centre, [point, side, palm], (0.038, 0.012, 0.013), M['skin'], 0.8)
+        box('thumb', fist + 0.006 * ahead + 0.01 * up + 0.044 * palm, [palm, up, ahead], (0.01, 0.027, 0.014),
+            M['skin'], 0.9)
 
 
 # The knife, in his right hand --------------------------------------------------------------------
@@ -434,8 +487,18 @@ SEAX = {'back': (0.0, 0.026), 'break': (0.15, 0.034), 'point': (0.245, -0.008), 
 SEAX_THICK = 0.009  # half the thickness of the back
 
 
-def knife():
+def knife(made=None):
+    # The seax, or what his 2★ model holds in its place (`made`), made from the fist out as seax() is
+    # and returning its point and the way its edge faces, bound to his right hand.
     fist, *_ = arm('right', R_SHOULDER, R_ELBOW, R_WRIST, KNIFE)
+    with bone('hand_r'):
+        point, edge = (made or seax)(fist)
+    # Held by the grip, its point ahead and its edge turned in, to his left.
+    hold('r', fist, point, point + edge)
+
+
+def seax(fist):
+    """The knife from the fist out: returns its point and the way its edge faces."""
     level = V(KNIFE.y, -KNIFE.x, 0).normalized()
     upright = level.cross(KNIFE).normalized()
     if upright.z < 0:
@@ -463,6 +526,7 @@ def knife():
     end = fist - 0.056 * KNIFE
     tube('grip', end, guard, [(0, 0.016), (1, 0.016)], M['leather'], n=4, phase=45)
     cone('pommel', end, end - 0.03 * KNIFE, 0.022, M['trim'], n=4, phase=45, back=end + 0.012 * KNIFE)
+    return point, -width
 
 
 # Team colour: the borrowed hood and cloak ---------------------------------------------------------
@@ -545,22 +609,61 @@ def cock(objects, pivot, degrees):
         obj.data.transform(turning)
 
 
-def main():
+# Where his head turns, inside the cape's collar, and the top of his curls.
+HEAD_TURN, CROWN = V(0, -0.005, 0.585), V(0, -0.004, 0.856)
+# The hood hangs from the back of his collar to its point, on a bone of its own, so it swings behind
+# him; the short cape over his shoulders rides his spine.
+CAPE_TOP, CAPE_HEM = V(0, 0.13, 0.6), HOOD_POINT
+
+# His clips (../clips.py), a Hobbit's, as Frodo's (frodo.py): his stance and his light, quick run on
+# his big feet, a quick stab of the knife drawn back wide of his round belly, and for his cast, Riddles
+# in the Dark, a lunging stab under his raised finger.
+RIG = Rig(
+    bones={'cape': ('spine', 'cape_top', 'cape_hem')},
+    clips={
+        'idle': ('ready', {}),
+        'move': ('run', {'heavy': 0.25, 'stride': 0.7, 'lift': 0.45, 'off': 'steady'}),
+        'attack': ('thrust', {'wide': 0.45, 'out': 20.0}),
+        'cast': ('riddle', {}),
+        'stun': ('dazed', {'off_low': 1.0}),
+        'death': ('knees', {'dropped': True, 'slump': 0.75}),
+        'victory': ('raise', {'out': 0.35}),
+    },
+)
+
+
+def build(blade=None):
+    """Makes him in a fresh scene, every part bound to its bone and his joints marked, and returns
+    the rig to finish() him with. His 2★ model (bilbo-2.py) passes Sting as `blade`, a function
+    that makes it from his right fist out, which he holds in place of the seax, bound to his hand as
+    it is, before he leans."""
     reset()
     make_materials()
     legs()
     lower = set(bpy.context.scene.objects)
     torso()
     body = set(bpy.context.scene.objects)
-    head()
-    hair()
+    with bone('head'):
+        head()
+        hair()
+    joint('neck', HEAD_TURN)
+    joint('crown', CROWN)
     cock([o for o in bpy.context.scene.objects if o not in body], NECK, COCK)
-    cape()
-    hood()
+    with bone('spine'):
+        cape()
+    with bone('cape'):
+        hood()
+    joint('cape_top', CAPE_TOP)
+    joint('cape_hem', CAPE_HEM)
     riddle_hand()
-    knife()
+    knife(blade)
     lean([o for o in bpy.context.scene.objects if o not in lower], HIPS, LEAN)
-    finish('bilbo')
+    return RIG
 
 
-main()
+def main():
+    finish('bilbo', rig=build())
+
+
+if __name__ == '__main__':
+    main()

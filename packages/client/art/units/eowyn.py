@@ -17,11 +17,20 @@ The team colour is the shield's face and her short cloak, a mantle over the shou
 down her back to the hips, seen from the front, from behind and from above. Her hair lies over the
 cape, so from behind she is gold as much as the team's colour.
 
+She is rigged as Rohan on foot (../rig.py, ../clips.py), in the family of Éomer, Rohan's reference
+rider (eomer.py), and moving as a Man does, with Aragorn's idle and run (aragorn.py). Her boots bend
+at the ring round the ankle and her mail at the belt, both split at rings they already had; her
+thighs, which the kirtle hid, are added as hose, so a stride or a kneel shows legs rather than empty
+boots (24 triangles). Her hair, her locks and her short cloak ride her spine, so her head turns
+within her hair. She chops with her sword and her cast (Shieldmaiden) is a parry and a riposte:
+the shield up before her face, then the sword driven past it and up at the enemy (riposte).
+
 Her fittings, the shield's boss and rim, the sword's cross-guard and pommel, the belt buckle and the
 two round brooches that pin her cloak on her shoulders, use `trim`, which the client colours iron,
 silver or gold by star level (docs/viewer-spec.md section 4, "Star levels"); from behind, the
 brooches, the sword's fittings and the shield's rim show it. Her golden hair stays her own colour.
-Her 2★ model is eowyn-2.py and her 3★ model eowyn-3.py.
+Her 2★ model is eowyn-2.py, which imports this script and builds her in its corslet (build()), and
+her 3★ model eowyn-3.py.
 
     blender --background --factory-startup --python-exit-code 1 --python eowyn.py [-- <out.glb>]
 
@@ -44,6 +53,7 @@ from kit import (  # noqa: E402
     STEEL,
     WOOD,
     V,
+    bone,
     box,
     cone,
     ellipse,
@@ -60,6 +70,8 @@ from kit import (  # noqa: E402
     trim_material,
     tube,
 )
+from clips import fit  # noqa: E402
+from rig import Rig, hold, joint  # noqa: E402
 
 # Éowyn's own colours (sRGB); the rest come from the kit.
 SKIN = 0xE4B999  # fair
@@ -118,9 +130,15 @@ FOOT = [
 ]
 # Then up the shin to the knee, round the leg: the height and the radius of each ring.
 SHAFT = [(0.26, 0.054), (0.40, 0.064)]
+KNEE_AHEAD = 0.012  # the knee, at the top of the boot, a little forward so the leg bends forward
+# Her thigh, in the green of her hose, from the hip down into the top of the boot: its radius at each
+# end, narrow enough below to stay inside the boot however the knee bends.
+THIGH = (0.072, 0.05)
+THIGH_INTO_BOOT = 0.045  # how far down into the boot it reaches
 
 
 def leg(side, hip, ankle, yaw):
+    s = side[0]
     turn = Matrix.Rotation(math.radians(yaw), 3, 'Z')
     at = V(ankle.x, ankle.y, 0)
     up = hip - ankle
@@ -129,16 +147,29 @@ def leg(side, hip, ankle, yaw):
         return ankle + up * ((z - ankle.z) / up.z) if z > ankle.z else V(at.x, at.y, z)
 
     rings = []
-    for z, (s, heel, toe) in FOOT:
-        outline = [s, heel, (-heel[0], heel[1]), (-s[0], s[1]), (-toe[0], toe[1]), toe]
+    for z, (side_, heel, toe) in FOOT:
+        outline = [side_, heel, (-heel[0], heel[1]), (-side_[0], side_[1]), (-toe[0], toe[1]), toe]
         rings.append([at + turn @ V(x, y, z) for x, y in outline])
     for z, r in SHAFT:
         c = axis(z)
         rings.append([c + turn @ V(r * math.cos(a), r * math.sin(a), 0)
                       for a in (math.radians(60 * i) for i in range(6))])
-    verts, faces, _ = loft(rings)
-    part(f'boot-{side}', verts, faces, M['boots'], inside=lambda c: axis(c.z))
-    # Her thighs are hidden under the kirtle, whose hem comes down over the tops of the boots.
+    # The boot as it was built, in two at the ring round the ankle: the foot, which rolls, and the
+    # shaft up the shin to the knee.
+    for bone_name, name, first, last in ((f'foot_{s}', 'foot', 0, 3), (f'shin_{s}', 'boot', 2, 5)):
+        verts, faces, _ = loft(rings[first:last])
+        with bone(bone_name):
+            part(f'{name}-{side}', verts, faces, M['boots'], inside=lambda c: axis(c.z))
+    # Her thigh is hidden under the kirtle, whose hem comes down over the tops of the boots, until it
+    # swings forward in a stride or a kneel.
+    knee = axis(SHAFT[-1][0]) + KNEE_AHEAD * (turn @ V(0, -1, 0))
+    with bone(f'thigh_{s}'):
+        tube(f'thigh-{side}', hip, knee, [(0.0, THIGH[0]), (1 + THIGH_INTO_BOOT / (knee - hip).length, THIGH[1])],
+             M['tunic'])
+    joint(f'hip_{s}', hip)
+    joint(f'knee_{s}', knee)
+    joint(f'ankle_{s}', ankle)
+    joint(f'toe_{s}', at + turn @ V(0, -0.13, 0.03))
 
 
 def legs():
@@ -157,7 +188,15 @@ KIRTLE = [
 ]
 
 
-def kirtle():
+def kirtle(made=None):
+    # Her green kirtle, or what her 2★ model wears in its place (`made`), on her hips; the pelvis is
+    # where it was either way, so the rig is the same.
+    with bone('hips'):
+        (made or kirtle_part)()
+    joint('pelvis', PELVIS)
+
+
+def kirtle_part():
     rings = []
     for z, rx, ry, cy, fold in KIRTLE:
         ring = []
@@ -182,22 +221,33 @@ TORSO = [
     (1.005, 0.056, 0.052, 0.012, 0.0),  # neck
 ]
 TORSO_BANDS = [0, 0, 1, 0, 0, 0]  # mail, except the belt
+# It is in two pieces, which bend at the belt: the skirt and the belt on her hips, and the chest on her
+# spine from a ring inside the belt up to her neck, in as many bands as it had.
+INSIDE_BELT = (0.76, 0.124, 0.094, -0.004, 0.0)
+PELVIS, WAIST = V(0, 0.0, 0.64), V(0, -0.004, 0.77)
+
+
+def torso_ring(z, rx, ry, cy, forward):
+    ring = []
+    for i in range(8):
+        a = math.radians(22.5 + 45 * i)
+        push = forward if math.sin(a) < -0.5 else 0.0
+        ring.append(V(rx * math.cos(a), cy + ry * math.sin(a) - push, z))
+    return ring
 
 
 def torso():
-    rings = []
-    for z, rx, ry, cy, forward in TORSO:
-        ring = []
-        for i in range(8):
-            a = math.radians(22.5 + 45 * i)
-            push = forward if math.sin(a) < -0.5 else 0.0
-            ring.append(V(rx * math.cos(a), cy + ry * math.sin(a) - push, z))
-        rings.append(ring)
-    verts, faces, bands = loft(rings)
+    rings = [torso_ring(*level) for level in TORSO]
+    verts, faces, bands = loft(rings[:4])
     face_mats = [TORSO_BANDS[b] for b in bands]
-    part('torso', verts, faces, [M['mail'], M['leather']], face_mats, inside=lambda c: V(0, 0, c.z))
-    axes = [V(0, -1, 0), V(1, 0, 0), V(0, 0, 1)]
-    box('buckle', V(0, -0.108, 0.77), axes, (0.012, 0.028, 0.026), M['trim'], 0.75)
+    with bone('hips'):
+        part('skirt', verts, faces, [M['mail'], M['leather']], face_mats, inside=lambda c: V(0, 0, c.z))
+        axes = [V(0, -1, 0), V(1, 0, 0), V(0, 0, 1)]
+        box('buckle', V(0, -0.108, 0.77), axes, (0.012, 0.028, 0.026), M['trim'], 0.75)
+    verts, faces, _ = loft([torso_ring(*INSIDE_BELT)] + rings[4:])
+    with bone('spine'):
+        part('chest', verts, faces, M['mail'], inside=lambda c: V(0, 0, c.z))
+    joint('waist', WAIST)
 
 
 # Head --------------------------------------------------------------------------------------------
@@ -392,14 +442,23 @@ L_ELBOW = V(0.28, 0.04, 0.82)
 
 
 def arm(side, shoulder, elbow, wrist, fist, grip):
-    """A mail sleeve, a bracer and a fist closed round a grip running along `grip`."""
-    tube(f'sleeve-{side}', shoulder, elbow, [(0, 0.058), (1.1, 0.048)], M['mail'])
-    forearm = [(-0.15, 0.045), (0.4, 0.05), (1.0, 0.045)]
-    tube(f'forearm-{side}', elbow, wrist, forearm, [M['tunic'], M['leather']], [0, 1])
+    """A mail sleeve, a bracer and a fist closed round a grip running along `grip`. The sleeve runs on
+    past the elbow and the bracer starts above it, so the elbow bends without a gap."""
+    s = side[0]
+    with bone(f'upper_arm_{s}'):
+        tube(f'sleeve-{side}', shoulder, elbow, [(0, 0.058), (1.1, 0.048)], M['mail'])
+    with bone(f'forearm_{s}'):
+        forearm = [(-0.15, 0.045), (0.4, 0.05), (1.0, 0.045)]
+        tube(f'forearm-{side}', elbow, wrist, forearm, [M['tunic'], M['leather']], [0, 1])
     along = Vector(grip).normalized()
     ahead = wrist - elbow
     ahead = (ahead - ahead.dot(along) * along).normalized()
-    box(f'fist-{side}', fist, [ahead, along, ahead.cross(along)], (0.042, 0.046, 0.044), M['skin'], 0.88)
+    with bone(f'hand_{s}'):
+        box(f'fist-{side}', fist, [ahead, along, ahead.cross(along)], (0.042, 0.046, 0.044), M['skin'], 0.88)
+    joint(f'shoulder_{s}', shoulder)
+    joint(f'elbow_{s}', elbow)
+    joint(f'wrist_{s}', wrist)
+    joint(f'fist_{s}', fist)
 
 
 # Sword, raised in her right hand -----------------------------------------------------------------
@@ -408,6 +467,15 @@ SWORD = V(-0.32, -0.06, 1.0).normalized()  # up and out to her side, a little fo
 
 
 def sword():
+    with bone('hand_r'):
+        point, edge = blade()
+    # Held by the grip in her fist, from it to the point, an edge out to her right.
+    hold('r', R_FIST, point, point + 0.1 * edge)
+    arm('right', R_SHOULDER, R_ELBOW, R_WRIST, R_FIST, SWORD)
+
+
+def blade():
+    """Builds the sword in her fist and returns its point and the way an edge faces."""
     along = SWORD
     across = along.cross(V(0, 1, 0)).normalized()  # the edges, out to the sides
     thick = across.cross(along)  # the flats face forward and back
@@ -426,8 +494,7 @@ def sword():
     box('guard', guard, [along, across, thick], (0.016, 0.085, 0.02), M['trim'], 0.8)
     pommel = R_FIST - 0.062 * along
     cone('pommel', pommel + 0.012 * along, pommel - 0.03 * along, 0.024, M['trim'], n=4, back=pommel + 0.03 * along)
-
-    arm('right', R_SHOULDER, R_ELBOW, R_WRIST, R_FIST, along)
+    return guard + 0.58 * along, across
 
 
 # Shield, on her left arm -------------------------------------------------------------------------
@@ -437,6 +504,18 @@ SHIELD_TURN = Matrix.Rotation(math.radians(34), 3, 'Z') @ Matrix.Rotation(math.r
 
 
 def shield():
+    with bone('hand_l'):
+        board()
+    # Held by the grip behind the boss, up to the top of its rim, its face to the front.
+    top = SHIELD_CENTRE + SHIELD_TURN @ V(0, 0, 0.245)
+    fist = SHIELD_CENTRE + SHIELD_TURN @ V(0, 0.05, 0)
+    hold('l', fist, top, top + SHIELD_TURN @ V(0, -0.1, 0))
+    # The left arm comes from behind to the grip behind the boss.
+    wrist = fist + (L_ELBOW - fist).normalized() * 0.04
+    arm('left', L_SHOULDER, L_ELBOW, wrist, fist, SHIELD_TURN @ V(0, 0, 1))
+
+
+def board():
     # Built facing -Y round the origin, as one profile turned round the axis: from the rim's outer
     # edge over its crest, down the team-coloured face to the boss; the rim and boss are trim. The
     # rim is a ridge, so no one point is inside every face: the profile is wound as a whole instead.
@@ -466,31 +545,60 @@ def shield():
     verts = [SHIELD_CENTRE + SHIELD_TURN @ v for v in verts]
     part('shield', verts, faces, [M['team'], M['trim'], M['wood']], face_mats)
 
-    # The left arm comes from behind to the grip behind the boss.
-    fist = SHIELD_CENTRE + SHIELD_TURN @ V(0, 0.05, 0)
-    wrist = fist + (L_ELBOW - fist).normalized() * 0.04
-    arm('left', L_SHOULDER, L_ELBOW, wrist, fist, SHIELD_TURN @ V(0, 0, 1))
-
 
 LEAN = 4  # degrees her body above the hips leans forward, into the fight
+NECK = V(0, 0.012, 1.02)  # where her head turns, in the mantle's collar
+CROWN = V(0, 0.015, 1.414)  # the top of her head, on the parting
+
+# Her clips (../clips.py): Rohan on foot, as a Man moves, with Aragorn's idle and run (aragorn.py), the
+# shield held up as she runs as Beregond's is (beregond.py). She chops with her sword, from high over
+# her shoulder, wide of her hair, down and out to her right so the blow shows past her from behind,
+# her elbow leading the blade forward and down on the frame before it lands, the blade already
+# turned further down there (elbow, early), and lifting it back a frame later (slow), so the sword
+# doesn't swing out of her hex between frames; her cast (Shieldmaiden) is a parry and a riposte:
+# the shield up before her face, then the sword driven past it and up at the enemy. Stunned, the
+# raised sword droops to her hip; she dies on her knees with her shield still before her, and wins
+# with the sword held high.
+CLIPS = fit({
+    'idle': ('ready', {}),
+    'move': ('run', {'heavy': 0.3, 'lean': 10.0, 'off': 'high'}),
+    'attack': ('chop', {'wide': 0.2, 'steep': 10.0, 'out': 25.0, 'elbow': 0.75, 'early': 15.0, 'slow': 1}),
+    'cast': ('riposte', {}),
+    'stun': ('dazed', {'low': 1.0}),
+    'death': ('knees', {'slump': 0.8}),
+    'victory': ('raise', {'out': 0.3}),
+}, between=True)
 
 
-def main():
+def build(corslet=None):
+    """Makes her in a fresh scene, every part bound to its bone and the joints marked, and returns the
+    rig to finish() her with. Her 2★ model (eowyn-2.py) passes its corslet as `corslet`, a function
+    that makes its long skirt in place of the kirtle, on her hips, before she leans."""
     reset()
     make_materials()
     legs()
-    kirtle()
+    kirtle(corslet)
     lower = set(bpy.context.scene.objects)
     torso()
-    head_rings = head()
-    side_locks()
-    back = mantle()
-    back += cape()
-    hair_fall(back, head_rings)
+    with bone('head'):
+        head_rings = head()
+    joint('neck', NECK)
+    joint('crown', CROWN)
+    # Her hair and her short cloak ride her spine, so her head turns within her hair.
+    with bone('spine'):
+        side_locks()
+        back = mantle()
+        back += cape()
+        hair_fall(back, head_rings)
     sword()
     shield()
     lean([o for o in bpy.context.scene.objects if o not in lower], V(0, 0, 0.62), LEAN)
-    finish('eowyn')
+    return Rig(clips=CLIPS)
 
 
-main()
+def main():
+    finish('eowyn', rig=build())
+
+
+if __name__ == '__main__':
+    main()

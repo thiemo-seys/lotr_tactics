@@ -15,11 +15,23 @@ lowest at the back, so it shows from the front, from behind and from above. His 
 over it at the back, and the circlet, the staff, the raised hand, the wide sleeves and the plum robe
 below it keep him recognisable from behind.
 
+He is rigged as Legolas, the Elves' reference (legolas.py, ../rig.py), with the Elves' calm idle and
+light run. His robe to the ground is in three pieces, as the Ringwraith's is (ringwraith.py): the
+chest on the spine, from a ring inside the girdle; the skirt on the hips, down to a ring inside the
+robe below the knees; and the robe below the knees on a bone of its own, `robe`, which hangs plumb
+under him, twists after his knees as he strides and rests on the ground as he sinks into it
+(../clips.py, robed()), so his run doesn't glide and his death goes down into his robes. His legs are
+hidden but for the toes of his shoes, which show under the hem as he strides. The staff stays planted
+as he stands and fights, is carried as he runs, falls across his hex as he falls and is lifted as he
+wins. He looses his bolts from his open hand, thrust out at the foe (bolt); his cast (Healer of
+Rivendell) heaves the staff up and strikes it down as his open hand goes up in blessing (plant).
+
 His fittings, the clasp of his mantle, the clasp of his girdle, a clasp binding his hair between his
 shoulders, and the band under the staff's head and the ferrule at its foot, use `trim`, which the
 client colours iron, silver or gold by star level (docs/viewer-spec.md section 4, "Star levels"). The
-silver circlet and the silver leaves of the staff stay silver. His 2★ model is elrond-2.py and his 3★
-model elrond-3.py.
+silver circlet and the silver leaves of the staff stay silver. His 2★ model is elrond-2.py, which
+imports this script and builds him with a long sword at his hip (build()), and his 3★ model
+elrond-3.py.
 
     blender --background --factory-startup --python-exit-code 1 --python elrond.py [-- <out.glb>]
 
@@ -37,6 +49,7 @@ sys.path.insert(0, os.path.join(os.path.dirname(os.path.abspath(__file__)), '..'
 from kit import (  # noqa: E402
     EYES,
     V,
+    bone,
     box,
     ellipse,
     finish,
@@ -52,6 +65,8 @@ from kit import (  # noqa: E402
     trim_material,
     tube,
 )
+from clips import fit, robed  # noqa: E402
+from rig import Rig, hold, joint  # noqa: E402
 
 # Elrond's own colours (sRGB); the rest come from the kit.
 ROBE = 0x5B4A5D  # plum-grey
@@ -116,16 +131,28 @@ TORSO = [
     (1.16, 0.066, 0.060, 0.008),  # neck
 ]
 TORSO_BANDS = [1, 0, 0, 0]  # the girdle, then robe
+# It bends at the girdle: the girdle on his hips, and the chest on his spine from a ring inside the
+# girdle (the waist) up, in as many bands as it had.
+INSIDE_GIRDLE = (0.83, 0.128, 0.093, 0.0)
+PELVIS = V(0, 0.0, 0.72)
 GIRDLE_CLASP = V(0, -0.106, 0.829)
 
 
 def torso():
     rings = [ellipse(0, cy, z, rx, ry, 8, 22.5) for z, rx, ry, cy in TORSO]
-    verts, faces, bands = loft(rings)
-    part('torso', verts, faces, [M['robe'], M['silver']], [TORSO_BANDS[b] for b in bands],
-         inside=lambda c: V(0, 0, c.z))
-    # The girdle's clasp, on its front, its face smaller than its back so the edges read as a bevel.
-    box('girdle-clasp', GIRDLE_CLASP, [V(0, -1, 0), V(1, 0, 0), V(0, 0, 1)], (0.01, 0.03, 0.025), M['trim'], 0.72)
+    with bone('hips'):
+        verts, faces, _ = loft(rings[:2])
+        part('girdle', verts, faces, M['silver'], inside=lambda c: V(0, 0, c.z))
+        # The girdle's clasp, on its front, its face smaller than its back so the edges read as a
+        # bevel.
+        box('girdle-clasp', GIRDLE_CLASP, [V(0, -1, 0), V(1, 0, 0), V(0, 0, 1)], (0.01, 0.03, 0.025), M['trim'],
+            0.72)
+    z, rx, ry, cy = INSIDE_GIRDLE
+    with bone('spine'):
+        verts, faces, _ = loft([ellipse(0, cy, z, rx, ry, 8, 22.5)] + rings[2:])
+        part('chest', verts, faces, M['robe'], inside=lambda c: V(0, 0, c.z))
+    joint('pelvis', PELVIS)
+    joint('waist', V(0, cy, z))
 
 
 # The skirt below the girdle, in twelve pleats that are deepest at the hem and gone at the waist,
@@ -136,20 +163,33 @@ SKIRT = [
     (0.83, 0.132, 0.096, 0.0, 0.0),
 ]
 UNDER = (8, 9)  # the two facets either side of the ridge down the front: the under-robe
+# It is in two pieces: the robe below the knees on a bone of its own, which hangs plumb under him
+# (../clips.py, robed()), from the middle of the knees' ring to the middle of the hem; and the skirt
+# above on his hips, reaching down inside it to a ring a little inside the robe (KNEES_INSIDE), so no
+# gap opens as he sinks into it.
+KNEES_INSIDE = (0.33, 0.198, 0.164, 0.012, 0.012)
+ROBE_TOP, ROBE_FOOT = V(0, 0.01, 0.42), V(0, 0.024, 0.0)
+
+
+def skirt_ring(z, rx, ry, cy, pleat):
+    ring = []
+    for i in range(12):
+        a = math.tau * i / 12
+        k = pleat if i % 2 else 0.0
+        ring.append(V((rx + k) * math.cos(a), cy + (ry + k) * math.sin(a), z))
+    return ring
 
 
 def skirt():
-    rings = []
-    for z, rx, ry, cy, pleat in SKIRT:
-        ring = []
-        for i in range(12):
-            a = math.tau * i / 12
-            k = pleat if i % 2 else 0.0
-            ring.append(V((rx + k) * math.cos(a), cy + (ry + k) * math.sin(a), z))
-        rings.append(ring)
-    verts, faces, _ = loft(rings)
-    face_mats = [1 if f % 12 in UNDER else 0 for f in range(len(faces))]
-    part('skirt', verts, faces, [M['robe'], M['underrobe']], face_mats, inside=lambda c: V(0, 0.01, c.z))
+    rings = [skirt_ring(*level) for level in SKIRT]
+    for name, bone_name, pieces in (('robe', 'robe', rings[:2]),
+                                     ('skirt', 'hips', [skirt_ring(*KNEES_INSIDE)] + rings[1:])):
+        verts, faces, _ = loft(pieces)
+        face_mats = [1 if f % 12 in UNDER else 0 for f in range(len(faces))]
+        with bone(bone_name):
+            part(name, verts, faces, [M['robe'], M['underrobe']], face_mats, inside=lambda c: V(0, 0.01, c.z))
+    joint('robe_top', ROBE_TOP)
+    joint('robe_foot', ROBE_FOOT)
 
 
 # Soft pointed shoes, of which only the toes show under the hem: the height of each ring and the right
@@ -159,17 +199,28 @@ SHOE_RINGS = [
     (0.065, [(0.044, 0.0), (0.038, 0.055), (0.016, -0.09)]),
 ]
 FEET = [(V(-0.085, -0.115, 0), -8), (V(0.09, -0.13, 0), 10)]  # where each stands, and its yaw
+# His legs are hidden under the robe: only their joints are marked, the hip, the knee a little forward
+# of the line from it to the ankle, so it bends forward, and the ankle over the shoe.
+HIP_Z, KNEE_Z, ANKLE_Z = 0.72, 0.4, 0.07
 
 
 def shoes():
     for k, (at, yaw) in enumerate(FEET):
+        s = 'r' if at.x < 0 else 'l'
         turn = Matrix.Rotation(math.radians(yaw), 3, 'Z')
         outlines = [(z, [side, heel, (-heel[0], heel[1]), (-side[0], side[1]), (-toe[0], toe[1]), toe])
                     for z, (side, heel, toe) in SHOE_RINGS]
         rings = [[at + turn @ V(x, y, z) for x, y in ring] for z, ring in outlines]
         verts, faces, _ = loft(rings)
         faces.append(tuple(range(6, 12)))
-        part(f'shoe-{k}', verts, faces, M['shoes'], inside=at + V(0, 0, 0.03))
+        with bone(f'foot_{s}'):
+            part(f'shoe-{k}', verts, faces, M['shoes'], inside=at + V(0, 0, 0.03))
+        ankle = at + turn @ V(0, 0.01, ANKLE_Z)
+        hip = V(at.x, 0.0, HIP_Z)
+        joint(f'hip_{s}', hip)
+        joint(f'knee_{s}', hip.lerp(ankle, (HIP_Z - KNEE_Z) / (HIP_Z - ANKLE_Z)) + V(0, -0.03, 0))
+        joint(f'ankle_{s}', ankle)
+        joint(f'toe_{s}', at + turn @ V(0, -0.15, 0.02))
 
 
 # Mantle: the team colour ---------------------------------------------------------------------------
@@ -212,6 +263,11 @@ def mantle_back():
 
 
 def mantle():
+    with bone('spine'):
+        mantle_and_clasp()
+
+
+def mantle_and_clasp():
     rings = [mantle_ring(*level) for level in MANTLE]
     verts, faces, _ = loft(rings, closed=False)
     part('mantle', verts, faces, M['team'], inside=lambda c: V(0, 0.01, c.z))
@@ -250,7 +306,18 @@ def mirror(p):
     return V(-p.x, p.y, p.z)
 
 
+NECK = V(0, 0.008, 1.15)  # where the head turns, inside the mantle's collar
+
+
 def head():
+    with bone('head'):
+        features()
+        circlet()
+    joint('neck', NECK)
+    joint('crown', CROWN)
+
+
+def features():
     verts, faces, _ = loft([[V(*p) for p in ring] for ring in HAIR_RINGS])
     last = len(verts) - 8
     verts.append(CROWN)
@@ -319,9 +386,11 @@ def hair_fall():
     verts.append(V(0, on_surface(back, 0, 0.73) + 0.02, 0.73))
     last = len(verts) - 6
     faces += [(last + i, last + i + 1, len(verts) - 1) for i in range(4)]
-    part('hair-fall', verts, faces, M['hair'], inside=lambda c: V(0, 0, c.z))
+    # It lies on his back, but its top follows his head.
+    with bone('spine', follows=lambda p: 'head' if p.z > 1.25 else None):
+        part('hair-fall', verts, faces, M['hair'], inside=lambda c: V(0, 0, c.z))
 
-    # A clasp binding it between his shoulders, laid on it and tilted with it.
+    # A clasp binding it between his shoulders, laid on it and tilted with it, on his back with it.
     z = HAIR_CLASP_Z
     centre = V(0, on_surface(sheet, 0, z), z)
     down = V(0, on_surface(sheet, 0, z - 0.05), z - 0.05) - centre
@@ -329,7 +398,8 @@ def hair_fall():
     if out.y < 0:
         out = -out
     up = V(1, 0, 0).cross(out)
-    box('hair-clasp', centre + 0.002 * out, [out, V(1, 0, 0), up], (0.012, 0.07, 0.021), M['trim'], 0.8)
+    with bone('spine'):
+        box('hair-clasp', centre + 0.002 * out, [out, V(1, 0, 0), up], (0.012, 0.07, 0.021), M['trim'], 0.8)
 
 
 def circlet():
@@ -367,9 +437,20 @@ def right_arm():
     hang = elbow + V(0.01, 0.03, -0.2)
     rings = path_rings([R_SHOULDER, elbow, hang], [0.066, 0.074, 0.11], n=6)
     verts, faces, _ = loft(rings)
-    part('sleeve-right', verts, faces, M['robe'], inside=nearest_on_polyline([R_SHOULDER, elbow, hang]))
-    tube('forearm-right', elbow, wrist, [(0, 0.05), (1, 0.04)], M['underrobe'])
-    open_hand('hand-right', wrist, along, V(0, -1, 0.1))
+    with bone('upper_arm_r'):  # the wide sleeve, hanging from the elbow
+        part('sleeve-right', verts, faces, M['robe'], inside=nearest_on_polyline([R_SHOULDER, elbow, hang]))
+    with bone('forearm_r'):
+        tube('forearm-right', elbow, wrist, [(0, 0.05), (1, 0.04)], M['underrobe'])
+    palm = V(0, -1, 0.1)
+    with bone('hand_r'):
+        open_hand('hand-right', wrist, along, palm)
+    fingers = wrist + 0.155 * along
+    joint('shoulder_r', R_SHOULDER)
+    joint('elbow_r', elbow)
+    joint('wrist_r', wrist)
+    joint('fist_r', fingers)
+    # The open hand is what it holds: from the wrist to the fingertips, the palm to the front.
+    hold('r', wrist, fingers, fingers + palm)
 
 
 def open_hand(name, wrist, along, palm):
@@ -409,13 +490,22 @@ def left_arm():
     # The cuff's lower side hangs down.
     end = rings[-1]
     rings[-1] = [p + V(0, 0, -0.09 * max(0.0, (cuff.z - p.z) / 0.12)) for p in end]
-    verts, faces, _ = loft(rings)
-    part('sleeve-left', verts, faces, M['robe'], inside=nearest_on_polyline(points))
+    # The sleeve as it was built, in two at the elbow's ring, which both keep.
+    line = nearest_on_polyline(points)
+    for bone_name, first, last in (('upper_arm_l', 0, 1), ('forearm_l', 1, 3)):
+        verts, faces, _ = loft(rings[first:last + 1])
+        with bone(bone_name):
+            part(f'sleeve-left-{bone_name}', verts, faces, M['robe'], inside=line)
     up = (STAFF_UP - STAFF_UP.dot(ahead) * ahead).normalized()
     across = ahead.cross(up)
-    box('fist-left', fist, [ahead, up, across], (0.045, 0.048, 0.045), M['skin'], 0.88)
-    thumb = fist + 0.01 * ahead + 0.028 * up + 0.05 * across
-    box('thumb-left', thumb, [ahead, up, across], (0.036, 0.02, 0.016), M['skin'], 0.7)
+    with bone('hand_l'):
+        box('fist-left', fist, [ahead, up, across], (0.045, 0.048, 0.045), M['skin'], 0.88)
+        thumb = fist + 0.01 * ahead + 0.028 * up + 0.05 * across
+        box('thumb-left', thumb, [ahead, up, across], (0.036, 0.02, 0.016), M['skin'], 0.7)
+    joint('shoulder_l', L_SHOULDER)
+    joint('elbow_l', elbow)
+    joint('wrist_l', wrist)
+    joint('fist_l', fist)
 
 
 # Staff ---------------------------------------------------------------------------------------------
@@ -425,6 +515,14 @@ SHAFT = 0.70  # from his grip up to the head
 
 
 def staff():
+    with bone('hand_l'):
+        top = staff_parts()
+    # Held by the grip, up the staff to the top of its light, facing the front.
+    hold('l', STAFF_GRIP, top, top + V(0, -0.1, 0))
+
+
+def staff_parts():
+    """Builds the staff, its head and its light, and returns the top of the light."""
     up = STAFF_UP
     foot = STAFF_GRIP - (STAFF_GRIP.z / up.z) * up
     top = STAFF_GRIP + SHAFT * up
@@ -453,6 +551,7 @@ def staff():
     verts = ring + [c + 0.13 * up, c - 0.075 * up]
     faces = [(i, (i + 1) % 6, 6) for i in range(6)] + [(i, (i + 1) % 6, 7) for i in range(6)]
     part('light', verts, faces, M['light'], inside=c)
+    return c + 0.13 * up
 
 
 # A leaf of the staff's head, from its base up the staff: (height, how far out, half-width) at two
@@ -472,7 +571,27 @@ def leaf(name, base, out):
     part(name, verts, faces, M['silver'], outward=out)
 
 
-def main():
+# His clips (../clips.py): the Elves' idle and run, as Legolas's (legolas.py), his open hand raised as
+# he stands and his staff planted beside him (fit(pole='l')), carried as he runs; his bolt thrust out
+# from the open hand; for his cast, the staff heaved up and struck down as the hand goes up high in
+# blessing; dazed, the hand drops; falling, he sinks to his knees into his robes as the staff falls
+# across his hex; winning, he raises his hand and lifts the staff. The robe below his knees hangs plumb
+# under him through all of them (robed()).
+CLIPS = robed(fit({
+    'idle': ('ready', {'breath': 0.8, 'sway': 0.7, 'crouch': 0.02}),
+    'move': ('run', {'heavy': 0.1, 'stride': 0.42, 'lift': 0.32, 'lean': 6.0}),
+    'attack': ('bolt', {}),
+    'cast': ('plant', {}),
+    'stun': ('dazed', {'low': 0.5}),
+    'death': ('knees', {}),
+    'victory': ('raise', {'out': 0.2}),
+}, pole='l', free=('cast',)))
+
+
+def build(sword=None):
+    """Makes him in a fresh scene, every part bound to its bone and his joints marked, and returns
+    the rig to finish() him with. His 2★ model (elrond-2.py) passes its sword as `sword`, a function
+    that makes it, last, at his hip."""
     reset()
     make_materials()
     shoes()
@@ -481,11 +600,17 @@ def main():
     mantle()
     head()
     hair_fall()
-    circlet()
     right_arm()
     left_arm()
     staff()
-    finish('elrond')
+    if sword is not None:
+        sword()
+    return Rig(bones={'robe': ('root', 'robe_top', 'robe_foot')}, clips=CLIPS)
 
 
-main()
+def main():
+    finish('elrond', rig=build())
+
+
+if __name__ == '__main__':
+    main()

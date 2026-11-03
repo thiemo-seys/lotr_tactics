@@ -16,11 +16,20 @@ The team colour is the shield's face and his short cloak, a mantle over the shou
 down his back to the hips. From behind, his crested helm, his hair falling over the mantle, the
 spear and the shield's rim show round and above it.
 
+He is rigged as Rohan on foot (../rig.py, ../clips.py), as Éowyn is (eowyn.py): Aragorn's idle and
+run, and the shield held up as he runs. His boots bend at the ring round the ankle and at the top
+of the cuff, where his leg goes into it, and his mail coat at the belt, all at rings they already
+had, so the rig costs no triangles; his cape hangs from a bone of its own and his hair and braids
+ride his spine, so his helm turns within them. The spear is a pole stood beside him, as Aragorn's
+standard is (fit(pole='r')); he thrusts it up over his shield, its point raised and turned out so
+the long shaft stays in the hex and the blow shows from in front and behind.
+
 His fittings, the helm's band, the shield's boss, the belt buckle, the spear's socket and the two
 round brooches that pin his cloak on his shoulders, use `trim`, which the client colours iron,
 silver or gold by star level (docs/viewer-spec.md section 4, "Star levels"); from behind, the band,
-the brooches and the socket show it. The sun on his shield stays gilt. His 2★ model is hama-2.py and
-his 3★ model hama-3.py.
+the brooches and the socket show it. The sun on his shield stays gilt. His 2★ model is hama-2.py,
+which imports this script and builds him with its shoulder-guards on (build()), and his 3★ model
+hama-3.py.
 
     blender --background --factory-startup --python-exit-code 1 --python hama.py [-- <out.glb>]
 
@@ -45,6 +54,7 @@ from kit import (  # noqa: E402
     WOOD,
     V,
     bent_tube,
+    bone,
     box,
     cone,
     ellipse,
@@ -62,6 +72,8 @@ from kit import (  # noqa: E402
     tube,
     wind,
 )
+from clips import fit  # noqa: E402
+from rig import Rig, hold, joint  # noqa: E402
 
 # Háma's own colours (sRGB); the rest come from the kit.
 SKIN = 0xD9A383
@@ -120,9 +132,11 @@ FOOT = [
 ]
 SHAFT = [(0.30, 0.077)]  # then up the shin: the height and the radius of the boot's top
 CUFF = (0.265, 0.33, 1.2)  # the turned-down cuff: from and to (z), and how much wider than the boot
+KNEE_AHEAD = 0.012  # the knee, at the top of the cuff, a little forward so the leg bends forward
 
 
 def leg(side, hip, ankle, yaw):
+    s = side[0]
     turn = Matrix.Rotation(math.radians(yaw), 3, 'Z')
     at = V(ankle.x, ankle.y, 0)
     up = hip - ankle
@@ -135,17 +149,27 @@ def leg(side, hip, ankle, yaw):
         return [axis(z) + turn @ V(r * math.cos(a), r * math.sin(a), 0) for a in angles]
 
     rings = []
-    for z, (s, heel, toe) in FOOT:
-        outline = [s, heel, (-heel[0], heel[1]), (-s[0], s[1]), (-toe[0], toe[1]), toe]
+    for z, (side_, heel, toe) in FOOT:
+        outline = [side_, heel, (-heel[0], heel[1]), (-side_[0], side_[1]), (-toe[0], toe[1]), toe]
         rings.append([at + turn @ V(x, y, z) for x, y in outline])
     rings += [hexagon(z, r) for z, r in SHAFT]
-    verts, faces, _ = loft(rings)
-    part(f'boot-{side}', verts, faces, M['boots'], inside=lambda c: axis(c.z))
+    # The boot as it was built, in two at the ring round the ankle: the foot, which rolls, and the
+    # shaft, with its cuff, up the shin. The knee is at the top of the cuff, where the leg goes into it.
+    for bone_name, name, first, last in ((f'foot_{s}', 'foot', 0, 3), (f'shin_{s}', 'boot', 2, 4)):
+        verts, faces, _ = loft(rings[first:last])
+        with bone(bone_name):
+            part(f'{name}-{side}', verts, faces, M['boots'], inside=lambda c: axis(c.z))
     low, high, k = CUFF
     verts, faces, _ = loft([hexagon(z, SHAFT[-1][1] * k) for z in (low, high)])
-    part(f'cuff-{side}', verts, faces, M['leather'], inside=lambda c: axis(c.z))
+    with bone(f'shin_{s}'):
+        part(f'cuff-{side}', verts, faces, M['leather'], inside=lambda c: axis(c.z))
     # The leg in the green of Rohan, from the hip into the boot; the coat hides all but the knee.
-    tube(f'leg-{side}', hip, axis(0.3), [(0, 0.1), (1, 0.075)], M['tunic'])
+    with bone(f'thigh_{s}'):
+        tube(f'leg-{side}', hip, axis(0.3), [(0, 0.1), (1, 0.075)], M['tunic'])
+    joint(f'hip_{s}', hip)
+    joint(f'knee_{s}', axis(high) + KNEE_AHEAD * (turn @ V(0, -1, 0)))
+    joint(f'ankle_{s}', ankle)
+    joint(f'toe_{s}', at + turn @ V(0, -0.15, 0.03))
 
 
 def legs():
@@ -168,10 +192,21 @@ COAT = [
 ]
 COAT_BANDS = [0, 0, 1, 0, 0]  # mail, except the belt
 BUCKLE = V(0, -0.152, 0.735)  # on the flat front of the belt
+# It is in two pieces, which bend at the belt: the skirt and the belt on his hips, and the chest on his
+# spine from a ring inside the belt up to his neck, in as many bands as it had.
+INSIDE_BELT = (0.73, 0.19, 0.142, -0.004)
+PELVIS, WAIST = V(0, 0.0, 0.64), V(0, -0.004, 0.735)
 
 
 def coat():
     rings = [ellipse(0, cy, z, rx, ry, 8, 22.5) for z, rx, ry, cy in COAT]
+    chest = [ellipse(0, cy, z, rx, ry, 8, 22.5) for z, rx, ry, cy in [INSIDE_BELT] + COAT[4:]]
+    verts, faces, _ = loft(chest)
+    with bone('spine'):
+        part('chest', verts, faces, M['mail'], inside=lambda c: V(0, 0, c.z))
+    joint('pelvis', PELVIS)
+    joint('waist', WAIST)
+    rings = rings[:4]
     verts, faces, bands = loft(rings)
     face_mats = [COAT_BANDS[b] for b in bands]
     # The green tunic's dagged hem hangs below the mail in a point under each side, flared out.
@@ -183,9 +218,10 @@ def coat():
         verts.append(V(mid.x, mid.y, mid.z - 0.075) + 0.02 * out)
         faces.append((i, (i + 1) % 8, len(verts) - 1))
         face_mats.append(2)
-    part('coat', verts, faces, [M['mail'], M['leather'], M['tunic']], face_mats, inside=lambda c: V(0, 0, c.z))
-    # The belt buckle, its face smaller than its back so the edges read as a bevel.
-    box('buckle', BUCKLE, [V(0, -1, 0), V(1, 0, 0), V(0, 0, 1)], (0.014, 0.036, 0.032), M['trim'], 0.75)
+    with bone('hips'):
+        part('coat', verts, faces, [M['mail'], M['leather'], M['tunic']], face_mats, inside=lambda c: V(0, 0, c.z))
+        # The belt buckle, its face smaller than its back so the edges read as a bevel.
+        box('buckle', BUCKLE, [V(0, -1, 0), V(1, 0, 0), V(0, 0, 1)], (0.014, 0.036, 0.032), M['trim'], 0.75)
 
 
 # Head --------------------------------------------------------------------------------------------
@@ -368,6 +404,14 @@ def mantle():
 
 
 def cape():
+    with bone('cape'):
+        folds()
+    # It hangs from his upper back, so it can swing behind him.
+    joint('cape_top', V(0, 0.19, 0.935))
+    joint('cape_hem', V(0, 0.27, 0.63))
+
+
+def folds():
     # Down his back to the hips, so the long mail coat shows below it. Each level: z at the middle
     # and at the edges, half-width, half-depth, centre y, how far short of the sides it stops
     # (degrees) and how deep the folds are.
@@ -401,17 +445,25 @@ L_SHOULDER, L_ELBOW = V(0.225, 0.01, 0.905), V(0.315, 0.0, 0.715)
 def arm(side, shoulder, elbow, fist, grip, cuff=True):
     """A mail sleeve, the green tunic's cuff and a leather bracer, and a fist closed round a grip
     running along `grip`."""
+    s = side[0]
     wrist = fist + (elbow - fist).normalized() * 0.046
-    tube(f'sleeve-{side}', shoulder, elbow, [(0, 0.086), (1.1, 0.07)], M['mail'])
-    if cuff:
-        forearm = [(-0.15, 0.064), (0.35, 0.072), (1.0, 0.062)]
-        tube(f'forearm-{side}', elbow, wrist, forearm, [M['tunic'], M['leather']], [0, 1])
-    else:
-        tube(f'forearm-{side}', elbow, wrist, [(-0.15, 0.068), (1.0, 0.062)], M['leather'])
+    with bone(f'upper_arm_{s}'):
+        tube(f'sleeve-{side}', shoulder, elbow, [(0, 0.086), (1.1, 0.07)], M['mail'])
+    with bone(f'forearm_{s}'):
+        if cuff:
+            forearm = [(-0.15, 0.064), (0.35, 0.072), (1.0, 0.062)]
+            tube(f'forearm-{side}', elbow, wrist, forearm, [M['tunic'], M['leather']], [0, 1])
+        else:
+            tube(f'forearm-{side}', elbow, wrist, [(-0.15, 0.068), (1.0, 0.062)], M['leather'])
     along = Vector(grip).normalized()
     ahead = wrist - elbow
     ahead = (ahead - ahead.dot(along) * along).normalized()
-    box(f'fist-{side}', fist, [ahead, along, ahead.cross(along)], (0.052, 0.058, 0.056), M['skin'], 0.88)
+    with bone(f'hand_{s}'):
+        box(f'fist-{side}', fist, [ahead, along, ahead.cross(along)], (0.052, 0.058, 0.056), M['skin'], 0.88)
+    joint(f'shoulder_{s}', shoulder)
+    joint(f'elbow_{s}', elbow)
+    joint(f'wrist_{s}', wrist)
+    joint(f'fist_{s}', fist)
 
 
 # The shield, on his left arm ---------------------------------------------------------------------
@@ -433,6 +485,17 @@ SUN_RAYS = 8
 
 
 def shield():
+    with bone('hand_l'):
+        board()
+    # Held by the grip behind the boss, up to the top of its rim, its face to the front.
+    fist = SHIELD_CENTRE + SHIELD_TURN @ V(0, 0.055, 0)
+    top = SHIELD_CENTRE + SHIELD_TURN @ V(0, 0, SHIELD_PROFILE[0][0])
+    hold('l', fist, top, top + SHIELD_TURN @ V(0, -0.1, 0))
+    # His left arm comes forward to the grip behind the boss.
+    arm('left', L_SHOULDER, L_ELBOW, fist, SHIELD_TURN @ V(0, 0, 1), cuff=False)
+
+
+def board():
     # Built facing -Y round the origin, then turned and set on his arm. The face is dished between
     # the rim and the boss, so no one point is inside every face: the profile is wound as a whole.
     n = SHIELD_SIDES
@@ -478,10 +541,6 @@ def shield():
     placed = [SHIELD_CENTRE + SHIELD_TURN @ v for v in verts]
     flat('sun', placed, faces, M['gilt'], SHIELD_TURN @ V(0, -1, 0))
 
-    # His left arm comes forward to the grip behind the boss.
-    fist = SHIELD_CENTRE + SHIELD_TURN @ V(0, 0.055, 0)
-    arm('left', L_SHOULDER, L_ELBOW, fist, SHIELD_TURN @ V(0, 0, 1), cuff=False)
-
 
 # The spear, planted beside his right foot --------------------------------------------------------
 
@@ -490,6 +549,15 @@ SPEAR_LENGTH = 1.6  # the shaft from the butt to the head's socket
 
 
 def spear(fist):
+    with bone('hand_r'):
+        point, flat_ = spear_parts(fist)
+    # Held in his fist, from it up to the point, the flat of the head across.
+    hold('r', fist, point, point + 0.1 * flat_)
+    arm('right', LEANING @ R_SHOULDER, LEANING @ R_ELBOW, fist, (fist - SPEAR_BUTT).normalized())
+
+
+def spear_parts(fist):
+    """Builds the spear standing through his fist and returns its point and the way its flat faces."""
     along = (fist - SPEAR_BUTT).normalized()
     top = SPEAR_BUTT + SPEAR_LENGTH * along
     tube('shaft', SPEAR_BUTT + 0.06 * along, top, [(0, 0.02), (1, 0.018)], M['wood'])
@@ -509,30 +577,66 @@ def spear(fist):
     face_mats = [0 if b == 0 else 1 for b in bands] + [1] * 4
     part('spearhead', verts, faces, [M['trim'], M['steel']], face_mats,
          inside=nearest_on_polyline([top, point]))
-    arm('right', LEANING @ R_SHOULDER, LEANING @ R_ELBOW, fist, along)
+    return point, u
 
 
-def main():
+NECK = V(0, 0.01, 1.03)  # where his head turns, in the mantle's collar
+
+# His clips (../clips.py): Rohan on foot, as a Man moves, with Aragorn's idle and run (aragorn.py), the
+# shield held up as he runs as Beregond's is (beregond.py). The spear is a pole stood beside him, as
+# Aragorn's standard is (fit(pole='r')): planted as he stands, is stunned and braces, carried as he
+# runs, toppling as he falls. He thrusts it up over his shield and out to his right, its point raised
+# so the long shaft stays in the hex and turned out so the thrust shows from in front and behind, the
+# shield kept still before him; his cast (Doorward) braces behind the shield
+# thrust up before his face, the spear planted. He dies on his knees, slumping less than most over the
+# big shield he rests before him, and wins with the spear held high.
+CLIPS = fit({
+    'idle': ('ready', {}),
+    'move': ('run', {'heavy': 0.3, 'lean': 10.0, 'off': 'high'}),
+    'attack': ('thrust', {'guard': True, 'rise': 55.0, 'out': 35.0, 'wide': 0.15}),
+    'cast': ('brace', {}),
+    'stun': ('dazed', {}),
+    'death': ('knees', {'slump': 0.6}),
+    'victory': ('raise', {'out': 0.3}),
+}, pole='r', free=('attack', 'victory'), between=True)
+
+
+def build(spaulders=None):
+    """Makes him in a fresh scene, every part bound to its bone and the joints marked, and returns the
+    rig to finish() him with. His 2★ model (hama-2.py) passes its shoulder-guards as `spaulders`, a
+    function that makes them on his upper arms, before he leans."""
     reset()
     make_materials()
     legs()
     fixed = set(bpy.context.scene.objects)
     coat()
-    head()
-    beard()
-    helm()
-    crest()
-    hair()
-    mantle()
+    with bone('head'):
+        head()
+        beard()
+        helm()
+        crest()
+    joint('neck', NECK)
+    joint('crown', HELM_TOP)
+    # His hair and braids ride his spine, so his head turns within them under the helm.
+    with bone('spine'):
+        hair()
+        mantle()
     cape()
     shield()
+    if spaulders is not None:
+        spaulders()
     for obj in bpy.context.scene.objects:
         if obj not in fixed:
             obj.data.transform(LEANING)
     # The spear stands on the ground through his fist where the lean has carried it, and the right
     # arm is made with it.
     spear(LEANING @ R_FIST)
-    finish('hama')
+    return Rig(bones={'cape': ('spine', 'cape_top', 'cape_hem')}, clips=CLIPS)
 
 
-main()
+def main():
+    finish('hama', rig=build())
+
+
+if __name__ == '__main__':
+    main()

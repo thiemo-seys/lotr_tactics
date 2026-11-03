@@ -14,10 +14,28 @@ of his robe on either side of the beard. His long white hair falls over the cape
 from behind he is a white-haired wizard in a white robe as much as the team's colour. Everything
 else is white, black and skin.
 
+He is rigged as Gandalf, the Istari's reference (gandalf.py, ../rig.py), with the Istari's idle and
+run, his staff planted beside him (fit(pole='r')). His robe to the ground is in three pieces, as
+Gandalf's is: the chest on the spine, from a ring inside the girdle; the skirt and the girdle on the
+hips, down inside the robe below the knees; and the robe below the knees on a bone of its own,
+`robe`, which hangs plumb under him, twists after his knees as he strides and rests on the ground as
+he sinks into it (robed()). His legs are hidden but for the toes of his shoes, which step out from
+under the hem. His long beard hangs from his chin on a bone of its own, `beard` (hanging()), with the
+black strands on it. The stole bends at the girdle: its top on the spine, down over the girdle, and
+its ends on the hips, from under it. The hair that falls down his back lies on the spine, its top
+following his head. Splitting the robe costs 24 triangles and the band tucked under the beard's top
+12; the stole and the girdle bend at bands they already had.
+
+He points his staff at the foe to shoot (point), as Gandalf does. For his cast (Fire of Orthanc, an
+explosion on the farthest enemy) he raises the staff high overhead as he bows his head to the
+palantir held up before his face, seeking the farthest foe, then sweeps the staff over and down to
+point at it far off, hurling the fire (hurl). He holds the staff up high as he wins.
+
 His fittings, the clasps on the cape's front edges, the cup and knop at the staff's head and the
 ferrule at its foot, and the cup the palantir sits in, use `trim`, which the client colours iron,
 silver or gold by star level (docs/viewer-spec.md section 4, "Star levels"). His 2★ model is
-saruman-2.py and his 3★ model saruman-3.py.
+saruman-2.py, which imports this script and builds him with a high collar on his cape and his long
+hair gathered inside it (build()), and his 3★ model saruman-3.py.
 
     blender --background --factory-startup --python-exit-code 1 --python saruman.py [-- <out.glb>]
 
@@ -35,6 +53,7 @@ sys.path.insert(0, os.path.join(os.path.dirname(os.path.abspath(__file__)), '..'
 from kit import (  # noqa: E402
     EYES,
     V,
+    bone,
     box,
     ellipse,
     finish,
@@ -52,6 +71,8 @@ from kit import (  # noqa: E402
     trim_material,
     tube,
 )
+from clips import fit, hanging, robed  # noqa: E402
+from rig import Rig, hold, joint  # noqa: E402
 
 # Saruman's own colours (sRGB). The robe is a warm ivory and the hair a cooler, lighter white, so the
 # beard stands off the robe; the black of his staff and strands is lifted so its facets show.
@@ -99,33 +120,44 @@ def front_triangles(rings, closed=True):
 # Robe: white to the ground, a black girdle ------------------------------------------------------
 
 # The skirt below the girdle, in twelve pleats that are deepest at the hem: z, half-width,
-# half-depth, centre y and the depth of the pleats.
+# half-depth, centre y and the depth of the pleats. It is in two pieces: the robe below the knees on
+# its own bone, which hangs plumb under him (../clips.py, robed()), from the middle of the knees' ring
+# to the middle of the hem; and the skirt above on his hips, reaching down inside it to a ring a little
+# inside the robe (KNEES_INSIDE), so no gap opens as he sinks into it.
 SKIRT = [
     (0.0, 0.258, 0.236, 0.012, 0.032),  # the hem, on the ground
     (0.40, 0.212, 0.188, 0.006, 0.018),
     (0.80, 0.166, 0.14, 0.0, 0.0),  # under the girdle
 ]
+KNEES_INSIDE = (0.31, 0.214, 0.19, 0.007, 0.018)
+ROBE_TOP, ROBE_FOOT = V(0, 0.006, 0.40), V(0, 0.012, 0.0)
 
-# The robe from the girdle up, in octagons: z, half-width, half-depth and centre y.
+# The robe from the girdle up, in octagons: z, half-width, half-depth and centre y. It bends at the
+# girdle: the girdle on his hips, and the chest on his spine from a ring inside the girdle
+# (INSIDE_GIRDLE) up, in as many bands as it had.
 TORSO = [
     (0.775, 0.172, 0.146, 0.0),  # girdle, lower edge
     (0.83, 0.178, 0.15, 0.0),  # girdle, upper edge
     (1.075, 0.212, 0.148, 0.01),  # shoulders
     (1.19, 0.092, 0.088, 0.02),  # neck
 ]
-TORSO_BANDS = [1, 0, 0]  # the girdle, then robe
+INSIDE_GIRDLE = (0.79, 0.164, 0.138, 0.0)
+# His spine bends about the back of his waist, as Gandalf's does, so his chest stays down inside the
+# girdle as he bends.
+PELVIS, WAIST = V(0, 0.0, 0.68), V(0, 0.09, 0.80)
+
+
+def pleated(z, rx, ry, cy, pleat):
+    ring = []
+    for i in range(12):
+        a = math.tau * i / 12
+        k = pleat if i % 2 else 0.0
+        ring.append(V((rx + k) * math.cos(a), cy + (ry + k) * math.sin(a), z))
+    return ring
 
 
 def skirt_rings():
-    rings = []
-    for z, rx, ry, cy, pleat in SKIRT:
-        ring = []
-        for i in range(12):
-            a = math.tau * i / 12
-            k = pleat if i % 2 else 0.0
-            ring.append(V((rx + k) * math.cos(a), cy + (ry + k) * math.sin(a), z))
-        rings.append(ring)
-    return rings
+    return [pleated(*level) for level in SKIRT]
 
 
 def torso_rings():
@@ -133,26 +165,52 @@ def torso_rings():
 
 
 def robe():
-    verts, faces, _ = loft(skirt_rings())
-    part('skirt', verts, faces, M['robe'], inside=lambda c: V(0, 0.01, c.z))
-    verts, faces, bands = loft(torso_rings())
-    face_mats = [TORSO_BANDS[b] for b in bands]
-    part('torso', verts, faces, [M['robe'], M['leather']], face_mats, inside=lambda c: V(0, 0.01, c.z))
+    rings = skirt_rings()
+    with bone('robe'):
+        verts, faces, _ = loft(rings[:2])
+        part('robe-hem', verts, faces, M['robe'], inside=lambda c: V(0, 0.01, c.z))
+    with bone('hips'):
+        verts, faces, _ = loft([pleated(*KNEES_INSIDE)] + rings[1:])
+        part('skirt', verts, faces, M['robe'], inside=lambda c: V(0, 0.01, c.z))
+    joint('robe_top', ROBE_TOP)
+    joint('robe_foot', ROBE_FOOT)
+
+    rings = torso_rings()
+    with bone('hips'):
+        verts, faces, _ = loft(rings[:2])
+        part('girdle', verts, faces, M['leather'], inside=lambda c: V(0, 0.01, c.z))
+    z, rx, ry, cy = INSIDE_GIRDLE
+    with bone('spine'):
+        verts, faces, _ = loft([ellipse(0, cy, z, rx, ry, 8, 22.5)] + rings[2:])
+        part('torso', verts, faces, M['robe'], inside=lambda c: V(0, 0.01, c.z))
+    joint('pelvis', PELVIS)
+    joint('waist', WAIST)
 
 
-# Only the toes of his shoes show under the hem.
+# Only the toes of his shoes show under the hem. His legs are hidden under the robe: only their joints
+# are marked, the hip, the knee a little forward of the line from it to the ankle, so it bends
+# forward, the ankle over the shoe and the toe it rolls over.
 SHOES = [(V(-0.085, -0.13, 0), -10), (V(0.09, -0.12, 0), 12)]  # heel and yaw
+HIP_X, HIP_Z, KNEE_AHEAD = 0.09, 0.68, 0.025
 
 
 def shoes():
     for k, (at, yaw) in enumerate(SHOES):
+        s = 'r' if at.x < 0 else 'l'
         turn = Matrix.Rotation(math.radians(yaw), 3, 'Z')
         toe = [V(0.026, -0.13, 0.014), V(-0.026, -0.13, 0.014)]  # a broad, blunt toe
         sides = [V(0.052, -0.06, 0), V(-0.052, -0.06, 0)]
         instep, back = V(0, -0.07, 0.064), V(0, 0.03, 0.04)
         verts = [at + turn @ p for p in toe + sides + [instep, back]]
         faces = [(0, 1, 4), (0, 4, 2), (1, 3, 4), (2, 4, 5), (4, 3, 5), (0, 2, 3, 1)]
-        part(f'shoe-{k}', verts, faces, M['leather'], inside=at + V(0, -0.04, 0.02))
+        with bone(f'foot_{s}'):
+            part(f'shoe-{k}', verts, faces, M['leather'], inside=at + V(0, -0.04, 0.02))
+        ankle = at + turn @ V(0, -0.02, 0.06)
+        hip = V(math.copysign(HIP_X, at.x), 0.0, HIP_Z)
+        joint(f'hip_{s}', hip)
+        joint(f'knee_{s}', hip.lerp(ankle, 0.5) + KNEE_AHEAD * (turn @ V(0, -1, 0)))
+        joint(f'ankle_{s}', ankle)
+        joint(f'toe_{s}', at + turn @ V(0, -0.12, 0.015))
 
 
 # Team colour: a short cape, and a stole down the front ---------------------------------------------
@@ -183,7 +241,8 @@ CLASP = (0.026, 0.034, 0.012)  # the clasps on the cape's front edges: half-widt
 def cape():
     rings = [cape_ring(*level) for level in CAPE]
     verts, faces, _ = loft(rings, closed=False)
-    part('cape', verts, faces, M['team'], inside=lambda c: V(0, 0.01, c.z))
+    with bone('spine'):
+        part('cape', verts, faces, M['team'], inside=lambda c: V(0, 0.01, c.z))
 
     # A clasp on each front edge of the cape over his chest, beside the beard, where the cape lies
     # over the stole: a low lozenge on the cape's face, square to it.
@@ -196,36 +255,52 @@ def cape():
         verts = [centre + w * across, centre + h * V(0, 0, 1), centre - w * across, centre - h * V(0, 0, 1),
                  centre + d * out, centre - 0.006 * out]
         faces = [(i, (i + 1) % 4, 4) for i in range(4)] + [(i, (i + 1) % 4, 5) for i in range(4)]
-        part(f'clasp-{k}', verts, faces, M['trim'], inside=centre)
+        with bone('spine'):  # with the cape
+            part(f'clasp-{k}', verts, faces, M['trim'], inside=centre)
 
 
-# The stole's ends hang from under the cape down his front on either side of the beard, to his
-# knees: z, then x of the inner edge, the middle and the outer edge on his left (mirrored on his right).
+# The stole's ends hang from under the cape down his front on either side of the beard, to above his
+# knees, clear of the robe below them, which the body sinks into: z, then x of the inner edge, the
+# middle and the outer edge on his left (mirrored on his right).
+# It bends at the girdle: the spine carries it down over the girdle (STOLE_SPLIT); its ends are on the
+# hips, from a level tucked under it above the girdle (STOLE_TUCK: its height and how far behind).
 STOLE = [
     (1.15, 0.058, 0.08, 0.102),  # at the neck, under the beard
     (1.03, 0.092, 0.128, 0.164),  # over the chest, beside the beard
     (0.81, 0.07, 0.105, 0.14),  # over the girdle
-    (0.34, 0.068, 0.106, 0.144),  # the end, at the knee
+    (0.46, 0.068, 0.106, 0.144),  # the end, above the knee, clear of the robe below it
 ]
 STOLE_OFF = 0.014  # how far it stands in front of the robe
+STOLE_SPLIT, STOLE_TUCK = 2, (0.85, 0.004)
 
 
 def stole():
     upper = front_triangles(torso_rings())
     lower = front_triangles(skirt_rings())
+    (z1, *x1), (z2, *x2) = STOLE[STOLE_SPLIT - 1], STOLE[STOLE_SPLIT]
+    tuck_z, tuck_back = STOLE_TUCK
+    t = (tuck_z - z2) / (z1 - z2)
+    tuck = (tuck_z, *[b + t * (a - b) for a, b in zip(x1, x2)])
     for s in (-1, 1):
-        rings = []
-        for z, *xs in STOLE:
+        def ring(z, xs, off):
             surface = upper if z >= 0.8 else lower
-            ring = [V(s * x, on_surface(surface, s * x, z) - STOLE_OFF, z) for x in xs]
-            rings.append(ring if s > 0 else list(reversed(ring)))
-        verts, faces, _ = loft(rings, closed=False)
-        part(f'stole-{s}', verts, faces, M['team'], outward=V(0, -1, 0))
+            points = [V(s * x, on_surface(surface, s * x, z) - off, z) for x in xs]
+            return points if s > 0 else list(reversed(points))
+
+        rings = [ring(z, xs, STOLE_OFF) for z, *xs in STOLE]
+        with bone('spine'):
+            verts, faces, _ = loft(rings[:STOLE_SPLIT + 1], closed=False)
+            part(f'stole-{s}', verts, faces, M['team'], outward=V(0, -1, 0))
+        with bone('hips'):
+            first = ring(tuck[0], tuck[1:], STOLE_OFF - tuck_back)
+            verts, faces, _ = loft([first] + rings[STOLE_SPLIT + 1:], closed=False)
+            part(f'stole-end-{s}', verts, faces, M['team'], outward=V(0, -1, 0))
 
 
 # Head ----------------------------------------------------------------------------------------------
 
 HEAD_RAISE = (1.2, 1.49, -0.012)  # stoop() from and to these heights, by this much: back, chin up
+NECK = V(0, 0.01, 1.19)  # where the head turns, inside the collar
 
 # The face: a shallow pyramid of planes round the root of the nose, long, from the high hairline
 # round the cheekbones to the chin under the moustache.
@@ -237,6 +312,11 @@ FACE_ROOT = V(0, -0.154, 1.36)
 
 
 def face():
+    with bone('head'):
+        features()
+
+
+def features():
     rim, root = FACE_RIM, FACE_ROOT
     plate = [(rim[i], rim[(i + 1) % 7], root) for i in range(7)]
     part('face', rim + [root], [(i, (i + 1) % 7, 7) for i in range(7)], M['skin'], outward=V(0, -1, 0))
@@ -292,6 +372,7 @@ CROWN_TOP = V(0, 0.012, 1.488)
 
 # The rest of his hair falls from the back of his skull down over the cape, narrower than his head, in
 # three locks: z, then (x, y) of its edge on his left, the lock there, the parting and the middle lock.
+# It lies on his back, on the spine, but its top, under the back of his skull, follows his head.
 FALL = [
     (1.30, [(0.09, 0.1), (0.065, 0.145), (0.033, 0.15), (0.0, 0.158)]),  # under the back of the skull
     (1.19, [(0.1, 0.13), (0.072, 0.172), (0.036, 0.172), (0.0, 0.18)]),  # the nape
@@ -301,7 +382,9 @@ FALL = [
 FALL_TIPS = [0.04, -0.03, 0.03, -0.04]  # how far the end at each of those hangs lower (-) or higher
 
 
-def hair():
+def hair(fall=True):
+    # His hair on his head, and its long fall down his back over the cape unless it is gathered inside
+    # his 2★ model's collar (`fall` False).
     rings = []
     last = len(HAIR_LEVELS) - 1
     for k, (side, back, rx, ry, cy, lock, end) in enumerate(HAIR_LEVELS):
@@ -312,18 +395,23 @@ def hair():
             ring.append(V((rx + out) * math.cos(a), cy + (ry + out) * math.sin(a), z))
         ring[0], ring[-1] = end, V(-end.x, end.y, end.z)
         rings.append(ring)
-    verts, faces, _ = loft(rings, closed=False)
-    part('hair', verts, faces, M['hair'], inside=lambda c: V(0, 0.02, c.z))
+    with bone('head'):
+        verts, faces, _ = loft(rings, closed=False)
+        part('hair', verts, faces, M['hair'], inside=lambda c: V(0, 0.02, c.z))
 
-    # The crown: the hairline ring closed across his brow, a smaller ring and the top.
-    z, rx, ry, cy = CROWN
-    top = [V(rx * math.cos(a), cy + ry * math.sin(a), z) for a in map(math.radians, HAIR_ANGLES)]
-    verts, faces, _ = loft([rings[0], top])
-    apex = len(verts)
-    verts.append(CROWN_TOP)
-    m = len(top)
-    faces += [(m + i, m + (i + 1) % m, apex) for i in range(m)]
-    part('crown', verts, faces, M['hair'], inside=V(0, 0.0, 1.36))
+        # The crown: the hairline ring closed across his brow, a smaller ring and the top.
+        z, rx, ry, cy = CROWN
+        top = [V(rx * math.cos(a), cy + ry * math.sin(a), z) for a in map(math.radians, HAIR_ANGLES)]
+        verts, faces, _ = loft([rings[0], top])
+        apex = len(verts)
+        verts.append(CROWN_TOP)
+        m = len(top)
+        faces += [(m + i, m + (i + 1) % m, apex) for i in range(m)]
+        part('crown', verts, faces, M['hair'], inside=V(0, 0.0, 1.36))
+    joint('neck', NECK)
+    joint('crown', CROWN_TOP)
+    if not fall:
+        return
 
     rings = []
     for k, (z, half) in enumerate(FALL):
@@ -332,7 +420,8 @@ def hair():
         right = [V(-p.x, p.y, p.z) for p in reversed(left[:-1])]
         rings.append(right + left)
     verts, faces, _ = loft(rings, closed=False)
-    part('fall', verts, faces, M['hair'], inside=lambda c: V(0, 0.0, c.z))
+    with bone('spine', follows=lambda p: 'head' if p.z > 1.25 else None):
+        part('fall', verts, faces, M['hair'], inside=lambda c: V(0, 0.0, c.z))
 
 
 def moustache():
@@ -343,11 +432,15 @@ def moustache():
         tip = V(s * 0.076, -0.192, 1.17)
         verts = root + mid + [tip]
         faces = [(0, 1, 4, 3), (1, 2, 5, 4), (2, 0, 3, 5), (3, 4, 6), (4, 5, 6), (5, 3, 6)]
-        part(f'moustache-{s}', verts, faces, M['streak'], inside=sum(verts, Vector()) / len(verts))
+        with bone('head'):
+            part(f'moustache-{s}', verts, faces, M['streak'], inside=sum(verts, Vector()) / len(verts))
 
 
 # The beard: long, narrow and white, from the cheeks to a point below his girdle, in three locks (a W
-# in section). Each level runs from his right side across the front to his left.
+# in section). Each level runs from his right side across the front to his left. The head carries it
+# down to its second level (BEARD_SPLIT); the rest, with the black strands on it, is on a bone of its
+# own, `beard`, which hangs from his chin (../clips.py, hanging()), and starts with a band tucked under
+# the top a share TUCK of the way up and a little behind it, so no seam opens.
 BEARD = [  # (x, y, z) of the right-side back, the lock's ridge, the valley; then the centre ridge
     [(-0.124, -0.07, 1.31), (-0.118, -0.105, 1.262), (-0.066, -0.138, 1.232), (0.0, -0.146, 1.222)],
     [(-0.132, -0.08, 1.20), (-0.126, -0.142, 1.172), (-0.066, -0.17, 1.162), (0.0, -0.18, 1.156)],
@@ -356,6 +449,8 @@ BEARD = [  # (x, y, z) of the right-side back, the lock's ridge, the valley; the
     [(-0.06, -0.14, 0.78), (-0.056, -0.186, 0.775), (-0.028, -0.194, 0.77), (0.0, -0.204, 0.765)],
     [(-0.012, -0.15, 0.66), (-0.011, -0.165, 0.658), (-0.006, -0.167, 0.656), (0.0, -0.17, 0.654)],
 ]
+BEARD_SPLIT, TUCK, TUCK_BACK = 1, 0.4, 0.01
+BEARD_ROOT, BEARD_TIP = V(0, -0.1, 1.2), V(0, -0.168, 0.655)  # the chin it hangs from, and its end
 # Black strands still run through it from the corners of his mouth, laid on it: for each, x and z
 # of the middle of its top, its width there, and x and z of its point. Each is drawn down the beard
 # in STRAND_ROWS, narrowing to the point.
@@ -373,9 +468,20 @@ def beard():
         right = [V(*p) for p in level]
         left = [V(-p.x, p.y, p.z) for p in reversed(right[:-1])]
         rings.append(right + left)
-    verts, faces, _ = loft(rings, closed=False)
-    part('beard', verts, faces, M['hair'], inside=lambda c: V(0, -0.05, c.z))
+    top, lower = rings[:BEARD_SPLIT + 1], rings[BEARD_SPLIT:]
+    tuck = [a.lerp(b, TUCK) + V(0, TUCK_BACK, 0) for a, b in zip(rings[BEARD_SPLIT], rings[BEARD_SPLIT - 1])]
+    with bone('head'):
+        verts, faces, _ = loft(top, closed=False)
+        part('beard', verts, faces, M['hair'], inside=lambda c: V(0, -0.05, c.z))
+    with bone('beard'):
+        verts, faces, _ = loft([tuck] + lower, closed=False)
+        part('beard-lower', verts, faces, M['hair'], inside=lambda c: V(0, -0.05, c.z))
+        strands(rings)
+    joint('beard_root', BEARD_ROOT)
+    joint('beard_tip', BEARD_TIP)
 
+
+def strands(rings):
     surface = front_triangles(rings, closed=False)
     for k, ((x, z), width, (px, pz)) in enumerate(STRANDS):
         verts, faces = [], []
@@ -398,18 +504,27 @@ SLEEVE_DROOP = 0.07  # how far the bell of the sleeve hangs below the wrist
 
 
 def sleeve(side, shoulder, elbow, wrist, hand):
-    tube(f'sleeve-{side}', shoulder, elbow, [(0, 0.078), (1.1, 0.07)], M['robe'])
-    # The wrist runs from inside the sleeve to the middle of the hand, so the hand is held by it.
-    stations = [(0, 0.032), (1, 0.03)]
-    tube(f'wrist-{side}', elbow.lerp(wrist, 0.55), hand, stations, M['skin'], n=4, phase=45)
-    cuff = elbow.lerp(wrist, 0.92)
-    rings = segment(elbow, cuff, [(-0.12, 0.066), (0.5, 0.082), (1.0, 0.118)], 6, 30)
-    for p in rings[-1]:
-        drop = cuff.z - p.z
-        if drop > 0:
-            p.z -= SLEEVE_DROOP * drop / 0.118
-    verts, faces, _ = loft(rings)
-    part(f'bell-{side}', verts, faces, M['robe'], inside=nearest_on_line(elbow, cuff))
+    """The sleeve to the elbow, and the bell sleeve and the bare wrist on the forearm, each on its bone,
+    with the joints of the arm; `hand` is the end of the hand, where the wrist runs to."""
+    s = side[0]
+    with bone(f'upper_arm_{s}'):
+        tube(f'sleeve-{side}', shoulder, elbow, [(0, 0.078), (1.1, 0.07)], M['robe'])
+    with bone(f'forearm_{s}'):
+        # The wrist runs from inside the sleeve to the middle of the hand, so the hand is held by it.
+        stations = [(0, 0.032), (1, 0.03)]
+        tube(f'wrist-{side}', elbow.lerp(wrist, 0.55), hand, stations, M['skin'], n=4, phase=45)
+        cuff = elbow.lerp(wrist, 0.92)
+        rings = segment(elbow, cuff, [(-0.12, 0.066), (0.5, 0.082), (1.0, 0.118)], 6, 30)
+        for p in rings[-1]:
+            drop = cuff.z - p.z
+            if drop > 0:
+                p.z -= SLEEVE_DROOP * drop / 0.118
+        verts, faces, _ = loft(rings)
+        part(f'bell-{side}', verts, faces, M['robe'], inside=nearest_on_line(elbow, cuff))
+    joint(f'shoulder_{s}', shoulder)
+    joint(f'elbow_{s}', elbow)
+    joint(f'wrist_{s}', wrist)
+    joint(f'fist_{s}', hand)
 
 
 def fist(side, at, ahead, grip, thumb=False):
@@ -442,6 +557,16 @@ STONE_AT, STONE_R, STONE_H = 0.83, 0.05, 0.075  # the stone's middle along the s
 
 
 def staff():
+    with bone('hand_r'):
+        staff_parts()
+        fist('right', STAFF_GRIP, (STAFF_GRIP - R_ELBOW).normalized(), STAFF_UP, thumb=True)
+    sleeve('right', R_SHOULDER, R_ELBOW, R_WRIST, STAFF_GRIP)
+    # Held by the grip, up the staff to the top of its stone, facing the front.
+    top = STAFF_GRIP + (STONE_AT + STONE_H) * STAFF_UP
+    hold('r', STAFF_GRIP, top, top + V(0, -0.1, 0))
+
+
+def staff_parts():
     points, radii = [], []
     foot = -STAFF_GRIP.z / STAFF_UP.z
     for t, r in STAFF:
@@ -462,9 +587,6 @@ def staff():
     centre = STAFF_GRIP + STONE_AT * STAFF_UP
     lump('stone', centre, (STONE_R, STONE_R, STONE_H), M['stone'], seed=7, rough=0.0, angles=(0, 0, 18))
 
-    sleeve('right', R_SHOULDER, R_ELBOW, R_WRIST, STAFF_GRIP)
-    fist('right', STAFF_GRIP, (STAFF_GRIP - R_ELBOW).normalized(), STAFF_UP, thumb=True)
-
 
 # The palantir, weighed in his left hand ------------------------------------------------------------
 
@@ -482,30 +604,56 @@ def palantir():
     across = ahead.cross(up)
     palm = L_WRIST + 0.045 * ahead
     sleeve('left', L_SHOULDER, L_ELBOW, L_WRIST, palm)
-    box('palm', palm, [ahead, up, across], (0.052, 0.022, 0.05), M['skin'], 0.9)
-    # He holds it out on his open hand: the fingers lie flat ahead of the palm, and the thumb rests
-    # against the cup's foot.
-    fingers = palm + 0.064 * ahead + 0.002 * up
-    box('fingers', fingers, [ahead, up, across], (0.03, 0.017, 0.046), M['skin'], 0.8)
-    thumb = palm - 0.012 * ahead + 0.03 * up - 0.05 * across
-    box('thumb-left', thumb, [up, ahead, across], (0.03, 0.02, 0.016), M['skin'], 0.8)
-    foot = palm + 0.022 * up  # on the palm
-    height = CUP[-1][0]
-    tube('palantir-cup', foot, foot + height * up, [(h / height, r) for h, r in CUP], M['trim'], phase=30)
-    globe = foot + (CUP_SEAT + GLOBE_R) * up
-    lump('palantir', globe, GLOBE_R, M['palantir'], seed=3, rough=0.0, angles=(10, 20, 0))
+    with bone('hand_l'):
+        box('palm', palm, [ahead, up, across], (0.052, 0.022, 0.05), M['skin'], 0.9)
+        # He holds it out on his open hand: the fingers lie flat ahead of the palm, and the thumb rests
+        # against the cup's foot.
+        fingers = palm + 0.064 * ahead + 0.002 * up
+        box('fingers', fingers, [ahead, up, across], (0.03, 0.017, 0.046), M['skin'], 0.8)
+        thumb = palm - 0.012 * ahead + 0.03 * up - 0.05 * across
+        box('thumb-left', thumb, [up, ahead, across], (0.03, 0.02, 0.016), M['skin'], 0.8)
+        foot = palm + 0.022 * up  # on the palm
+        height = CUP[-1][0]
+        tube('palantir-cup', foot, foot + height * up, [(h / height, r) for h, r in CUP], M['trim'], phase=30)
+        globe = foot + (CUP_SEAT + GLOBE_R) * up
+        lump('palantir', globe, GLOBE_R, M['palantir'], seed=3, rough=0.0, angles=(10, 20, 0))
 
 
-def main():
+# His clips (../clips.py): the Istari's idle and run, as Gandalf's (gandalf.py), his staff planted
+# beside him (fit(pole='r')) and carried upright as he runs, the palantir held before him; the staff
+# pointed at the foe for each shot; for his cast (Fire of Orthanc) the staff raised high as he seeks the
+# farthest foe in the palantir, then swept down to point at it far off; dazed, he leans on it; falling,
+# he sinks to his knees into his robe as it falls beside him and the palantir drops by his knee; and
+# he holds it up high as he wins. His beard hangs from his chin (hanging()) and the robe below his
+# knees hangs plumb under him (robed()).
+CLIPS = robed(hanging(fit({
+    'idle': ('ready', {'breath': 0.8, 'sway': 0.7, 'crouch': 0.02}),
+    'move': ('run', {'heavy': 0.2, 'stride': 0.4, 'lift': 0.2, 'lean': 8.0, 'off': 'steady'}),
+    'attack': ('point', {}),
+    'cast': ('hurl', {}),
+    'stun': ('dazed', {}),
+    'death': ('knees', {'slump': 0.8, 'dropped': True, 'behind': -0.06}),
+    'victory': ('raise', {'out': 0.3}),
+}, pole='r', free=('attack', 'cast', 'victory'), ahead=1.0)))
+RIG = Rig(bones={'robe': ('root', 'robe_top', 'robe_foot'), 'beard': ('head', 'beard_root', 'beard_tip')}, clips=CLIPS)
+
+
+def build(collar=None):
+    """Makes him in a fresh scene, every part bound to its bone and his joints marked, and returns
+    the rig to finish() him with. His 2★ model (saruman-2.py) passes its collar as `collar`, a
+    function that makes it on his cape, which gathers his long hair inside it, so the fall of hair
+    down his back is left out."""
     reset()
     make_materials()
     shoes()
     robe()
     cape()
+    if collar is not None:
+        collar()
     stole()
     built = set(bpy.context.scene.objects)
     face()
-    hair()
+    hair(fall=collar is None)
     moustache()
     beard()
     # He holds his head high: above his jaw it is carried back, more the higher it is, which tips
@@ -513,7 +661,12 @@ def main():
     stoop([o for o in bpy.context.scene.objects if o not in built], *HEAD_RAISE)
     staff()
     palantir()
-    finish('saruman')
+    return RIG
 
 
-main()
+def main():
+    finish('saruman', rig=build())
+
+
+if __name__ == '__main__':
+    main()

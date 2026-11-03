@@ -16,11 +16,22 @@ a yoke over his shoulders and a panel down his chest and one down his back nearl
 belted at the waist and ragged at the hem. From behind, his ridged helm and pointed ears, the iron
 pauldrons, the sword and the strapped back of the shield show round and above it.
 
+He is rigged as Gorbag, the Orcs' reference (gorbag.py, ../rig.py), with the Orcs' idle and run, but
+an Uruk's: upright where they stoop, so the same crouch and stride carry him taller, his shield held
+up before him as he runs. He slashes with the broad sword; his cast (Bred for war) braces him low
+behind his shield, thrust up before his face, the sword cocked to strike past it. Stunned, he sways
+and his guard drops; falling, he lays his shield down before him as he kneels; winning, he thrusts
+the sword up.
+His legs bend at the knee, where the thigh and the greave already overlap; his body at the belt,
+where his cuirass now starts inside it; and his tabard there too, its panels cut where the belt
+covers them; so the rig costs no triangles.
+
 His fittings use `trim`, which the client colours iron, silver or gold by star level
 (docs/viewer-spec.md section 4, "Star levels"): the binding round the shield's rim, the sword's guard
 and pommel, the belt buckle, the rivets on his pauldrons, three on each, and two studs on the back of
 his belt. The S-rune and the White Hand stay white: they are devices, not fittings. His 2★ model is
-ugluk-2.py and his 3★ model ugluk-3.py.
+ugluk-2.py, which imports this script and builds him with its war-horn hung at his right hip from a
+baldric (build()), and his 3★ model ugluk-3.py.
 
     blender --background --factory-startup --python-exit-code 1 --python ugluk.py [-- <out.glb>]
 
@@ -45,6 +56,7 @@ from kit import (  # noqa: E402
     STEEL,
     WOOD,
     V,
+    bone,
     box,
     cone,
     ellipse,
@@ -62,6 +74,8 @@ from kit import (  # noqa: E402
     tube,
     wind,
 )
+from clips import fit  # noqa: E402
+from rig import Rig, hold, joint  # noqa: E402
 
 # Ugluk's own colours (sRGB); the rest come from the kit.
 SKIN = 0x665647  # swart: a dark grey-brown, darker than the sallow olive of the Orcs of Mordor
@@ -149,14 +163,23 @@ def boot(name, ankle, yaw):
 def legs():
     for side, hip, knee, ankle, yaw in (('right', R_HIP, R_KNEE, R_ANKLE, R_YAW),
                                         ('left', L_HIP, L_KNEE, L_ANKLE, L_YAW)):
-        tube(f'thigh-{side}', hip, knee, [(-0.1, 0.11), (1.1, 0.086)], M['cloth'])
-        tube(f'greave-{side}', knee, ankle, [(-0.1, 0.08), (1.25, 0.068)], M['iron'])
-        boot(f'boot-{side}', ankle, yaw)
-        # A plain iron cop over the knee, pointing forward.
-        forward = V(0, -1, 0)
-        base = segment(knee, knee + forward, [(0, 0.075)], 4, 45)[0]
-        verts = base + [knee + 0.125 * forward + V(0, 0, 0.015)]
-        part(f'knee-{side}', verts, [(i, (i + 1) % 4, 4) for i in range(4)], M['iron'], inside=knee)
+        s = side[0]
+        # The thigh and the greave already overlap at the knee, so the knee bends without a gap.
+        with bone(f'thigh_{s}'):
+            tube(f'thigh-{side}', hip, knee, [(-0.1, 0.11), (1.1, 0.086)], M['cloth'])
+        with bone(f'shin_{s}'):
+            tube(f'greave-{side}', knee, ankle, [(-0.1, 0.08), (1.25, 0.068)], M['iron'])
+            # A plain iron cop over the knee, pointing forward, on the greave.
+            forward = V(0, -1, 0)
+            base = segment(knee, knee + forward, [(0, 0.075)], 4, 45)[0]
+            verts = base + [knee + 0.125 * forward + V(0, 0, 0.015)]
+            part(f'knee-{side}', verts, [(i, (i + 1) % 4, 4) for i in range(4)], M['iron'], inside=knee)
+        with bone(f'foot_{s}'):
+            boot(f'boot-{side}', ankle, yaw)
+        joint(f'hip_{s}', hip)
+        joint(f'knee_{s}', knee)
+        joint(f'ankle_{s}', ankle)
+        joint(f'toe_{s}', V(ankle.x, ankle.y, 0) + Matrix.Rotation(math.radians(yaw), 3, 'Z') @ V(0, -0.15, 0.03))
 
 
 # Body --------------------------------------------------------------------------------------------
@@ -172,16 +195,44 @@ TORSO = [
     (1.1, 0.135, 0.125, 0.03),  # neck
 ]
 TORSO_BANDS = [0, 0, 1, 1, 1]  # mail, then iron
+# It is in two pieces, which bend at the belt: the mail skirt on his hips, up to his waist inside the
+# belt, and the cuirass on his spine from a ring inside the belt up, in as many bands as it had.
+INSIDE_BELT = (0.69, 0.214, 0.162, 0.02)
 
 
 def torso():
     rings = [ellipse(0, cy, z, rx, ry, 8, 22.5) for z, rx, ry, cy in TORSO]
-    verts, faces, bands = loft(rings)
-    face_mats = [TORSO_BANDS[b] for b in bands]
-    faces.append(tuple(range(len(verts) - 8, len(verts))))  # the top of the neck
-    face_mats.append(2)
-    part('torso', verts, faces, [M['mail'], M['iron'], M['skin']], face_mats,
-         inside=lambda c: V(0, 0.02, min(max(c.z, 0.5), 1.0)))
+    mats = [M['mail'], M['iron'], M['skin']]
+
+    def inside(c):
+        return V(0, 0.02, min(max(c.z, 0.5), 1.0))
+
+    with bone('hips'):
+        verts, faces, bands = loft(rings[:3])
+        part('skirt', verts, faces, mats, [TORSO_BANDS[b] for b in bands], inside=inside)
+    z, rx, ry, cy = INSIDE_BELT
+    with bone('spine'):
+        verts, faces, _ = loft([ellipse(0, cy, z, rx, ry, 8, 22.5)] + rings[3:])
+        face_mats = [1] * len(faces)
+        faces.append(tuple(range(len(verts) - 8, len(verts))))  # the top of the neck
+        face_mats.append(2)
+        part('cuirass', verts, faces, mats, face_mats, inside=inside)
+    joint('pelvis', PIVOT)
+    joint('waist', V(0, cy, z))
+
+
+def split(name, verts, faces, mat, bone_of):
+    """One sheet's faces, already wound, made into a part on each bone `bone_of(centre)` gives a face,
+    so a sheet that hangs over a bend can bend with it."""
+    groups = {}
+    for f in faces:
+        centre = sum((Vector(verts[i]) for i in f), Vector()) / len(f)
+        groups.setdefault(bone_of(centre), []).append(f)
+    for bone_name, group in groups.items():
+        used = sorted({i for f in group for i in f})
+        index = {i: k for k, i in enumerate(used)}
+        with bone(bone_name):
+            part(f'{name}-{bone_name}', [verts[i] for i in used], [tuple(index[i] for i in f) for f in group], mat)
 
 
 def surface_ring(z):
@@ -244,7 +295,8 @@ def tabard():
             verts.append(mid + V(0, side * 0.01, -drop))
             panel.append((a, b, len(verts) - 1))
         faces += wind(verts, panel, outward=V(0, side, 0))
-    part('tabard', verts, faces, M['team'])
+    # The yoke and the panels down to the belt go with his chest; below the belt they hang from his hips.
+    split('tabard', verts, faces, M['team'], lambda c: 'spine' if c.z > 0.71 else 'hips')
 
 
 def rivet(name, at, out, size=0.022, rise=0.018):
@@ -257,19 +309,25 @@ def rivet(name, at, out, size=0.022, rise=0.018):
 def belt():
     rings = [ellipse(0, 0.02, z, 0.25, 0.2, 8, 22.5) for z in (0.675, 0.745)]
     verts, faces, _ = loft(rings)
-    part('belt', verts, faces, M['leather'], inside=V(0, 0.02, 0.71))
-    axes = [V(0, -1, 0), V(1, 0, 0), V(0, 0, 1)]
-    box('buckle', V(0, -0.188, 0.71), axes, (0.018, 0.045, 0.042), M['trim'], 0.75)
-    # Two studs on its back, where it crosses the tabard, so the trim shows from behind.
-    back = 0.02 + 0.2 * math.sin(math.radians(67.5))  # the flat back face of the octagon
-    for x in (-0.055, 0.055):
-        rivet(f'stud-{x}', V(x, back, 0.71), V(0, 1, 0), 0.024)
+    with bone('hips'):
+        part('belt', verts, faces, M['leather'], inside=V(0, 0.02, 0.71))
+        axes = [V(0, -1, 0), V(1, 0, 0), V(0, 0, 1)]
+        box('buckle', V(0, -0.188, 0.71), axes, (0.018, 0.045, 0.042), M['trim'], 0.75)
+        # Two studs on its back, where it crosses the tabard, so the trim shows from behind.
+        back = 0.02 + 0.2 * math.sin(math.radians(67.5))  # the flat back face of the octagon
+        for x in (-0.055, 0.055):
+            rivet(f'stud-{x}', V(x, back, 0.71), V(0, 1, 0), 0.024)
 
 
 SHOULDERS = {s: V(s * 0.29, 0.04, 0.975) for s in (-1, 1)}  # the middle of each pauldron, upright
 
 
 def pauldron(s):
+    with bone('spine'):
+        shell(s)
+
+
+def shell(s):
     # A broad shell of plain iron over the shoulder, tipped out, and a second lame flaring from under it.
     tip = Matrix.Rotation(math.radians(s * 22), 3, 'Y')
     c = SHOULDERS[s]
@@ -319,6 +377,14 @@ def h(x, y, z):
 
 
 def head():
+    with bone('head'):
+        features()
+        helm()
+    joint('neck', h(0, 0.05, 0.05))  # at the back of his skull, on his bull neck
+    joint('crown', h(0, 0.0, 0.37))
+
+
+def features():
     rings = []
     for z, side, corner, back, front_corner, front in SKULL:
         ring = [side, corner, (0, back), (-corner[0], corner[1]), (-side[0], side[1]),
@@ -471,6 +537,14 @@ def on_shield(u, v, w):
 
 
 def shield():
+    with bone('hand_l'):
+        boards()
+    # Held by the grip behind its middle, up to the top of its rim, its face to the front.
+    top = on_shield(0, 0.325, 0)
+    hold('l', on_shield(0, 0, -0.072), top, top + SHIELD_TURN @ V(0, -0.1, 0))
+
+
+def boards():
     forward = SHIELD_TURN @ V(0, -1, 0)
     # Its outline three times: the outer edge, the crest of the rim's binding and its inner edge.
     profile = [(1.0, -0.005), (0.985, 0.022), (0.9, 0.005)]
@@ -515,6 +589,16 @@ BLADE = V(-0.07, 0.08, 1.0).normalized()  # up, a little out and back
 
 
 def sword():
+    with bone('hand_r'):
+        blade()
+    # Held by the grip in his fist, its point up the blade and an edge out to his right.
+    d = BLADE
+    across = d.cross(V(0, 1, 0)).normalized()
+    point = R_FIST + 0.56 * d
+    hold('r', R_FIST, point, point + 0.1 * across)
+
+
+def blade():
     d = BLADE
     across = d.cross(V(0, 1, 0)).normalized()
     flat = across.cross(d).normalized()  # square to the flat of the blade
@@ -541,15 +625,24 @@ UPPER_ARM, FOREARM = 0.3, 0.29  # long arms, as orcs have
 def arm(side, shoulder, fist, pole, fist_up, ahead=None):
     """An arm from the shoulder to a fist at `fist`, its elbow bent towards `pole`; the fist points
     along the forearm, or along `ahead` when it grips something square to it."""
+    s = side[0]
     reach = (fist - shoulder).normalized()
     elbow = bend(shoulder, fist - 0.06 * reach, UPPER_ARM, FOREARM, pole)
     wrist = fist - 0.03 * (fist - elbow).normalized()  # inside the fist, which hides the bracer's end
-    tube(f'upper-arm-{side}', shoulder, elbow, [(-0.1, 0.09), (1.08, 0.074)], M['skin'])
-    tube(f'forearm-{side}', elbow, wrist, [(-0.12, 0.072), (0.35, 0.084), (1.0, 0.058)],
-         [M['skin'], M['iron']], [0, 1])
+    # The upper arm and the forearm already overlap at the elbow, so it bends without a gap.
+    with bone(f'upper_arm_{s}'):
+        tube(f'upper-arm-{side}', shoulder, elbow, [(-0.1, 0.09), (1.08, 0.074)], M['skin'])
+    with bone(f'forearm_{s}'):
+        tube(f'forearm-{side}', elbow, wrist, [(-0.12, 0.072), (0.35, 0.084), (1.0, 0.058)],
+             [M['skin'], M['iron']], [0, 1])
     ahead = (fist - elbow).normalized() if ahead is None else Vector(ahead).normalized()
     up = (Vector(fist_up) - Vector(fist_up).dot(ahead) * ahead).normalized()
-    box(f'fist-{side}', fist, [ahead, up, ahead.cross(up)], (0.058, 0.064, 0.066), M['skin'], 0.85)
+    with bone(f'hand_{s}'):
+        box(f'fist-{side}', fist, [ahead, up, ahead.cross(up)], (0.058, 0.064, 0.066), M['skin'], 0.85)
+    joint(f'shoulder_{s}', shoulder)
+    joint(f'elbow_{s}', elbow)
+    joint(f'wrist_{s}', wrist)
+    joint(f'fist_{s}', fist)
 
 
 def arms():
@@ -563,7 +656,25 @@ def arms():
     arm('right', right, R_FIST, right + V(-0.12, 0.2, -0.3), BLADE)
 
 
-def main():
+# His clips (../clips.py): the Orcs' idle and run, as Gorbag's (gorbag.py), the shield held up as he
+# runs; a forehand slash with the broad sword, and for his cast (Bred for war) a brace behind the
+# shield thrust up before his face. Falling, he lays his shield down before him and holds his sword
+# upright beside him, rather than slumping over the shield he would fall into.
+CLIPS = fit({
+    'idle': ('ready', {'seconds': 2.0, 'crouch': 0.06}),
+    'move': ('run', {'seconds': 0.43, 'heavy': 0.7, 'stride': 0.3, 'lift': 0.25, 'lean': 6.0, 'off': 'high'}),
+    'attack': ('swing', {}),
+    'cast': ('brace', {}),
+    'stun': ('dazed', {}),
+    'death': ('knees', {'hand': 'l', 'slump': 0.6}),
+    'victory': ('raise', {}),
+}, between=True)
+
+
+def build(horn=None):
+    """Makes him in a fresh scene, every part bound to its bone and his joints marked, and returns
+    the rig to finish() him with. His 2★ model (ugluk-2.py) passes its war-horn as `horn`, a function
+    that makes it and its baldric on his upright body, before he leans."""
     reset()
     make_materials()
     legs()
@@ -573,13 +684,19 @@ def main():
     belt()
     for s in (-1, 1):
         pauldron(s)
+    if horn is not None:
+        horn()
     lean(new_objects(before), PIVOT, LEAN)
     head()
-    helm()
     shield()
     sword()
     arms()
-    finish('ugluk')
+    return Rig(clips=CLIPS)
 
 
-main()
+def main():
+    finish('ugluk', rig=build())
+
+
+if __name__ == '__main__':
+    main()

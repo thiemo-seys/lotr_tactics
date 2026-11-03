@@ -18,10 +18,18 @@ back and bunched at his nape over the pack; and the cloak hanging from his shoul
 above his knees. From behind, as the near side is seen, his sandy curls show above the hood, the pack
 and its rope in the middle of the cloak, and the pan and the sword either side.
 
+He is rigged as Frodo is (frodo.py, the Hobbits' reference rig): every part bound to the bone it moves
+with, his joints marked as the parts round them are built, and his body in two pieces that meet at
+the belt, which costs no triangles; his legs and arms already bend at the knee cuffs and the rolled
+sleeves. His cloak, held to his back by the pack, moves with his spine. His clips (../clips.py) run
+and stand as Frodo's do; he chops with the sword, and for his cast, Loyal, braces behind the pan
+thrust up before him.
+
 His fittings, the sword's cross-guard and pommel, the setting behind the leaf clasp, the buckles on
 the pack's straps and the buckle that fastens its flap, use `trim`, which the client colours iron,
 silver or gold by star level (docs/viewer-spec.md section 4, "Star levels"). His 2★ model is
-sam-2.py and his 3★ model sam-3.py.
+sam-2.py, which imports this script and builds him with the hood of his cloak drawn up over his
+head in place of the hood thrown back (build()), and his 3★ model sam-3.py.
 
     blender --background --factory-startup --python-exit-code 1 --python sam.py [-- <out.glb>]
 
@@ -41,6 +49,7 @@ from kit import (  # noqa: E402
     EYES,
     LEATHER,
     V,
+    bone,
     box,
     cone,
     ellipse,
@@ -58,6 +67,7 @@ from kit import (  # noqa: E402
     trim_material,
     tube,
 )
+from rig import Rig, hold, joint  # noqa: E402
 
 # Sam's own colours (sRGB); the rest come from the kit.
 SKIN = 0xDCA27D  # sun-browned, a gardener's
@@ -156,48 +166,72 @@ def foot(name, ankle, yaw, inner):
     verts = edge + [middle]
     faces = [(i, (i + 1) % len(edge), len(edge)) for i in range(len(edge))]
     part(name + '-hair', verts, faces, M['hair'], inside=middle - V(0, 0, 0.05))
+    joint(f'toe_{"r" if inner > 0 else "l"}', place((0, -0.19, 0.02)))  # the big toe's root
 
 
 R_HIP, L_HIP = V(-0.088, 0.005, 0.27), V(0.088, 0.0, 0.27)
 R_KNEE, L_KNEE = V(-0.128, -0.035, 0.172), V(0.134, -0.08, 0.172)
-ANKLE_Z = 0.06  # where the shin ends, inside the foot
+ANKLE_Z = 0.06  # where the shin ends, inside the foot, and the ankle the foot turns about
+SHIN_TOP = 0.02  # how far above the knee the bare shin starts, inside the cuff, so the knee can bend
 
 
 def leg(side, hip, knee, ankle):
+    s = side[0]
     ankle = V(ankle.x, ankle.y, ANKLE_Z)
     # Breeches to just below the knee, ending in a cuff wider than the bare shin.
-    tube(f'thigh-{side}', hip, knee, [(0, 0.08), (1.12, 0.066)], M['breeches'])
-    tube(f'shin-{side}', knee, ankle, [(0, 0.047), (1, 0.036)], M['skin'])
+    with bone(f'thigh_{s}'):
+        tube(f'thigh-{side}', hip, knee, [(0, 0.08), (1.12, 0.066)], M['breeches'])
+    with bone(f'shin_{s}'):
+        top = -SHIN_TOP / (ankle - knee).length
+        tube(f'shin-{side}', knee, ankle, [(top, 0.048), (1, 0.036)], M['skin'])
+    joint(f'hip_{s}', hip)
+    joint(f'knee_{s}', knee)
+    joint(f'ankle_{s}', ankle)
 
 
 def legs():
     leg('right', R_HIP, R_KNEE, R_ANKLE)
     leg('left', L_HIP, L_KNEE, L_ANKLE)
-    foot('foot-right', R_ANKLE, R_YAW, 1)
-    foot('foot-left', L_ANKLE, L_YAW, -1)
+    with bone('foot_r'):
+        foot('foot-right', R_ANKLE, R_YAW, 1)
+    with bone('foot_l'):
+        foot('foot-left', L_ANKLE, L_YAW, -1)
 
 
 # Body --------------------------------------------------------------------------------------------
 
 # Octagons from the seat of his breeches to the shoulders: z, half-width, half-depth and centre y.
-# Stouter than Frodo: the belly the widest, standing well out in front over the belt.
+# Stouter than Frodo: the belly the widest, standing well out in front over the belt. In two pieces,
+# as Frodo's, which bend at the belt: the breeches and the belt on his hips, and the shirt on his
+# spine, from inside the belt (WAIST) up.
 TORSO = [
     (0.215, 0.138, 0.112, 0.015),  # the seat of his breeches
     (0.285, 0.17, 0.142, 0.0),  # the belt's lower edge
     (0.325, 0.186, 0.162, -0.016),  # the belt's upper edge, under the belly
+]
+TORSO_BANDS = [0, 1]  # breeches, belt
+CHEST = [
+    (0.295, 0.166, 0.14, -0.004),  # inside the belt
     (0.405, 0.206, 0.186, -0.044),  # the round belly
     (0.535, 0.138, 0.104, 0.0),  # shoulders, under the cowl, open above
 ]
-TORSO_BANDS = [0, 1, 2, 2]  # breeches, belt, shirt
+PELVIS, WAIST = V(0, 0.005, 0.26), V(0, -0.006, 0.305)
 
 
 def torso():
     rings = [ellipse(0, cy, z, rx, ry, 8, 22.5) for z, rx, ry, cy in TORSO]
     verts, faces, bands = loft(rings)
     face_mats = [TORSO_BANDS[b] for b in bands]
-    mats = [M['breeches'], M['leather'], M['shirt']]
-    part('torso', verts, faces, mats, face_mats, inside=lambda c: V(0, -0.01, c.z))
-    tube('neck', V(0, 0.005, 0.55), V(0, -0.015, 0.64), [(0, 0.052), (1, 0.05)], M['skin'])
+    with bone('hips'):
+        part('torso', verts, faces, [M['breeches'], M['leather']], face_mats, inside=lambda c: V(0, -0.01, c.z))
+    rings = [ellipse(0, cy, z, rx, ry, 8, 22.5) for z, rx, ry, cy in CHEST]
+    verts, faces, _ = loft(rings)
+    with bone('spine'):
+        part('chest', verts, faces, M['shirt'], inside=lambda c: V(0, -0.01, c.z))
+    with bone('head'):
+        tube('neck', V(0, 0.005, 0.55), V(0, -0.015, 0.64), [(0, 0.052), (1, 0.05)], M['skin'])
+    joint('pelvis', PELVIS)
+    joint('waist', WAIST)
 
 
 # Head --------------------------------------------------------------------------------------------
@@ -336,14 +370,22 @@ L_SHOULDER, L_ELBOW, L_WRIST = V(0.156, 0.0, 0.5), V(0.25, 0.02, 0.375), V(0.272
 
 def arm(side, shoulder, elbow, wrist, up):
     """A linen sleeve rolled to the elbow, the bare forearm and a big fist; `up` is where its thumb
-    points. Returns the middle of the fist."""
-    tube(f'sleeve-{side}', shoulder, elbow, [(0, 0.056), (1.1, 0.064)], M['shirt'])
-    tube(f'forearm-{side}', elbow, wrist, [(-0.1, 0.044), (1, 0.036)], M['skin'])
+    points. Returns the middle of the fist. The rolled sleeve overlaps the forearm, so it bends."""
+    s = side[0]
+    with bone(f'upper_arm_{s}'):
+        tube(f'sleeve-{side}', shoulder, elbow, [(0, 0.056), (1.1, 0.064)], M['shirt'])
+    with bone(f'forearm_{s}'):
+        tube(f'forearm-{side}', elbow, wrist, [(-0.1, 0.044), (1, 0.036)], M['skin'])
     ahead = (wrist - elbow).normalized()
     up = (up - up.dot(ahead) * ahead).normalized()
     across = ahead.cross(up)
     fist = wrist + 0.03 * ahead
-    box(f'fist-{side}', fist, [ahead, up, across], (0.04, 0.042, 0.044), M['skin'], 0.86)
+    with bone(f'hand_{s}'):
+        box(f'fist-{side}', fist, [ahead, up, across], (0.04, 0.042, 0.044), M['skin'], 0.86)
+    joint(f'shoulder_{s}', shoulder)
+    joint(f'elbow_{s}', elbow)
+    joint(f'wrist_{s}', wrist)
+    joint(f'fist_{s}', fist + 0.04 * ahead)  # the end of the hand
     return fist
 
 
@@ -361,6 +403,14 @@ PAN_POINTS = 10
 
 def pan():
     fist = arm('left', L_SHOULDER, L_ELBOW, L_WRIST, PAN_UP)
+    with bone('hand_l'):
+        centre, out = iron(fist)
+    # Held by the handle, its middle up from the fist and its bottom to the enemy, as a shield.
+    hold('l', fist, centre, centre + out)
+
+
+def iron(fist):
+    """The pan from the fist up: returns its middle and the way its bottom faces."""
     along = PAN_UP
     turn = math.radians(PAN_TURN)
     ahead = V(math.sin(turn), -math.cos(turn), 0)
@@ -388,6 +438,7 @@ def pan():
     start, end = fist - 0.065 * along, centre - (PAN_RADIUS - 0.012) * along
     box('pan-handle', (start + end) / 2, [along, across, out], ((end - start).length / 2, 0.016, 0.011),
         M['iron'], 0.8)
+    return centre, out
 
 
 # The sword, upright in his right hand ------------------------------------------------------------
@@ -400,6 +451,14 @@ SWORD_STATIONS = [(0.0, 0.034, 0.01), (0.64, 0.03, 0.009), (0.87, 0.019, 0.007)]
 
 def sword():
     fist = arm('right', R_SHOULDER, R_ELBOW, R_WRIST, SWORD)
+    with bone('hand_r'):
+        point, edge = blade(fist)
+    # Held by the grip, its point up and its edge on his right.
+    hold('r', fist, point, point + edge)
+
+
+def blade(fist):
+    """The sword from the fist up: returns its point and the way its right-hand edge faces."""
     width = V(1, 0, 0)
     width = (width - width.dot(SWORD) * SWORD).normalized()  # the flat faces forward and back
     flat = SWORD.cross(width).normalized()
@@ -419,6 +478,7 @@ def sword():
     end = fist - 0.06 * SWORD
     tube('grip', end, guard, [(0, 0.016), (1, 0.016)], M['leather'], n=4, phase=45)
     cone('pommel', end, end - 0.03 * SWORD, 0.025, M['trim'], n=4, phase=45, back=end + 0.012 * SWORD)
+    return guard + SWORD_LENGTH * SWORD, -width
 
 
 # Team colour: the elven cloak ---------------------------------------------------------------------
@@ -447,7 +507,7 @@ def cowl():
     part('clasp-setting', verts, [(0, 1, 2, 3)], M['trim'], outward=V(0, -1, 0))
 
 
-def hood():
+def hood_thrown_back():
     # The hood, thrown back: caught between his back and the pack, it bunches up at his nape over
     # the top of the pack. Its edge from his right round the nape to his left, its crest along the
     # pack's front edge, and its point lying on the pack.
@@ -574,22 +634,60 @@ def buckle(name, centre, along, out):
     part(name, verts, [(0, 1, 2, 3)], M['trim'], outward=out)
 
 
-def main():
+# Where his head turns, at the top of the cowl's collar, and the top of his curls.
+NECK, CROWN = V(0, 0.0, 0.585), V(0, -0.006, 0.876)
+
+# His clips (../clips.py): a Hobbit's run and stance, as Frodo's, the pan held up as he runs, as a
+# shield; an overhand chop of the sword, drawn back and brought over wide of his curls, past them
+# rather than through his face (clear); for Loyal the
+# pan thrust up before him, braced behind it; the sword laid down a little higher as he falls, so its
+# broad guard stays out of the ground; and the sword raised wide of his curls.
+RIG = Rig(
+    clips={
+        'idle': ('ready', {}),
+        'move': ('run', {'heavy': 0.25, 'stride': 0.7, 'lift': 0.45, 'off': 'high'}),
+        'attack': ('chop', {'wide': 0.3, 'clear': 0.2}),
+        'cast': ('brace', {}),
+        'stun': ('dazed', {}),
+        'death': ('knees', {'lay': 0.34}),
+        'victory': ('raise', {'out': 0.35}),
+    },
+)
+
+
+def build(hood=None):
+    """Makes him in a fresh scene, every part bound to its bone and his joints marked, and returns
+    the rig to finish() him with. His 2★ model (sam-2.py) passes the hood of his cloak drawn up as
+    `hood`, a function that makes it over his curls, before he leans; he wears it bound to his head,
+    in place of the hood thrown back on his spine."""
     reset()
     make_materials()
     legs()
     lower = set(bpy.context.scene.objects)
     torso()
-    head()
-    hair()
-    cowl()
-    hood()
-    cape()
-    pack()
+    with bone('head'):
+        head()
+        hair()
+        if hood is not None:
+            hood()
+    joint('neck', NECK)
+    joint('crown', CROWN)
+    # The cloak is held to his back by the pack, so it moves with his spine, as the pack does.
+    with bone('spine'):
+        cowl()
+        if hood is None:
+            hood_thrown_back()
+        cape()
+        pack()
     pan()
     sword()
     lean([o for o in bpy.context.scene.objects if o not in lower], HIPS, LEAN)
-    finish('sam')
+    return RIG
 
 
-main()
+def main():
+    finish('sam', rig=build())
+
+
+if __name__ == '__main__':
+    main()

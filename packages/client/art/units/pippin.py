@@ -18,10 +18,19 @@ collar and the panel across his chest, from above on his shoulders and from behi
 his seat. From behind, as the near side is seen, his straw curls show above it, the raised arm and
 its stone beside them, the pouch at his hip and his legs and feet below it.
 
+He is rigged as Frodo is (frodo.py, ../rig.py), the Hobbits' reference rig. To bend, his body is two
+pieces that meet at the belt, the breeches and belt on his hips and the jerkin on his spine from a
+ring inside the belt, and the sleeve of his throwing arm is two, at the elbow; neither costs a
+triangle. His left arm, under the cloak, has only its joints. The stone is on a bone of its own,
+`stone`, so it can be thrown and wait in the pouch while he fetches another (../clips.py, Stone). His
+clips are a Hobbit's, with a stone thrown overhand and, for his cast, Stone toss, one skimmed
+side-arm to skip from foe to foe.
+
 His fittings, the setting behind the leaf clasp, the belt buckle, the jerkin's buttons and the ring
 that gathers the pouch's neck, use `trim`, which the client colours iron, silver or gold by star
-level (docs/viewer-spec.md section 4, "Star levels"). His 2★ model is pippin-2.py and his 3★ model
-pippin-3.py.
+level (docs/viewer-spec.md section 4, "Star levels"). His 2★ model is pippin-2.py, which imports
+this script and builds him with his left arm out from under the cloak and the barrow-blade drawn in
+its hand (build()), and his 3★ model pippin-3.py.
 
     blender --background --factory-startup --python-exit-code 1 --python pippin.py [-- <out.glb>]
 
@@ -41,6 +50,7 @@ from kit import (  # noqa: E402
     EYES,
     V,
     bent_tube,
+    bone,
     box,
     cone,
     ellipse,
@@ -57,6 +67,7 @@ from kit import (  # noqa: E402
     trim_material,
     tube,
 )
+from rig import Rig, joint  # noqa: E402
 
 # Pippin's own colours (sRGB); the rest come from the kit.
 SKIN = 0xE6B48F  # fair and young
@@ -169,26 +180,38 @@ def foot(name, ankle, yaw, inner):
     middle = on_top(*THATCH_MIDDLE, 0.026)
     faces = [(i, (i + 1) % len(edge), len(edge)) for i in range(len(edge))]
     part(name + '-hair', edge + [middle], faces, M['hair'], inside=middle - V(0, 0, 0.05))
+    joint(f'toe_{"r" if inner > 0 else "l"}', place((0, -0.19, 0.02)))  # the big toe's root
 
 
 R_HIP, L_HIP = V(-0.072, 0.01, 0.28), V(0.072, 0.0, 0.28)
-R_KNEE, L_KNEE = V(-0.108, 0.058, 0.185), V(0.1, -0.085, 0.19)
-ANKLE_Z = 0.06  # where the shin ends, inside the foot
+# The knees bent forward over the feet, the back one too, so they bend that way as he runs.
+R_KNEE, L_KNEE = V(-0.108, 0.03, 0.185), V(0.1, -0.085, 0.19)
+ANKLE_Z = 0.06  # where the shin ends, inside the foot, and the ankle the foot turns about
+SHIN_TOP = 0.02  # how far above the knee the bare shin starts, inside the cuff, so the knee can bend
 
 
 def leg(side, hip, knee, ankle):
+    s = side[0]
     ankle = V(ankle.x, ankle.y, ANKLE_Z)
     shin = (ankle - knee).normalized()
     # Breeches to below the knee, ending in a cuff wider than the bare shin.
-    bent_tube(f'thigh-{side}', [hip, knee, knee + 0.015 * shin], [0.068, 0.058, 0.056], M['breeches'])
-    tube(f'shin-{side}', knee, ankle, [(0, 0.041), (1, 0.032)], M['skin'])
+    with bone(f'thigh_{s}'):
+        bent_tube(f'thigh-{side}', [hip, knee, knee + 0.015 * shin], [0.068, 0.058, 0.056], M['breeches'])
+    with bone(f'shin_{s}'):
+        top = -SHIN_TOP / (ankle - knee).length
+        tube(f'shin-{side}', knee, ankle, [(top, 0.043), (1, 0.032)], M['skin'])
+    joint(f'hip_{s}', hip)
+    joint(f'knee_{s}', knee)
+    joint(f'ankle_{s}', ankle)
 
 
 def legs():
     leg('right', R_HIP, R_KNEE, R_ANKLE)
     leg('left', L_HIP, L_KNEE, L_ANKLE)
-    foot('foot-right', R_ANKLE, R_YAW, 1)
-    foot('foot-left', L_ANKLE, L_YAW, -1)
+    with bone('foot_r'):
+        foot('foot-right', R_ANKLE, R_YAW, 1)
+    with bone('foot_l'):
+        foot('foot-left', L_ANKLE, L_YAW, -1)
 
 
 # Body --------------------------------------------------------------------------------------------
@@ -199,29 +222,45 @@ TORSO = [
     (0.22, 0.118, 0.098, 0.012),  # the seat of his breeches
     (0.29, 0.136, 0.116, 0.004),  # the belt's lower edge
     (0.33, 0.143, 0.126, -0.006),  # the belt's upper edge
+]
+TORSO_BANDS = [0, 1]  # breeches, belt
+# In two pieces, which bend at the belt, as Frodo's: the breeches and the belt on his hips, and the
+# jerkin on his spine, from a ring inside the belt up, so the bands are the ones the body had.
+CHEST = [
+    (0.3, 0.128, 0.108, 0.0),  # inside the belt
     (0.4, 0.152, 0.14, -0.022),  # the belly, a little round
     (0.47, 0.144, 0.118, -0.01),  # chest
     (0.525, 0.118, 0.09, 0.0),  # shoulders, open above under the collar
 ]
-TORSO_BANDS = [0, 1, 2, 2, 2]  # breeches, belt, jerkin
+PELVIS, WAIST = V(0, 0.008, 0.27), V(0, -0.002, 0.31)
 
 
 def torso():
     rings = [ellipse(0, cy, z, rx, ry, 8, 22.5) for z, rx, ry, cy in TORSO]
     verts, faces, bands = loft(rings)
     face_mats = [TORSO_BANDS[b] for b in bands]
-    mats = [M['breeches'], M['leather'], M['jerkin']]
-    part('torso', verts, faces, mats, face_mats, inside=lambda c: V(0, -0.01, c.z))
-    tube('neck', V(0, 0.005, 0.54), V(0, -0.012, 0.625), [(0, 0.044), (1, 0.043)], M['skin'])
+    with bone('hips'):
+        part('torso', verts, faces, [M['breeches'], M['leather']], face_mats, inside=lambda c: V(0, -0.01, c.z))
+    rings = [ellipse(0, cy, z, rx, ry, 8, 22.5) for z, rx, ry, cy in CHEST]
+    verts, faces, _ = loft(rings)
+    with bone('spine'):
+        part('chest', verts, faces, M['jerkin'], inside=lambda c: V(0, -0.01, c.z))
+    with bone('head'):
+        tube('neck', V(0, 0.005, 0.54), V(0, -0.012, 0.625), [(0, 0.044), (1, 0.043)], M['skin'])
+    joint('pelvis', PELVIS)
+    joint('waist', WAIST)
 
 
 def fittings():
     """The belt buckle and the jerkin's buttons, on the front of the torso where the cloak leaves it
-    open."""
-    box('buckle', V(0, -0.117, 0.31), [V(1, 0, 0), V(0, 0, 1), V(0, 1, 0)], (0.025, 0.022, 0.008), M['trim'], 0.85)
-    for y, z in ((-0.143, 0.375), (-0.15, 0.42), (-0.131, 0.462)):
-        at = V(-0.004, y, z)
-        cone(f'button-{z}', at, at + V(0, -0.016, 0), 0.013, M['trim'], n=4, phase=45, back=at + V(0, 0.01, 0))
+    open: the buckle on the belt, on his hips, and the buttons on the jerkin, on his spine."""
+    with bone('hips'):
+        box('buckle', V(0, -0.117, 0.31), [V(1, 0, 0), V(0, 0, 1), V(0, 1, 0)], (0.025, 0.022, 0.008), M['trim'],
+            0.85)
+    with bone('spine'):
+        for y, z in ((-0.143, 0.375), (-0.15, 0.42), (-0.131, 0.462)):
+            at = V(-0.004, y, z)
+            cone(f'button-{z}', at, at + V(0, -0.016, 0), 0.013, M['trim'], n=4, phase=45, back=at + V(0, 0.01, 0))
 
 
 # Head --------------------------------------------------------------------------------------------
@@ -391,20 +430,43 @@ def cloak():
 # Arms --------------------------------------------------------------------------------------------
 
 # The right arm, built where it ends up after the twist: cocked back beside his head with the stone,
-# the elbow high and out. The left is under the cloak, which wraps his left side.
+# the elbow high and out. The left is under the cloak, which wraps his left side: it has no parts,
+# only its joints, built square and twisted with the cloak, hanging at his side.
 R_SHOULDER, R_ELBOW, R_WRIST = twisted(V(-0.125, 0.005, 0.5)), V(-0.245, 0.045, 0.6), V(-0.27, 0.05, 0.745)
+L_SHOULDER, L_ELBOW = V(0.125, 0.005, 0.5), V(0.17, 0.0, 0.39)
+L_WRIST, L_FIST = V(0.15, -0.09, 0.33), V(0.135, -0.13, 0.32)
+ELBOW = 0.02  # how far each half of a sleeve reaches past the elbow, inside the other, so it can bend
+
+
+def left_arm():
+    for name, point in (('shoulder', L_SHOULDER), ('elbow', L_ELBOW), ('wrist', L_WRIST), ('fist', L_FIST)):
+        joint(f'{name}_l', point)
 
 
 def throwing_arm():
-    bent_tube('sleeve-right', [R_SHOULDER, R_ELBOW, R_WRIST], [0.05, 0.047, 0.04], M['shirt'])
+    with bone('upper_arm_r'):
+        past = 1 + ELBOW / (R_ELBOW - R_SHOULDER).length
+        tube('sleeve-right', R_SHOULDER, R_ELBOW, [(0, 0.05), (past, 0.047)], M['shirt'])
+    with bone('forearm_r'):
+        tube('cuff-right', R_ELBOW, R_WRIST, [(-ELBOW / (R_WRIST - R_ELBOW).length, 0.048), (1, 0.04)], M['shirt'])
     ahead = (R_WRIST - R_ELBOW).normalized()
     back = V(0, 1, 0)
     up = (back - back.dot(ahead) * ahead).normalized()  # the palm faces back, away from the target
     across = ahead.cross(up)
     fist = R_WRIST + 0.03 * ahead
-    box('fist-right', fist, [ahead, up, across], (0.038, 0.04, 0.042), M['skin'], 0.86)
-    # The stone, bigger than life so it reads, held in his fingers on top of the fist.
-    lump('stone', fist + 0.06 * ahead + 0.016 * up, (0.062, 0.058, 0.054), M['stone'], seed=3, rough=0.12)
+    with bone('hand_r'):
+        box('fist-right', fist, [ahead, up, across], (0.038, 0.04, 0.042), M['skin'], 0.86)
+    # The stone, bigger than life so it reads, held in his fingers on top of the fist, on a bone of its
+    # own, so it can be thrown and another taken from the pouch (../clips.py, Stone).
+    stone = fist + 0.06 * ahead + 0.016 * up
+    with bone('stone'):
+        lump('stone', stone, (0.062, 0.058, 0.054), M['stone'], seed=3, rough=0.12)
+    joint('shoulder_r', R_SHOULDER)
+    joint('elbow_r', R_ELBOW)
+    joint('wrist_r', R_WRIST)
+    joint('fist_r', fist + 0.038 * ahead)  # the end of the hand
+    joint('stone_mid', stone)
+    joint('stone_top', stone + 0.05 * ahead)
 
 
 # The pouch of stones -----------------------------------------------------------------------------
@@ -428,23 +490,62 @@ def pouch():
     # Stones heaped in its mouth.
     lump('pebble-1', POUCH + V(-0.014, -0.008, 0.014), 0.035, M['stone'], seed=7, rough=0.15)
     lump('pebble-2', POUCH + V(0.026, 0.012, 0.008), 0.03, M['stone'], seed=11, rough=0.15)
+    joint('pouch', POUCH + V(0, 0, -0.06))  # where a stone waits inside it, to be taken out
 
 
-def main():
+# Where his head turns, inside the cloak's collar, and the top of his curls.
+NECK, CROWN = V(0, 0.0, 0.575), V(0, -0.006, 0.86)
+
+# His clips (../clips.py), a Hobbit's, as Frodo's (frodo.py): his stance and his light, quick run on
+# his big feet, the stone carried cocked by his head; a stone thrown overhand from it, and for his cast,
+# Stone toss, a stone skimmed side-arm to skip from foe to foe, each then a fresh stone fetched from the
+# pouch; and the stone raised wide of his curls.
+RIG = Rig(
+    bones={'stone': ('hand_r', 'stone_mid', 'stone_top')},
+    clips={
+        'idle': ('ready', {}),
+        'move': ('run', {'heavy': 0.25, 'stride': 0.7, 'lift': 0.45, 'carry': 'steady'}),
+        'attack': ('pelt', {}),
+        'cast': ('skim', {}),
+        'stun': ('dazed', {'low': 0.6}),
+        'death': ('knees', {}),
+        'victory': ('raise', {'out': 0.35}),
+    },
+)
+
+
+def build(blade=None):
+    """Makes him in a fresh scene, every part bound to its bone and his joints marked, and returns
+    the rig to finish() him with. His 2★ model (pippin-2.py) passes its left arm and the barrow-blade
+    in its hand as `blade`, a function that makes them on the left arm's joints, where the twist has
+    carried them, before he leans."""
     reset()
     make_materials()
     legs()
     lower = set(bpy.context.scene.objects)
     torso()
     fittings()
-    cloak()
+    with bone('spine'):
+        cloak()
+    left_arm()
     twist([o for o in bpy.context.scene.objects if o not in lower])
-    head()
-    hair()
+    with bone('head'):
+        head()
+        hair()
+    joint('neck', NECK)
+    joint('crown', CROWN)
     throwing_arm()
-    pouch()
+    with bone('hips'):
+        pouch()
+    if blade is not None:
+        blade()
     lean([o for o in bpy.context.scene.objects if o not in lower], HIPS, LEAN)
-    finish('pippin')
+    return RIG
 
 
-main()
+def main():
+    finish('pippin', rig=build())
+
+
+if __name__ == '__main__':
+    main()
