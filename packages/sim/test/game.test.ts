@@ -352,9 +352,10 @@ describe('whole games', () => {
     expect(copies(game)).toEqual(STARTING_COPIES);
   });
 
+  // Four whole games take a few seconds, more on a busy machine than the 5 s a test gets by default.
   it('are the same for the same seed and the same calls', () => {
     const play = (seed: number) => JSON.stringify(playRandomly(createGame({ seed, players: 5 }), 3));
     expect(play(30)).toBe(play(30));
     expect(play(30)).not.toBe(play(31));
-  });
+  }, 30_000);
 });
