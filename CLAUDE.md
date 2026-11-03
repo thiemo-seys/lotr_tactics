@@ -42,6 +42,7 @@ Online play (`docs/server-spec.md`), lobbies with bots in the empty seats, is in
 - Game numbers live in data files (`packages/sim/src/data/`), not hard-coded in logic. All numbers are placeholders until balancing.
 - In data, percentages and multipliers are whole-number percents (25 for 25%, 70 for 0.7 D) and durations are in seconds (`docs/sim-spec.md` section 4).
 - When a rule or number changes, update `docs/design.md` (and `docs/sim-spec.md` if it affects the sim) in the same change.
+- Pull requests are merged by rebase only. Each commit lands on `main` as it is, so give each one a clear message and keep it passing `pnpm check`. To bring a branch up to date, rebase it on `main`; don't merge `main` into it. If you merge a pull request, use the rebase method.
 
 ## When reviewing
 
