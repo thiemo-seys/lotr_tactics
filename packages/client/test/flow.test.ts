@@ -1,5 +1,5 @@
 import { TIMERS, type ClientMessage, type FightRecord, type Host, type LobbyView, type MatchView, type RoundRecord } from '@lotr-tactics/server';
-import { simulateCombat, type Team } from '@lotr-tactics/sim';
+import { simulateCombat, type CombatEvent, type Team } from '@lotr-tactics/sim';
 import { describe, expect, it } from 'vitest';
 import { LocalConnection } from '../src/connection.js';
 import { yourFight, yourTeam } from '../src/fights.js';
@@ -353,17 +353,29 @@ describe("other players' boards", () => {
 });
 
 describe('the damage meter', () => {
-  it('follows your fight as it plays, then has the whole of it in the results, even when skipped', async () => {
+  it('follows each of your fights as it plays, then has the whole of it through the results and waiting, even when skipped', async () => {
     const host = fakeHost();
     let connection: LocalConnection | null = null;
     const { flow } = recorded((message) => connection!.send(message));
     connection = new LocalConnection(5, { message: (m) => flow.receive(m, host.time), closed: () => {} }, { host, autoUpdate: false });
     await flush();
-    let checked = false;
-    for (let i = 0; i < 3000 && !checked; i++) {
+    /** The whole of each of the person's fights so far, as the meter had it after the fight. */
+    const recaps: (readonly CombatEvent[])[] = [];
+    let waitedAfterFight = false;
+    // The meter after a fight: the last fight's recap if this round had one of the person's fights, otherwise nothing.
+    const expectRecap = (round: RoundRecord) => {
+      if (yourFight(round, 0) === null) expect(flow.meterFight()).toBeNull();
+      else expect(flow.meterFight()!.events).toBe(recaps.at(-1));
+    };
+    for (let i = 0; i < 3000 && !(recaps.length >= 2 && waitedAfterFight); i++) {
       const { show } = flow;
-      if (show.kind === 'council' || show.kind === 'waiting') {
+      if (show.kind === 'council') {
         expect(flow.meterFight()).toBeNull();
+        host.time += flow.state!.step.ms ?? 0;
+        connection.update();
+      } else if (show.kind === 'waiting') {
+        expectRecap(show.round);
+        if (yourFight(show.round, 0) !== null) waitedAfterFight = true;
         host.time += flow.state!.step.ms ?? 0;
         connection.update();
       } else if (show.kind === 'planning') {
@@ -378,15 +390,19 @@ describe('the damage meter', () => {
         expect(recap.team).toBe(yourTeam(show.fight, 0));
         expect(recap.events).toEqual(simulateCombat(show.fight.input).events);
         expect(recap.events.at(-1)?.type).toBe('end');
+        // A new recap for each fight, not the last one's.
+        if (recaps.length > 0) expect(recap.events).not.toBe(recaps.at(-1));
+        recaps.push(recap.events);
         // Worked out once.
         expect(flow.meterFight()!.events).toBe(recap.events);
-        checked = true;
       } else if (show.kind === 'results') {
+        expectRecap(show.round);
         flow.update(0, show.until);
       }
       await flush();
     }
-    expect(checked).toBe(true);
+    expect(recaps.length).toBeGreaterThanOrEqual(2);
+    expect(waitedAfterFight).toBe(true);
     connection.close();
   });
 });
