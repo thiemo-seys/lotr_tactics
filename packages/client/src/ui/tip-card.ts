@@ -1,8 +1,10 @@
 // Draws a `Tip` (tips.ts) as the tooltip card's contents: a header with an icon, title and
-// subtitle, then a recipe, stats, traits, text, trait breakpoints and a hint or reason.
+// subtitle, then a recipe, stats, traits, text, trait breakpoints, a trait's units and a hint or reason.
 
-import { ITEMS, TRAITS } from '@lotr-tactics/sim';
+import { ITEMS, TRAITS, UNITS } from '@lotr-tactics/sim';
+import { TRAIT_ICONS } from '../icons.js';
 import type { Tip, TipIcon } from '../tips.js';
+import type { TraitUnit } from '../traits.js';
 import { itemChip, ringChip, traitBadge } from './chips.js';
 import { el, icon, kbd } from './dom.js';
 
@@ -64,8 +66,25 @@ export function tipCard(tip: Tip): Node[] {
   if (tip.levels !== undefined && tip.levels.length > 0) {
     nodes.push(el('ol', 'tip-levels', ...tip.levels.map((l) => el('li', l.active ? 'active' : '', el('b', '', String(l.count)), el('span', '', l.text)))));
   }
+  if (tip.units !== undefined && tip.units.length > 0) nodes.push(el('div', 'tip-units', ...tip.units.map(traitUnitTile)));
   if (tip.note !== undefined) {
     nodes.push(el('p', tip.note.reason ? 'tip-note reason' : 'tip-note', tip.note.reason ? icon('alert') : null, tip.note.text));
   }
   return nodes;
+}
+
+/**
+ * One of a trait's units: framed by cost with its origin's icon, lit when a copy is on the board,
+ * half lit when copies are only on the bench, greyed when none are owned, with a pip per copy.
+ */
+function traitUnitTile(unit: TraitUnit): HTMLElement {
+  const owned = unit.stars.length > 0;
+  return el(
+    'div',
+    `tip-unit cost-${unit.cost}${unit.onBoard ? ' on-board' : owned ? ' on-bench' : ' missing'}`,
+    icon(TRAIT_ICONS[UNITS[unit.id].origin], 'emblem'),
+    el('span', 'tip-unit-name', unit.name),
+    el('span', 'tip-unit-cost', String(unit.cost)),
+    owned ? el('span', 'owned', ...unit.stars.map((star) => el('i', `star-${star}`))) : null,
+  );
 }

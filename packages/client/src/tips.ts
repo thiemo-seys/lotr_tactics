@@ -27,7 +27,7 @@ import { TIER_NAMES, giftEffects } from './gifts.js';
 import { GIFT_TIER_ICONS, type IconName } from './icons.js';
 import { itemInfo } from './items.js';
 import { ringInfo } from './ring.js';
-import { traitInfo, type TraitTone } from './traits.js';
+import { traitInfo, type TraitTone, type TraitUnit } from './traits.js';
 
 /** What a tooltip's header shows next to its title. */
 export type TipIcon =
@@ -56,6 +56,8 @@ export interface Tip {
   readonly levels?: readonly { readonly count: number; readonly text: string; readonly active: boolean }[];
   /** A unit's traits. */
   readonly traits?: readonly TraitId[];
+  /** A trait's units, with the copies a player owns. */
+  readonly units?: readonly TraitUnit[];
   /** A unit's ability: its name, the mana it costs, and what it does. */
   readonly ability?: { readonly name: string; readonly mana: string | null; readonly lines: readonly string[] };
   /** A keyboard shortcut. */
@@ -101,11 +103,15 @@ export function giftTip(id: GiftId): Tip {
   };
 }
 
-/** A trait, and how many of a player's units count towards it if it is on their board: the person's, or `owner`'s. */
+/**
+ * A trait, and how many of a player's units count towards it if it is on their board: the person's,
+ * or `owner`'s. `units` lists the trait's units with the copies that player owns.
+ */
 export function traitTip(
   trait: TraitId,
   counted?: { readonly count: number; readonly level: number | null; readonly tone: TraitTone | null },
   owner: string | null = null,
+  units?: readonly TraitUnit[],
 ): Tip {
   const info = traitInfo(trait);
   return {
@@ -115,6 +121,7 @@ export function traitTip(
     ...(counted === undefined || counted.tone === null ? {} : { tone: `trait-${counted.tone}` }),
     body: info.rule === null ? [] : [{ text: info.rule }],
     levels: info.levels.map((l, i) => ({ count: l.count, text: l.text, active: counted?.level === i })),
+    ...(units === undefined || units.length === 0 ? {} : { units }),
   };
 }
 
