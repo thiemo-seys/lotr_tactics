@@ -1,8 +1,9 @@
 /* global console, process, URL, window */
 // Renders .glb models on the game's board with three.js in headless Chromium, with the camera,
-// lights, board and team colours of packages/client/src/scene.ts, so a model can be judged at the
-// size it is played at. Each model is recoloured blue (near side) and red (far side) through its
-// `team` material, the way the client will, and stands next to today's pawn for scale.
+// lights, board and team colours of packages/client/src/scene.ts and look.ts (without the arena, the
+// blur or the grade), so a model can be judged at the size it is played at. Each model is recoloured
+// blue (near side) and red (far side) through its `team` material, the way the client will, and
+// stands next to today's pawn for scale.
 //
 //   node packages/client/art/board.mjs <out dir> <model.glb> [--toon] [--scale=2]
 //   node packages/client/art/board.mjs <out dir> --lineup <a.glb> <b.glb> ... [--scale=2]
@@ -71,7 +72,7 @@ const config = {
   study,
 };
 
-const PAGE = `<!doctype html><html><head><style>html,body{margin:0;background:#12161c;overflow:hidden;font-family:system-ui,sans-serif;color:#e5e7eb}
+const PAGE = `<!doctype html><html><head><style>html,body{margin:0;background:#2a2018;overflow:hidden;font-family:system-ui,sans-serif;color:#e5e7eb}
 #labels{position:absolute;inset:0;pointer-events:none}
 .unit-label{position:absolute;width:64px;margin-left:-32px;transform:translateY(-100%);text-align:center;text-shadow:0 1px 2px #000}
 .unit-label .name{font-size:11px;white-space:nowrap}
@@ -94,12 +95,12 @@ document.body.append(renderer.domElement);
 
 // From scene.ts.
 const TEAM_COLOURS = { A: 0x4a90d9, B: 0xd9534f };
-const BOARD_COLOURS = { A: [0x2b3d55, 0x31465f], B: [0x553230, 0x5f3936] };
+const BOARD_COLOURS = { A: [0xc9ac84, 0xbfa17a], B: [0x9e7a62, 0x94705a] };
 const scene = new THREE.Scene();
-scene.background = new THREE.Color(0x12161c);
-scene.add(new THREE.HemisphereLight(0xffffff, 0x334455, 1.6));
-const sun = new THREE.DirectionalLight(0xffffff, 1.8);
-sun.position.set(5, 12, 8);
+scene.background = new THREE.Color(0x2a2018);
+scene.add(new THREE.HemisphereLight(0xfff1da, 0x5e4b3a, 1.55));
+const sun = new THREE.DirectionalLight(0xffe6c0, 1.9);
+sun.position.set(-7, 13, 9);
 scene.add(sun);
 const camera = new THREE.PerspectiveCamera(45, config.width / config.height, 0.1, 100);
 

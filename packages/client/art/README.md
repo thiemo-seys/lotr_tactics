@@ -10,6 +10,7 @@ The game's 3D models of units, monsters and summons, in the Faceted style (`docs
 - `preview.py`: renders a model with Cycles for review, in both team colours and from every side, or a rigged model's clips as contact sheets.
 - `clash.py`: checks a rigged model's clips for what its hands carry passing through its head or its chest (Checking clashes below).
 - `units/`: three scripts per unit, named by its id: `<id>.py`, `<id>-2.py` and `<id>-3.py`, one for each star level. Gimli (`gimli.py`) is the reference model and the reference rig, and each people has one that the others follow: Frodo for Hobbits, Legolas for Elves, Aragorn for Gondor, Éomer for Rohan, Gandalf for the Istari, Gorbag for Orcs and the Ringwraith for the Nazgûl.
+- `arena.py` and `arenas/`: the arena the board stands in (Arenas below).
 - `style-study/`: the study that chose the style, kept as it was.
 - `star-study/`: the study that chose how star levels show, with its comparison page, kept as it was; [`star-study/ROLLOUT.md`](star-study/ROLLOUT.md) is how every unit got its 2★ and 3★ models.
 
@@ -677,3 +678,16 @@ node packages/client/art/board.mjs /tmp/board/stars --stars <study.json> --unit=
 ```
 
 `board.mjs` renders models on the game's board with three.js in headless Chromium, with the client's camera, lights and team colours, so a model can be judged at the size it is played at. `--lineup` puts several side by side, and `--stars` lays a unit out at 1★, 2★ and 3★ with the base, growth and trim the client gives it, and a label 1.8 above the base, times the scale, which the client sets higher for a Large model or to clear a model's clips (`docs/viewer-spec.md` section 4, Star levels); `star-study/options/chosen.json` is an example. Its header lists the options.
+
+## Arenas
+
+The arena is the ground the board stands on and what stands round it (`docs/viewer-spec.md` section 3, Arena). Each is a Blender script in `arenas/`, named by its id, that exports `packages/client/public/arenas/<id>.glb`, committed like the models; `packages/client/src/look.ts` names the one the client loads. `pnpm models` builds them with the models, and `pnpm models <id>` one alone:
+
+```bash
+pnpm models ruins
+```
+
+- `arena.py`: what arenas share: where the board is and the room an arena leaves round it (`COURT`, `LOW_BAND` and `zone()`), the floor's height (`FLOOR_TOP`, below the hexes' tops at 0), shapes for squared and broken stone (`block()`, `drum()`, `rock()`, `hex_prism()`) and grass (`tuft()`), and `finish_arena()`, which joins the arena, checks its budget (`ARENA_BUDGET`) and materials as `finish()` does a model's, bakes ambient occlusion into its vertex colours with Cycles, and exports it without normals, since the client shades it flat. The same script builds the same file, byte for byte.
+- `arenas/ruins.py`: the ruins, a court of old Gondor gone to grass: paving in four shades and a dais of mortar under the board, broken columns on plinths with their drums fallen at their feet, walls fallen to rubble, fallen columns, the plinths of two fallen kings, boulders, rubble, loose stones and grass, on all four sides, since the camera looks from behind either team's back row.
+
+Blender's −Y is the game's +Z, towards team A's back row. Keep the court round the board and the bench clear and the band round it low; `packages/client/test/arena.test.ts` checks both, and that nothing under a hex reaches its top. To judge an arena, look at it in the client (`pnpm dev`), from both sides and in planning, since the blur, grade and fog are the client's (`src/post.ts`).

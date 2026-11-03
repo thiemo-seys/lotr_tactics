@@ -21,12 +21,15 @@ import {
 import * as THREE from 'three';
 import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
 import { CSS2DObject, CSS2DRenderer } from 'three/addons/renderers/CSS2DRenderer.js';
+import { loadArena } from './arena.js';
 import { CLIPS, fightFacing, fightPoseInto, newPose, planningPoseInto, sinkDelay, type ClipLengths, type ClipName, type PoseBuffer } from './animation.js';
 import { benchToWorld, hexToWorld, type Point } from './layout.js';
 import { ModelSwaps, Redraws } from './drawing.js';
 import type { PlanningRing } from './flow.js';
 import { copyModel, loadModels, modelShader, modelShaders, modelsLoaded, shaderSample, type ModelCopy, type ModelShader } from './models.js';
 import { EFFECT_TICKS, type CastRing, type FloatingText, type MutablePoint, type Playback, type Projectile } from './playback.js';
+import { ATMOSPHERE, CAMERA, CAMERA_LIMITS, LIGHTS } from './look.js';
+import { Post } from './post.js';
 import { LABEL, LARGE_PAWN_SCALE } from './stars.js';
 import { UnitLabel } from './ui/labels.js';
 import { displayName, isLarge } from './units.js';
@@ -34,15 +37,18 @@ import { displayName, isLarge } from './units.js';
 /** Units on the side the camera looks from are drawn as team A: blue, with green health. */
 const TEAM_COLOURS: Record<Team, number> = { A: 0x4a90d9, B: 0xd9534f };
 
-/** Where the camera sits and looks, behind a team's back row or over the planning board and bench. */
-const CAMERA = {
-  A: { position: [0, 12.5, 12.5], target: [0, 0, -0.4] },
-  B: { position: [0, 12.5, -12.5], target: [0, 0, 0.4] },
-  planning: { position: [0, 14, 13], target: [0, 0, 2.4] },
-} as const;
+/**
+ * Each half of the board in two shades of stone, alternating by column: the near side's half as A,
+ * pale sandstone, and the other as B, a darker, redder stone.
+ */
+const BOARD_COLOURS: Record<Team, readonly [number, number]> = { A: [0xc9ac84, 0xbfa17a], B: [0x9e7a62, 0x94705a] };
 
-/** Each half of the board in two shades, alternating by column: the near side's half as A, the other as B. */
-const BOARD_COLOURS: Record<Team, readonly [number, number]> = { A: [0x2b3d55, 0x31465f], B: [0x553230, 0x5f3936] };
+/** The bench's tiles: darker stone, set into the paving. */
+const BENCH_COLOUR = 0x5f4c3b;
+
+/** How far a board hex and a bench tile stand, from the paving up to their tops at 0, and how much their top edges are bevelled. */
+const TILE_HEIGHT = 0.16;
+const TILE_BEVEL = 0.05;
 
 /** How high a floating number rises over its life, in world units. */
 const TEXT_RISE = 0.9;
@@ -163,8 +169,23 @@ export type UnitPick =
   | { readonly kind: 'fight'; readonly id: number; readonly label: HTMLElement }
   | { readonly kind: 'planning'; readonly id: number; readonly label: HTMLElement };
 
+/**
+ * A tile with its top at 0 and its top edge bevelled: a prism of `sides` sides, `radius` from its
+ * centre to a corner, the first corner towards +z (pointy-top for a hex).
+ */
+function tile(radius: number, sides: number, phase = 0): THREE.BufferGeometry {
+  // From the bottom edge up and in, so the faces point out.
+  const profile = [
+    new THREE.Vector2(radius, -TILE_HEIGHT),
+    new THREE.Vector2(radius, -TILE_BEVEL),
+    new THREE.Vector2(radius - TILE_BEVEL, 0),
+    new THREE.Vector2(0, 0),
+  ];
+  return new THREE.LatheGeometry(profile, sides, phase);
+}
+
 const geometry = {
-  hex: new THREE.CylinderGeometry(0.94, 0.94, 0.12, 6),
+  hex: tile(0.94, 6),
   body: new THREE.CylinderGeometry(0.3, 0.42, 0.9, 6),
   head: new THREE.IcosahedronGeometry(0.25, 0),
   nose: new THREE.ConeGeometry(0.09, 0.28, 4),
@@ -217,6 +238,8 @@ export class FightScene {
   private boardSide: Team | null = null;
   /** Bench tiles, shown while planning. */
   private readonly bench = new THREE.Group();
+  /** The blur, grade and vignette laid over each frame. */
+  private readonly post = new Post();
   /** Planning units by owned unit id. */
   private planning = new Map<number, UnitView>();
   /** Each unit's view by its group, to find the unit a ray hits from the mesh it hits (`viewAt`). */
@@ -285,7 +308,12 @@ export class FightScene {
 
     // The label layer sits on top of the canvas, so it takes the mouse.
     this.controls = new OrbitControls(this.camera, this.labels.domElement);
-    this.controls.maxPolarAngle = Math.PI * 0.45;
+    // It always looks down into the arena, and never past its edge.
+    this.controls.maxPolarAngle = CAMERA_LIMITS.maxPolar;
+    this.controls.minDistance = CAMERA_LIMITS.minDistance;
+    this.controls.maxDistance = CAMERA_LIMITS.maxDistance;
+    this.controls.maxTargetRadius = CAMERA_LIMITS.maxPan;
+    this.controls.screenSpacePanning = false;
     this.controls.addEventListener('change', () => this.redraws.change());
     this.reducedMotion.addEventListener('change', () => this.redraws.change());
     // A WebGL context restored after it was lost starts with a cleared canvas, as a resize does, so
@@ -294,11 +322,17 @@ export class FightScene {
     // Behind team A's back row, looking across the board.
     this.aim('A');
 
-    this.scene.background = new THREE.Color(0x12161c);
-    this.scene.add(new THREE.HemisphereLight(0xffffff, 0x334455, 1.6));
-    const sun = new THREE.DirectionalLight(0xffffff, 1.8);
-    sun.position.set(5, 12, 8);
+    this.scene.background = new THREE.Color(ATMOSPHERE.colour);
+    this.scene.fog = new THREE.Fog(ATMOSPHERE.colour, ATMOSPHERE.fogNear, ATMOSPHERE.fogFar);
+    this.scene.add(new THREE.HemisphereLight(LIGHTS.sky, LIGHTS.ground, LIGHTS.ambient));
+    const sun = new THREE.DirectionalLight(LIGHTS.sun, LIGHTS.sunIntensity);
+    sun.position.set(...LIGHTS.sunFrom);
     this.scene.add(sun);
+    void loadArena().then((arena) => {
+      if (arena === null) return;
+      this.scene.add(arena);
+      this.redraws.change();
+    });
     this.buildBoard();
     this.buildBench();
     this.buildMarker();
@@ -323,7 +357,7 @@ export class FightScene {
     return this.playback !== null;
   }
 
-  /** Shows a new fight, replacing what was shown. `side` is drawn as the near team, in blue, on the blue half. */
+  /** Shows a new fight, replacing what was shown. `side` is drawn as the near team, in blue, on the pale half. */
   show(playback: Playback, side: Team = 'A'): void {
     this.clear();
     this.playback = playback;
@@ -525,6 +559,7 @@ export class FightScene {
     // Resizing the canvas clears it.
     this.redraws.change();
     this.renderer.setSize(width, height);
+    this.post.setSize(width, height, this.renderer.getPixelRatio());
     this.labels.setSize(width, height);
     this.camera.aspect = width / height;
     this.camera.updateProjectionMatrix();
@@ -547,7 +582,7 @@ export class FightScene {
       this.updatePlanning();
     }
     this.controls.update();
-    this.renderer.render(this.scene, this.camera);
+    this.post.render(this.renderer, this.scene, this.camera, this.controls.target);
     // The renderer has just brought every matrix up to date, so the labels needn't do it again.
     this.scene.matrixWorldAutoUpdate = false;
     this.labels.render(this.scene, this.camera);
@@ -560,16 +595,16 @@ export class FightScene {
     const matrix = new THREE.Matrix4();
     BOARD_HEXES.forEach((hex, i) => {
       const { x, z } = hexToWorld(hex);
-      this.board.setMatrixAt(i, matrix.makeTranslation(x, -0.06, z));
+      this.board.setMatrixAt(i, matrix.makeTranslation(x, 0, z));
     });
     this.tintBoard('A');
     this.scene.add(this.board);
   }
 
   /**
-   * Tints the half of the board nearest the camera, `side`'s, in the near colours and the other
-   * half in the far ones, as units are coloured, so a person playing team B sees their blue units
-   * on the blue half.
+   * Colours the half of the board nearest the camera, `side`'s, in the near stone and the other
+   * half in the far one, as units are coloured, so a person playing team B sees their blue units
+   * on the pale half.
    */
   private tintBoard(side: Team): void {
     if (side === this.boardSide) return;
@@ -584,12 +619,13 @@ export class FightScene {
   }
 
   private buildBench(): void {
-    const material = new THREE.MeshStandardMaterial({ color: 0x2a313d, flatShading: true });
-    const tile = new THREE.BoxGeometry(BENCH_TILE, 0.1, BENCH_TILE);
+    const material = new THREE.MeshStandardMaterial({ color: BENCH_COLOUR, flatShading: true });
+    // A square tile is a four-sided one with its corners on the diagonals.
+    const shape = tile((BENCH_TILE / 2) * Math.SQRT2, 4, Math.PI / 4);
     for (let slot = 0; slot < PLAYER.benchSize; slot++) {
-      const mesh = new THREE.Mesh(tile, material);
+      const mesh = new THREE.Mesh(shape, material);
       const { x, z } = benchToWorld(slot);
-      mesh.position.set(x, -0.05, z);
+      mesh.position.set(x, 0, z);
       this.bench.add(mesh);
     }
     this.bench.visible = false;

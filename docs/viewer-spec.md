@@ -32,8 +32,9 @@ A browser tool that runs one fight with `packages/sim` and plays it back in 3D. 
 packages/client/
   index.html       the fight viewer
   play.html        the play page (game-spec.md section 12)
-  art/             the models' Blender scripts, the rig kit, the clip library and the clash check (art/README.md, section 4)
+  art/             the models' and arenas' Blender scripts, the rig kit, the clip library and the clash check (art/README.md, sections 3 and 4)
   public/models/   one .glb per unit and star level (<id>, <id>-2, <id>-3), built from art/ and committed, which both pages load
+  public/arenas/   one .glb per arena, built from art/arenas/ and committed (section 3, Arena)
   src/
     main.ts        viewer page setup, controls, URL state
     play.ts        play page setup: connections, keys, the frame loop, and which panels show
@@ -47,6 +48,9 @@ packages/client/
     drawing.ts     when the scene draws a frame, and when pawns swap for their models (no Three.js, no DOM)
     models.ts      loading the models, each file once, and a copy for each unit with its own materials and clips, standing on its base
     stars.ts       which model, scale, label height and colours a star level gets (no Three.js, no DOM)
+    look.ts        the camera's views and limits, the arena, lights, fog, blur and grade (no Three.js, no DOM)
+    arena.ts       loading the arena
+    post.ts        the blur, grade and vignette laid over each frame
     scene.ts       Three.js scene, units as models on their bases or pawns, playing their clips, the planning view, the marker where a drag would drop, and the unit under the pointer
     units.ts       names and sizes of units, monsters and summons
     items.ts       item and Ring of Power colours, and what each item is and does, from the item data
@@ -79,7 +83,7 @@ packages/client/
   test/
 ```
 
-- flow.ts, playback.ts, animation.ts, drawing.ts, stars.ts and the modules from units.ts to log.ts use neither Three.js nor the DOM, so they are tested (section 7). models.ts, which loads the models, and scene.ts and the modules in ui/ and play/, which draw what those work out, are checked in a browser.
+- flow.ts, playback.ts, animation.ts, drawing.ts, stars.ts, look.ts and the modules from units.ts to log.ts use neither Three.js nor the DOM, so they are tested (section 7). models.ts and arena.ts, which load the models and the arena, post.ts, and scene.ts and the modules in ui/ and play/, which draw what those work out, are checked in a browser.
 - **Look:** both pages share one design system in style.css: a deep slate background with gold accents; tokens for colours, spacing, radii, shadows and motion; buttons (primary, secondary, ghost, danger and icon-only), fields, panels and chips. Headings use Cinzel and everything else Inter, both bundled from `@fontsource` packages, so the built client needs nothing from the network. Text has a contrast of at least 4.5:1, focus shows a gold ring, and motion stops when the system asks for reduced motion.
 - **Icons:** inline SVGs from icons.ts, all drawn on one 24-unit grid with a rounded stroke in `currentColor`. Each trait and item component has its own icon, keyed by its id, so a new one fails the typecheck until it has an icon. Icons next to text are hidden from screen readers; buttons with only an icon have a label.
 - **Tooltips:** hovering or focusing anything with a tip shows one card for it (ui/tooltip.ts), laid out from tips.ts: an icon, name and subtitle, a recipe, stats, effects, a trait's breakpoints, a key, and a hint or the reason a button can't be used. It stays on screen, follows chips on moving units, never takes the mouse, and hides while something is dragged. Buttons that can't be used now are marked `aria-disabled` rather than disabled, so they can still say why.
@@ -90,8 +94,25 @@ packages/client/
 
 - **Board:** pointy-top hexes, odd-r offset, matching `sim-spec.md` section 5.
   - Board offset (col, row) sits at `x = √3 × (col + 0.5 × (row mod 2))`, `z = 1.5 × row`, centred on the board.
-  - Team A's half (rows 0–3) and team B's (rows 4–7) are tinted differently: the half of the side drawn near in blue, like its units, and the other in red.
-- **Camera:** behind team A's back row, looking across the board. The mouse orbits, pans and zooms.
+  - Each hex is a stone tile with a bevelled top edge, its top at 0, set in the arena's dark mortar, which shows in the gaps between them.
+  - Team A's half (rows 0–3) and team B's (rows 4–7) are different stone: the half of the side drawn near in pale sandstone, and the other in a darker, redder stone. Each half alternates two shades by column.
+  - The bench's tiles are square, of a darker stone, set into the paving in front of the near side.
+- **Camera:** behind team A's back row, looking across the board. The mouse orbits, pans and zooms, within limits (look.ts) that keep it looking down into the arena and never past its edge: at most 60° from straight down, 8 to 24 units from what it looks at, and that point panned along the ground at most 5 from the board's centre. Every view the scene sets starts within them.
+
+### Arena
+
+The board stands in an arena, as a lens with a shallow focus would see it: the board and bench sharp, the ruins round them softer the further away they are, the whole in warm, close browns, so the units and their team colours are what stand out. Today there is one, the ruins (`art/arenas/ruins.py`): a court of old Gondor gone to grass, its paving round the board, ringed by rubble and grass, with broken columns, tumbled drums, walls fallen to rubble and the plinths of two fallen kings beyond, on all four sides, since the camera looks from behind either team's back row.
+
+- **Build:** Blender 4.5 LTS, one Python script per arena in `packages/client/art/arenas/`, with what arenas share in `art/arena.py`, exported as glTF binary to `public/arenas/<id>.glb` and committed, as the models are. Faceted like the models (section 4): low-segment shapes, chunky squared stone, shaded flat, no textures. Ambient occlusion is baked into its vertex colours, so corners, gaps and the feet of things are darker. It is exported without normals, and the viewer shades every face flat.
+- **Room for the game:** nothing in the court round the board and the bench (|x| < 8.6, |z| < 9.6) stands higher than 0.3, a pebble or a tuft of grass, and nothing under a hex reaches its top. Nothing in the band round the court (|x| < 10.6, |z| < 11.2) stands higher than 1.2, so the cameras over either back row see past it. Taller things stand beyond.
+- **Budget** *(placeholder)*: 48,000 triangles.
+- **Lights:** a warm sky over a brown ground, and a warm, low sun from the near left (look.ts).
+- **Fog:** the background is a dark brown, and the fog fades into it from 39 to 85 units from the camera, so the paving never ends at an edge. It starts past the far side of the board from as far as the camera can go, so it never dims a unit.
+- **Over each frame** (post.ts): the scene is drawn into a multisampled texture with its depth, then
+  - blurred, across and then down, by how far each pixel is along the ground from what the camera looks at: none within 10.5, growing smoothly to 8 CSS pixels at 20 and beyond, and on the background. The whole board and bench are within 10.5 of each view's starting point. Pixels in focus count for little in the blur round them, so units don't smear into it.
+  - graded, in display colours: warmer, a little less saturated and more contrasted; the board and units get 35% of it, so team colours stay true, and the rest of the arena all of it, as the blur grows.
+  - darkened towards the corners by a vignette, to 58% at the furthest.
+- **In the viewer** (arena.ts): both pages load the arena once, in the background, and draw a frame when it arrives. It never moves, and nothing picks it with the pointer. If it is missing or fails to load, the board stands on the background colour.
 
 ---
 
@@ -325,6 +346,8 @@ The parts without Three.js are tested with Vitest:
 - when the scene draws a frame (a fight as its display time moves, planning while a unit idles and motion isn't reduced, otherwise only after a change), and that pawns swap for their models only once a shader is ready, at most 3 a frame, and again as more load;
 - which clip each unit plays at a display time and how far into it, fades and cuts, an action before a stun on the same tick, reduced motion, planning's `idle`, dying units' fade from halfway through their clip (`sinkDelay`), and which way units face as they step, dash and turn back (section 5, Animation);
 - the 1★ model files: every unit has one, a single mesh with a `team` material on it, and every one is rigged: one skinned mesh with the 16 bones within the budget, `root` at the origin with every bone below it, exactly the seven clips at their lengths keyed on whole frames, loops that end where they start, one bone per vertex, under its size (section 4, Rigs and clips), and its `reach` in its armature's extras (section 4, Star levels);
+- the arena file: within its budget, with its baked occlusion and no normals; the court round the board and bench clear, the band round it low, and nothing under a hex reaching its top (section 3, Arena);
+- the camera: every view starts within the limits, the fog never reaches a unit, and the whole board and bench are in focus from each view's starting point (look.ts);
 - the 2★ gear model files: every unit's is rigged, with the same checks as a 1★ model's rig but under a gear model's size, and has its 1★ model's bones, each hanging from the same one, and clips as long (section 4, Star levels);
 - the event log text;
 - the damage meter's rows: totals and parts per tab, summons in their owner's row, the Eye's Nazgûl in its own, order and ties;
