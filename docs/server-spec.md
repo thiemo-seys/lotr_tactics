@@ -246,7 +246,7 @@ interface SeatView {
 
 The play page (`game-spec.md` section 12) talks to a `Connection`. The connection sends `ClientMessage`s and delivers `ServerMessage`s, either from a WebSocket or from a match running in the page. The page shows only what the messages tell it. `session.ts` is replaced by the connections.
 
-- **Menu**, shown when `play.html` opens without a hash, over the board dimmed and blurred, under the game's title:
+- **Menu**, shown when `play.html` opens without a hash, over the board dimmed and blurred, under the game's title. The board is empty behind it and behind the lobby screen, since leaving a game clears it, so nothing there moves or is drawn. The menu has:
   - a name field, remembered in local storage;
   - Play against bots, the main button;
   - Create lobby;
