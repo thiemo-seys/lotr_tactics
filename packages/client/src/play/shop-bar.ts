@@ -1,4 +1,4 @@
-// The shop bar while planning (docs/game-spec.md section 12): Buy XP, Reroll and Lock, the shop's
+// The shop bar while planning and while the fights play (docs/game-spec.md section 12): Buy XP, Reroll and Lock, the shop's
 // unit cards, the person's items and the One Ring to drag onto units, and Ready. Dropping a dragged
 // unit on the bar sells it.
 
@@ -30,8 +30,8 @@ export class ShopBar {
   private readonly rerollCost = this.reroll.querySelector('.cost') as HTMLElement;
   private readonly lockLabel = this.lock.querySelector('.label') as HTMLElement;
   private readonly readyLabel = this.ready.querySelector('.label') as HTMLElement;
-  /** The state and lobby last drawn: the bar changes only when one of them does. */
-  private drawn: { state: unknown; lobby: unknown } = { state: null, lobby: null };
+  /** The state, lobby and step last drawn: the bar changes only when one of them does. */
+  private drawn: { state: unknown; lobby: unknown; step: string } = { state: null, lobby: null, step: '' };
 
   constructor(
     private readonly flow: PlayFlow,
@@ -55,6 +55,7 @@ export class ShopBar {
         : actionTip('Lock the shop', 'Keep these units in the shop for the next round.', null),
     );
     setTip(this.ready, () => {
+      if (flow.show.kind !== 'planning') return actionTip('Ready', 'End your planning, once it starts.', 'The fights are still on.', 'Space');
       const isReady = flow.state!.ready.includes(flow.you);
       return actionTip('Ready', isReady ? 'You are Ready. Planning ends once everyone is.' : 'End your planning now.', null, 'Space');
     });
@@ -62,8 +63,8 @@ export class ShopBar {
 
   render(p: PlayerView): void {
     const { flow } = this;
-    if (this.drawn.state === flow.state && this.drawn.lobby === flow.lobby) return;
-    this.drawn = { state: flow.state, lobby: flow.lobby };
+    if (this.drawn.state === flow.state && this.drawn.lobby === flow.lobby && this.drawn.step === flow.show.kind) return;
+    this.drawn = { state: flow.state, lobby: flow.lobby, step: flow.show.kind };
     const buys = p.shop.map((_, slot) => flow.check({ type: 'buy', slot }));
     const mine = ownedUnits(p);
     const owned = p.shop.map((id) => mine.flatMap(({ unit }) => (unit.unitId === id ? [unit.star] : [])));
@@ -98,8 +99,10 @@ export class ShopBar {
       return chips.length > 0 ? chips : [el('span', 'tray-empty', 'None yet')];
     });
 
-    const isReady = flow.state!.ready.includes(flow.you);
-    setEnabled(this.ready, !isReady);
+    // Ready ends planning; while the fights play, a Ready means having watched them, which the page sends itself.
+    const planning = flow.show.kind === 'planning';
+    const isReady = planning && flow.state!.ready.includes(flow.you);
+    setEnabled(this.ready, planning && !isReady);
     toggle(this.ready, 'is-ready', isReady);
     const others = flow.planners().filter((seat) => seat !== flow.you && !flow.state!.ready.includes(seat)).length;
     setText(this.readyLabel, isReady ? (others > 0 ? `Waiting for ${others}` : 'Ready') : 'Ready');

@@ -165,9 +165,9 @@ describe('golden hashes', () => {
     });
     expect(games).toMatchInlineSnapshot(`
       [
-        "e62c64d1",
-        "8ded05a3",
-        "b01f082",
+        "74748900",
+        "b33bb29e",
+        "2f131e73",
       ]
     `);
   });

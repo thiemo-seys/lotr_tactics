@@ -5,12 +5,19 @@
 /** A point or direction in the scene, as x, y and z. */
 export type Vec3 = readonly [number, number, number];
 
-/** Where the camera sits and looks, behind a team's back row or over the planning board and bench. */
+/**
+ * Where the camera starts, behind the near side's back row. `board` frames the board alone, for the
+ * fight viewer. `bench` stands higher and further back, so the bench in front fits too, for the
+ * play page in planning and fights alike. The camera stays where the person puts it: a fight with
+ * the person as team B is drawn turned round, so their side is near, rather than the camera moving.
+ */
 export const CAMERA = {
-  A: { position: [0, 12.5, 12.5], target: [0, 0, -0.4] },
-  B: { position: [0, 12.5, -12.5], target: [0, 0, 0.4] },
-  planning: { position: [0, 14, 13], target: [0, 0, 2.4] },
+  board: { position: [0, 12.5, 12.5], target: [0, 0, -0.4] },
+  bench: { position: [0, 14, 13], target: [0, 0, 2.4] },
 } as const satisfies Record<string, { position: Vec3; target: Vec3 }>;
+
+/** How the camera frames the board: the board alone, or the board and the bench. */
+export type Framing = keyof typeof CAMERA;
 
 /**
  * How far the mouse can move the camera, so it always looks down into the arena and never past its

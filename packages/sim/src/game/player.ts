@@ -310,12 +310,14 @@ export class Player implements PlayerView {
     this.gold += interest + base;
   }
 
-  /** Updates the streak and pays win and streak gold after a PvP fight (section 8.2). A draw is a loss. */
-  recordPvp(won: boolean): void {
+  /**
+   * Updates the streak after a PvP fight and returns the win and streak gold it earns, which the
+   * game pays when the fight phase ends (section 8.2). A draw is a loss.
+   */
+  recordPvp(won: boolean): number {
     if (won) this.streak = this.streak > 0 ? this.streak + 1 : 1;
     else this.streak = this.streak < 0 ? this.streak - 1 : -1;
-    if (won) this.gold += INCOME.pvpWin;
-    this.gold += streakGold(Math.abs(this.streak));
+    return (won ? INCOME.pvpWin : 0) + streakGold(Math.abs(this.streak));
   }
 
   reachLevel(level: number): void {

@@ -2819,6 +2819,11 @@ body.play input {
   box-shadow: 0 -4px 16px rgba(0, 0, 0, 0.45);
 }
 
+/* Outside planning in a game, the bar keeps its place, empty, so the board stays put. */
+#shop-bar.resting > * {
+  visibility: hidden;
+}
+
 #shop-bar::before {
   position: absolute;
   top: -1px;

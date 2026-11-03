@@ -47,12 +47,12 @@ describe('the camera', () => {
 });
 
 describe('blurAt', () => {
-  it('leaves the whole board in focus from where each fight view looks', () => {
-    for (const view of [CAMERA.A, CAMERA.B]) expect(blurAt(boardReach(ground(view.target)))).toBe(0);
+  it('leaves the whole board in focus from where each view looks', () => {
+    for (const view of Object.values(CAMERA)) expect(blurAt(boardReach(ground(view.target)))).toBe(0);
   });
 
-  it('leaves the board and the bench in focus while planning', () => {
-    const focus = ground(CAMERA.planning.target);
+  it("leaves the board and the bench in focus from where the play page's view looks", () => {
+    const focus = ground(CAMERA.bench.target);
     expect(blurAt(boardReach(focus))).toBe(0);
     for (let slot = 0; slot < PLAYER.benchSize; slot++) {
       expect(blurAt(pointDistance(focus, benchToWorld(slot)) + BENCH_RADIUS)).toBe(0);

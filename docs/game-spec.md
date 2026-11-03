@@ -57,7 +57,7 @@ These are not in `design.md` yet. They were chosen to remove ambiguity and can b
 | Several eliminations in one round | Higher HP after the damage places higher, then higher HP before it, then a seeded draw |
 | Eliminated players | Their units go back to the pool; their items are lost |
 | Items held | No limit on the items a player holds off their units |
-| Giving items | During planning, to units on the bench or the board |
+| Giving items | During planning, to units on the bench or the board; while the fights play, to units on the bench (9.4) |
 | A merge with more than 3 items | The kept copy's items first, then the others' in the order the copies are found; the rest go back to the player |
 | Gift offers | Rolled from each player's own Gift generator, so one player's rerolls don't change another's offer |
 | A Gift offer left unpicked | When planning ends, the player gets one of the three at random |
@@ -196,11 +196,11 @@ Before each fight, if a player has fewer than `level` units on the board and uni
 Items are in `design.md` section 6 and `data/items.ts`.
 
 - **Getting items:** Council picks and PvE loot add components, and Council picks Rings of Power, to the end of the player's items (sections 9.6, 9.7 and 9.12).
-- **Giving an item** to a unit on the bench or the board, during planning:
+- **Giving an item** to a unit on the bench or the board, during planning, or on the bench while the fights play (9.4):
   1. If the item is a component and the unit holds a lone component, the two combine into the recipe's item, which takes the lone component's place in the unit's items.
   2. Otherwise the unit must hold fewer than 3 items, and the item goes at the end of them. A Ring of Power can't go to a unit that already wears one.
   3. The item leaves the player's items.
-- **Combining items** the player holds, during planning, with the `combine` action: the item at `item` and the one at `with` must be two different components. They combine into the recipe's item, which takes the place of the one at `with`, and the one at `item` leaves the player's items.
+- **Combining items** the player holds, during planning or while the fights play, with the `combine` action: the item at `item` and the one at `with` must be two different components. They combine into the recipe's item, which takes the place of the one at `with`, and the one at `item` leaves the player's items.
 - Combined items and Rings of Power never combine. Off a unit, only two components the player holds combine, as above.
 - Items move with their unit. Only selling the unit takes them off (7.5).
 - A fight's input lists each board unit's items in order (section 9.4).
@@ -218,7 +218,7 @@ At the start of every PvP and PvE round, in this order:
 
 ### 8.2 Fight gold
 
-At the end of each PvP fight:
+At the end of each PvP fight, paid when the fight phase ends (9.4):
 
 - The winner gets 1 gold.
 - Both players update their streak, then each gets the streak bonus for its length (`design.md` section 8): 1 gold at 2–3, 2 at 4, 3 at 5 or more. A win after losses starts a new win streak at 1, and the other way round.
@@ -260,12 +260,16 @@ A Council round sets up the Council instead (9.6).
 
 During planning, living players act in any order: buy, sell, reroll, buy XP, lock, move, give items, combine two of their components (7.7), and pick or reroll a Gift offer. When the driver ends planning (the timer runs out, or every person is ready), unpicked Gift offers are picked at random (9.10) and the fights run.
 
+`advance()` from planning runs the fights and goes straight on to the next round (9.4, step 6), which is how bots, the balance runner and tests play. `fight()` runs them and stops in the **fight phase**, which is how the server plays (`server-spec.md` section 5.1).
+
 ### 9.4 Fights
 
 1. Every living player's board is filled from the bench (7.6). Then a Ring without a bearer equips itself (9.11).
 2. **PvE round:** each living player fights the round's monsters. The player is team A.
 3. **PvP round:** players are paired (9.5). In each pair the first player is team A.
 4. Fights run in pairing order with `simulateCombat`. Each gets a new seed from the game generator, and the current stage as its stage. Units carry their items, and each team its Gifts; a ghost carries copies of its owner's. While a player holds the One Ring, every fight gets its Corruption as `oneRingCorruption`, for the Nine (9.12).
+5. The results apply at once (9.9): damage, streaks, the One Ring, recent opponents. Two parts are worked out now, with every draw in the same order as before, but held back until the fight phase ends: the gold and items the fights earn, win and streak gold (8.2), PvE loot (9.7) and the Seven's gold (9.12); and who is knocked out, in what order and to which places (9.9, step 6), which the round's report gives.
+6. **Fight phase:** the game stays in the round, in phase `fight`, until the driver advances it. Every player still in, including players the fights knocked out, may buy, reroll, buy XP, lock, combine components, and move, sell and give items to units on the bench, between bench slots only. A move, sale or item that touches a board place fails with "Units on the board are fighting."; a Gift pick or reroll, giving the One Ring and Mount Doom fail with "Wait for the fights to finish.". A purchase that completes a merge with a board copy merges at once (7.3). When the driver advances, the held gold and items are paid, then the knocked-out players are placed, losing anything they bought in the meantime to the pool (9.9, steps 6 and 7), then the next round starts (9.2), unless the game is over. A game that the fights end has its fight phase too, and is over once it ends.
 
 ### 9.5 Matchmaking
 
@@ -346,7 +350,7 @@ After all the round's fights:
 3. **Loot** on PvE rounds (9.7), then **the Seven's gold** (9.12), for players above 0 HP.
 4. **The One Ring:** Hobbit fights, then stealing (9.11).
 5. **Recent opponents** (9.5).
-6. **Eliminations:** every player at 0 HP or below is eliminated. Their bench, board and shop go back to the pool, their Rings of Power to the supply (9.12), and their other items are lost. They take the lowest places still free, ordered by higher HP after the damage, then higher HP before it, then a seeded draw. A Ring they held waits for the next Council (9.11).
+6. **Eliminations:** every player at 0 HP or below is eliminated, in the order and places settled now, when the fight phase ends (9.4). Their bench, board and shop go back to the pool, their Rings of Power to the supply (9.12), and their other items are lost. They take the lowest places still free, ordered by higher HP after the damage, then higher HP before it, then a seeded draw. A Ring they held waits for the next Council (9.11).
 7. **Game over:** if one player is left, they place first. If none are left, the places from step 5 cover everyone. Otherwise the next round starts.
 
 ### 9.10 Gifts of Lothlórien
@@ -437,7 +441,8 @@ interface RoundReport {
   round: number;
   fights: FightReport[];
   damage: { seat: number; amount: number }[];
-  eliminated: number[];
+  eliminated: number[];   // best place first
+  places: number[];       // the place each of `eliminated` takes, in the same order
 }
 
 interface FightReport {
@@ -486,21 +491,21 @@ function createGame(config: GameConfig): Game;   // throws on an invalid config
 
 ## 12. Client: playing against bots
 
-The play page, `play.html` in `packages/client`, next to the fight viewer (`viewer-spec.md`), which links to it. Offline, the person plays seat 0 and bots play the rest. The page also plays online games; `server-spec.md` section 10 covers the menu, lobbies and how the page follows the server.
+The play page, `play.html` in `packages/client`, next to the fight viewer (`viewer-spec.md`). Each links to the other, the play page from its top bar while not in a game. Offline, the person plays seat 0 and bots play the rest. The page also plays online games; `server-spec.md` section 10 covers the menu, lobbies and how the page follows the server.
 
 - **Running the game:** the match runner from `packages/server` (`server-spec.md` section 5), in the page for offline games. Bots pick in a Council as soon as it's their group's turn, and plan at the start of planning, in a rotating order. Once the person is out, the rest of the game plays out at once.
-- **Planning view:** the person's half of the board and their bench, a row of 9 tiles in front of it, in 3D. An HTML overlay in the client's design system (`viewer-spec.md` section 2), with icons throughout:
+- **Planning view:** the person's half of the board and their bench, a row of 9 tiles in front of it, in 3D, from the same camera as fights. An HTML overlay in the client's design system (`viewer-spec.md` section 2), with icons throughout:
   - **HUD:** at the top, HP; the board count, which draws attention while the board has room and the bench has a unit; the streak from `PlayerView.streak`, flames for wins and frost for losses; and the One Ring's status for its holder. In the middle of the top bar, the stage tracker: the stage, then each round of the stage as an icon for its type, in the type's colour, Council gold, PvP red and diamond-shaped, PvE green and round. Rounds played are dimmed and marked with the person's result once its results have been shown, a tick for a win and a cross for a loss; the round on screen is larger and glows; rounds to come are outlined. Next to them, the round's number and type. Each round names its type and result when hovered. At the bottom, just above the shop bar and staying there during fights: the level with its XP towards the next one, gold, and a timer that drains as the step's time runs out and turns red in its last 5 seconds.
-  - **Shop bar:** Buy XP, Reroll and Lock as icon buttons with their keys and costs; the shop's unit cards, framed and coloured by cost, each with its origin's icon as a portrait, its name, its traits' icons and names, its cost, one pip per copy the person owns coloured by star level, a gold border when the person has a copy on the bench or the board, glowing when buying it would make a 2★ from two 1★ copies, and, when it can't be bought, the reason from `checkAction`; the person's items; and Ready.
+  - **Shop bar:** Buy XP, Reroll and Lock as icon buttons with their keys and costs; the shop's unit cards, framed and coloured by cost, each with its origin's icon as a portrait, its name, its traits' icons and names, its cost, one pip per copy the person owns coloured by star level, a gold border when the person has a copy on the bench or the board, glowing when buying it would make a 2★ from two 1★ copies, and, when it can't be bought, the reason from `checkAction`; the person's items; and Ready. The bar works in planning and while the person's fight and its results are on screen, until the next step (9.4); Ready only in planning. In a Council the bar keeps its place, empty, so the board's view keeps its size.
   - **Trait tracker:** on the left, every trait on the board on screen as fights count them, the person's or the one they are looking at (below), from the sim's `teamTraitCounts` and `traitLevelsOf` (`sim-spec.md` section 12.2), so crest Gifts and the Nine's Nazgûl count. Each trait shows its icon, name, how many count, and its breakpoints with the one reached marked. Active traits come first, coloured by level: bronze, then silver, gold at the top breakpoint, and a look of their own for the one-unit traits. The rest are greyed. Hovering a trait says what it does at each breakpoint, from the trait data, and shows every unit with the trait, by cost then name, then for the Nazgûl the player's other units wearing a Ring of the Nine, marked with the ring, framed by cost: lit when a copy is on that board, dimmer when copies are only on the bench, greyed when none are owned, with a pip per copy owned coloured by star level.
   - **Tooltips:** items, the One Ring, Rings of Power, Gifts, traits, unit cards and buttons show a card when hovered or focused: name, recipe, stats and effect from the data, or what a button does and why it can't be used now. The level and Buy XP show the shop odds by cost, as the shop rolls them with any Mirror of Galadriel, for the level now and the next level when its odds differ, marking which go up or down. A unit card in the shop or the Council gives the unit's 1★ stats and what its ability does at 1★.
   - **Units:** hovering one of the units on the board or bench on screen, the person's or another player's, shows its card: its star level, traits, stats at its star level with its items, before traits, its ability with its mana and what it does at that star level, its items and the One Ring if it bears it. In a fight, the card shows the unit as it is now (`viewer-spec.md` section 4).
-- **Drag and drop** moves units between the bench and the board, swapping with a unit already there; dropping a unit on the shop bar sells it. Dragging one of the person's items onto a unit gives it to that unit, and dragging a component onto another of their components combines the two (7.7).
+- **Drag and drop** moves units between the bench and the board, swapping with a unit already there; dropping a unit on the shop bar sells it. Dragging one of the person's items onto a unit gives it to that unit, and dragging a component onto another of their components combines the two (7.7). While the fights play, only units on the bench can be picked up and given items, and a drop on the board is marked red with the rules' reason. A drag ends when planning or the fight step does.
   - While a unit is dragged, a marker on the board or bench shows where it would go, in gold if `checkAction` allows the move and in red, with its reason by the pointer, if not. Over the shop bar, the bar says the unit will be sold.
   - While an item or the Ring is dragged, the unit it would go to is marked, and the dragged chip says whom it goes to or why it can't. Over another of the person's items, that item is marked, in gold if the two combine and in red if not, and the chip names the item they make or why they can't.
   - The pointer is a hand over the person's units, and grabs while dragging.
 - **Items** show on each unit's label as chips, in planning and in fights, and each item names its effect when hovered. A component shows its icon on its colour, a combined item both of its components' icons on their colours.
-- **Keys:** D rerolls, F buys XP, Space is Ready, and Escape goes back to the person's own board from another player's.
+- **Keys:** D rerolls and F buys XP, in planning and while the fights play; Space is Ready, and Escape goes back to the person's own board from another player's.
 - **Players list:** every player in standings order, with an HP bar coloured by how much HP is left, their level, their streak, whether they are a bot or away and whether they hold the One Ring. The person's row is marked, and players who are out are dimmed with their place.
 - **Other players' boards:** in a Council and in planning, clicking a player still in the game in the players list, or pressing Enter on their row, shows their board and bench in place of the person's, from `MatchView.players` (`server-spec.md` section 6), so it follows their changes as they make them.
   - Their units stand where they placed them, in their own perspective, in the far team's red, with their items and, on the One Ring's bearer, the Ring.
@@ -513,8 +518,8 @@ The play page, `play.html` in `packages/client`, next to the fight viewer (`view
 - **Rings of Power** show like other items, as round chips in the ring's gold with its stone, each naming its effect when hovered.
 - **The One Ring:** the Ring's Council option shows the Ring instead of a component. The holder sees the Ring's Corruption and tier in the HUD, in the tier's colours, and a Mount Doom button when they can destroy it. The Ring is a chip among the person's items, which they drag onto a unit to make it the bearer. The bearer's label shows the Ring and its Corruption, in planning and in fights, and the players list marks the holder.
 - **Gifts:** during planning with an offer, a panel at the top shows the three Gifts as cards with their tier's icon, name and effect, and a Reroll button until it is used. The person's Gifts are listed under the players list with their tier's icon, each naming its effect when hovered.
-- **Fights:** the person's fight plays back with the viewer's playback, at 1×, 2× or 4×, and can be skipped; the others run headless. When the person is team B, the camera starts on their side. The person's units are always blue. A banner shows Victory, Defeat or Draw when it ends.
-  - While it plays, the game has already moved on (`server-spec.md` section 5.1), but the HUD, the players list and the person's Gifts still show the round as it was planned, if the page saw its planning, so they don't give the outcome away. The board count and the trait tracker count the person's side in the fight. The outcome shows from the results on, in the HUD, the stage tracker and the players list.
+- **Fights:** the person's fight plays back with the viewer's playback, at 1×, 2× or 4×, and can be skipped; the others run headless. The camera stays where it was in planning, so the board doesn't move. When the person is team B, the fight is drawn turned half round, so their side is near, on the pale half, rather than the camera moving. The person's bench stays in front of the board with their units on it, and the shop bar stays open (9.4), with the top bar on its single row. The person's units are always blue. A banner shows Victory, Defeat or Draw when it ends.
+  - While it plays, the game's view already has the fights' outcome in it: damage and streaks (`server-spec.md` section 5.1); players they knock out are placed only when the fight step ends. The HUD and the players list show HP, streaks and places as they were planned, if the page saw the planning, so they don't give the outcome away; gold, level, XP, the shop, the bench and items are live, since the person can shop. The board count and the trait tracker count the person's side in the fight. The outcome shows from the results on, in the HUD, the stage tracker and the players list.
 - **Damage meter:** while the person's fight plays and through its results, a Damage button opens a meter of what each of their units has dealt, taken, or healed and shielded (`viewer-spec.md` section 8). It shows only the person's own team.
 - **Results:** for a few seconds after each fight, the person's outcome and the damage they took, and a table of everyone who took damage or was knocked out, with the places of those knocked out.
 - **End:** the person's place, the final standings with medals for the top three, and New game and Back to menu.

@@ -69,10 +69,12 @@ export class Match {
     return matchView(this.game.state, seat, { kind, ms }, this.readySeats);
   }
 
-  /** Applies a person's action. Actions only count in a Council turn or in planning. */
+  /**
+   * Applies a person's action: in a Council turn, in planning, or while the fights play, when the
+   * game's rules allow shopping and the bench but not the board.
+   */
   act(seat: number, action: Action): ActionResult {
     if (this.step.kind === 'over') return fail('The game is over.');
-    if (this.step.kind === 'fight') return fail('Wait for the fights to finish.');
     const before = this.game.state.turn;
     const result = this.game.act(seat, action);
     if (!result.ok) return result;
@@ -168,7 +170,8 @@ export class Match {
         this.enter();
         return;
       case 'planning': {
-        const report = this.game.advance()!;
+        // The game stays in the round while its fights play, so people can shop.
+        const report = this.game.fight();
         const record = roundRecord(report);
         const longest = Math.max(0, ...report.fights.map((f) => f.result.finalTick)) / TICKS_PER_SECOND;
         this.readySeats.clear();
@@ -178,6 +181,8 @@ export class Match {
         return;
       }
       case 'fight':
+        // The fights' gold and loot are paid, and the next round starts, unless they ended the game.
+        if (this.game.state.phase === 'fight') this.game.advance();
         this.enter();
         return;
       case 'over':

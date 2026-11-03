@@ -49,7 +49,8 @@ const skipButton = element<HTMLButtonElement>('skip');
 const meterButton = element('toggle-meter');
 const meter = new MeterPanel(element('meter'), meterButton, false);
 
-const scene = new FightScene(view);
+// The board and bench framing in every step, so the board doesn't move between planning and fights.
+const scene = new FightScene(view, 'bench');
 let connection: Connection | null = null;
 let offline = false;
 const flow = new PlayFlow({
@@ -133,7 +134,7 @@ window.addEventListener('keydown', (event) => {
     flow.viewBoard(null);
     return;
   }
-  if (flow.show.kind !== 'planning') return;
+  if (!flow.canShop) return;
   const press = (id: string, action: () => void) => {
     // The key does what its button does, and only when the button can.
     if (isEnabled(element(id))) action();
@@ -213,7 +214,11 @@ function render(now: number): void {
   show(menu, step.kind === 'menu');
   show(lobbyPanel, step.kind === 'lobby');
   show(backdrop, step.kind === 'menu' || step.kind === 'lobby');
-  show(shop.bar, planning);
+  // The shop works in planning and while the fights play. In a game the bar keeps its place at
+  // other times, empty, so the board's view keeps its size.
+  const shopping = flow.canShop;
+  show(shop.bar, inGame);
+  toggle(shop.bar, 'resting', !shopping);
   show(council, step.kind === 'council');
   show(giftPanel, inGame && planning && flow.state!.me.giftOffer !== null && viewed === null);
   show(viewingBar, viewed !== null);
@@ -221,6 +226,8 @@ function render(now: number): void {
   show(speedButton, step.kind === 'fight');
   show(skipButton, step.kind === 'fight');
   show(element('leave-game'), inGame);
+  // Out of a game only, so the top bar keeps one row and its height in a fight.
+  show(element('to-viewer'), !inGame);
   show(playersPanel, inGame);
   show(traitsPanel, inGame && (planning || step.kind === 'council' || step.kind === 'fight'));
   toggle(document.body, 'in-game', inGame);
@@ -228,7 +235,7 @@ function render(now: number): void {
   const meterFight = inGame ? flow.meterFight() : null;
   show(meterButton, meterFight !== null);
   meter.render(meterFight);
-  if (!planning || viewed !== null) drag.cancel();
+  if (!shopping || viewed !== null) drag.cancel();
   let bannerShown = false;
 
   if (step.kind === 'menu') renderMenu(flow);
@@ -249,9 +256,11 @@ function render(now: number): void {
     else scene.showPlanning(viewed, false, flow.ringOf(viewed.seat), 'B');
   };
   if (viewed !== null) renderViewingBar(viewingBar, flow);
+  if (shopping) shop.render(p);
+  // The person's bench stays on screen while the fights play, and can be used.
+  if (scene.showsFight) scene.showBench(p.bench, false, flow.planningRing());
   if (planning) {
     showBoard();
-    shop.render(p);
     renderGiftOffer(flow);
   } else if (step.kind === 'council') {
     showBoard();

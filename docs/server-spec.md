@@ -116,7 +116,7 @@ The match is always in one step:
   - **Planning:** bots plan, in an order that rotates by one seat each round, as in the offline game.
 - **Early ends:** a step ends early only if at least one connected person still in the game counts towards it. With nobody connected, steps run on their timers.
 - **Ready** applies to the current step and resets when the next one starts. In planning it means "end planning". In a fight step it means "I've finished watching". It can't be taken back.
-- **During a fight step** the game has already moved on to the next round, so it refuses every action until the next step starts. This includes paying income and rolling shops.
+- **During a fight step** the game is in its fight phase (`game-spec.md` section 9.4): people can shop and use their bench, and the game's rules refuse anything that touches the board. Planning ends with `fight()`, and the fight step with `advance()`, which pays the fights' gold and loot and starts the next round: its income, and new shops.
 - **Everyone out:** once every seat with a person is out, the bots play the rest of the game at once, and the match goes to `over`.
 
 ### 5.2 Seats
@@ -261,7 +261,7 @@ The play page (`game-spec.md` section 12) talks to a `Connection`. The connectio
   - Leave.
 - **The game** works as it does offline, but it follows the server's steps and timers:
   - Ready sends `ready` and shows how many others are still planning.
-  - After a fight and its results, the client sends `ready` and waits for the next step. Skipping the fight brings the results forward.
+  - After a fight and its results, the client sends `ready` and waits for the next step. Skipping the fight brings the results forward. The person can shop until the next step starts.
   - If the next step starts before the client has finished showing the fight, it moves on to the new step at once.
   - Names come from the lobby. The players list shows bots, and people who are disconnected.
 - **Offline:** a `LocalConnection` creates a lobby in the page, with one person called You, and starts it at once. Its host uses the browser's clock. With nobody else in the game, Ready and skipping end steps at once, so it plays like the old offline game.

@@ -28,7 +28,7 @@ import { ModelSwaps, Redraws } from './drawing.js';
 import type { PlanningRing } from './flow.js';
 import { copyModel, loadModels, modelShader, modelShaders, modelsLoaded, shaderSample, type ModelCopy, type ModelShader } from './models.js';
 import { EFFECT_TICKS, type CastRing, type FloatingText, type MutablePoint, type Playback, type Projectile } from './playback.js';
-import { ATMOSPHERE, CAMERA, CAMERA_LIMITS, LIGHTS } from './look.js';
+import { ATMOSPHERE, CAMERA, CAMERA_LIMITS, LIGHTS, type Framing } from './look.js';
 import { Post } from './post.js';
 import { stoneTiles } from './tiles.js';
 import { LABEL, LARGE_PAWN_SCALE } from './stars.js';
@@ -217,8 +217,13 @@ export class FightScene {
   private readonly scene = new THREE.Scene();
   private readonly camera = new THREE.PerspectiveCamera(45, 1, 0.1, 100);
   private readonly controls: OrbitControls;
-  /** Everything that belongs to the current fight. */
+  /**
+   * Everything that belongs to the current fight, or the planning board's units. Turned half round
+   * for a fight with team B near.
+   */
   private fightLayer = new THREE.Group();
+  /** The bench's units, in planning and during fights: never turned. */
+  private benchLayer = new THREE.Group();
   private playback: Playback | null = null;
   private units: UnitView[] = [];
   private readonly projectiles = new Map<Projectile, ProjectileView>();
@@ -239,20 +244,20 @@ export class FightScene {
   private readonly spareRings: Record<Team, THREE.MeshBasicMaterial[]> = { A: [], B: [] };
   /** The team drawn as the near side. */
   private side: Team = 'A';
-  /** The board's hexes, tinted for the near side by `tintBoard`. */
+  /** The board's hexes, the near half in the near stone and the far half in the far one, by `tintBoard`. */
   private readonly board = new THREE.InstancedMesh(
     geometry.hex,
     new THREE.MeshStandardMaterial({ flatShading: true, transparent: true, opacity: BOARD_OPACITY }),
     BOARD_HEXES.length,
   );
-  /** The side the board is tinted for. */
-  private boardSide: Team | null = null;
-  /** Bench tiles, shown while planning. */
+  /** Bench tiles, shown while planning, and during fights on the play page. */
   private readonly bench = new THREE.Group();
   /** The blur, grade and vignette laid over each frame. */
   private readonly post = new Post();
-  /** Planning units by owned unit id. */
+  /** The person's own units by owned unit id: the planning board's and bench's, or the bench's during a fight. */
   private planning = new Map<number, UnitView>();
+  /** The bench and One Ring the bench was last built for during a fight. */
+  private benchKey = '';
   /** Each unit's view by its group, to find the unit a ray hits from the mesh it hits (`viewAt`). */
   private readonly viewOf = new WeakMap<THREE.Object3D, UnitView>();
   private planningKey = '';
@@ -310,7 +315,10 @@ export class FightScene {
   private readonly ground = new THREE.Plane(new THREE.Vector3(0, 1, 0), 0);
   private readonly raycaster = new THREE.Raycaster();
 
-  constructor(private readonly container: HTMLElement) {
+  constructor(
+    private readonly container: HTMLElement,
+    private readonly framing: Framing = 'board',
+  ) {
     // Units are pawns until their models arrive.
     loadModels();
     this.renderer.setPixelRatio(window.devicePixelRatio);
@@ -330,8 +338,13 @@ export class FightScene {
     // A WebGL context restored after it was lost starts with a cleared canvas, as a resize does, so
     // the frame is drawn again, even where nothing moves: a paused or finished fight, or the results.
     this.renderer.domElement.addEventListener('webglcontextrestored', () => this.redraws.change());
-    // Behind team A's back row, looking across the board.
-    this.aim('A');
+    // Behind the near side's back row, looking across the board. A double click on the board, off
+    // the units, puts the camera back there.
+    this.aim();
+    this.controls.saveState();
+    this.labels.domElement.addEventListener('dblclick', (event) => {
+      if (this.unitAt(event.clientX, event.clientY, event.target) === null) this.resetCamera();
+    });
 
     this.scene.background = new THREE.Color(ATMOSPHERE.colour);
     this.scene.fog = new THREE.Fog(ATMOSPHERE.colour, ATMOSPHERE.fogNear, ATMOSPHERE.fogFar);
@@ -347,7 +360,7 @@ export class FightScene {
     this.buildBoard();
     this.buildBench();
     this.buildMarker();
-    this.scene.add(this.fightLayer);
+    this.scene.add(this.fightLayer, this.benchLayer);
     this.resize();
     // Panels such as the shop bar change the container's size without resizing the window.
     new ResizeObserver(() => this.resize()).observe(container);
@@ -368,13 +381,38 @@ export class FightScene {
     return this.playback !== null;
   }
 
-  /** Shows a new fight, replacing what was shown. `side` is drawn as the near team, in blue, on the pale half. */
+  /** Puts the camera back where it starts. */
+  resetCamera(): void {
+    this.controls.reset();
+    this.redraws.change();
+  }
+
+  /**
+   * Shows a new fight, replacing what was shown. `side` is drawn as the near team, in blue, on the
+   * near, pale half: a fight with team B near is turned half round, so the camera needn't move.
+   */
   show(playback: Playback, side: Team = 'A'): void {
     this.clear();
     this.playback = playback;
     this.side = side;
-    this.tintBoard(side);
-    this.aim(side);
+    this.fightLayer.rotation.y = side === 'B' ? Math.PI : 0;
+  }
+
+  /**
+   * During a fight, shows the person's bench, which they can still use while it plays; `ring`
+   * marks the One Ring's bearer among them.
+   */
+  showBench(bench: readonly (OwnedUnit | null)[], force = false, ring: PlanningRing | null = null): void {
+    if (this.playback === null) return;
+    const key = JSON.stringify([bench, ring]);
+    if (!force && key === this.benchKey) return;
+    this.benchKey = key;
+    this.clearBench();
+    this.bench.visible = true;
+    bench.forEach((unit, slot) => {
+      if (unit !== null) this.addOwn(unit, benchToWorld(slot), ring, 'A', this.benchLayer);
+    });
+    this.redraws.change();
   }
 
   /**
@@ -401,26 +439,25 @@ export class FightScene {
     this.planningFor = { player, bearer, corruption, look };
     const key = JSON.stringify([player.board, player.bench, ring, look]);
     if (!force && this.playback === null && key === this.planningKey) return;
-    const entering = this.playback !== null || this.planningKey === '';
     this.clear();
     this.planningKey = key;
     this.side = 'A';
-    this.tintBoard('A');
     this.bench.visible = true;
-    if (entering) this.aim('planning');
-    const add = (unit: OwnedUnit, at: Point) => {
-      const corruption = ring !== null && ring.bearer === unit.id ? ring.corruption : null;
-      const view = this.createView(unit.id, unit.unitId, unit.star, 'A', look, false, unit.items, corruption);
-      view.group.position.set(at.x, 0, at.z);
-      this.fightLayer.add(view.group);
-      this.planning.set(unit.id, view);
-    };
     player.board.forEach((unit, i) => {
-      if (unit !== null) add(unit, hexToWorld(fromPlacement('A', boardPlace(i))));
+      if (unit !== null) this.addOwn(unit, hexToWorld(fromPlacement('A', boardPlace(i))), ring, look, this.fightLayer);
     });
     player.bench.forEach((unit, slot) => {
-      if (unit !== null) add(unit, benchToWorld(slot));
+      if (unit !== null) this.addOwn(unit, benchToWorld(slot), ring, look, this.benchLayer);
     });
+  }
+
+  /** Adds a view of one of a player's own units at a point, to a layer. */
+  private addOwn(unit: OwnedUnit, at: Point, ring: PlanningRing | null, look: Team, layer: THREE.Group): void {
+    const corruption = ring !== null && ring.bearer === unit.id ? ring.corruption : null;
+    const view = this.createView(unit.id, unit.unitId, unit.star, 'A', look, false, unit.items, corruption);
+    view.group.position.set(at.x, 0, at.z);
+    layer.add(view.group);
+    this.planning.set(unit.id, view);
   }
 
   /**
@@ -433,8 +470,6 @@ export class FightScene {
     // The next planning view is built afresh, even from the same view of the player.
     this.planningFor = null;
     this.side = 'A';
-    this.tintBoard('A');
-    this.aim('A');
   }
 
   /** Moves a planning unit to a point, lifted, while it is dragged. */
@@ -488,22 +523,27 @@ export class FightScene {
     return hit === null ? null : { x: hit.x, z: hit.z };
   }
 
-  /** The id of the planning unit whose model, base or pawn is under a screen position, if any. */
+  /** The id of the person's own unit (on the planning board, or on the bench) whose model, base or pawn is under a screen position, if any. */
   planningUnitAt(clientX: number, clientY: number): number | null {
-    return this.playback === null ? this.viewAt(clientX, clientY, (view) => view.key) : null;
+    return this.viewAt(clientX, clientY, (view) => (this.isOwn(view) ? view.key : null));
   }
 
-  /** The units on screen: the fight's, or the planning board's and bench's. */
-  private shownViews(): Iterable<UnitView> {
-    return this.playback !== null ? this.units : this.planning.values();
+  /** The units on screen: the fight's, and the planning board's and bench's or the bench's during a fight. */
+  private shownViews(): UnitView[] {
+    return [...this.units, ...this.planning.values()];
   }
 
-  /** A unit the pointer is on: a planning unit, or one in the fight while it lives. */
+  /** Whether a view is of one of the person's own units rather than a fighter. */
+  private isOwn(view: UnitView): boolean {
+    return this.planning.get(view.key) === view;
+  }
+
+  /** A unit the pointer is on: one of the player's own units, or one in the fight while it lives. */
   private readonly pickOf = (view: UnitView): UnitPick | null => {
     if (!view.group.visible) return null;
     const label = view.overlay.element;
-    if (this.playback === null) return { kind: 'planning', id: view.key, label };
-    return this.playback.combat.state.units[view.key]?.alive === true ? { kind: 'fight', id: view.key, label } : null;
+    if (this.isOwn(view)) return { kind: 'planning', id: view.key, label };
+    return this.playback?.combat.state.units[view.key]?.alive === true ? { kind: 'fight', id: view.key, label } : null;
   };
 
   /**
@@ -533,25 +573,45 @@ export class FightScene {
     this.raycaster.setFromCamera(ndc, this.camera);
   }
 
-  private aim(view: keyof typeof CAMERA): void {
-    const { position, target } = CAMERA[view];
+  /** Puts the camera behind the near side's back row, as the framing places it. */
+  private aim(): void {
+    const { position, target } = CAMERA[this.framing];
     this.camera.position.set(position[0], position[1], position[2]);
     this.controls.target.set(target[0], target[1], target[2]);
     this.controls.update();
   }
 
-  /** Removes the fight or planning units. */
-  private clear(): void {
+  /** A new, empty layer in place of one, with its labels taken out of the page. */
+  private replaceLayer(layer: THREE.Group): THREE.Group {
     // Removing the layer doesn't take its labels out of the page, so remove them here.
-    this.fightLayer.traverse((object) => {
+    layer.traverse((object) => {
       if (object instanceof CSS2DObject) object.element.remove();
     });
-    this.scene.remove(this.fightLayer);
+    this.scene.remove(layer);
+    const fresh = new THREE.Group();
+    this.scene.add(fresh);
+    return fresh;
+  }
+
+  /** Removes the bench's units. */
+  private clearBench(): void {
+    for (const [id, view] of this.planning) {
+      if (view.group.parent !== this.benchLayer) continue;
+      this.retired.push(view.body);
+      this.planning.delete(id);
+      if (this.marked === id) this.marked = null;
+    }
+    this.benchLayer = this.replaceLayer(this.benchLayer);
+  }
+
+  /** Removes the fight or planning units, and the bench's. */
+  private clear(): void {
     for (const view of this.units) this.retired.push(view.body);
     for (const view of this.planning.values()) this.retired.push(view.body);
     for (const ring of this.rings.values()) this.spareRings[ring.look].push(ring.material);
-    this.fightLayer = new THREE.Group();
-    this.scene.add(this.fightLayer);
+    this.fightLayer = this.replaceLayer(this.fightLayer);
+    this.benchLayer = this.replaceLayer(this.benchLayer);
+    this.benchKey = '';
     this.labelSizes.disconnect();
     this.playback = null;
     this.units = [];
@@ -589,9 +649,9 @@ export class FightScene {
       this.updateProjectiles(this.playback);
       this.updateTexts(this.playback);
       this.updateRings(this.playback);
-    } else {
-      this.updatePlanning();
     }
+    // The planning board and bench, or the bench during a fight.
+    this.updatePlanning();
     this.controls.update();
     this.post.render(this.renderer, this.scene, this.camera, this.controls.target);
     // The renderer has just brought every matrix up to date, so the labels needn't do it again.
@@ -609,25 +669,23 @@ export class FightScene {
       const { x, z } = hexToWorld(hex);
       this.board.setMatrixAt(i, matrix.makeTranslation(x, 0, z));
     });
-    this.tintBoard('A');
+    this.tintBoard();
     // Translucent, it is drawn first of what is, before faded units and the drop marker, which stand on it.
     this.board.renderOrder = -1;
     this.scene.add(this.board);
   }
 
   /**
-   * Colours the half of the board nearest the camera, `side`'s, in the near stone and the other
-   * half in the far one, as units are coloured, so a person playing team B sees their blue units
-   * on the pale half.
+   * Colours the half of the board nearest the camera in the near stone and the other half in the
+   * far one, as units are coloured. The near side is always drawn there, team B's turned round, so
+   * a person playing team B sees their blue units on the pale half.
    */
-  private tintBoard(side: Team): void {
-    if (side === this.boardSide) return;
-    this.boardSide = side;
+  private tintBoard(): void {
     const colour = new THREE.Color();
     BOARD_HEXES.forEach((hex, i) => {
       const { col, row } = toOffset(hex);
       const half: Team = row < TEAM_ROWS ? 'A' : 'B';
-      this.board.setColorAt(i, colour.setHex(BOARD_COLOURS[half === side ? 'A' : 'B'][col % 2]!));
+      this.board.setColorAt(i, colour.setHex(BOARD_COLOURS[half][col % 2]!));
     });
     this.board.instanceColor!.needsUpdate = true;
   }
@@ -724,8 +782,7 @@ export class FightScene {
     // Pawns are tried again when more models have loaded or another shader is ready.
     const progress = modelsLoaded() + this.shadersReady;
     if (!this.swaps.due(this.shadersReady > 0, progress)) return;
-    const views = this.playback === null ? this.planning.values() : this.units;
-    if (this.swaps.swapIn(progress, views, this.swapInModel) > 0) this.redraws.change();
+    if (this.swaps.swapIn(progress, this.shownViews(), this.swapInModel) > 0) this.redraws.change();
   }
 
   /**
