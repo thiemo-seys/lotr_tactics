@@ -29,9 +29,20 @@ describe('the camera', () => {
     }
   });
 
-  it('never sees the fog on a unit: it starts past the far side of the board from as far as the camera can go', () => {
-    const furthest = CAMERA_LIMITS.maxDistance + CAMERA_LIMITS.maxPan + boardReach({ x: 0, z: 0 });
-    expect(ATMOSPHERE.fogNear).toBeGreaterThan(furthest);
+  it('never sees the fog on a unit: it starts past the furthest unit, on the board or the bench, from anywhere the camera can go', () => {
+    // How far a unit can stand from the board's centre, to the corner of its hex or bench tile.
+    const centre = { x: 0, z: 0 };
+    let reach = boardReach(centre);
+    for (let slot = 0; slot < PLAYER.benchSize; slot++) reach = Math.max(reach, pointDistance(centre, benchToWorld(slot)) + BENCH_RADIUS);
+    // The camera sits `distance` from what it looks at, tipped `polar` from straight down, and that
+    // point is panned at most maxPan from the centre. Along the ground the camera is then at most
+    // distance·sin(polar) + maxPan + reach from a unit, and above it at most distance·cos(polar),
+    // which together are furthest at the furthest distance and the widest angle. The fog goes by
+    // depth along the camera's view, which is never more than this.
+    const { maxDistance, maxPolar, maxPan } = CAMERA_LIMITS;
+    const across = maxDistance * Math.sin(maxPolar) + maxPan + reach;
+    const up = maxDistance * Math.cos(maxPolar);
+    expect(ATMOSPHERE.fogNear).toBeGreaterThan(Math.hypot(across, up));
   });
 });
 
