@@ -583,7 +583,7 @@ PvE rounds drop item components and gold.
 
 - Angled camera similar to TFT.
 - Hexes drawn as instanced meshes.
-- Placeholder chess-piece units until low-poly models exist.
+- Units drawn as low-poly models, one for each star level (section 7, Stats), rigged and animated from the fight's events, the 3★ ones static for now ([`viewer-spec.md`](viewer-spec.md) sections 4 and 5); placeholder pawns for monsters and summons until they have models.
 
 ### Bots
 
