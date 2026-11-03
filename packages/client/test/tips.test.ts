@@ -49,7 +49,7 @@ describe('tooltips', () => {
     expect(traitTip('guardian').levels!.every((l) => !l.active)).toBe(true);
     expect(traitTip('hobbit', { count: 1, level: null, tone: null }).tone).toBeUndefined();
     expect(traitTip('guardian').units).toBeUndefined();
-    const units = [{ id: 'sam', name: 'Sam', cost: 1, stars: [1], onBoard: true }] as const;
+    const units = [{ id: 'sam', name: 'Sam', cost: 1, stars: [1], onBoard: true, nine: false }] as const;
     expect(traitTip('hobbit', { count: 1, level: null, tone: null }, null, units).units).toEqual(units);
   });
 

@@ -4,6 +4,7 @@
 // tested.
 
 import {
+  ITEMS,
   TRAITS,
   UNITS,
   teamTraitCounts,
@@ -107,7 +108,7 @@ export function traitRows(board: readonly (OwnedUnit | null)[], gifts: readonly 
   return rows.sort((a, b) => rank(b) - rank(a) || b.count - a.count || a.name.localeCompare(b.name));
 }
 
-/** A roster unit with a trait, and the copies of it a player owns. */
+/** A unit with a trait, and the copies of it a player owns. */
 export interface TraitUnit {
   readonly id: UnitId;
   readonly name: string;
@@ -116,19 +117,29 @@ export interface TraitUnit {
   readonly stars: readonly Star[];
   /** Whether a copy is on the board, where it counts towards the trait. */
   readonly onBoard: boolean;
+  /** Whether it has the trait only through a Ring of the Nine its copies wear: then `stars` are the wearers'. */
+  readonly nine: boolean;
 }
 
-/** Every roster unit with a trait, by cost then name, with the copies `owner` has on the board and the bench. */
-export function traitUnits(
-  trait: TraitId,
-  owner: { readonly board: readonly (OwnedUnit | null)[]; readonly bench: readonly (OwnedUnit | null)[] },
-): TraitUnit[] {
-  const ids = (Object.keys(UNITS) as UnitId[]).filter((id) => UNITS[id].origin === trait || (UNITS[id].classes as readonly TraitId[]).includes(trait));
-  return ids
-    .map((id): TraitUnit => {
-      const copies = (units: readonly (OwnedUnit | null)[]) => units.flatMap((u) => (u !== null && u.unitId === id ? [u.star] : []));
-      const onBoard = copies(owner.board);
-      return { id, name: UNITS[id].name, cost: UNITS[id].cost, stars: [...onBoard, ...copies(owner.bench)].sort((a, b) => b - a), onBoard: onBoard.length > 0 };
-    })
-    .sort((a, b) => a.cost - b.cost || a.name.localeCompare(b.name));
+type Units = readonly (OwnedUnit | null)[];
+
+/** Whether a unit wears a Ring of the Nine, which makes it a Nazgûl (design.md, Ring of the Nine). */
+const wearsNine = (unit: OwnedUnit) => unit.items.some((id) => ITEMS[id].effect?.kind === 'nazgul');
+
+/**
+ * Every roster unit with a trait, by cost then name, with the copies `owner` has on the board and
+ * the bench; for the Nazgûl, then the other units wearing a Ring of the Nine, which count too.
+ */
+export function traitUnits(trait: TraitId, owner: { readonly board: Units; readonly bench: Units }): TraitUnit[] {
+  const has = (id: UnitId) => UNITS[id].origin === trait || (UNITS[id].classes as readonly TraitId[]).includes(trait);
+  const tile = (id: UnitId, nine: boolean): TraitUnit => {
+    const copies = (units: Units) => units.flatMap((u) => (u !== null && u.unitId === id && (!nine || wearsNine(u)) ? [u.star] : []));
+    const onBoard = copies(owner.board);
+    return { id, name: UNITS[id].name, cost: UNITS[id].cost, stars: [...onBoard, ...copies(owner.bench)].sort((a, b) => b - a), onBoard: onBoard.length > 0, nine };
+  };
+  const byCost = (a: TraitUnit, b: TraitUnit) => a.cost - b.cost || a.name.localeCompare(b.name);
+  const roster = (Object.keys(UNITS) as UnitId[]).filter(has).map((id) => tile(id, false));
+  if (trait !== 'nazgul') return roster.sort(byCost);
+  const wearers = new Set([...owner.board, ...owner.bench].flatMap((u) => (u !== null && !has(u.unitId) && wearsNine(u) ? [u.unitId] : [])));
+  return [...roster.sort(byCost), ...[...wearers].map((id) => tile(id, true)).sort(byCost)];
 }

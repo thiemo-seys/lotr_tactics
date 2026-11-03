@@ -64,6 +64,7 @@ describe("a trait's units", () => {
       const units = traitUnits(trait, { board: [], bench: [] });
       const expected = Object.values(UNITS).filter((u) => u.origin === trait || (u.classes as readonly string[]).includes(trait));
       expect(units.map((u) => u.id).sort()).toEqual(expected.map((u) => u.id).sort());
+      expect(units.every((u) => !u.nine)).toBe(true);
       for (let i = 1; i < units.length; i++) {
         const [a, b] = [units[i - 1]!, units[i]!];
         expect(a.cost < b.cost || (a.cost === b.cost && a.name.localeCompare(b.name) <= 0)).toBe(true);
@@ -79,5 +80,21 @@ describe("a trait's units", () => {
     expect(by('sam')).toMatchObject({ stars: [2, 1], onBoard: true });
     expect(by('merry')).toMatchObject({ stars: [1], onBoard: false });
     expect(by('pippin')).toMatchObject({ stars: [], onBoard: false });
+  });
+
+  it('lists the units a Ring of the Nine makes Nazgûl after the roster, as the tracker counts them', () => {
+    const board = [unit('ringwraith'), unit('khamul'), unit('gimli', ['ring-of-the-nine']), unit('khamul', ['ring-of-the-nine'])];
+    const bench = [unit('gimli'), unit('frodo', ['ring-of-the-nine'])];
+    const units = traitUnits('nazgul', { board, bench });
+    const extra = units.filter((u) => u.nine);
+    expect(units.slice(-extra.length)).toEqual(extra);
+    expect(extra.map((u) => [u.id, u.stars, u.onBoard])).toEqual([
+      ['frodo', [1], false],
+      ['gimli', [1], true],
+    ]);
+    // Khamûl is a Nazgûl anyway, so the ring adds no tile for him.
+    expect(units.filter((u) => u.id === 'khamul')).toEqual([expect.objectContaining({ nine: false, stars: [1, 1], onBoard: true })]);
+    expect(units.filter((u) => u.onBoard).length).toBe(traitRows(board, []).find((r) => r.trait === 'nazgul')!.count);
+    expect(traitUnits('dwarf', { board, bench }).find((u) => u.id === 'gimli')).toMatchObject({ stars: [1, 1], nine: false });
   });
 });

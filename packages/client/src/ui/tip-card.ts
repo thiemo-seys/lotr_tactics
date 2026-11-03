@@ -75,7 +75,8 @@ export function tipCard(tip: Tip): Node[] {
 
 /**
  * One of a trait's units: framed by cost with its origin's icon, lit when a copy is on the board,
- * half lit when copies are only on the bench, greyed when none are owned, with a pip per copy.
+ * half lit when copies are only on the bench, greyed when none are owned, with a pip per copy. A
+ * unit that is a Nazgûl through a Ring of the Nine shows the ring.
  */
 function traitUnitTile(unit: TraitUnit): HTMLElement {
   const owned = unit.stars.length > 0;
@@ -86,5 +87,6 @@ function traitUnitTile(unit: TraitUnit): HTMLElement {
     el('span', 'tip-unit-name', unit.name),
     el('span', 'tip-unit-cost', String(unit.cost)),
     owned ? el('span', 'owned', ...unit.stars.map((star) => el('i', `star-${star}`))) : null,
+    unit.nine ? itemChip('ring-of-the-nine', 'sm', false) : null,
   );
 }
