@@ -1,0 +1,9 @@
+**/node_modules
+**/dist
+**/coverage
+**/*.tsbuildinfo
+**/__pycache__
+.git
+.github
+.claude
+packages/client/art
