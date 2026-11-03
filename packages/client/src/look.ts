@@ -37,6 +37,13 @@ export const ARENA = 'ruins';
  */
 export const ATMOSPHERE = { colour: 0x2a2018, fogNear: 39, fogFar: 85 } as const;
 
+/**
+ * The colour of every unit's `livery` (the parts of its model in the material named `team`) and of
+ * the pawns, on both sides alike: a unit looks the same whichever side it fights for, and only the
+ * colour of its health bar tells the sides apart (docs/viewer-spec.md section 4).
+ */
+export const UNIT_COLOURS = { livery: 0x6a5a86, pawn: 0x8a8378 } as const;
+
 /** Warm, low sunlight from the near left, and a warm sky over a brown ground. */
 export const LIGHTS = {
   sky: 0xfff1da,
@@ -56,7 +63,7 @@ export const BLUR = { inner: 10.5, outer: 20, maxRadius: 8 } as const;
 
 /**
  * The grade laid over the frame, in display colours: warmth multiplies red, green and blue; then
- * saturation and contrast. The board and units get `centre` of it, so team colours stay true, and
+ * saturation and contrast. The board and units get `centre` of it, so the livery and health bars stay true, and
  * the rest of the arena all of it, as the blur grows. The vignette darkens the corners to
  * `1 - vignette`.
  */

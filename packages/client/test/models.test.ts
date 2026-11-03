@@ -284,7 +284,7 @@ describe('unit models', () => {
     expect(existsSync(modelFile(id)), `public/models/${id}.glb`).toBe(true);
     const { json } = glb(id);
     expect(json.meshes ?? []).toHaveLength(1);
-    // Section 4, Team colour: a material named `team`, on parts of the model, that the viewer recolours.
+    // Section 4, Livery: a material named `team`, on parts of the model, that the viewer gives the livery colour.
     const team = (json.materials ?? []).findIndex((material) => material.name === 'team');
     expect(team, 'a material named team').toBeGreaterThanOrEqual(0);
     expect(json.meshes?.[0]?.primitives.some((primitive) => primitive.material === team), 'the team material on part of the mesh').toBe(true);
