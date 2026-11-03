@@ -7,6 +7,7 @@ import { Playback } from './playback.js';
 import { FightScene } from './scene.js';
 import { el, fillIcons, icon, rebuild, setText, show, toggle } from './ui/dom.js';
 import { fighterTip } from './tips.js';
+import { MeterPanel } from './ui/meter.js';
 import { tipCard } from './ui/tip-card.js';
 import { hoverUnits } from './ui/unit-hover.js';
 import { displayName } from './units.js';
@@ -41,6 +42,8 @@ const overtime = clock.querySelector('.overtime') as HTMLElement;
 const banner = element('banner');
 const log = element('log');
 const logButton = element('toggle-log');
+// The viewer takes no side, so the meter has its own switch between the teams.
+const meter = new MeterPanel(element('meter'), element('toggle-meter'), true);
 
 for (const select of [boardA, boardB]) {
   for (const choice of BOARD_CHOICES) select.add(new Option(choice, choice));
@@ -90,6 +93,7 @@ requestAnimationFrame(function frame(now) {
   last = now;
   appendLog(playback, playback.advance(seconds));
   showClock();
+  meter.render({ events: playback.combat.events, team: 'A' });
   scene.render();
   updateTip();
   requestAnimationFrame(frame);

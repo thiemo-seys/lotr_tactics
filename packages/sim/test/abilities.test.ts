@@ -611,8 +611,8 @@ describe('abilities', () => {
     const c = castBy([placed('gothmog', 3, 3), placed('haldir', 2, 3)], [placed('eomer', 3, 3)]);
     const spawns = ofType(c.events, 'spawn');
     expect(spawns).toMatchObject([
-      { unit: 3, unitId: 'orc-grunt', team: 'A', star: 1, summon: true },
-      { unit: 4, unitId: 'orc-grunt', team: 'A', star: 1, summon: true },
+      { unit: 3, unitId: 'orc-grunt', team: 'A', star: 1, summon: true, owner: c.caster.id },
+      { unit: 4, unitId: 'orc-grunt', team: 'A', star: 1, summon: true, owner: c.caster.id },
     ]);
     const grunts = spawns.map((e) => c.fight.state.units[e.unit]!);
     for (const grunt of grunts) {

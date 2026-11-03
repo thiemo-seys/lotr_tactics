@@ -127,14 +127,14 @@ describe('golden hashes', () => {
     };
     expect(hashes).toMatchInlineSnapshot(`
       {
-        "crests": "78e6c4da",
-        "gifts": "3a4677cc",
-        "itemsAgainstTraits": "e0a9aead",
-        "mirrors": "a478804a",
-        "monsters": "455ff409",
-        "oneRing": "a839fa51",
-        "ringsOfPower": "e47b81b7",
-        "stackedItems": "726a5448",
+        "crests": "2c4781c2",
+        "gifts": "856c568a",
+        "itemsAgainstTraits": "783410a2",
+        "mirrors": "db08c6db",
+        "monsters": "d1bfb350",
+        "oneRing": "cd7bbe87",
+        "ringsOfPower": "c740fbc7",
+        "stackedItems": "9e166f07",
       }
     `);
   });

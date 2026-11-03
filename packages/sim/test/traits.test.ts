@@ -111,7 +111,7 @@ describe('traits at combat start', () => {
     const spawns = ofType(fight.events, 'spawn').filter((e) => e.summon);
     expect(spawns).toHaveLength(grunts);
     spawns.forEach((spawn, i) => {
-      expect(spawn).toMatchObject({ tick: 0, unitId: 'orc-grunt', team: 'A' });
+      expect(spawn).toMatchObject({ tick: 0, unitId: 'orc-grunt', team: 'A', owner: owners[i % owners.length]!.id });
       expect(distance(spawn.hex, owners[i % owners.length]!.hex)).toBe(1);
       expect(onOwnHalf('A', spawn.hex)).toBe(true);
     });

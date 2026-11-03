@@ -15,7 +15,7 @@ group('event log', () => {
 
   it('describes events with the tick and unit names', () => {
     const lines: [CombatEvent, string | null][] = [
-      [{ type: 'spawn', tick: 0, unit: 0, unitId: 'sam', team: 'A', hex: units[0]!.hex, star: 2, summon: false }, '[0] Sam (A) ★2 starts at (3, 3)'],
+      [{ type: 'spawn', tick: 0, unit: 0, unitId: 'sam', team: 'A', hex: units[0]!.hex, star: 2, summon: false, owner: null }, '[0] Sam (A) ★2 starts at (3, 3)'],
       [{ type: 'move', tick: 3, unit: 0, from: units[0]!.hex, to: units[0]!.hex, arriveTick: 18 }, null],
       [{ type: 'attack', tick: 1, unit: 0, target: 1, ranged: false, hitTick: 1 }, '[1] Sam (A) attacks Sam (B)'],
       [

@@ -800,7 +800,7 @@ Every event has a `tick`.
 
 | Event | Fields |
 |---|---|
-| `spawn` | unit, unitId, team, hex, star, summon |
+| `spawn` | unit, unitId, team, hex, star, summon, owner (for a summon, the id of the unit it is credited to: the Orc a trait grunt was spread to, or the caster of a `summon` ability; null for placed units and the Eye's Nazgûl) |
 | `move` | unit, from, to, arriveTick |
 | `dash` | unit, from, to |
 | `attack` | unit, target, ranged, hitTick |

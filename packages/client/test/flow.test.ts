@@ -1,5 +1,5 @@
 import { TIMERS, type ClientMessage, type FightRecord, type Host, type LobbyView, type MatchView, type RoundRecord } from '@lotr-tactics/server';
-import type { Team } from '@lotr-tactics/sim';
+import { simulateCombat, type Team } from '@lotr-tactics/sim';
 import { describe, expect, it } from 'vitest';
 import { LocalConnection } from '../src/connection.js';
 import { yourFight, yourTeam } from '../src/fights.js';
@@ -348,6 +348,45 @@ describe("other players' boards", () => {
     }
     expect(looked).toBe(6);
     expect(activeTraits).toBeGreaterThan(0);
+    connection.close();
+  });
+});
+
+describe('the damage meter', () => {
+  it('follows your fight as it plays, then has the whole of it in the results, even when skipped', async () => {
+    const host = fakeHost();
+    let connection: LocalConnection | null = null;
+    const { flow } = recorded((message) => connection!.send(message));
+    connection = new LocalConnection(5, { message: (m) => flow.receive(m, host.time), closed: () => {} }, { host, autoUpdate: false });
+    await flush();
+    let checked = false;
+    for (let i = 0; i < 3000 && !checked; i++) {
+      const { show } = flow;
+      if (show.kind === 'council' || show.kind === 'waiting') {
+        expect(flow.meterFight()).toBeNull();
+        host.time += flow.state!.step.ms ?? 0;
+        connection.update();
+      } else if (show.kind === 'planning') {
+        expect(flow.meterFight()).toBeNull();
+        flow.ready();
+      } else if (show.kind === 'fight') {
+        flow.update(0.2, host.time);
+        expect(flow.meterFight()).toEqual({ events: show.playback.combat.events, team: yourTeam(show.fight, 0) });
+        expect(show.playback.combat.isOver()).toBe(false);
+        flow.skip(host.time);
+        const recap = flow.meterFight()!;
+        expect(recap.team).toBe(yourTeam(show.fight, 0));
+        expect(recap.events).toEqual(simulateCombat(show.fight.input).events);
+        expect(recap.events.at(-1)?.type).toBe('end');
+        // Worked out once.
+        expect(flow.meterFight()!.events).toBe(recap.events);
+        checked = true;
+      } else if (show.kind === 'results') {
+        flow.update(0, show.until);
+      }
+      await flush();
+    }
+    expect(checked).toBe(true);
     connection.close();
   });
 });

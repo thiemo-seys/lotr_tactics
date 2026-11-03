@@ -94,6 +94,8 @@ describe('the One Ring', () => {
     const gimli = unitOf(fight, 'gimli');
     const eye = unitOf(fight, 'eye-nazgul', 'B');
     expect(eye).toMatchObject({ summon: true, origin: 'nazgul', ring: null });
+    // It belongs to its team, not to any unit on it.
+    expect(ofType(fight.events, 'spawn').find((e) => e.unit === eye.id)?.owner).toBeNull();
     expect(distance(eye.hex, gimli.hex)).toBe(1);
     expect(eye.stats.maxHealth).toBe(RING.eye.health + 4 * RING.eye.healthPerCorruption);
     expect(eye.stats.attackDamage).toBe(RING.eye.attackDamage + 4 * RING.eye.attackDamagePerCorruption);

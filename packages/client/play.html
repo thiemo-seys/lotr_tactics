@@ -21,6 +21,7 @@
       <div class="hud-side hud-end">
         <div class="hud-group">
           <button id="speed" class="btn btn-secondary btn-sm" hidden><span data-icon="speed"></span><span class="label">1×</span></button>
+          <button id="toggle-meter" class="btn btn-ghost btn-sm" aria-pressed="false" hidden><span data-icon="blade"></span>Damage</button>
           <button id="skip" class="btn btn-secondary btn-sm" hidden><span data-icon="skip"></span>Skip fight</button>
           <button id="leave-game" class="btn btn-ghost btn-sm" hidden><span data-icon="leave"></span>Leave</button>
           <a href="./index.html" class="btn btn-ghost btn-sm"><span data-icon="viewer"></span>Fight viewer</a>
@@ -31,6 +32,7 @@
       <div id="view"></div>
       <aside id="traits" class="side-panel" aria-label="Traits on your board" hidden></aside>
       <aside id="players" class="side-panel" aria-label="Players" hidden></aside>
+      <aside id="meter" class="meter" aria-label="Damage meter" hidden></aside>
       <div id="backdrop" hidden></div>
       <section id="menu" class="panel" aria-labelledby="menu-title" hidden>
         <div class="title-block">

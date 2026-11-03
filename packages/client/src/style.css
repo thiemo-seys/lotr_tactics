@@ -4040,6 +4040,160 @@ body.play input {
   border-color: #b8423d;
 }
 
+/* A toggle button that is on: the Log and Damage buttons while their panels are open. */
+.btn-ghost[aria-pressed='true'] {
+  --btn-fg: var(--gold-bright);
+  --btn-bg: var(--surface-2);
+  --btn-border: var(--border);
+  color: var(--gold-bright);
+}
+
+/* The damage meter: a bar per unit, split by damage type, coloured like the floating numbers. */
+.meter {
+  position: absolute;
+  top: 12px;
+  left: 12px;
+  z-index: var(--z-panel);
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  width: 264px;
+  max-height: calc(100% - 24px);
+  padding: 10px 10px 8px;
+  background: var(--glass);
+  border: 1px solid var(--border-strong);
+  border-radius: var(--radius);
+  box-shadow: var(--shadow-2);
+}
+
+/* On the play page it sits under the trait tracker. */
+body.play .meter {
+  top: auto;
+  bottom: 12px;
+  max-height: min(calc(100% - 24px), 40vh);
+}
+
+.meter-head {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+}
+
+.meter-head .side-title {
+  flex: 1;
+  margin: 0;
+}
+
+.meter-head .btn-icon {
+  width: 26px;
+  height: 26px;
+}
+
+.meter .segmented legend {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  overflow: hidden;
+  clip-path: inset(50%);
+}
+
+.meter-tabs {
+  align-self: stretch;
+  display: flex;
+}
+
+.meter-tabs label {
+  flex: 1;
+}
+
+.meter-tabs span {
+  justify-content: center;
+  width: 100%;
+}
+
+.meter-rows {
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+  min-height: 0;
+  overflow-y: auto;
+  scrollbar-width: thin;
+}
+
+.meter-row {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 3px 8px;
+  padding: 4px 6px;
+  border-radius: var(--radius-sm);
+}
+
+.meter-row:hover,
+.meter-row:focus-visible {
+  background: var(--surface-2);
+}
+
+.meter-row.dead .meter-name,
+.meter-row.dead .meter-total {
+  color: var(--text-dim);
+}
+
+.meter-name {
+  overflow: hidden;
+  font-size: 12.5px;
+  font-weight: 600;
+  color: var(--text);
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
+
+.meter-star {
+  margin-left: 5px;
+  font-size: 10px;
+  color: var(--star-gold);
+  letter-spacing: -1px;
+}
+
+.meter-total {
+  font: 600 12px/1.4 var(--font-mono);
+  color: var(--text-strong);
+  text-align: right;
+}
+
+.meter-bar {
+  grid-column: 1 / -1;
+  display: flex;
+  height: 6px;
+  overflow: hidden;
+  background: var(--surface-3);
+  border-radius: var(--radius-pill);
+}
+
+.meter-bar i {
+  flex: none;
+  height: 100%;
+}
+
+.meter-bar .part-physical {
+  background: #f6a23a;
+}
+
+.meter-bar .part-magic {
+  background: #6cb2ff;
+}
+
+.meter-bar .part-true {
+  background: #f6f6f6;
+}
+
+.meter-bar .part-heal {
+  background: #5fe08f;
+}
+
+.meter-bar .part-shield {
+  background: #cfd8e3;
+}
+
 #log {
   position: absolute;
   top: 0;

@@ -36,6 +36,7 @@
       </div>
       <span class="spacer"></span>
       <div class="group">
+        <button id="toggle-meter" class="btn btn-ghost btn-sm" aria-pressed="false"><span data-icon="blade"></span>Damage</button>
         <button id="toggle-log" class="btn btn-ghost btn-sm" aria-pressed="false"><span data-icon="log"></span>Log</button>
         <a href="./play.html" class="btn btn-secondary btn-sm"><span data-icon="pvp"></span>Play a game</a>
       </div>
@@ -43,6 +44,7 @@
     <main>
       <div id="view"></div>
       <div id="banner" role="status" hidden></div>
+      <aside id="meter" class="meter" aria-label="Damage meter" hidden></aside>
       <aside id="log" aria-label="Event log" hidden></aside>
     </main>
     <script type="module" src="/src/main.ts"></script>

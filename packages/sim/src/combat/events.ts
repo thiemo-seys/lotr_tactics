@@ -18,6 +18,8 @@ export interface SpawnEvent {
   readonly hex: Hex;
   readonly star: Star;
   readonly summon: boolean;
+  /** For a summon, the unit that made it: the Orc for trait grunts, the caster for an ability's. Null otherwise, and for the Eye's Nazgûl. */
+  readonly owner: number | null;
 }
 
 /** A unit starts a step. It already occupies `to`; the renderer animates it until `arriveTick`. */

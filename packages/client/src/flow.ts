@@ -8,8 +8,10 @@ import {
   checkAction,
   createCombat,
   roundType,
+  simulateCombat,
   type Action,
   type ActionResult,
+  type CombatEvent,
   type Outcome,
   type PlayerView,
   type RoundType,
@@ -103,6 +105,8 @@ export class PlayFlow {
   private timerMs = 0;
   /** The person's result in each round whose results have been shown, by `stage-round`. */
   private outcomes = new Map<string, 'Victory' | 'Defeat' | 'Draw'>();
+  /** The whole of the person's last fight, for the damage meter after it, worked out once. */
+  private recap: { round: RoundRecord; events: readonly CombatEvent[] } | null = null;
 
   constructor(private readonly hooks: FlowHooks) {}
 
@@ -117,6 +121,7 @@ export class PlayFlow {
     this.timerKey = '';
     this.timerMs = 0;
     this.outcomes.clear();
+    this.recap = null;
   }
 
   /** The person's result in a round, once its results have been shown; null if they had no fight or it hasn't been shown yet. */
@@ -186,6 +191,21 @@ export class PlayFlow {
   }
 
   // What the page shows
+
+  /**
+   * The person's fight for the damage meter, and the team they played: as far as it has played
+   * while it is on screen, then the whole of it, even if skipped, until the next step. Null when
+   * they had no fight.
+   */
+  meterFight(): { readonly events: readonly CombatEvent[]; readonly team: Team } | null {
+    const { show } = this;
+    if (show.kind === 'fight') return { events: show.playback.combat.events, team: yourTeam(show.fight, this.you) };
+    if (show.kind !== 'results' && show.kind !== 'waiting') return null;
+    const fight = yourFight(show.round, this.you);
+    if (fight === null) return null;
+    if (this.recap?.round !== show.round) this.recap = { round: show.round, events: simulateCombat(fight.input).events };
+    return { events: this.recap.events, team: yourTeam(fight, this.you) };
+  }
 
   /** Whether a game is on screen, rather than the menu or a lobby. */
   get inGame(): boolean {
