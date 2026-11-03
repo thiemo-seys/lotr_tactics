@@ -75,3 +75,20 @@ export function blurAt(distance: number): number {
   const t = Math.min(Math.max((distance - BLUR.inner) / (BLUR.outer - BLUR.inner), 0), 1);
   return t * t * (3 - 2 * t);
 }
+
+/**
+ * The stone pattern on the board's hexes (tiles.ts), as how far each part moves the tile's colour,
+ * up or down, as a share of it: broad mottling, fine grain, hairline cracks (darkening), wear along
+ * the edges (darkening, over about `edgeWidth` world units in from them), pale scuffs, and a border
+ * carved `borderInset` world units in from the edges (darkening, with a pale lip inside it).
+ */
+export const TILE_TEXTURE = {
+  mottle: 0.2,
+  grain: 0.07,
+  cracks: 0.38,
+  edgeWidth: 0.14,
+  edgeDarken: 0.26,
+  scuffs: 0.08,
+  borderInset: 0.15,
+  border: 0.24,
+} as const;

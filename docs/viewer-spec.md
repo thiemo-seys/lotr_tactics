@@ -48,9 +48,10 @@ packages/client/
     drawing.ts     when the scene draws a frame, and when pawns swap for their models (no Three.js, no DOM)
     models.ts      loading the models, each file once, and a copy for each unit with its own materials and clips, standing on its base
     stars.ts       which model, scale, label height and colours a star level gets (no Three.js, no DOM)
-    look.ts        the camera's views and limits, the arena, lights, fog, blur and grade (no Three.js, no DOM)
+    look.ts        the camera's views and limits, the arena, lights, fog, blur, grade and the tiles' stone pattern (no Three.js, no DOM)
     arena.ts       loading the arena
     post.ts        the blur, grade and vignette laid over each frame
+    tiles.ts       the stone pattern on the board's hexes, in their shader
     scene.ts       Three.js scene, units as models on their bases or pawns, playing their clips, the planning view, the marker where a drag would drop, and the unit under the pointer
     units.ts       names and sizes of units, monsters and summons
     items.ts       item and Ring of Power colours, and what each item is and does, from the item data
@@ -83,7 +84,7 @@ packages/client/
   test/
 ```
 
-- flow.ts, playback.ts, animation.ts, drawing.ts, stars.ts, look.ts and the modules from units.ts to log.ts use neither Three.js nor the DOM, so they are tested (section 7). models.ts and arena.ts, which load the models and the arena, post.ts, and scene.ts and the modules in ui/ and play/, which draw what those work out, are checked in a browser.
+- flow.ts, playback.ts, animation.ts, drawing.ts, stars.ts, look.ts and the modules from units.ts to log.ts use neither Three.js nor the DOM, so they are tested (section 7). models.ts and arena.ts, which load the models and the arena, post.ts and tiles.ts, and scene.ts and the modules in ui/ and play/, which draw what those work out, are checked in a browser.
 - **Look:** both pages share one design system in style.css: a deep slate background with gold accents; tokens for colours, spacing, radii, shadows and motion; buttons (primary, secondary, ghost, danger and icon-only), fields, panels and chips. Headings use Cinzel and everything else Inter, both bundled from `@fontsource` packages, so the built client needs nothing from the network. Text has a contrast of at least 4.5:1, focus shows a gold ring, and motion stops when the system asks for reduced motion.
 - **Icons:** inline SVGs from icons.ts, all drawn on one 24-unit grid with a rounded stroke in `currentColor`. Each trait and item component has its own icon, keyed by its id, so a new one fails the typecheck until it has an icon. Icons next to text are hidden from screen readers; buttons with only an icon have a label.
 - **Tooltips:** hovering or focusing anything with a tip shows one card for it (ui/tooltip.ts), laid out from tips.ts: an icon, name and subtitle, a recipe, stats, effects, a trait's breakpoints, a key, and a hint or the reason a button can't be used. It stays on screen, follows chips on moving units, never takes the mouse, and hides while something is dragged. Buttons that can't be used now are marked `aria-disabled` rather than disabled, so they can still say why.
@@ -94,7 +95,7 @@ packages/client/
 
 - **Board:** pointy-top hexes, odd-r offset, matching `sim-spec.md` section 5.
   - Board offset (col, row) sits at `x = √3 × (col + 0.5 × (row mod 2))`, `z = 1.5 × row`, centred on the board.
-  - Each hex is a stone tile with a bevelled top edge, its top at 0, set in the arena's dark mortar, which shows in the gaps between them. The tiles are a little translucent (72% opaque), so the paving under them shows through and the board sits in the arena; they are drawn before anything else translucent, such as a fading unit or the drop marker.
+  - Each hex is a stone tile with a bevelled top edge, its top at 0, set in the arena's dark mortar, which shows in the gaps between them. Each is worn stone (tiles.ts): its colour mottled and grained, crossed by a few hairline cracks, darker and chipped towards its edges, with a border carved in from them and pale scuffs, each tile different, worked out in the shader so it needs no image and stays sharp at any zoom (the strengths in look.ts). The tiles are a little translucent (72% opaque), so the paving under them shows through and the board sits in the arena; they are drawn before anything else translucent, such as a fading unit or the drop marker.
   - Team A's half (rows 0–3) and team B's (rows 4–7) are different stone: the half of the side drawn near in pale sandstone, and the other in a darker, redder stone. Each half alternates two shades by column.
   - The bench's tiles are square, of a darker stone, set into the paving in front of the near side.
 - **Camera:** behind team A's back row, looking across the board. The mouse orbits, pans and zooms, within limits (look.ts) that keep it looking down into the arena and never past its edge: at most 60° from straight down, 8 to 24 units from what it looks at, and that point panned along the ground at most 5 from the board's centre. Every view the scene sets starts within them.

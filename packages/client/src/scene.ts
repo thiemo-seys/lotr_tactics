@@ -30,6 +30,7 @@ import { copyModel, loadModels, modelShader, modelShaders, modelsLoaded, shaderS
 import { EFFECT_TICKS, type CastRing, type FloatingText, type MutablePoint, type Playback, type Projectile } from './playback.js';
 import { ATMOSPHERE, CAMERA, CAMERA_LIMITS, LIGHTS } from './look.js';
 import { Post } from './post.js';
+import { stoneTiles } from './tiles.js';
 import { LABEL, LARGE_PAWN_SCALE } from './stars.js';
 import { UnitLabel } from './ui/labels.js';
 import { displayName, isLarge } from './units.js';
@@ -42,6 +43,9 @@ const TEAM_COLOURS: Record<Team, number> = { A: 0x4a90d9, B: 0xd9534f };
  * pale sandstone, and the other as B, a darker, redder stone.
  */
 const BOARD_COLOURS: Record<Team, readonly [number, number]> = { A: [0xc9ac84, 0xbfa17a], B: [0x9e7a62, 0x94705a] };
+
+/** How far a board hex's corners are from its centre. */
+const HEX_TILE_RADIUS = 0.94;
 
 /** How opaque the board's hexes are, so the paving under them shows through a little and they sit in the arena. */
 const BOARD_OPACITY = 0.72;
@@ -188,7 +192,7 @@ function tile(radius: number, sides: number, phase = 0): THREE.BufferGeometry {
 }
 
 const geometry = {
-  hex: tile(0.94, 6),
+  hex: tile(HEX_TILE_RADIUS, 6),
   body: new THREE.CylinderGeometry(0.3, 0.42, 0.9, 6),
   head: new THREE.IcosahedronGeometry(0.25, 0),
   nose: new THREE.ConeGeometry(0.09, 0.28, 4),
@@ -599,6 +603,7 @@ export class FightScene {
   }
 
   private buildBoard(): void {
+    stoneTiles(this.board.material as THREE.MeshStandardMaterial, HEX_TILE_RADIUS);
     const matrix = new THREE.Matrix4();
     BOARD_HEXES.forEach((hex, i) => {
       const { x, z } = hexToWorld(hex);
