@@ -144,6 +144,14 @@ export class Post {
     });
   }
 
+  /**
+   * What the scene is drawn into. Shaders compiled ahead of a draw must be compiled with it bound,
+   * since three.js builds a different program for a render target than for the canvas.
+   */
+  get target(): THREE.WebGLRenderTarget {
+    return this.scene;
+  }
+
   /** Sizes the textures for a canvas of `width` by `height` CSS pixels at `pixelRatio`. */
   setSize(width: number, height: number, pixelRatio: number): void {
     this.pixelRatio = pixelRatio;

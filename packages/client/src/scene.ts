@@ -750,6 +750,9 @@ export class FightScene {
       // The copy is never drawn, nor disposed of, so the renderer keeps the shader even while no model
       // that needs it is on screen. A shader that fails shows when a model is drawn, as it would anyway.
       const copy = shaderSample(shader, TEAM_COLOURS.A);
+      // Compiled for what the scene is drawn into (post.ts), not the canvas, or the first real draw
+      // would need another program and compile it then. Both calls choose the program at once.
+      this.renderer.setRenderTarget(this.post.target);
       if (this.renderer.extensions.has('KHR_parallel_shader_compile')) {
         this.renderer.compileAsync(copy.object, this.camera, this.scene).then(ready, ready);
         // In case it never says so, as when the WebGL context is lost meanwhile.
@@ -759,6 +762,7 @@ export class FightScene {
         // Ready once this frame is over, so units added later in it are pawns as well.
         queueMicrotask(ready);
       }
+      this.renderer.setRenderTarget(null);
     }
   }
 
