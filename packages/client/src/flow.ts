@@ -12,6 +12,7 @@ import {
   type Action,
   type ActionResult,
   type CombatEvent,
+  type GiftId,
   type Outcome,
   type PlayerView,
   type RoundType,
@@ -29,6 +30,7 @@ import {
 } from '@lotr-tactics/server';
 import { yourFight, yourTeam } from './fights.js';
 import { Playback } from './playback.js';
+import type { StarredHolder } from './traits.js';
 
 /** How long a finished fight stays on screen, in ticks of fight time, before the results. */
 const FIGHT_END_TICKS = TIMERS.fightHold * TICKS_PER_SECOND;
@@ -44,6 +46,19 @@ export type Show =
   /** The results have been shown and Ready sent: waiting for the next step. */
   | { kind: 'waiting'; round: RoundRecord }
   | { kind: 'over' };
+
+/**
+ * The units and Gifts whose traits the trait tracker shows: a player's board, the person's or one
+ * they are looking at, or the person's side in a fight.
+ */
+export interface TrackedTeam {
+  readonly board: readonly (StarredHolder | null)[];
+  /** The bench, whose copies a trait's tooltip counts as owned; a fight's side has none. */
+  readonly bench?: readonly (StarredHolder | null)[];
+  readonly gifts: readonly GiftId[];
+}
+
+const NO_GIFTS: readonly GiftId[] = [];
 
 /** Where the One Ring is among a player's units, while they hold it. */
 export interface PlanningRing {
@@ -100,6 +115,10 @@ export class PlayFlow {
   private boardSeat: number | null = null;
   /** When `state` arrived, in milliseconds, to count down its step's time. */
   private stateAt = 0;
+  /** The last view from planning, which the round it plans is fought from. */
+  private planned: MatchView | null = null;
+  /** The person's side in a fight, for the trait tracker, made once for each fight. */
+  private fightTeam: { readonly fight: FightRecord; readonly team: TrackedTeam } | null = null;
   /** The step the timer belongs to, and its time when first seen, to show how much is left. */
   private timerKey = '';
   private timerMs = 0;
@@ -114,6 +133,8 @@ export class PlayFlow {
   reset(menuMessage = ''): void {
     this.lobby = null;
     this.state = null;
+    this.planned = null;
+    this.fightTeam = null;
     this.show = { kind: 'menu' };
     this.menuMessage = menuMessage;
     this.lobbyMessage = '';
@@ -127,6 +148,11 @@ export class PlayFlow {
   /** The person's result in a round, once its results have been shown; null if they had no fight or it hasn't been shown yet. */
   outcome(stage: number, round: number): 'Victory' | 'Defeat' | 'Draw' | null {
     return this.outcomes.get(`${stage}-${round}`) ?? null;
+  }
+
+  /** How many rounds' results have been shown with the person's result, so the stage tracker is drawn again only when one more has. */
+  get outcomesShown(): number {
+    return this.outcomes.size;
   }
 
   /** A message from the game, arriving at `now` in milliseconds. */
@@ -144,6 +170,7 @@ export class PlayFlow {
       case 'state':
         this.state = message.state;
         this.stateAt = now;
+        if (message.state.step.kind === 'planning') this.planned = message.state;
         this.startTimer(message.state);
         this.follow(message.state);
         return;
@@ -221,14 +248,20 @@ export class PlayFlow {
     return checkAction(this.me(), this.state!, action);
   }
 
-  /** The One Ring, if the person holds it: its bearer among their units and its Corruption. */
-  planningRing(): PlanningRing | null {
-    return this.ringOf(this.you);
+  /**
+   * The One Ring, if the person holds it: its bearer among their units and its Corruption, in the
+   * latest view or the one given.
+   */
+  planningRing(view: MatchView | null = this.state): PlanningRing | null {
+    return this.ringOf(this.you, view);
   }
 
-  /** The One Ring, if this seat holds it: its bearer among their units and its Corruption. */
-  ringOf(seat: number): PlanningRing | null {
-    const ring = this.state?.ring;
+  /**
+   * The One Ring, if this seat holds it: its bearer among their units and its Corruption, in the
+   * latest view or the one given.
+   */
+  ringOf(seat: number, view: MatchView | null = this.state): PlanningRing | null {
+    const ring = view?.ring;
     return ring !== undefined && ring.state === 'held' && ring.holder === seat ? { bearer: ring.bearer, corruption: ring.corruption } : null;
   }
 
@@ -259,6 +292,35 @@ export class PlayFlow {
    */
   viewed(): PublicPlayer | null {
     return this.boardSeat !== null && this.canViewBoard(this.boardSeat) ? this.state!.players[this.boardSeat]! : null;
+  }
+
+  /**
+   * The game's view as the HUD and the players list show it. A fight step's views have moved on to
+   * the next round, with the fight's damage, gold and streak in them (server-spec.md section 5.1),
+   * so while the person's fight plays this is the view from the planning it was fought from, if the
+   * page saw it. Otherwise it is the latest.
+   */
+  shownView(): MatchView {
+    const { show, planned } = this;
+    const fought = show.kind === 'fight' && planned !== null && planned.stage === show.round.stage && planned.round === show.round.round;
+    return fought ? planned : this.state!;
+  }
+
+  /**
+   * What the trait tracker counts: the person's side in their fight while it plays, as the fight
+   * counts it, and otherwise their board, both with their Gifts.
+   */
+  trackedTeam(): TrackedTeam {
+    const { show } = this;
+    if (show.kind !== 'fight') return this.me();
+    let side = this.fightTeam;
+    if (side?.fight !== show.fight) {
+      const { input } = show.fight;
+      const team = yourTeam(show.fight, this.you);
+      side = { fight: show.fight, team: { board: input.teams[team], gifts: input.gifts?.[team] ?? NO_GIFTS } };
+      this.fightTeam = side;
+    }
+    return side.team;
   }
 
   /** Connected people still in the game: the ones a step waits for. */

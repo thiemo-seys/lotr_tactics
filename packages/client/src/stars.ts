@@ -15,8 +15,11 @@ export const LARGE_PAWN_SCALE = 1.35;
 /** The stand under a unit with a model. */
 export const BASE = { height: 0.05, radius: 0.8 } as const;
 
-/** Where the label sits above the base, before scaling, and how far above a Large model's top. */
-export const LABEL = { height: 1.8, aboveLarge: 0.3 } as const;
+/**
+ * Where the label sits above the base, before scaling; how far above a Large model's top; and how far
+ * above the highest point a model reaches in its attack, cast and victory clips.
+ */
+export const LABEL = { height: 1.8, aboveLarge: 0.3, clear: 0.15 } as const;
 
 /** Colours per star level, 1★ first. */
 export const STAR_COLOURS = {
@@ -63,6 +66,28 @@ export function starScale(star: Star, reach: number): number {
 export function modelLabelHeight(scale: number, top: number, large: boolean): number {
   const height = LABEL.height * scale;
   return BASE.height + (large ? Math.max(height, top * scale + LABEL.aboveLarge) : height);
+}
+
+/**
+ * Where the bottom edge of a model's label sits above the ground, holding still through planning and
+ * fights: modelLabelHeight, or clear of `strike`, the highest point the model reaches in its attack
+ * and cast clips at scale 1 (its top for a static model), times its scale, if that is higher.
+ */
+export function labelHeight(scale: number, top: number, large: boolean, strike: number): number {
+  return Math.max(modelLabelHeight(scale, top, large), clearOf(scale, strike));
+}
+
+/**
+ * How much higher a winner's label goes once `victory` has faded in, to clear `raised`, the highest
+ * point its victory reaches at scale 1, times its scale: 0 when the label already clears it.
+ */
+export function victoryRise(scale: number, top: number, large: boolean, strike: number, raised: number): number {
+  return Math.max(0, clearOf(scale, raised) - labelHeight(scale, top, large, strike));
+}
+
+/** Where a label's bottom edge goes to clear a point `height` up a model at scale 1, standing on its base. */
+function clearOf(scale: number, height: number): number {
+  return BASE.height + scale * height + LABEL.clear;
 }
 
 /** The pips' offsets along the base's edge, centred, one per star. */

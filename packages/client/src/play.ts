@@ -235,6 +235,9 @@ function render(now: number): void {
   else if (step.kind === 'lobby') renderLobby(flow);
   hud.render(now);
   if (!inGame) {
+    // Behind the menu and the lobby, the board alone, as when the page opens: a game left behind
+    // goes, so nothing there moves or is drawn again until something changes.
+    scene.showBoard();
     show(banner, false);
     return;
   }
@@ -268,7 +271,8 @@ function render(now: number): void {
     });
   }
   show(banner, bannerShown);
-  if (!traitsPanel.hidden) renderTraits(traitsPanel, viewed ?? p, viewed === null ? null : flow.seatName(viewed.seat));
+  // The board on screen, or the person's side while their fight plays.
+  if (!traitsPanel.hidden) renderTraits(traitsPanel, viewed ?? flow.trackedTeam(), viewed === null ? null : flow.seatName(viewed.seat));
   renderPlayers(playersPanel, flow);
 }
 

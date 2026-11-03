@@ -1,8 +1,15 @@
 // Plays a fight back in real time and works out what to draw at each moment
-// (docs/viewer-spec.md section 5). No Three.js and no DOM, so it can be tested.
+// (docs/viewer-spec.md section 5). It also keeps what each unit did, for animation.ts to work out
+// which clip it plays at any display time. No Three.js and no DOM, so it can be tested.
 
-import { TICKS_PER_SECOND, type Combat, type CombatEvent, type DamageType } from '@lotr-tactics/sim';
-import { hexToWorld, lerpPoint, pointDistance, type Point } from './layout.js';
+import { TICKS_PER_SECOND, type Combat, type CombatEvent, type DamageType, type Outcome, type Team } from '@lotr-tactics/sim';
+import { hexToWorld, pointDistance, type Point } from './layout.js';
+
+/** A point the scene writes into, so drawing a frame allocates nothing. */
+export interface MutablePoint {
+  x: number;
+  z: number;
+}
 
 /** How long the viewer's own effects last, in ticks of fight time. */
 export const EFFECT_TICKS = {
@@ -19,18 +26,18 @@ const AFTERGLOW_TICKS = 30;
 /** How far a melee attacker lunges towards its target, as a share of the distance. */
 const LUNGE_SHARE = 0.3;
 
-interface Motion {
-  readonly from: Point;
-  readonly to: Point;
-  readonly startTick: number;
-  readonly endTick: number;
-}
+/**
+ * How long after a ranged attack its projectile leaves: the attack clip looses the shot 3 ticks in
+ * (docs/viewer-spec.md section 4), so the arrow flies from the loose, not from the draw.
+ */
+export const SHOT_DELAY_TICKS = 3;
 
 export interface Projectile {
   readonly source: number;
   readonly target: number;
   /** Where the attacker stood when it fired. */
   readonly from: Point;
+  /** When it leaves: SHOT_DELAY_TICKS after the attack, or a tick before it lands if that is sooner. */
   readonly startTick: number;
   readonly hitTick: number;
 }
@@ -55,6 +62,70 @@ interface Lunge {
   readonly startTick: number;
 }
 
+/** A unit's attack or cast. A unit acts at most once a tick; a cast on the same tick as an attack wins. */
+export interface ActionRecord {
+  readonly tick: number;
+  readonly cast: boolean;
+}
+
+/**
+ * A unit's step, from its tick to `endTick`, its arrival; or a dash, which takes 4 ticks. It goes
+ * from the centre of its `from` hex to the centre of its `to` hex.
+ */
+export interface StepRecord {
+  readonly tick: number;
+  readonly endTick: number;
+  readonly dash: boolean;
+  readonly from: Point;
+  readonly to: Point;
+}
+
+/** A stretch of being stunned, from `tick` until it is gone at the start of `endTick`. */
+export interface StunRecord {
+  readonly tick: number;
+  readonly endTick: number;
+  /**
+   * Every tick a stun in the stretch started on, from `tick` on: a stunned unit can't act, so an
+   * attack or cast on one of them came before that stun (docs/viewer-spec.md section 5, Stunned).
+   */
+  readonly starts: readonly number[];
+}
+
+/**
+ * What a unit did in the fight, in the order it happened, so that animation.ts can work out what it
+ * plays at any display time up to the playback's own (docs/viewer-spec.md section 5, Animation).
+ */
+export interface UnitHistory {
+  /** Its team, from its spawn. */
+  readonly team: Team | null;
+  /** One entry per tick it acted on. */
+  readonly actions: readonly ActionRecord[];
+  readonly steps: readonly StepRecord[];
+  /** A stun that starts while another lasts, or as it ends, extends that stretch instead of starting one. */
+  readonly stuns: readonly StunRecord[];
+  /** The tick it died on, or null. */
+  readonly death: number | null;
+}
+
+interface History {
+  team: Team | null;
+  /** Where it spawned, which is where it stands until its first step. */
+  home: Point | null;
+  readonly actions: { readonly tick: number; cast: boolean }[];
+  readonly steps: StepRecord[];
+  readonly stuns: { readonly tick: number; endTick: number; readonly starts: number[] }[];
+  death: number | null;
+}
+
+const NOTHING: UnitHistory = { team: null, actions: [], steps: [], stuns: [], death: null };
+
+/** What `advance` returns when no tick was processed. */
+const NO_EVENTS: readonly CombatEvent[] = [];
+
+/** Scratch points for a lunge's ends, so working one out allocates nothing. */
+const lungeFrom: MutablePoint = { x: 0, z: 0 };
+const lungeTo: MutablePoint = { x: 0, z: 0 };
+
 export class Playback {
   /** Display time in ticks: the last tick processed, plus how far into the next one playback is. */
   time = 0;
@@ -63,20 +134,24 @@ export class Playback {
   projectiles: Projectile[] = [];
   texts: FloatingText[] = [];
   casts: CastRing[] = [];
-  private readonly motions = new Map<number, Motion>();
+  /** The fight's end, once it has come. */
+  ended: { readonly tick: number; readonly outcome: Outcome } | null = null;
   private readonly lunges = new Map<number, Lunge>();
-  private readonly deaths = new Map<number, number>();
+  private readonly histories: History[] = [];
 
   constructor(readonly combat: Combat) {
     this.record(combat.events);
   }
 
-  /** Moves display time on by `seconds` of real time, stepping the fight as needed. Returns the new events. */
-  advance(seconds: number): CombatEvent[] {
-    if (!this.playing) return [];
+  /**
+   * Moves display time on by `seconds` of real time, stepping the fight as needed. Returns the new
+   * events: a new list only when a tick was processed, so a frame between ticks allocates nothing.
+   */
+  advance(seconds: number): readonly CombatEvent[] {
+    if (!this.playing) return NO_EVENTS;
     this.time += seconds * TICKS_PER_SECOND * this.speed;
-    const events: CombatEvent[] = [];
-    while (!this.combat.isOver() && this.combat.tick + 1 <= this.time) events.push(...this.stepOnce());
+    let events = NO_EVENTS;
+    while (!this.combat.isOver() && this.combat.tick + 1 <= this.time) events = events.length === 0 ? this.stepOnce() : events.concat(this.stepOnce());
     if (this.combat.isOver()) this.time = Math.min(this.time, this.combat.tick + AFTERGLOW_TICKS);
     this.prune();
     return events;
@@ -91,36 +166,80 @@ export class Playback {
     return events;
   }
 
-  /** Where a unit is drawn at display time, part-way through a step or dash. */
+  /**
+   * Where a unit is drawn at display time, part-way through a step or dash. Any time up to the
+   * playback's own works, from the unit's steps so far.
+   */
   position(unit: number, time = this.time): Point {
-    const motion = this.motions.get(unit);
-    if (motion === undefined) return hexToWorld(this.combat.state.units[unit]!.hex);
-    if (time >= motion.endTick) return motion.to;
-    return lerpPoint(motion.from, motion.to, clamp01((time - motion.startTick) / (motion.endTick - motion.startTick)));
+    return this.positionInto({ x: 0, z: 0 }, unit, time);
+  }
+
+  /** position(), written into `out`. */
+  positionInto<T extends MutablePoint>(out: T, unit: number, time = this.time): T {
+    const history = this.histories[unit];
+    const steps = history?.steps ?? NOTHING.steps;
+    const step = lastStarted(steps, time);
+    if (step !== undefined && time < step.endTick) {
+      const share = clamp01((time - step.tick) / (step.endTick - step.tick));
+      out.x = step.from.x + (step.to.x - step.from.x) * share;
+      out.z = step.from.z + (step.to.z - step.from.z) * share;
+      return out;
+    }
+    // Before its first step it stands where that step starts, which is where it spawned.
+    const at = step?.to ?? steps[0]?.from ?? history?.home ?? hexToWorld(this.combat.state.units[unit]!.hex);
+    out.x = at.x;
+    out.z = at.z;
+    return out;
   }
 
   /** The extra offset of a melee attacker lunging at its target. */
   lungeOffset(unit: number, time = this.time): Point {
+    return this.lungeInto({ x: 0, z: 0 }, unit, time);
+  }
+
+  /** lungeOffset(), written into `out`. */
+  lungeInto<T extends MutablePoint>(out: T, unit: number, time = this.time): T {
+    out.x = 0;
+    out.z = 0;
     const lunge = this.lunges.get(unit);
-    if (lunge === undefined) return { x: 0, z: 0 };
+    if (lunge === undefined) return out;
     const progress = (time - lunge.startTick) / EFFECT_TICKS.lunge;
-    if (progress < 0 || progress >= 1) return { x: 0, z: 0 };
-    const from = this.position(unit, time);
-    const to = this.position(lunge.target, time);
+    if (progress < 0 || progress >= 1) return out;
+    const from = this.positionInto(lungeFrom, unit, time);
+    const to = this.positionInto(lungeTo, lunge.target, time);
     const share = Math.sin(Math.PI * progress) * LUNGE_SHARE;
-    return { x: (to.x - from.x) * share, z: (to.z - from.z) * share };
+    out.x = (to.x - from.x) * share;
+    out.z = (to.z - from.z) * share;
+    return out;
   }
 
   /** Where a projectile is: from where it was fired to where its target is now, landing on its hit tick. */
   projectilePosition(projectile: Projectile, time = this.time): Point {
-    const progress = clamp01((time - projectile.startTick) / (projectile.hitTick - projectile.startTick));
-    return lerpPoint(projectile.from, this.position(projectile.target, time), progress);
+    return this.projectilePositionInto({ x: 0, z: 0 }, projectile, time);
   }
 
-  /** From 0 when the unit died to 1 once it has faded out; 0 for living units. */
-  deathProgress(unit: number, time = this.time): number {
-    const tick = this.deaths.get(unit);
-    return tick === undefined ? 0 : clamp01((time - tick) / EFFECT_TICKS.death);
+  /** projectilePosition(), written into `out`. */
+  projectilePositionInto<T extends MutablePoint>(out: T, projectile: Projectile, time = this.time): T {
+    const progress = clamp01((time - projectile.startTick) / (projectile.hitTick - projectile.startTick));
+    const to = this.positionInto(out, projectile.target, time);
+    out.x = projectile.from.x + (to.x - projectile.from.x) * progress;
+    out.z = projectile.from.z + (to.z - projectile.from.z) * progress;
+    return out;
+  }
+
+  /**
+   * How far a dead unit has sunk and faded: 0 until `delaySeconds` after its death, which the scene
+   * sets to half its death clip, so the clip plays on as it starts to sink; then rising to 1 once it
+   * has faded out. Always 0 for living units.
+   */
+  deathProgress(unit: number, time = this.time, delaySeconds = 0): number {
+    const tick = this.histories[unit]?.death ?? null;
+    return tick === null ? 0 : clamp01((time - tick - delaySeconds * TICKS_PER_SECOND) / EFFECT_TICKS.death);
+  }
+
+  /** What a unit has done so far in the fight. */
+  history(unit: number): UnitHistory {
+    return this.histories[unit] ?? NOTHING;
   }
 
   /** From 0 when an effect started to 1 when it ends. */
@@ -137,23 +256,26 @@ export class Playback {
   private record(events: readonly CombatEvent[]): void {
     for (const e of events) {
       switch (e.type) {
+        case 'spawn': {
+          const history = this.historyOf(e.unit);
+          history.team = e.team;
+          history.home = hexToWorld(e.hex);
+          break;
+        }
         case 'move':
-          this.motions.set(e.unit, { from: hexToWorld(e.from), to: hexToWorld(e.to), startTick: e.tick, endTick: e.arriveTick });
+          this.addStep(e.unit, { tick: e.tick, endTick: e.arriveTick, dash: false, from: hexToWorld(e.from), to: hexToWorld(e.to) });
           break;
         case 'dash':
-          this.motions.set(e.unit, {
-            from: hexToWorld(e.from),
-            to: hexToWorld(e.to),
-            startTick: e.tick,
-            endTick: e.tick + EFFECT_TICKS.dash,
-          });
+          this.addStep(e.unit, { tick: e.tick, endTick: e.tick + EFFECT_TICKS.dash, dash: true, from: hexToWorld(e.from), to: hexToWorld(e.to) });
           break;
         case 'attack':
           if (e.ranged) {
-            this.projectiles.push({ source: e.unit, target: e.target, from: this.position(e.unit, e.tick), startTick: e.tick, hitTick: e.hitTick });
+            const startTick = Math.min(e.tick + SHOT_DELAY_TICKS, e.hitTick - 1);
+            this.projectiles.push({ source: e.unit, target: e.target, from: this.position(e.unit, e.tick), startTick, hitTick: e.hitTick });
           } else {
             this.lunges.set(e.unit, { target: e.target, startTick: e.tick });
           }
+          this.addAction(e.unit, e.tick, false);
           break;
         case 'damage': {
           const toHealth = e.amount - e.absorbed;
@@ -167,11 +289,56 @@ export class Playback {
         case 'cast':
           this.casts.push({ unit: e.unit, startTick: e.tick });
           this.addText(e.unit, e.ability, 'cast', false, e.tick);
+          this.addAction(e.unit, e.tick, true);
+          break;
+        case 'status':
+          // A stun the unit is immune to, or one that doesn't outlast the current one, has no event.
+          if (e.status === 'stun') this.addStun(e.target, e.tick, e.expiresTick ?? Infinity);
           break;
         case 'death':
-          this.deaths.set(e.unit, e.tick);
+          this.historyOf(e.unit).death = e.tick;
+          break;
+        case 'end':
+          this.ended = { tick: e.tick, outcome: e.outcome };
           break;
       }
+    }
+  }
+
+  private historyOf(unit: number): History {
+    let history = this.histories[unit];
+    if (history === undefined) {
+      history = { team: null, home: null, actions: [], steps: [], stuns: [], death: null };
+      this.histories[unit] = history;
+    }
+    return history;
+  }
+
+  /** More attacks on a tick are one action, and a cast on the same tick as an attack wins. */
+  private addAction(unit: number, tick: number, cast: boolean): void {
+    const { actions } = this.historyOf(unit);
+    const last = actions.at(-1);
+    if (last?.tick === tick) last.cast ||= cast;
+    else actions.push({ tick, cast });
+  }
+
+  /** The later of two steps on one tick replaces the other, as it does for the unit's position. */
+  private addStep(unit: number, step: StepRecord): void {
+    const { steps } = this.historyOf(unit);
+    if (steps.at(-1)?.tick === step.tick) steps[steps.length - 1] = step;
+    else steps.push(step);
+  }
+
+  /** A stun that starts while the unit is stunned, or as its stun ends, carries that stun on. */
+  private addStun(unit: number, tick: number, endTick: number): void {
+    if (endTick <= tick) return;
+    const { stuns } = this.historyOf(unit);
+    const last = stuns.at(-1);
+    if (last !== undefined && tick <= last.endTick) {
+      last.endTick = Math.max(last.endTick, endTick);
+      if (last.starts.at(-1) !== tick) last.starts.push(tick);
+    } else {
+      stuns.push({ tick, endTick, starts: [tick] });
     }
   }
 
@@ -179,17 +346,39 @@ export class Playback {
     this.texts.push({ unit, text, kind, big, startTick });
   }
 
-  /** Drops effects that have finished. */
+  /** Drops effects that have finished. A list stays the same list while none of it has. */
   private prune(): void {
-    this.projectiles = this.projectiles.filter((p) => p.hitTick > this.time);
-    this.texts = this.texts.filter((t) => t.startTick + EFFECT_TICKS.floatingText > this.time);
-    this.casts = this.casts.filter((c) => c.startTick + EFFECT_TICKS.castRing > this.time);
+    this.projectiles = unfinished(this.projectiles, projectileEnd, this.time);
+    this.texts = unfinished(this.texts, textEnd, this.time);
+    this.casts = unfinished(this.casts, castEnd, this.time);
   }
+}
+
+const projectileEnd = (projectile: Projectile) => projectile.hitTick;
+const textEnd = (text: FloatingText) => text.startTick + EFFECT_TICKS.floatingText;
+const castEnd = (cast: CastRing) => cast.startTick + EFFECT_TICKS.castRing;
+
+/** The effects that haven't ended by `time`: the list itself if none has, so most frames allocate nothing. */
+function unfinished<T>(list: T[], end: (effect: T) => number, time: number): T[] {
+  for (let i = 0; i < list.length; i++) if (end(list[i]!) <= time) return list.filter((effect) => end(effect) > time);
+  return list;
 }
 
 /** The angle a unit at `from` turns to face `to`, about the vertical axis. */
 export function facing(from: Point, to: Point): number | null {
   return pointDistance(from, to) < 1e-6 ? null : Math.atan2(to.x - from.x, to.z - from.z);
+}
+
+/** The last of a list in tick order to have started by `time`. */
+function lastStarted<T extends { readonly tick: number }>(list: readonly T[], time: number): T | undefined {
+  let low = 0;
+  let high = list.length;
+  while (low < high) {
+    const middle = (low + high) >>> 1;
+    if (list[middle]!.tick <= time) low = middle + 1;
+    else high = middle;
+  }
+  return low > 0 ? list[low - 1] : undefined;
 }
 
 function clamp01(value: number): number {

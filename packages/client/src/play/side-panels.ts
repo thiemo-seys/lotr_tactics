@@ -1,10 +1,11 @@
 // The play page's side panels (docs/game-spec.md section 12): the trait tracker on the left, from
-// the sim's count of the board on screen, the person's or another player's they are looking at,
-// and the players list on the right with the person's Gifts under it. A player's row shows their
-// board when clicked.
+// the sim's count of the board on screen, the person's or another player's they are looking at, or
+// the person's side while their fight plays, and the players list on the right with the person's
+// Gifts under it, as they were in planning while the fight plays (PlayFlow.shownView). A player's
+// row shows their board when clicked.
 
-import { GIFTS, type OwnedUnit, type GiftId, type PlayerView } from '@lotr-tactics/sim';
-import { ordinal, type PlayFlow } from '../flow.js';
+import { GIFTS, type PlayerView } from '@lotr-tactics/sim';
+import { ordinal, type PlayFlow, type TrackedTeam } from '../flow.js';
 import { plural } from '../hud.js';
 import { GIFT_TIER_ICONS } from '../icons.js';
 import { playerRows, type PlayerRow } from '../players.js';
@@ -14,24 +15,17 @@ import { traitBadge } from '../ui/chips.js';
 import { el, icon, rebuild } from '../ui/dom.js';
 import { setTip } from '../ui/tooltip.js';
 
-/** A board whose traits are tracked: its units, the bench, and the Gifts of its player, whose crests count. */
-interface TrackedBoard {
-  readonly board: readonly (OwnedUnit | null)[];
-  readonly bench: readonly (OwnedUnit | null)[];
-  readonly gifts: readonly GiftId[];
-}
-
-/** What the trait tracker last showed: a new view comes with each state from the game. */
-let tracked: { board: TrackedBoard | null; owner: string | null } = { board: null, owner: null };
+/** What the trait tracker last showed: a new team comes with each state from the game, and each fight. */
+let tracked: { team: TrackedTeam | null; owner: string | null } = { team: null, owner: null };
 
 /**
- * The trait tracker: every trait on a board, active ones first. `owner` names the player whose
- * board it is when it isn't the person's own.
+ * The trait tracker: every trait on a board, or the person's side in a fight, active ones first.
+ * `owner` names the player whose board it is when it isn't the person's own.
  */
-export function renderTraits(panel: HTMLElement, p: TrackedBoard, owner: string | null = null): void {
-  if (p === tracked.board && owner === tracked.owner) return;
-  tracked = { board: p, owner };
-  const rows = traitRows(p.board, p.gifts);
+export function renderTraits(panel: HTMLElement, team: TrackedTeam, owner: string | null = null): void {
+  if (team === tracked.team && owner === tracked.owner) return;
+  tracked = { team, owner };
+  const rows = traitRows(team.board, team.gifts);
   panel.setAttribute('aria-label', owner === null ? 'Traits on your board' : `Traits on ${owner}'s board`);
   rebuild(panel, JSON.stringify([rows, owner]), () => [
     el('h3', 'side-title', icon('board'), 'Traits', owner === null ? null : el('span', 'side-owner', icon('viewer'), el('span', '', owner))),
@@ -61,7 +55,7 @@ function traitRow(row: TraitRow, owner: string | null): HTMLElement {
   item.setAttribute('aria-label', `${row.name}: ${row.count}${row.level === null ? ', not active' : `, active at ${row.breakpoints[row.level]}`}`);
   // The rows are rebuilt only when the counts change, so the trait's units are read from the board
   // and bench on screen when hovered: buying or benching a unit changes them without changing a row.
-  setTip(item, () => traitTip(row.trait, row, owner, tracked.board === null ? undefined : traitUnits(row.trait, tracked.board)));
+  setTip(item, () => traitTip(row.trait, row, owner, tracked.team === null ? undefined : traitUnits(row.trait, tracked.team)));
   return item;
 }
 
@@ -69,7 +63,8 @@ let listed: { state: unknown; lobby: unknown; viewing: string } = { state: null,
 
 /** The players list, in standings order, with the person's Gifts under it. Clicking a player shows their board. */
 export function renderPlayers(panel: HTMLElement, flow: PlayFlow): void {
-  const s = flow.state!;
+  // As it was in planning while the person's fight plays, so it doesn't give the outcome away.
+  const s = flow.shownView();
   // Which boards can be looked at, and whose is on screen.
   const viewing = `${flow.canViewBoards}-${flow.viewed()?.seat ?? flow.you}`;
   if (listed.state === s && listed.lobby === flow.lobby && listed.viewing === viewing) return;

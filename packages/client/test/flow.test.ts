@@ -1,4 +1,4 @@
-import { TIMERS, type ClientMessage, type FightRecord, type Host, type LobbyView, type MatchView, type RoundRecord } from '@lotr-tactics/server';
+import { TIMERS, type ClientMessage, type FightRecord, type Host, type LobbyView, type MatchView, type RoundRecord, type ServerMessage } from '@lotr-tactics/server';
 import { simulateCombat, type CombatEvent, type Team } from '@lotr-tactics/sim';
 import { describe, expect, it } from 'vitest';
 import { LocalConnection } from '../src/connection.js';
@@ -90,7 +90,13 @@ describe('the play flow', () => {
     const host = fakeHost();
     let connection: LocalConnection | null = null;
     const { flow, calls } = recorded((message) => connection!.send(message));
-    connection = new LocalConnection(5, { message: (m) => flow.receive(m, host.time), closed: () => {} }, { host, autoUpdate: false });
+    // The last view from planning, which the HUD keeps showing while the fight plays.
+    let planned: MatchView | null = null;
+    const message = (m: ServerMessage) => {
+      if (m.type === 'state' && m.state.step.kind === 'planning') planned = m.state;
+      flow.receive(m, host.time);
+    };
+    connection = new LocalConnection(5, { message, closed: () => {} }, { host, autoUpdate: false });
     await flush();
     expect([flow.show.kind, flow.you, flow.inGame]).toEqual(['council', 0, true]);
     expect(flow.secondsLeft(host.time)).toBe(Math.ceil(flow.state!.step.ms! / 1000));
@@ -108,11 +114,20 @@ describe('the play flow', () => {
         rounds++;
         expect(calls.fights.at(-1)).toBe(yourTeam(show.fight, 0));
         expect(show.fight).toBe(yourFight(show.round, 0));
+        // The game has moved on, but the HUD shows the round being fought as it was planned.
+        expect(flow.shownView()).toBe(planned);
+        expect([planned!.stage, planned!.round]).toEqual([show.round.stage, show.round.round]);
+        expect(flow.trackedTeam().board).toBe(show.fight.input.teams[yourTeam(show.fight, 0)]);
         // The result isn't told before the fight has played.
         expect(flow.outcome(show.round.stage, show.round.round)).toBeNull();
+        const outcomes = flow.outcomesShown;
         flow.update(1000, host.time);
         expect(flow.show.kind).toBe('results');
+        expect(flow.shownView()).toBe(flow.state);
+        expect(flow.trackedTeam()).toBe(flow.me());
         expect(flow.outcome(show.round.stage, show.round.round)).toBe(flow.results(show.round, false).outcome);
+        // The stage tracker is drawn again with it.
+        expect(flow.outcomesShown).toBe(outcomes + 1);
       } else if (show.kind === 'results') {
         const results = flow.results(show.round, false);
         expect([results.stage, results.round]).toEqual([show.round.stage, show.round.round]);
@@ -138,6 +153,94 @@ describe('the play flow', () => {
     expect(rounds).toBeGreaterThan(5);
     expect(readies).toBeGreaterThan(5);
     connection.close();
+  });
+});
+
+describe("while the person's fight plays", () => {
+  const state = (kind: 'planning' | 'fight' | 'council', stage: number, round: number, hp: number) =>
+    ({
+      stage,
+      round,
+      step: { kind, ms: 30000 },
+      council: null,
+      me: { hp, placement: null, board: [null], gifts: [] },
+      players: [],
+      ready: [],
+    }) as unknown as MatchView;
+  const record = (home: number, away: number): RoundRecord => ({
+    stage: 2,
+    round: 1,
+    fights: [
+      {
+        kind: 'pvp',
+        home,
+        away,
+        input: {
+          seed: 3,
+          stage: 2,
+          teams: { A: [{ unitId: 'sam', star: 1, col: 3, row: 0, items: [] }], B: [{ unitId: 'gimli', star: 2, col: 3, row: 0, items: ['blade'] }] },
+          gifts: { A: [], B: ['shire-folk'] },
+        },
+        result: { outcome: 'B', survivors: { A: [], B: [{ unitId: 'gimli', star: 2 }] }, finalTick: 90 },
+      },
+    ],
+    damage: [{ seat: 0, amount: 7 }],
+    eliminated: [],
+  });
+
+  it('show the HUD and players list from the planning it was fought from, then the latest once it ends', () => {
+    const { flow } = recorded();
+    const planning = state('planning', 2, 1, 100);
+    flow.receive({ type: 'state', state: state('planning', 2, 1, 100) }, 0);
+    flow.receive({ type: 'state', state: planning }, 10);
+    expect(flow.shownView()).toBe(planning);
+    flow.receive({ type: 'round', round: record(0, 1) }, 20);
+    // The fight step's views have the fight's damage and the next round in them.
+    flow.receive({ type: 'state', state: state('fight', 2, 2, 93) }, 20);
+    const later = state('fight', 2, 2, 93);
+    flow.receive({ type: 'state', state: later }, 30);
+    expect(flow.show.kind).toBe('fight');
+    expect(flow.shownView()).toBe(planning);
+    expect(flow.shownView().me.hp).toBe(100);
+    flow.skip(40);
+    expect(flow.show.kind).toBe('results');
+    expect(flow.shownView()).toBe(later);
+    // The next round's planning.
+    const next = state('planning', 2, 2, 93);
+    flow.receive({ type: 'state', state: next }, 5000);
+    expect(flow.shownView()).toBe(next);
+  });
+
+  it('show the latest view when the page never saw the planning, as on joining mid-fight', () => {
+    const { flow } = recorded();
+    flow.receive({ type: 'round', round: record(0, 1) }, 0);
+    const fight = state('fight', 2, 2, 93);
+    flow.receive({ type: 'state', state: fight }, 0);
+    expect(flow.show.kind).toBe('fight');
+    expect(flow.shownView()).toBe(fight);
+    // A planning view from an earlier round isn't the one this fight came from.
+    const { flow: other } = recorded();
+    other.receive({ type: 'state', state: state('planning', 1, 4, 100) }, 0);
+    other.receive({ type: 'round', round: record(0, 1) }, 0);
+    other.receive({ type: 'state', state: fight }, 0);
+    expect(other.shownView()).toBe(fight);
+  });
+
+  it("track the traits of the person's side in the fight, with its Gifts, and otherwise their board", () => {
+    const { flow } = recorded();
+    flow.you = 1;
+    const planning = state('planning', 2, 1, 100);
+    flow.receive({ type: 'state', state: planning }, 0);
+    expect(flow.trackedTeam()).toBe(planning.me);
+    const round = record(0, 1);
+    flow.receive({ type: 'round', round }, 10);
+    // Knocked out in it, the person's board would be empty in the views that follow.
+    flow.receive({ type: 'state', state: state('fight', 2, 2, -3) }, 10);
+    const team = flow.trackedTeam();
+    expect(team.board).toBe(round.fights[0]!.input.teams.B);
+    expect(team.gifts).toEqual(['shire-folk']);
+    // The same each frame, so the tracker isn't drawn again.
+    expect(flow.trackedTeam()).toBe(team);
   });
 });
 
