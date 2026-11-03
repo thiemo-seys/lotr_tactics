@@ -85,6 +85,19 @@ describe('tooltips', () => {
     expect(fighterTip(goblin!, 'Moria goblin')).toMatchObject({ subtitle: 'Monster' });
   });
 
+  it('count the caster among allies of its own origin in every unit card', () => {
+    // Gothmog is an Orc, so his buff on Orc allies around him includes himself.
+    const line = 'Gives itself and Orc allies within 2 hexes +25% Attack Damage for 5s.';
+    expect(unitTip('gothmog').ability!.lines).toContain(line);
+    expect(ownedUnitTip({ id: 1, unitId: 'gothmog', star: 1, items: [] }).ability!.lines).toContain(line);
+    const combat = createCombat({
+      seed: 1,
+      stage: 2,
+      teams: { A: [{ unitId: 'gothmog', star: 1, col: 3, row: 3, items: [] }], B: [{ unitId: 'goblin', star: 1, col: 3, row: 3, items: [] }] },
+    });
+    expect(fighterTip(combat.state.units[0]!, 'Gothmog').ability!.lines).toContain(line);
+  });
+
   it('give a disabled action its reason', () => {
     expect(actionTip('Reroll', 'New units in the shop.', 'Not enough gold.', 'D')).toEqual({
       title: 'Reroll',
