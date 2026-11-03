@@ -210,6 +210,30 @@ def hex_prism(name, centre, radius, z0, z1, mat):
     return part(name, bottom + top, faces, mat, inside=V(centre.x, centre.y, (z0 + z1) / 2))
 
 
+def hex_frame(name, centre, inner, outer, z0, z1, mat):
+    """A pointy-top hex frame, as the board's hexes are (a corner towards ±y): its top between
+    `inner` and `outer` from the centre, its outer side down to `z0`, its inner side down to `z0`
+    too, open underneath."""
+
+    def ring(radius, z):
+        return ellipse(centre.x, centre.y, z, radius, radius, 6, phase=90)
+
+    verts = ring(outer, z0) + ring(outer, z1) + ring(inner, z1) + ring(inner, z0)
+    faces = []
+    for band in range(3):
+        for i in range(6):
+            j = (i + 1) % 6
+            faces.append((band * 6 + i, band * 6 + j, (band + 1) * 6 + j, (band + 1) * 6 + i))
+    mid = (inner + outer) / 2
+
+    def inside(p):
+        # The middle of the frame's wall nearest the face.
+        d = Vector((p.x - centre.x, p.y - centre.y, 0))
+        return Vector((centre.x, centre.y, (z0 + z1) / 2)) + (d.normalized() * mid if d.length > 0 else d)
+
+    return part(name, verts, faces, mat, inside=inside)
+
+
 # Export ----------------------------------------------------------------------------------------
 
 
