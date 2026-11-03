@@ -22,7 +22,7 @@ Implementation spec for online play: lobbies, a server that runs games authorita
 
 - Accounts, ranking, a public list of lobbies and a matchmaking queue.
 - Saving games. Lobbies live in memory, so a restart ends every game.
-- Several server processes, and hosting and deployment.
+- Several server processes.
 - Watching other players' fights in the client. Their boards can be looked at in a Council and in planning (`game-spec.md` section 12), from the views, which include them.
 - Chat and emotes.
 
@@ -238,6 +238,7 @@ interface SeatView {
   - Connections are pinged every 30 seconds and dropped if they don't answer.
 - A dropped connection counts as a disconnect (section 5.2).
 - SIGINT and SIGTERM close the server, which ends every game.
+- **Deployment:** the `Dockerfile` builds the client and runs the server from its source with `tsx`, as the `node` user, on `PORT`. `compose.yaml` runs it behind Caddy (`Caddyfile`), which serves HTTPS for the domain in `DOMAIN`, redirects HTTP, passes `/ws` through, compresses text and `.glb` models, and caches the hashed files in `/assets/` for a year. Only Caddy's ports 80 and 443 are open on the host. The steps are in `README.md`.
 
 ---
 

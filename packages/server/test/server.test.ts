@@ -1,4 +1,4 @@
-import { mkdtempSync, writeFileSync } from 'node:fs';
+import { mkdirSync, mkdtempSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
@@ -12,6 +12,8 @@ beforeAll(async () => {
   const dir = mkdtempSync(join(tmpdir(), 'lotr-client-'));
   writeFileSync(join(dir, 'index.html'), '<p>The fight viewer</p>');
   writeFileSync(join(dir, 'play.js'), 'export {};');
+  mkdirSync(join(dir, 'models'));
+  writeFileSync(join(dir, 'models', 'frodo.glb'), 'glTF');
   server = await startServer({ port: 0, clientDir: dir });
 });
 
@@ -57,6 +59,7 @@ describe('the Node server', () => {
     expect(page.headers.get('content-type')).toContain('text/html');
     expect(await page.text()).toContain('fight viewer');
     expect((await fetch(`${base()}/play.js`)).headers.get('content-type')).toContain('text/javascript');
+    expect((await fetch(`${base()}/models/frodo.glb`)).headers.get('content-type')).toBe('model/gltf-binary');
     expect((await fetch(`${base()}/missing.html`)).status).toBe(404);
     expect((await fetch(`${base()}/%2e%2e/%2e%2e/etc/passwd`)).status).toBe(404);
     expect((await fetch(`${base()}/..%2F..%2Fpackage.json`)).status).toBe(404);

@@ -3,3 +3,4 @@ dist/
 coverage/
 *.tsbuildinfo
 __pycache__/
+.env

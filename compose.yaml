@@ -1,0 +1,33 @@
+# The game behind Caddy, which gets HTTPS certificates and passes WebSockets through.
+# On the server: put DOMAIN=your.domain in .env next to this file, then `docker compose up -d --build`.
+
+services:
+  game:
+    build: .
+    restart: unless-stopped
+    environment:
+      PORT: 8080
+    # Only Caddy reaches the game, over the compose network; no port is opened on the host.
+    expose:
+      - "8080"
+
+  caddy:
+    image: caddy:2
+    restart: unless-stopped
+    depends_on:
+      - game
+    environment:
+      DOMAIN: ${DOMAIN:?Set DOMAIN in .env, for example DOMAIN=tactics.example.com}
+    ports:
+      - "80:80"
+      - "443:443"
+      - "443:443/udp"
+    volumes:
+      - ./Caddyfile:/etc/caddy/Caddyfile:ro
+      - caddy_data:/data
+      - caddy_config:/config
+
+volumes:
+  # Caddy's certificates. Keep them across restarts so Let's Encrypt's rate limits aren't hit.
+  caddy_data:
+  caddy_config:

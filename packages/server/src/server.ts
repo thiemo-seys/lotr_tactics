@@ -45,6 +45,7 @@ const CONTENT_TYPES: Readonly<Record<string, string>> = {
   '.png': 'image/png',
   '.ico': 'image/x-icon',
   '.woff2': 'font/woff2',
+  '.glb': 'model/gltf-binary',
 };
 
 export function startServer(options: ServerOptions): Promise<RunningServer> {
