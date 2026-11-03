@@ -21,7 +21,7 @@ from arena import (  # noqa: E402
     drum,
     finish_arena,
     hex_centres,
-    hex_prism,
+    hex_frame,
     in_hex,
     rock,
     tuft,
@@ -85,27 +85,20 @@ def build():
 
 
 def ground(M):
-    """Dirt under everything, the dais of mortar the board's hexes are set in, and the paving."""
+    """Dirt under everything, the paving, under the board too, since its hexes are translucent, and
+    the mortar the hexes are set in, which shows in the gaps between them."""
     big = 90
     z = FLOOR_TOP - 0.1
     part('dirt', [V(-big, -big, z), V(big, -big, z), V(big, big, z), V(-big, big, z)], [(0, 1, 2, 3)], M['dirt'], outward=V(0, 0, 1))
 
-    centres = list(hex_centres())
-    for i, c in enumerate(centres):
-        hex_prism(f'dais.{i}', c, 1.0, FLOOR_TOP - 0.08, FLOOR_TOP + 0.01, M['mortar'])
-
-    def under_board(x, y):
-        p = V(x, y, 0)
-        return any(in_hex(p, c, 1.0) for c in centres)
+    for i, c in enumerate(hex_centres()):
+        hex_frame(f'mortar.{i}', c, 0.9, 1.0, FLOOR_TOP - 0.08, FLOOR_TOP + 0.02, M['mortar'])
 
     jitter = random.Random(1)
     nx, ny = int(FLOOR[0] // SLAB), int(FLOOR[1] // SLAB)
     for i in range(-nx, nx):
         for j in range(-ny, ny):
             x0, y0 = i * SLAB, j * SLAB
-            corners = [(x0, y0), (x0 + SLAB, y0), (x0 + SLAB, y0 + SLAB), (x0, y0 + SLAB)]
-            if all(under_board(x, y) for x, y in corners):
-                continue
             cx, cy = x0 + SLAB / 2, y0 + SLAB / 2
             where = zone(cx, cy)
             roll = jitter.random()

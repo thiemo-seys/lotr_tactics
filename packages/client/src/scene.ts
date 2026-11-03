@@ -43,6 +43,9 @@ const TEAM_COLOURS: Record<Team, number> = { A: 0x4a90d9, B: 0xd9534f };
  */
 const BOARD_COLOURS: Record<Team, readonly [number, number]> = { A: [0xc9ac84, 0xbfa17a], B: [0x9e7a62, 0x94705a] };
 
+/** How opaque the board's hexes are, so the paving under them shows through a little and they sit in the arena. */
+const BOARD_OPACITY = 0.72;
+
 /** The bench's tiles: darker stone, set into the paving. */
 const BENCH_COLOUR = 0x5f4c3b;
 
@@ -233,7 +236,11 @@ export class FightScene {
   /** The team drawn as the near side. */
   private side: Team = 'A';
   /** The board's hexes, tinted for the near side by `tintBoard`. */
-  private readonly board = new THREE.InstancedMesh(geometry.hex, new THREE.MeshStandardMaterial({ flatShading: true }), BOARD_HEXES.length);
+  private readonly board = new THREE.InstancedMesh(
+    geometry.hex,
+    new THREE.MeshStandardMaterial({ flatShading: true, transparent: true, opacity: BOARD_OPACITY }),
+    BOARD_HEXES.length,
+  );
   /** The side the board is tinted for. */
   private boardSide: Team | null = null;
   /** Bench tiles, shown while planning. */
@@ -598,6 +605,8 @@ export class FightScene {
       this.board.setMatrixAt(i, matrix.makeTranslation(x, 0, z));
     });
     this.tintBoard('A');
+    // Translucent, it is drawn first of what is, before faded units and the drop marker, which stand on it.
+    this.board.renderOrder = -1;
     this.scene.add(this.board);
   }
 
