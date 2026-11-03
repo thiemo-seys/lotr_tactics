@@ -4361,6 +4361,12 @@ body.play .meter {
   gap: 3px;
 }
 
+.tip-unit .chip {
+  position: absolute;
+  top: 14px;
+  right: 3px;
+}
+
 .tip-unit.on-board {
   box-shadow: 0 0 0 1px rgba(255, 255, 255, 0.85), 0 0 10px color-mix(in srgb, var(--cost) 60%, transparent);
 }
