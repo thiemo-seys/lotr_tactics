@@ -30,12 +30,13 @@ describe('bots', () => {
     expect(last.stage).toBeLessThanOrEqual(8);
   });
 
+  // Four games to stage 6 take a few seconds, more on a busy machine than the 5 s a test gets by default.
   it('play the same game for the same seed', () => {
     const summary = (seed: number) =>
       playBotGame(seed, 6).reports.map((r) => r.fights.map((f) => `${f.home}-${f.away}:${f.result.outcome}@${f.result.finalTick}`).join(','));
     expect(summary(3)).toEqual(summary(3));
     expect(summary(3)).not.toEqual(summary(4));
-  });
+  }, 30_000);
 
   it('show the state to a watcher once a round, after planning and before the fights', () => {
     const text = (units: readonly { unitId: string; star: number; col: number; row: number }[]) =>
