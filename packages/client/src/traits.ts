@@ -5,11 +5,15 @@
 
 import {
   TRAITS,
+  UNITS,
   teamTraitCounts,
   traitLevelsOf,
   type GiftId,
+  type Cost,
   type OwnedUnit,
+  type Star,
   type TraitId,
+  type UnitId,
   type TraitLevels as TraitValues,
 } from '@lotr-tactics/sim';
 
@@ -101,4 +105,30 @@ export function traitRows(board: readonly (OwnedUnit | null)[], gifts: readonly 
   });
   const rank = (row: TraitRow) => (row.tone === null ? -1 : TONE_RANK[row.tone]);
   return rows.sort((a, b) => rank(b) - rank(a) || b.count - a.count || a.name.localeCompare(b.name));
+}
+
+/** A roster unit with a trait, and the copies of it a player owns. */
+export interface TraitUnit {
+  readonly id: UnitId;
+  readonly name: string;
+  readonly cost: Cost;
+  /** The star level of each copy owned, on the board or the bench, highest first. */
+  readonly stars: readonly Star[];
+  /** Whether a copy is on the board, where it counts towards the trait. */
+  readonly onBoard: boolean;
+}
+
+/** Every roster unit with a trait, by cost then name, with the copies `owner` has on the board and the bench. */
+export function traitUnits(
+  trait: TraitId,
+  owner: { readonly board: readonly (OwnedUnit | null)[]; readonly bench: readonly (OwnedUnit | null)[] },
+): TraitUnit[] {
+  const ids = (Object.keys(UNITS) as UnitId[]).filter((id) => UNITS[id].origin === trait || (UNITS[id].classes as readonly TraitId[]).includes(trait));
+  return ids
+    .map((id): TraitUnit => {
+      const copies = (units: readonly (OwnedUnit | null)[]) => units.flatMap((u) => (u !== null && u.unitId === id ? [u.star] : []));
+      const onBoard = copies(owner.board);
+      return { id, name: UNITS[id].name, cost: UNITS[id].cost, stars: [...onBoard, ...copies(owner.bench)].sort((a, b) => b - a), onBoard: onBoard.length > 0 };
+    })
+    .sort((a, b) => a.cost - b.cost || a.name.localeCompare(b.name));
 }

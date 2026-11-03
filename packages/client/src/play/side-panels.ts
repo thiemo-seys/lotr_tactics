@@ -9,14 +9,15 @@ import { plural } from '../hud.js';
 import { GIFT_TIER_ICONS } from '../icons.js';
 import { playerRows, type PlayerRow } from '../players.js';
 import { giftTip, textTip, traitTip } from '../tips.js';
-import { traitRows, type TraitRow } from '../traits.js';
+import { traitRows, traitUnits, type TraitRow } from '../traits.js';
 import { traitBadge } from '../ui/chips.js';
 import { el, icon, rebuild } from '../ui/dom.js';
 import { setTip } from '../ui/tooltip.js';
 
-/** A board whose traits are tracked: its units and the Gifts of its player, whose crests count. */
+/** A board whose traits are tracked: its units, the bench, and the Gifts of its player, whose crests count. */
 interface TrackedBoard {
   readonly board: readonly (OwnedUnit | null)[];
+  readonly bench: readonly (OwnedUnit | null)[];
   readonly gifts: readonly GiftId[];
 }
 
@@ -58,7 +59,9 @@ function traitRow(row: TraitRow, owner: string | null): HTMLElement {
   );
   item.tabIndex = 0;
   item.setAttribute('aria-label', `${row.name}: ${row.count}${row.level === null ? ', not active' : `, active at ${row.breakpoints[row.level]}`}`);
-  setTip(item, traitTip(row.trait, row, owner));
+  // The rows are rebuilt only when the counts change, so the trait's units are read from the board
+  // and bench on screen when hovered: buying or benching a unit changes them without changing a row.
+  setTip(item, () => traitTip(row.trait, row, owner, tracked.board === null ? undefined : traitUnits(row.trait, tracked.board)));
   return item;
 }
 

@@ -1,6 +1,6 @@
-import { TRAITS, type OwnedUnit, type TraitId, type UnitId, type ItemId } from '@lotr-tactics/sim';
+import { TRAITS, UNITS, type OwnedUnit, type TraitId, type UnitId, type ItemId } from '@lotr-tactics/sim';
 import { describe, expect, it } from 'vitest';
-import { TRAIT_IDS, traitInfo, traitRows } from '../src/traits.js';
+import { TRAIT_IDS, traitInfo, traitRows, traitUnits } from '../src/traits.js';
 
 let nextId = 1;
 const unit = (unitId: UnitId, items: ItemId[] = []): OwnedUnit => ({ id: nextId++, unitId, star: 1, items });
@@ -55,5 +55,29 @@ describe('the trait tracker', () => {
     expect(traitRows([null, null], ['shire-folk'])).toEqual([]);
     const lone: TraitId[] = traitRows([unit('sam')], []).map((r) => r.trait);
     expect(lone.sort()).toEqual(['guardian', 'hobbit']);
+  });
+});
+
+describe("a trait's units", () => {
+  it('lists every roster unit with the trait, by cost then name', () => {
+    for (const trait of TRAIT_IDS) {
+      const units = traitUnits(trait, { board: [], bench: [] });
+      const expected = Object.values(UNITS).filter((u) => u.origin === trait || (u.classes as readonly string[]).includes(trait));
+      expect(units.map((u) => u.id).sort()).toEqual(expected.map((u) => u.id).sort());
+      for (let i = 1; i < units.length; i++) {
+        const [a, b] = [units[i - 1]!, units[i]!];
+        expect(a.cost < b.cost || (a.cost === b.cost && a.name.localeCompare(b.name) <= 0)).toBe(true);
+      }
+      expect(units.every((u) => u.stars.length === 0 && !u.onBoard)).toBe(true);
+    }
+  });
+
+  it('marks the copies owned, on the board or only on the bench', () => {
+    const twoStar: OwnedUnit = { ...unit('sam'), star: 2 };
+    const units = traitUnits('hobbit', { board: [unit('sam'), null], bench: [twoStar, unit('merry'), null] });
+    const by = (id: UnitId) => units.find((u) => u.id === id)!;
+    expect(by('sam')).toMatchObject({ stars: [2, 1], onBoard: true });
+    expect(by('merry')).toMatchObject({ stars: [1], onBoard: false });
+    expect(by('pippin')).toMatchObject({ stars: [], onBoard: false });
   });
 });

@@ -48,6 +48,9 @@ describe('tooltips', () => {
     ]);
     expect(traitTip('guardian').levels!.every((l) => !l.active)).toBe(true);
     expect(traitTip('hobbit', { count: 1, level: null, tone: null }).tone).toBeUndefined();
+    expect(traitTip('guardian').units).toBeUndefined();
+    const units = [{ id: 'sam', name: 'Sam', cost: 1, stars: [1], onBoard: true }] as const;
+    expect(traitTip('hobbit', { count: 1, level: null, tone: null }, null, units).units).toEqual(units);
   });
 
   it('describe units by cost, traits and ability', () => {
