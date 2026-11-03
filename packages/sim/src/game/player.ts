@@ -78,6 +78,16 @@ export function xpForNextLevel(level: number): number | null {
   return XP.toLevel[level + 1] ?? null;
 }
 
+/** The level whose shop odds a player's shop rolls with: their level, plus one per Mirror of Galadriel, up to the top level (section 6.3). */
+export function shopOddsLevel(level: number, gifts: readonly GiftId[]): number {
+  return Math.min(level + giftBonus(gifts, 'shopLevels'), PLAYER.maxLevel);
+}
+
+/** The odds in percent that a shop slot shows a 1- to 5-cost unit, for a player of this level with these Gifts. */
+export function shopOdds(level: number, gifts: readonly GiftId[]): readonly number[] {
+  return SHOP.odds[shopOddsLevel(level, gifts) - 1]!;
+}
+
 /** Base income at the start of a PvP or PvE round (section 8.1). */
 export function baseIncome(stage: number, round: number): number {
   return INCOME.base[`${stage}-${round}`] ?? INCOME.standard;
@@ -256,7 +266,7 @@ export class Player implements PlayerView {
 
   /** Fills every shop slot from the pool, with the odds of the level and any Mirror of Galadriel. The shop must be empty. */
   rollShop(): void {
-    const level = Math.min(this.level + giftBonus(this.gifts, 'shopLevels'), PLAYER.maxLevel);
+    const level = shopOddsLevel(this.level, this.gifts);
     for (let slot = 0; slot < SHOP.size; slot++) this.shop[slot] = this.context.pool.rollShopSlot(level, this.shopRng);
   }
 

@@ -5,7 +5,7 @@
 
 import { RING, XP, roundType } from '@lotr-tactics/sim';
 import type { PlayFlow } from '../flow.js';
-import { hudStats, plural, ringStatus, stageTrack, timerView, type StageNode } from '../hud.js';
+import { hudStats, plural, ringStatus, shopOddsView, stageTrack, timerView, type StageNode } from '../hud.js';
 import { ROUND_ICONS } from '../icons.js';
 import { actionTip, ringTip, textTip } from '../tips.js';
 import { el, icon, rebuild, setText, show, toggle } from '../ui/dom.js';
@@ -45,7 +45,8 @@ export class HudBar {
     setTip(this.pill('level'), () => {
       const s = hudStats(me());
       const xp = s.xp === null ? (s.topLevel ? 'The top level.' : `XP can be bought from level ${XP.buyFromLevel}.`) : `XP ${s.xp.have} of ${s.xp.need} to the next level.`;
-      return textTip(`Level ${s.level}`, `Up to ${plural(s.level, 'unit')} on the board.`, xp);
+      const odds = shopOddsView(me());
+      return { ...textTip(`Level ${s.level}`, `Up to ${plural(s.level, 'unit')} on the board.`, xp, ...(odds.note === null ? [] : [odds.note])), odds: odds.rows };
     });
     setTip(this.pill('board'), () => {
       const { board } = hudStats(me());

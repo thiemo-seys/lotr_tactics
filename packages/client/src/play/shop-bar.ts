@@ -4,6 +4,7 @@
 
 import { SHOP, UNITS, XP, isComponent, ownedUnits, type ActionResult, type PlayerView, type Star, type UnitId } from '@lotr-tactics/sim';
 import type { PlayFlow } from '../flow.js';
+import { shopOddsView } from '../hud.js';
 import { TRAIT_ICONS } from '../icons.js';
 import { actionTip, unitTip } from '../tips.js';
 import { shopMark } from '../shop.js';
@@ -37,7 +38,11 @@ export class ShopBar {
     private readonly drag: (item: TrayItem, event: PointerEvent) => void,
   ) {
     const reason = (result: ActionResult) => (result.ok ? null : result.reason);
-    setTip(this.buyXp, () => actionTip('Buy XP', `Gain ${XP.buyAmount} XP for ${XP.buyCost} gold.`, reason(flow.check({ type: 'buyXp' })), 'F'));
+    setTip(this.buyXp, () => {
+      const odds = shopOddsView(flow.me());
+      const tip = actionTip('Buy XP', `Gain ${XP.buyAmount} XP for ${XP.buyCost} gold.`, reason(flow.check({ type: 'buyXp' })), 'F');
+      return { ...tip, body: [...tip.body!, ...(odds.note === null ? [] : [{ text: odds.note }])], odds: odds.rows };
+    });
     setTip(this.reroll, () => {
       const free = flow.me().freeRerolls;
       const what =

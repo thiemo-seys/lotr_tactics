@@ -3,7 +3,7 @@ import { POOL_COPIES, SHOP } from '../src/data/economy.js';
 import type { ItemId } from '../src/data/items.js';
 import { UNITS, type UnitId } from '../src/data/units.js';
 import { boardSlot, unitAt, type Place } from '../src/game/places.js';
-import { Player, baseIncome, streakGold, xpForNextLevel } from '../src/game/player.js';
+import { Player, baseIncome, shopOdds, shopOddsLevel, streakGold, xpForNextLevel } from '../src/game/player.js';
 import { addItem } from '../src/game/rules.js';
 import { Pool, UNIT_IDS, copiesIn } from '../src/game/pool.js';
 import { createRng, randomInt } from '../src/rng.js';
@@ -332,6 +332,15 @@ describe('the shop', () => {
     const { player } = setup();
     player.rollShop();
     expect(player.shop).toHaveLength(SHOP.size);
+  });
+});
+
+describe('shop odds', () => {
+  it("are the level's odds, one level higher per Mirror of Galadriel, up to the top level", () => {
+    expect(shopOdds(5, [])).toEqual(SHOP.odds[4]);
+    expect(shopOddsLevel(5, ['mirror-of-galadriel'])).toBe(6);
+    expect(shopOdds(5, ['mirror-of-galadriel'])).toEqual(SHOP.odds[5]);
+    expect(shopOddsLevel(9, ['mirror-of-galadriel'])).toBe(9);
   });
 });
 

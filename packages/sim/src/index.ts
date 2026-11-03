@@ -35,7 +35,7 @@ export type * from './combat/events.js';
 export { UNIT_IDS, copiesIn } from './game/pool.js';
 export { TEAM_ROWS, boardPlace, boardSlot, isPlace, ownedUnits, placeOf, samePlace, unitAt } from './game/places.js';
 export type { BoardPlace, OwnedUnit, Owner, Place } from './game/places.js';
-export { baseIncome, streakGold, xpForNextLevel } from './game/player.js';
+export { baseIncome, shopOdds, shopOddsLevel, streakGold, xpForNextLevel } from './game/player.js';
 export type { PlayerView } from './game/player.js';
 export { addItem, checkAction } from './game/rules.js';
 export type { ActionContext, ActionResult } from './game/rules.js';
