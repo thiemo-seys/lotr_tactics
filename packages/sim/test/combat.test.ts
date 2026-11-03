@@ -79,11 +79,11 @@ describe('createCombat', () => {
     expect(combat.tick).toBe(0);
     expect(combat.isOver()).toBe(false);
     expect(combat.events).toEqual([
-      { type: 'spawn', tick: 0, unit: 0, unitId: 'sam', team: 'A', hex: fromOffset({ col: 2, row: 3 }), star: 2, summon: false },
-      { type: 'spawn', tick: 0, unit: 1, unitId: 'legolas', team: 'A', hex: fromOffset({ col: 0, row: 0 }), star: 1, summon: false },
+      { type: 'spawn', tick: 0, unit: 0, unitId: 'sam', team: 'A', hex: fromOffset({ col: 2, row: 3 }), star: 2, summon: false, owner: null },
+      { type: 'spawn', tick: 0, unit: 1, unitId: 'legolas', team: 'A', hex: fromOffset({ col: 0, row: 0 }), star: 1, summon: false, owner: null },
       // Team B's own (2, 3) is board (4, 4), and its (6, 0) is board (0, 7).
-      { type: 'spawn', tick: 0, unit: 2, unitId: 'gimli', team: 'B', hex: fromOffset({ col: 4, row: 4 }), star: 1, summon: false },
-      { type: 'spawn', tick: 0, unit: 3, unitId: 'saruman', team: 'B', hex: fromOffset({ col: 0, row: 7 }), star: 1, summon: false },
+      { type: 'spawn', tick: 0, unit: 2, unitId: 'gimli', team: 'B', hex: fromOffset({ col: 4, row: 4 }), star: 1, summon: false, owner: null },
+      { type: 'spawn', tick: 0, unit: 3, unitId: 'saruman', team: 'B', hex: fromOffset({ col: 0, row: 7 }), star: 1, summon: false, owner: null },
     ]);
   });
 

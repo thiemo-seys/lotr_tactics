@@ -15,6 +15,7 @@ import { ShopBar } from './play/shop-bar.js';
 import { renderPlayers, renderTraits } from './play/side-panels.js';
 import { renderViewingBar } from './play/viewing-bar.js';
 import { FightScene } from './scene.js';
+import { MeterPanel } from './ui/meter.js';
 import { blockDisabledClicks, fillIcons, isEnabled, setText, show, toggle } from './ui/dom.js';
 import { fighterTip, ownedUnitTip } from './tips.js';
 import { tipCard } from './ui/tip-card.js';
@@ -45,6 +46,8 @@ const nameInput = element<HTMLInputElement>('name');
 const codeInput = element<HTMLInputElement>('code');
 const speedButton = element<HTMLButtonElement>('speed');
 const skipButton = element<HTMLButtonElement>('skip');
+const meterButton = element('toggle-meter');
+const meter = new MeterPanel(element('meter'), meterButton, false);
 
 const scene = new FightScene(view);
 let connection: Connection | null = null;
@@ -221,6 +224,10 @@ function render(now: number): void {
   show(playersPanel, inGame);
   show(traitsPanel, inGame && (planning || step.kind === 'council' || step.kind === 'fight'));
   toggle(document.body, 'in-game', inGame);
+  // The damage meter: the person's own fight, while it plays and in its results.
+  const meterFight = inGame ? flow.meterFight() : null;
+  show(meterButton, meterFight !== null);
+  meter.render(meterFight);
   if (!planning || viewed !== null) drag.cancel();
   let bannerShown = false;
 

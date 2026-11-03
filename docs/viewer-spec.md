@@ -10,6 +10,7 @@ A browser tool that runs one fight with `packages/sim` and plays it back in 3D. 
 - Play it back at 30 ticks per second with pause, single-step and speed control.
 - Show the board, units, health, shields, mana, attacks, projectiles, abilities, statuses, deaths and the result.
 - A readable event log.
+- A damage meter (section 8).
 
 **Out of scope (later)**
 
@@ -169,6 +170,7 @@ A unit's star level shows four ways at once, chosen from a study of Frodo, Arago
   - Speed: a segmented control of 0.25×, 0.5×, 1×, 2× and 4×.
   - The current tick, time and overtime.
 - **URL:** the fight settings are kept in the URL hash, for example `#a=full&b=traits&seed=3&stage=2`, so a fight can be shared and reloaded.
+- **Damage meter:** a Damage button next to Log opens and closes the meter (section 8), with a switch between teams A and B, since the viewer takes no side.
 - **Event log:** one line per event except moves, with unit names, newest last, coloured by the kind of event, with casts, deaths and the end marked.
 
 ---
@@ -180,6 +182,7 @@ The parts without Three.js are tested with Vitest:
 - random boards, which are valid and the same for the same seed;
 - playback timing, interpolated positions and projectiles;
 - the event log text;
+- the damage meter's rows: totals and parts per tab, summons in their owner's row, the Eye's Nazgûl in its own, order and ties;
 - item and Ring of Power colours and descriptions, Gift descriptions, and the One Ring's;
 - the icons: every trait, item component, Gift tier, round type and label status has one, each trait and component its own;
 - trait text and the trait tracker's rows;
@@ -187,3 +190,17 @@ The parts without Three.js are tested with Vitest:
 - the model a star level uses, falling back to the level below, its scale within the hex and its label height.
 
 The Three.js scene and the pages are checked by building them and looking at them in a browser.
+
+---
+
+## 8. Damage meter
+
+A panel on both pages, with one row per unit of a team, showing what it has done so far in the fight. It adds up the fight's events (`meter.ts`, without the DOM), so it follows playback and never changes the fight.
+
+- **Tabs:** Dealt (`damage` events by source), Taken (by target), and Healing (`heal` and `shield` events by source).
+- **Amounts:** in full: a damage event counts its whole `amount`, including what a shield absorbed and any overkill. A shield counts the amount it gave.
+- **Summons** count for the unit that made them, the `spawn` event's `owner` (`sim-spec.md` section 14): an Orc for the Orc trait's grunts, the caster for an ability's. The Eye's Nazgûl has no owner and gets its own row.
+- **Rows:** every unit of the team that has spawned, those that have done nothing too, most first, ties by unit id. Each row shows the unit's name, star level and total, and a bar as long as its share of the top total, split by damage type in the floating numbers' colours (physical orange, magic blue, true white), or into healing in green and shielding in silver. Dead units are dimmed. Hovering a row lists its parts.
+- **Opening and closing:** a Damage button in the top bar opens and closes it, and so does the panel's close button. It starts closed. Whether it is open and which tab is picked are kept in the browser's local storage, shared by both pages.
+- **Fight viewer:** at the top left, with a switch between teams A and B.
+- **Play page** (`game-spec.md` section 12): at the bottom left, under the trait tracker. Only the person's own fight and team: the button shows while their fight plays and through its results, and the meter follows the fight as it plays, then shows all of it in the results, even if it was skipped. It isn't there in a Council or planning, or in a round when the person had no fight.

@@ -267,7 +267,7 @@ export class Fight implements Combat {
       const orcs = this.living(team).filter((u) => u.origin === 'orc');
       for (let i = 0; orc !== undefined && i < orc.grunts; i++) {
         const owner = orcs[i % orcs.length]!;
-        this.summon(team, owner.hex, 'orc-grunt', gruntStats(this.stage));
+        this.summon(team, owner, owner.hex, 'orc-grunt', gruntStats(this.stage));
       }
     }
 
@@ -275,7 +275,8 @@ export class Fight implements Combat {
     for (const team of TEAMS) {
       const bearer = this.living(enemyOf(team)).find((u) => u.ring !== null);
       if (bearer === undefined || !input.teams[team].some((p) => isUnitId(p.unitId))) continue;
-      const eye = this.summon(team, bearer.hex, 'eye-nazgul', eyeStats(bearer.ring!));
+      // It has no owner on its own team.
+      const eye = this.summon(team, null, bearer.hex, 'eye-nazgul', eyeStats(bearer.ring!));
       if (eye !== null) eye.hunts = bearer;
     }
 
@@ -612,7 +613,7 @@ export class Fight implements Combat {
           this.dash(caster, lineDashHex(hexes, this.isFreeFor(caster)));
           break;
         case 'summon':
-          for (let i = 0; i < effect.count; i++) this.summon(caster.team, caster.hex, effect.unit, gruntStats(this.stage));
+          for (let i = 0; i < effect.count; i++) this.summon(caster.team, caster, caster.hex, effect.unit, gruntStats(this.stage));
           break;
         default:
           for (const target of units) this.applyStatus(caster.id, target.id, effect);
@@ -668,15 +669,15 @@ export class Fight implements Combat {
 
   /**
    * Spawns a summon for a team next to a hex, on the team's own half (section 10.3). Returns it, or
-   * null if the team's half is full.
+   * null if the team's half is full. The owner is the unit it is credited to, if any.
    */
-  private summon(team: Team, near: Hex, unitId: SummonId, base: BaseStats): Unit | null {
+  private summon(team: Team, owner: Unit | null, near: Hex, unitId: SummonId, base: BaseStats): Unit | null {
     const hex = summonHex(team, near, this.isFreeFor(null));
     if (hex === null) return null;
     // The next free slot: slots run from 0 with no gaps, dead units keeping theirs.
     const slot = this.units.filter((u) => u.team === team).length;
     const unit = createSummon(this.units.length, team, slot, unitId, hex, base);
-    this.addUnit(unit);
+    this.addUnit(unit, owner);
     return unit;
   }
 
@@ -870,7 +871,7 @@ export class Fight implements Combat {
     return this.living(enemyOf(unit.team)).filter(isTargetable);
   }
 
-  private addUnit(unit: Unit): void {
+  private addUnit(unit: Unit, owner: Unit | null = null): void {
     this.units.push(unit);
     this.events.push({
       type: 'spawn',
@@ -881,6 +882,7 @@ export class Fight implements Combat {
       hex: unit.hex,
       star: unit.star,
       summon: unit.summon,
+      owner: owner?.id ?? null,
     });
   }
 
