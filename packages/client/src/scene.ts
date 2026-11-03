@@ -28,14 +28,17 @@ import { ModelSwaps, Redraws } from './drawing.js';
 import type { PlanningRing } from './flow.js';
 import { copyModel, loadModels, modelShader, modelShaders, modelsLoaded, shaderSample, type ModelCopy, type ModelShader } from './models.js';
 import { EFFECT_TICKS, type CastRing, type FloatingText, type MutablePoint, type Playback, type Projectile } from './playback.js';
-import { ATMOSPHERE, CAMERA, CAMERA_LIMITS, LIGHTS, type Framing } from './look.js';
+import { ATMOSPHERE, CAMERA, CAMERA_LIMITS, LIGHTS, UNIT_COLOURS, type Framing } from './look.js';
 import { Post } from './post.js';
 import { stoneTiles } from './tiles.js';
 import { LABEL, LARGE_PAWN_SCALE } from './stars.js';
 import { UnitLabel } from './ui/labels.js';
 import { displayName, isLarge } from './units.js';
 
-/** Units on the side the camera looks from are drawn as team A: blue, with green health. */
+/**
+ * The sides' colours, for their cast rings: the side the camera looks from is drawn as team A, blue.
+ * Units look the same on both sides; their health bars tell them apart (ui/labels.ts).
+ */
 const TEAM_COLOURS: Record<Team, number> = { A: 0x4a90d9, B: 0xd9534f };
 
 /**
@@ -143,12 +146,11 @@ interface Body {
   /** Whether it is the unit's model rather than a pawn. */
   readonly model: boolean;
   /**
-   * Whose model it is, at which star level and in which look, so another view of that unit can take
-   * it up again; null for a pawn.
+   * Whose model it is and at which star level, so another view of that unit can take it up again,
+   * on either side; null for a pawn.
    */
   readonly unitId: UnitState['unitId'] | null;
   readonly star: Star | null;
-  readonly look: Team;
   /**
    * Where the bottom edge of the unit's label goes, holding still through planning and fights: 1.8
    * above the ground, times the model's scale, clear of what it reaches in its attacks and casts
@@ -802,7 +804,7 @@ export class FightScene {
       };
       // The copy is never drawn, nor disposed of, so the renderer keeps the shader even while no model
       // that needs it is on screen. A shader that fails shows when a model is drawn, as it would anyway.
-      const copy = shaderSample(shader, TEAM_COLOURS.A);
+      const copy = shaderSample(shader);
       // Compiled for what the scene is drawn into (post.ts), not the canvas, or the first real draw
       // would need another program and compile it then. Both calls choose the program at once.
       this.renderer.setRenderTarget(this.post.target);
@@ -834,12 +836,12 @@ export class FightScene {
     if (view.body.model || view.summon) return false;
     if (this.playback !== null && this.playback.history(view.key).death !== null) return false;
     if (!this.modelReady(view.unitId, view.star)) return false;
-    const copy = copyModel(view.unitId, view.star, TEAM_COLOURS[view.look]);
+    const copy = copyModel(view.unitId, view.star);
     if (copy === null) return false;
     const facing = view.body.turn.rotation.y;
     view.group.remove(view.body.object);
     this.retired.push(view.body);
-    view.body = modelBody(copy, view.unitId, view.star, view.look);
+    view.body = modelBody(copy, view.unitId, view.star);
     stand(view.body, view.team);
     view.body.turn.rotation.y = facing;
     view.group.add(view.body.object);
@@ -848,22 +850,22 @@ export class FightScene {
   };
 
   /**
-   * A body for a unit at a star level in a look: the model of one just taken off the scene if there
-   * is one, else a copy of its model, or a pawn until that has loaded and its shader is ready, which
+   * A body for a unit at a star level: the model of one just taken off the scene if there is one,
+   * from either side, since units look the same on both, else a copy of its model, or a pawn until that has loaded and its shader is ready, which
    * `swapInModels` then swaps for the model. Summons are always pawns.
    */
-  private bodyFor(unitId: UnitState['unitId'], star: Star, look: Team, summon: boolean, minor: boolean): Body {
+  private bodyFor(unitId: UnitState['unitId'], star: Star, summon: boolean, minor: boolean): Body {
     if (!summon) {
-      const i = this.retired.findIndex((body) => body.model && body.unitId === unitId && body.star === star && body.look === look);
+      const i = this.retired.findIndex((body) => body.model && body.unitId === unitId && body.star === star);
       if (i >= 0) {
         const body = this.retired.splice(i, 1)[0]!;
         body.reset();
         return body;
       }
-      const copy = this.modelReady(unitId, star) ? copyModel(unitId, star, TEAM_COLOURS[look]) : null;
-      if (copy !== null) return modelBody(copy, unitId, star, look);
+      const copy = this.modelReady(unitId, star) ? copyModel(unitId, star) : null;
+      if (copy !== null) return modelBody(copy, unitId, star);
     }
-    return pawnBody(look, isLarge(unitId) ? LARGE_PAWN_SCALE : minor ? 0.75 : 1);
+    return pawnBody(isLarge(unitId) ? LARGE_PAWN_SCALE : minor ? 0.75 : 1);
   }
 
   private createUnit(unit: UnitState): UnitView {
@@ -875,7 +877,7 @@ export class FightScene {
 
   /**
    * A unit's model for its star level, or a pawn until it has loaded, with its label
-   * above it, facing the other team, coloured as the near (`look` A) or far team. Summons have no
+   * above it, facing the other team, its health bar coloured as the near (`look` A) or far team's. Summons have no
    * model and are smaller pawns, unnamed apart from the Eye's Nazgûl. `bars` adds health, mana and
    * statuses for fights.
    */
@@ -892,7 +894,7 @@ export class FightScene {
     mana = false,
   ): UnitView {
     const minor = summon && unitId !== 'eye-nazgul';
-    const body = this.bodyFor(unitId, star, look, summon, minor);
+    const body = this.bodyFor(unitId, star, summon, minor);
 
     const overlay = new UnitLabel({
       name: minor ? null : displayName(unitId),
@@ -1031,9 +1033,9 @@ function stand(body: Body, team: Team): void {
   body.turn.rotation.y = team === 'A' ? Math.PI : 0;
 }
 
-/** A low-poly pawn in the look's colour, `scale` times its usual size, with a nose where it faces. */
-function pawnBody(look: Team, scale: number): Body {
-  const material = new THREE.MeshStandardMaterial({ color: TEAM_COLOURS[look], flatShading: true, transparent: true });
+/** A low-poly pawn, the same on both sides, `scale` times its usual size, with a nose where it faces. */
+function pawnBody(scale: number): Body {
+  const material = new THREE.MeshStandardMaterial({ color: UNIT_COLOURS.pawn, flatShading: true, transparent: true });
   const body = new THREE.Mesh(geometry.body, material);
   body.position.y = 0.45;
   const head = new THREE.Mesh(geometry.head, material);
@@ -1051,7 +1053,6 @@ function pawnBody(look: Team, scale: number): Body {
     model: false,
     unitId: null,
     star: null,
-    look,
     // Where a model's label would be, so it hardly moves when the model takes the pawn's place.
     labelHeight: LABEL.height * scale,
     labelRise: 0,
@@ -1068,7 +1069,7 @@ function pawnBody(look: Team, scale: number): Body {
  * rigged. Its label holds still above it, and rises in `victory` if it has to, so it doesn't cover
  * the weapon the unit raises.
  */
-function modelBody(copy: ModelCopy, unitId: UnitState['unitId'], star: Star, look: Team): Body {
+function modelBody(copy: ModelCopy, unitId: UnitState['unitId'], star: Star): Body {
   const animator = copy.clips === null || copy.lengths === null ? null : new Animator(copy.model, copy.clips, copy.lengths);
   return {
     object: copy.object,
@@ -1076,7 +1077,6 @@ function modelBody(copy: ModelCopy, unitId: UnitState['unitId'], star: Star, loo
     model: true,
     unitId,
     star,
-    look,
     labelHeight: copy.labelHeight,
     labelRise: copy.labelRise,
     chest: copy.chest,

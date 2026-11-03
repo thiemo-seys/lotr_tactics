@@ -25,7 +25,7 @@ Status: early design. Numbers marked *(placeholder)* are starting points for tun
 | Roster | Sandbox: good and evil characters can share a board; 36 units in the first set |
 | Platform | Browser |
 | Rendering | Three.js |
-| Art style | Low-poly 3D models in the Faceted style: flat-shaded facets, grounded heroic proportions, and a muted palette in which the team colour is the only saturated part ([`viewer-spec.md`](viewer-spec.md) section 4) |
+| Art style | Low-poly 3D models in the Faceted style: flat-shaded facets, grounded heroic proportions, and a muted palette in which the livery is the only saturated part; units look the same on both sides, and their health bars, green for the person's and red for the opponent's, tell the sides apart ([`viewer-spec.md`](viewer-spec.md) section 4) |
 | Lobby size | 8 players |
 | Game length | About 30 minutes |
 | Max level | 9 |
@@ -610,7 +610,7 @@ Built from day one to:
 ## 12. Still to define
 
 1. **PvE enemies:** stats and loot tables (placeholders in [`game-spec.md`](game-spec.md) section 9)
-2. **Unit models:** whether the team colour sits on clothing (as on the models so far) or on a ring round its feet, and whether Riders stay mounted, as their models are, at a larger triangle budget ([`viewer-spec.md`](viewer-spec.md) section 4)
+2. **Unit models:** whether Riders stay mounted, as their models are, at a larger triangle budget ([`viewer-spec.md`](viewer-spec.md) section 4)
 
 All numbers marked *(placeholder)* will be tuned during balancing.
 

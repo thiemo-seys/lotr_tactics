@@ -1,7 +1,7 @@
 // The units' models (docs/viewer-spec.md section 4, "Models", "Star levels" and "In the viewer"). Each
 // file is loaded once, and every unit drawn with one gets its own copy, drawn for its star level:
-// the geometry and clips are shared, the materials are its own, with `team` in its side's
-// colour, `trim` in its star level's, and every one able to fade. Until a unit's model has loaded,
+// the geometry and clips are shared, the materials are its own, with `team` in the livery
+// colour both sides share, `trim` in its star level's, and every one able to fade. Until a unit's model has loaded,
 // or if it has none, the scene draws the unit as a pawn.
 
 import { TICKS_PER_SECOND, UNITS, type Star, type UnitId, type UnitState } from '@lotr-tactics/sim';
@@ -10,10 +10,11 @@ import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
 import { clone as cloneSkinned } from 'three/addons/utils/SkeletonUtils.js';
 import MODEL_FILES from 'virtual:models';
 import { CLIPS, type ClipLengths, type ClipName } from './animation.js';
+import { UNIT_COLOURS } from './look.js';
 import { labelHeight, pickModel, starColour, starScale, victoryRise } from './stars.js';
 import { isLarge } from './units.js';
 
-/** The material every model has that takes its side's colour (section 4, Team colour). */
+/** The material every model has that takes the livery colour, the same on both sides (section 4, Livery). */
 const TEAM_MATERIAL = 'team';
 
 /** The material of fittings, coloured by star level (section 4, Star levels: Trim). */
@@ -109,20 +110,20 @@ export function modelShader(unitId: UnitState['unitId'], star: Star): ModelShade
 }
 
 /**
- * A copy of the model for a unit at a star level, with `team` in `teamColour` and `trim`
- * in the star level's colour; null if it has none or it hasn't loaded yet.
+ * A copy of the model for a unit at a star level, with `team` in the livery colour and
+ * `trim` in the star level's colour; null if it has none or it hasn't loaded yet.
  */
-export function copyModel(unitId: UnitState['unitId'], star: Star, teamColour: number): ModelCopy | null {
+export function copyModel(unitId: UnitState['unitId'], star: Star): ModelCopy | null {
   const model = request(unitId, star);
-  return model === null ? null : new ModelCopy(model, star, teamColour);
+  return model === null ? null : new ModelCopy(model, star);
 }
 
 /**
  * A copy of the first model to load that needs a shader. The scene compiles the shader
  * from it before it draws any model that needs it.
  */
-export function shaderSample(shader: ModelShader, teamColour: number): ModelCopy {
-  return new ModelCopy(samples.get(shader)!, 1, teamColour);
+export function shaderSample(shader: ModelShader): ModelCopy {
+  return new ModelCopy(samples.get(shader)!, 1);
 }
 
 /**
@@ -419,7 +420,7 @@ export class ModelCopy {
   private readonly skeletons: readonly THREE.Skeleton[];
   private opacity = 1;
 
-  constructor(model: Model, star: Star, teamColour: number) {
+  constructor(model: Model, star: Star) {
     this.clips = model.clips;
     this.lengths = model.lengths;
     this.scale = starScale(star, model.reach);
@@ -434,7 +435,7 @@ export class ModelCopy {
       let copy = materials.get(material);
       if (copy === undefined) {
         copy = (material as THREE.MeshStandardMaterial).clone();
-        if (copy.name === TEAM_MATERIAL) copy.color.setHex(teamColour);
+        if (copy.name === TEAM_MATERIAL) copy.color.setHex(UNIT_COLOURS.livery);
         if (copy.name === TRIM_MATERIAL) copy.color.setHex(starColour('trim', star));
         fadeable(copy);
         materials.set(material, copy);
