@@ -55,7 +55,19 @@ export class DragAndDrop {
     this.unit = null;
     this.item = null;
     this.end();
-    if (wasUnit && this.flow.inGame) this.scene.showPlanning(this.flow.me(), true, this.flow.planningRing());
+    // A dragged unit goes back to its place, unless the fight that ended planning has taken the
+    // planning board's place: drawing the board again would hide the fight.
+    if (wasUnit && this.flow.inGame && !this.scene.showsFight) this.scene.showPlanning(this.flow.me(), true, this.flow.planningRing());
+  }
+
+  /**
+   * Cancels a drag that planning ended, which the next frame would cancel too: the pointer can move or
+   * be released between the game's message that ends planning and that frame. Whether it did.
+   */
+  private cutOff(): boolean {
+    if ((this.unit === null && this.item === null) || this.flow.show.kind === 'planning') return false;
+    this.cancel();
+    return true;
   }
 
   /** Dragging is for planning on the person's own board, not while they look at another player's. */
@@ -92,6 +104,7 @@ export class DragAndDrop {
   }
 
   private move(event: PointerEvent): void {
+    if (this.cutOff()) return;
     const { clientX: x, clientY: y } = event;
     if (this.item !== null) {
       this.item.ghost.style.transform = `translate(${x}px, ${y}px)`;
@@ -137,6 +150,7 @@ export class DragAndDrop {
   }
 
   private drop(event: PointerEvent): void {
+    if (this.cutOff()) return;
     const { clientX: x, clientY: y } = event;
     if (this.item !== null) {
       const { item, ghost } = this.item;

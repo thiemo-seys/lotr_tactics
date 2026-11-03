@@ -44,9 +44,14 @@ export default defineConfig({
   // pnpm dev runs the game server next to Vite (docs/server-spec.md section 3).
   server: { proxy: { '/ws': { target: 'ws://localhost:8080', ws: true } } },
   build: {
-    // Three.js alone is about 600 kB minified.
+    // Three.js with its addons is about 650 kB minified, and the rest of what both pages share about 140 kB.
     chunkSizeWarningLimit: 800,
-    // The fight viewer and the play page.
-    rollupOptions: { input: { viewer: 'index.html', play: 'play.html' } },
+    rolldownOptions: {
+      // The fight viewer and the play page.
+      input: { viewer: 'index.html', play: 'play.html' },
+      // Three.js and its addons in a chunk of their own, apart from the sim and the client, so
+      // neither grows towards the limit with the other, and Three.js stays cached between builds.
+      output: { codeSplitting: { groups: [{ name: 'three', test: /[\\/]node_modules[\\/]three[\\/]/ }] } },
+    },
   },
 });

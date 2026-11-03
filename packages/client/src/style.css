@@ -1870,8 +1870,11 @@ kbd {
   background: linear-gradient(180deg, #9fd0ff, #3c8ae0);
 }
 
+/* On top: a label grows upwards from its unit (scene.ts), so a status coming or going moves neither
+   the name nor the bars. */
 .unit-label .statuses {
   display: flex;
+  order: -1;
   gap: 2px;
 }
 

@@ -72,6 +72,11 @@ element('restart').addEventListener('click', () => (playback = start()));
 playButton.addEventListener('click', togglePlay);
 element('step').addEventListener('click', stepOnce);
 speedControl.addEventListener('change', () => (playback.speed = speed()));
+// A speed picked with the mouse doesn't keep the keyboard, so Space and ArrowRight still pause and
+// step; from the keyboard (a click with no detail), the arrows go on choosing the speed.
+speedControl.addEventListener('click', (event) => {
+  if (event.detail > 0 && event.target instanceof HTMLInputElement) event.target.blur();
+});
 logButton.addEventListener('click', () => {
   log.hidden = !log.hidden;
   logButton.setAttribute('aria-pressed', String(!log.hidden));
@@ -139,8 +144,15 @@ function speed(): number {
   return checked === null ? 1 : Number(checked.value);
 }
 
+/** The fight and tick the clock and banner last showed, so a frame without a new tick writes nothing. */
+let clockFight: Playback | null = null;
+let clockTick = -1;
+
 function showClock(): void {
   const { tick } = playback.combat;
+  if (playback === clockFight && tick === clockTick) return;
+  clockFight = playback;
+  clockTick = tick;
   setText(tickText, `Tick ${tick} / ${LAST_TICK}`);
   setText(timeText, `${(tick / TICKS_PER_SECOND).toFixed(1)} s`);
   show(overtime, tick >= OVERTIME_START_TICK);
@@ -163,6 +175,7 @@ function showClock(): void {
 }
 
 function appendLog(from: Playback, events: readonly CombatEvent[]): void {
+  if (events.length === 0) return;
   const units = from.combat.state.units;
   for (const event of events) {
     const text = describe(event, units);

@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { BASE, HEX_RADIUS, modelCandidates, modelLabelHeight, pickModel, pipOffsets, starColour, starScale } from '../src/stars.js';
+import { BASE, HEX_RADIUS, LABEL, labelHeight, modelCandidates, modelLabelHeight, pickModel, pipOffsets, starColour, starScale, victoryRise } from '../src/stars.js';
 
 describe('picking a model for a star level', () => {
   it('tries the book model, then the gear model, then the unit model', () => {
@@ -64,6 +64,53 @@ describe('label height', () => {
   it('sits 0.3 above a Large model that is taller', () => {
     expect(modelLabelHeight(1, 2.3, true)).toBeCloseTo(BASE.height + 2.6, 10);
     expect(modelLabelHeight(1.05, 2.3, true)).toBeCloseTo(BASE.height + 2.3 * 1.05 + 0.3, 10);
+  });
+});
+
+describe('label height clear of the clips', () => {
+  it('keeps to 1.8 above the base while the attack and cast clips stay below it', () => {
+    expect(labelHeight(1, 0.88, false, 1.0)).toBeCloseTo(BASE.height + 1.8, 10);
+    expect(labelHeight(1.1, 1.4, false, 1.5)).toBeCloseTo(BASE.height + 1.98, 10);
+  });
+
+  it('clears the highest point of the attack and cast clips, times the scale', () => {
+    expect(labelHeight(1, 1.42, false, 2.1)).toBeCloseTo(BASE.height + 2.1 + LABEL.clear, 10);
+    expect(labelHeight(1.1, 1.42, false, 2.1)).toBeCloseTo(BASE.height + 2.1 * 1.1 + LABEL.clear, 10);
+  });
+
+  it('clears a static model’s top, which is the highest it reaches', () => {
+    expect(labelHeight(1.05, 2.12, false, 2.12)).toBeCloseTo(BASE.height + 2.12 * 1.05 + LABEL.clear, 10);
+  });
+
+  it('keeps a Large model’s label 0.3 above its top, or higher for its clips', () => {
+    expect(labelHeight(1, 2.3, true, 2.35)).toBeCloseTo(BASE.height + 2.6, 10);
+    expect(labelHeight(1, 2.13, true, 2.9)).toBeCloseTo(BASE.height + 2.9 + LABEL.clear, 10);
+  });
+
+  it('never sits lower than the rule without the clips', () => {
+    for (const [scale, top, large, strike] of [
+      [1, 0.88, false, 0.9],
+      [1.1, 2.03, false, 2.1],
+      [1, 2.38, true, 2.38],
+      [1.03, 1.93, false, 1.93],
+    ] as const) {
+      expect(labelHeight(scale, top, large, strike)).toBeGreaterThanOrEqual(modelLabelHeight(scale, top, large));
+      expect(labelHeight(scale, top, large, strike)).toBeGreaterThanOrEqual(BASE.height + scale * strike + LABEL.clear - 1e-12);
+    }
+  });
+});
+
+describe('a winner’s label', () => {
+  it('stays put when it already clears the victory pose', () => {
+    expect(victoryRise(1, 0.88, false, 0.99, 1.16)).toBe(0);
+    expect(victoryRise(1, 2.03, false, 2.2, 2.15)).toBe(0);
+  });
+
+  it('rises to clear the victory pose, times the scale', () => {
+    const scale = 1.1;
+    const rise = victoryRise(scale, 1.93, false, 1.93, 2.56);
+    expect(labelHeight(scale, 1.93, false, 1.93) + rise).toBeCloseTo(BASE.height + 2.56 * scale + LABEL.clear, 10);
+    expect(rise).toBeGreaterThan(0);
   });
 });
 

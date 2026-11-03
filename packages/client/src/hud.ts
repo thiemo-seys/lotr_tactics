@@ -2,7 +2,7 @@
 // view gives them, the streak, the timer and the One Ring's status. No Three.js or DOM, so it can
 // be tested.
 
-import { GIFTS, PLAYER, XP, roundType, roundsInStage, shopOdds, shopOddsLevel, xpForNextLevel, type PlayerView, type RoundType } from '@lotr-tactics/sim';
+import { GIFTS, PLAYER, XP, roundType, roundsInStage, shopOdds, shopOddsLevel, xpForNextLevel, type PlayerView, type RoundType, type TraitHolder } from '@lotr-tactics/sim';
 import type { PlanningRing } from './flow.js';
 import { ringTier, type RingTier } from './ring.js';
 
@@ -35,16 +35,21 @@ export interface HudStats {
   readonly streak: Streak | null;
 }
 
-export function hudStats(p: PlayerView): HudStats {
+/**
+ * The HUD's stats from a player's view. `fighting` is their side in the fight on screen, if one is:
+ * the board count counts its units instead, since the game fills the board from the bench before a
+ * fight, and there is no room to draw attention to.
+ */
+export function hudStats(p: PlayerView, fighting: readonly (TraitHolder | null)[] | null = null): HudStats {
   const need = xpForNextLevel(p.level);
-  const fielded = p.board.filter((u) => u !== null).length;
+  const fielded = (fighting ?? p.board).filter((u) => u !== null).length;
   return {
     hp: Math.max(0, p.hp),
     gold: p.gold,
     level: p.level,
     xp: p.level < XP.buyFromLevel || need === null ? null : { have: p.xp, need },
     topLevel: p.level >= PLAYER.maxLevel,
-    board: { fielded, max: p.level, room: fielded < p.level && p.bench.some((u) => u !== null) },
+    board: { fielded, max: p.level, room: fighting === null && fielded < p.level && p.bench.some((u) => u !== null) },
     streak: streakOf(p.streak),
   };
 }

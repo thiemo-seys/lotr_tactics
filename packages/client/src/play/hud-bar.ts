@@ -1,11 +1,12 @@
 // The play page's HUD (docs/game-spec.md section 12): at the top, HP, the board count, the streak
 // and the One Ring's status, with the stage tracker in the middle, the stage's rounds as icons by
 // type; at the bottom, by the shop, the level with its XP, gold and a timer that drains and turns
-// urgent.
+// urgent. While the person's fight plays, the stats are as they were in its round's planning
+// (PlayFlow.shownView), and the tracker shows its round's result only once its results do.
 
 import { RING, XP, roundType } from '@lotr-tactics/sim';
 import type { PlayFlow } from '../flow.js';
-import { hudStats, plural, ringStatus, shopOddsView, stageTrack, timerView, type StageNode } from '../hud.js';
+import { hudStats, plural, ringStatus, shopOddsView, stageTrack, timerView, type HudStats, type StageNode } from '../hud.js';
 import { ROUND_ICONS } from '../icons.js';
 import { actionTip, ringTip, textTip } from '../tips.js';
 import { el, icon, rebuild, setText, show, toggle } from '../ui/dom.js';
@@ -37,27 +38,32 @@ export class HudBar {
   private drained = -1;
   /** The state the stats were last drawn from: they change only with a new state or step. */
   private drawn: { state: unknown; step: string } = { state: null, step: '' };
+  /**
+   * The round the stage tracker was last drawn for, and how many results had been shown then: it
+   * changes only with one of them, so other frames, a fight's among them, don't work it out again.
+   */
+  private readonly tracked = { stage: -1, round: -1, outcomes: -1 };
 
   constructor(private readonly flow: PlayFlow) {
-    const me = () => flow.me();
+    const me = () => flow.shownView().me;
     setTip(this.pill('hp'), () => textTip('Health', `${plural(me().hp, 'HP', 'HP')} left. Lost fights cost HP, and at 0 you are out.`));
     setTip(this.pill('gold'), () => textTip('Gold', `${plural(me().gold, 'gold', 'gold')}. Spend it on units, rerolls and XP; saving earns interest.`));
     setTip(this.pill('level'), () => {
-      const s = hudStats(me());
+      const s = this.shownStats();
       const xp = s.xp === null ? (s.topLevel ? 'The top level.' : `XP can be bought from level ${XP.buyFromLevel}.`) : `XP ${s.xp.have} of ${s.xp.need} to the next level.`;
       const odds = shopOddsView(me());
       return { ...textTip(`Level ${s.level}`, `Up to ${plural(s.level, 'unit')} on the board.`, xp, ...(odds.note === null ? [] : [odds.note])), odds: odds.rows };
     });
     setTip(this.pill('board'), () => {
-      const { board } = hudStats(me());
+      const { board } = this.shownStats();
       return textTip('Board', `${board.fielded} of ${board.max} units fielded.`, ...(board.room ? ['There is room for a unit from your bench.'] : []));
     });
     setTip(this.pill('streak'), () => {
-      const streak = hudStats(me()).streak;
+      const streak = this.shownStats().streak;
       return streak === null ? null : textTip(streak.kind === 'win' ? 'Win streak' : 'Loss streak', `${plural(streak.length, streak.kind === 'win' ? 'win' : 'loss', streak.kind === 'win' ? 'wins' : 'losses')} in a row against players.`);
     });
     setTip(this.ring, () => {
-      const ring = flow.planningRing();
+      const ring = flow.planningRing(flow.shownView());
       return ring === null ? null : ringTip(ring.corruption, ring.bearer === null ? 'Unworn: drag it onto a unit.' : undefined);
     });
     setTip(
@@ -74,19 +80,28 @@ export class HudBar {
     const { flow } = this;
     show(this.stats, flow.inGame);
     show(this.playerBar, flow.inGame);
+    const { tracked } = this;
     if (!flow.inGame) {
       rebuild(this.round, 'title', () => [el('span', 'brand', icon('one-ring'), 'LOTR Tactics')]);
+      tracked.stage = -1;
       show(this.timer, false);
       return;
     }
     const { stage, round } = flow.shownRound();
-    const type = roundType(stage, round);
-    const track = stageTrack(stage, round, (s, r) => flow.outcome(s, r));
-    rebuild(this.round, JSON.stringify(track), () => [
-      el('span', 'stage-label', el('span', 'stage-eyebrow', 'Stage'), el('span', 'stage-number', String(stage))),
-      el('ol', 'stage-rounds', ...track.map((node) => roundNode(stage, node))),
-      el('span', 'round-text', el('span', 'round-number', `${stage}-${round}`), el('span', `round-name ${type}`, ROUND_NAMES[type])),
-    ]);
+    // A round's result shows once its results have been shown (PlayFlow.outcome), as the HUD's stats
+    // do (PlayFlow.shownView), so the person's fight doesn't give it away while it plays.
+    if (stage !== tracked.stage || round !== tracked.round || flow.outcomesShown !== tracked.outcomes) {
+      tracked.stage = stage;
+      tracked.round = round;
+      tracked.outcomes = flow.outcomesShown;
+      const type = roundType(stage, round);
+      const track = stageTrack(stage, round, (s, r) => flow.outcome(s, r));
+      rebuild(this.round, JSON.stringify(track), () => [
+        el('span', 'stage-label', el('span', 'stage-eyebrow', 'Stage'), el('span', 'stage-number', String(stage))),
+        el('ol', 'stage-rounds', ...track.map((node) => roundNode(stage, node))),
+        el('span', 'round-text', el('span', 'round-number', `${stage}-${round}`), el('span', `round-name ${type}`, ROUND_NAMES[type])),
+      ]);
+    }
 
     const timer = timerView(flow.secondsLeft(now), flow.timerShare(now));
     show(this.timer, timer !== null);
@@ -100,9 +115,10 @@ export class HudBar {
       }
     }
 
-    if (this.drawn.state === flow.state && this.drawn.step === flow.show.kind) return;
-    this.drawn = { state: flow.state, step: flow.show.kind };
-    const s = hudStats(flow.me());
+    const view = flow.shownView();
+    if (this.drawn.state === view && this.drawn.step === flow.show.kind) return;
+    this.drawn = { state: view, step: flow.show.kind };
+    const s = this.shownStats();
     setText(this.value('hp'), `${s.hp}`);
     toggle(this.pill('hp'), 'low', s.hp <= 30);
     setText(this.value('gold'), `${s.gold}`);
@@ -123,13 +139,19 @@ export class HudBar {
       setText(this.value('streak'), `${s.streak.length}`);
     }
 
-    const ring = ringStatus(flow.planningRing());
+    const ring = ringStatus(flow.planningRing(view));
     show(this.ring, ring !== null);
     if (ring !== null) {
       setText(this.value('ring-status'), `${ring.corruption} · ${ring.tier}${ring.unworn ? ' · unworn' : ''}`);
       this.ring.dataset.tier = ring.tier.toLowerCase();
     }
     show(this.mountDoom, flow.show.kind === 'planning' && flow.check({ type: 'destroyRing' }).ok);
+  }
+
+  /** The person's stats as shown: during their fight, from its planning, with the units that fight on the board. */
+  private shownStats(): HudStats {
+    const { flow } = this;
+    return hudStats(flow.shownView().me, flow.show.kind === 'fight' ? flow.trackedTeam().board : null);
   }
 }
 

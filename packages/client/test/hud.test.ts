@@ -43,6 +43,14 @@ describe('the HUD', () => {
     expect(hudStats(player({ level: 1, board, bench })).board.room).toBe(false);
   });
 
+  it("counts the units of the person's side in a fight on the board, which the game filled from the bench", () => {
+    const board = new Array<OwnedUnit | null>(28).fill(null);
+    board[3] = unit;
+    const bench = [unit, unit, ...new Array<OwnedUnit | null>(PLAYER.benchSize - 2).fill(null)];
+    const fighting = [unit, { unitId: 'gimli', items: [] }] as const;
+    expect(hudStats(player({ level: 3, board, bench }), fighting).board).toEqual({ fielded: 2, max: 3, room: false });
+  });
+
   it('never shows HP below 0', () => {
     expect([hudStats(player({ hp: -4 })).hp, hudStats(player({ hp: 37 })).hp]).toEqual([0, 37]);
   });
