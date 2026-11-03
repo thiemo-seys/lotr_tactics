@@ -2,7 +2,7 @@
 // view gives them, the streak, the timer and the One Ring's status. No Three.js or DOM, so it can
 // be tested.
 
-import { PLAYER, XP, roundType, roundsInStage, xpForNextLevel, type PlayerView, type RoundType } from '@lotr-tactics/sim';
+import { GIFTS, PLAYER, XP, roundType, roundsInStage, shopOdds, shopOddsLevel, xpForNextLevel, type PlayerView, type RoundType } from '@lotr-tactics/sim';
 import type { PlanningRing } from './flow.js';
 import { ringTier, type RingTier } from './ring.js';
 
@@ -47,6 +47,39 @@ export function hudStats(p: PlayerView): HudStats {
     board: { fielded, max: p.level, room: fielded < p.level && p.bench.some((u) => u !== null) },
     streak: streakOf(p.streak),
   };
+}
+
+/** One level's shop odds in the level and Buy XP tooltips. */
+export interface OddsRow {
+  /** The level, as its badge shows it. */
+  readonly label: string;
+  /** The chance in percent that a shop slot shows a 1- to 5-cost unit. */
+  readonly percents: readonly number[];
+  /** The odds the person's shop rolls with now. */
+  readonly now: boolean;
+  /** For the next level, whether each cost's odds go up or down from now; null when they stay. */
+  readonly trend: readonly ('up' | 'down' | null)[];
+}
+
+export interface ShopOddsView {
+  /** The odds now, then at the next level if they differ. */
+  readonly rows: readonly OddsRow[];
+  /** Why the odds are a higher level's, if a Gift makes them so. */
+  readonly note: string | null;
+}
+
+/** The odds the person's shop rolls with, as the shop rolls them (with any Mirror of Galadriel), and those a level up would bring. */
+export function shopOddsView(p: PlayerView): ShopOddsView {
+  const now = shopOdds(p.level, p.gifts);
+  const rows: OddsRow[] = [{ label: `${p.level}`, percents: now, now: true, trend: now.map(() => null) }];
+  const next = p.level < PLAYER.maxLevel ? shopOdds(p.level + 1, p.gifts) : null;
+  if (next !== null && next.some((pct, i) => pct !== now[i])) {
+    const trend = next.map((pct, i) => (pct > now[i]! ? 'up' : pct < now[i]! ? 'down' : null));
+    rows.push({ label: `${p.level + 1}`, percents: next, now: false, trend });
+  }
+  const oddsLevel = shopOddsLevel(p.level, p.gifts);
+  const note = oddsLevel === p.level ? null : `${GIFTS['mirror-of-galadriel'].name}: your shop rolls with the odds of level ${oddsLevel}.`;
+  return { rows, note };
 }
 
 /** The last seconds of a timer, which the HUD makes urgent. */

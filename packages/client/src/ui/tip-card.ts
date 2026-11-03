@@ -1,5 +1,6 @@
 // Draws a `Tip` (tips.ts) as the tooltip card's contents: a header with an icon, title and
-// subtitle, then a recipe, stats, traits, text, trait breakpoints, a trait's units and a hint or reason.
+// subtitle, then a recipe, stats, traits, text, trait breakpoints, a trait's units, shop odds and a
+// hint or reason.
 
 import { ITEMS, TRAITS, UNITS } from '@lotr-tactics/sim';
 import { TRAIT_ICONS } from '../icons.js';
@@ -67,6 +68,26 @@ export function tipCard(tip: Tip): Node[] {
     nodes.push(el('ol', 'tip-levels', ...tip.levels.map((l) => el('li', l.active ? 'active' : '', el('b', '', String(l.count)), el('span', '', l.text)))));
   }
   if (tip.units !== undefined && tip.units.length > 0) nodes.push(el('div', 'tip-units', ...tip.units.map(traitUnitTile)));
+  if (tip.odds !== undefined && tip.odds.length > 0) {
+    const costs = tip.odds[0]!.percents.map((_, i) => i + 1);
+    nodes.push(
+      el(
+        'div',
+        'tip-odds',
+        el('span', 'tip-odds-title', 'Shop odds'),
+        ...costs.map((cost) => el('span', `tip-odds-cost cost-${cost}`, icon('coin'), String(cost))),
+        ...tip.odds.flatMap((row) => [
+          el('span', row.now ? 'tip-odds-level now' : 'tip-odds-level', el('span', 'level-badge', row.label)),
+          ...row.percents.map((pct, i) => {
+            const trend = row.trend[i] ?? null;
+            const cell = el('span', `tip-odds-pct cost-${i + 1}${pct === 0 ? ' zero' : ''}${row.now ? ' now' : ''}${trend === null ? '' : ` ${trend}`}`, pct === 0 ? '–' : `${pct}%`);
+            if (trend !== null) cell.append(el('i', 'tip-odds-trend', trend === 'up' ? '▲' : '▼'));
+            return cell;
+          }),
+        ]),
+      ),
+    );
+  }
   if (tip.note !== undefined) {
     nodes.push(el('p', tip.note.reason ? 'tip-note reason' : 'tip-note', tip.note.reason ? icon('alert') : null, tip.note.text));
   }

@@ -60,6 +60,13 @@ export interface Tip {
   readonly units?: readonly TraitUnit[];
   /** A unit's ability: its name, the mana it costs, and what it does. */
   readonly ability?: { readonly name: string; readonly mana: string | null; readonly lines: readonly string[] };
+  /** Shop odds by unit cost, a row per level. */
+  readonly odds?: readonly {
+    readonly label: string;
+    readonly percents: readonly number[];
+    readonly now: boolean;
+    readonly trend: readonly ('up' | 'down' | null)[];
+  }[];
   /** A keyboard shortcut. */
   readonly key?: string;
   /** A hint on how to use the thing, or the reason it can't be used now. */

@@ -1,6 +1,6 @@
-import { PLAYER, XP, roundType, roundsInStage, type OwnedUnit, type PlayerView } from '@lotr-tactics/sim';
+import { PLAYER, SHOP, XP, roundType, roundsInStage, type OwnedUnit, type PlayerView } from '@lotr-tactics/sim';
 import { describe, expect, it } from 'vitest';
-import { URGENT_SECONDS, hudStats, ringStatus, stageTrack, streakOf, timerView } from '../src/hud.js';
+import { URGENT_SECONDS, hudStats, ringStatus, shopOddsView, stageTrack, streakOf, timerView } from '../src/hud.js';
 
 const unit: OwnedUnit = { id: 1, unitId: 'sam', star: 1, items: [] };
 
@@ -61,6 +61,34 @@ describe('the HUD', () => {
     expect(ringStatus(null)).toBeNull();
     expect(ringStatus({ bearer: null, corruption: 7 })).toEqual({ corruption: 7, tier: 'Grip', unworn: true });
     expect(ringStatus({ bearer: 4, corruption: 1 })).toEqual({ corruption: 1, tier: 'Gift', unworn: false });
+  });
+});
+
+describe('the shop odds', () => {
+  it("shows the level's odds and the next level's", () => {
+    expect(shopOddsView(player({ level: 5 }))).toEqual({
+      rows: [
+        { label: '5', percents: SHOP.odds[4], now: true, trend: [null, null, null, null, null] },
+        { label: '6', percents: SHOP.odds[5], now: false, trend: ['down', 'up', 'up', 'up', null] },
+      ],
+      note: null,
+    });
+  });
+
+  it('leaves out the next level when its odds are the same', () => {
+    expect(shopOddsView(player({ level: 1 })).rows).toHaveLength(1);
+  });
+
+  it('shows only the odds now at the top level', () => {
+    expect(shopOddsView(player({ level: PLAYER.maxLevel })).rows).toEqual([{ label: `${PLAYER.maxLevel}`, percents: SHOP.odds[PLAYER.maxLevel - 1], now: true, trend: [null, null, null, null, null] }]);
+  });
+
+  it('shows the odds a Mirror of Galadriel gives, and says why', () => {
+    const view = shopOddsView(player({ level: 5, gifts: ['mirror-of-galadriel'] }));
+    expect(view.rows.map((r) => r.percents)).toEqual([SHOP.odds[5], SHOP.odds[6]]);
+    expect(view.note).toBe('Mirror of Galadriel: your shop rolls with the odds of level 6.');
+    // One level from the top, the Mirror already gives the top level's odds, so a level up changes nothing.
+    expect(shopOddsView(player({ level: PLAYER.maxLevel - 1, gifts: ['mirror-of-galadriel'] })).rows).toHaveLength(1);
   });
 });
 
