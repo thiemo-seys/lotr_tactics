@@ -9,9 +9,20 @@ white horse-tail plume, his flaxen hair long. The team colour is his cloak and t
 saddle-cloth and breast strap, seen from the front, from behind and from above; everything else is
 muted green, gold and earth.
 
+He is the reference rider (../rig.py, ../clips.py): he and his horse are one model on one armature,
+the horse rigged by horse() with bones of its own (mount_...) and his hips hanging from its body, so
+he rides it. His feet keep to the stirrups and his hands to the spear and the reins, whose ends
+follow the horse's head and his hand. His clips are the library's mounted ones: the horse stands
+with a foreleg raised, gallops a stride a hex, tosses its head as he stabs down with the spear,
+rises and slams down under a harder stab for his cast (Spear thrust), hangs its head when stunned,
+goes down with him, and rears when they win. To bend, his legs are a thigh and a shin and his mail
+a skirt on his hips and a chest on his spine, split at rings they already had, so they cost no
+triangles; nor do the horse's jointed legs.
+
 His fittings, the belt buckle, the helm's band, the spear's socket and the horse's browband, use
 `trim`, which the client colours iron, silver or gold by star level (docs/viewer-spec.md section 4,
-"Star levels"). His 3★ model is eomer-3.py.
+"Star levels"). His 2★ model is eomer-2.py, which imports this script and builds him with its
+shield on his left arm (build()), and his 3★ model eomer-3.py.
 
     blender --background --factory-startup --python-exit-code 1 --python eomer.py [-- <out.glb>]
 
@@ -27,6 +38,7 @@ import bpy
 from mathutils import Matrix, Vector
 
 sys.path.insert(0, os.path.join(os.path.dirname(os.path.abspath(__file__)), '..'))
+from clips import tweened  # noqa: E402
 from kit import (  # noqa: E402
     BOOTS,
     EYES,
@@ -36,6 +48,7 @@ from kit import (  # noqa: E402
     STEEL,
     V,
     WOOD,
+    bone,
     box,
     ellipse,
     finish,
@@ -51,6 +64,7 @@ from kit import (  # noqa: E402
     wind,
 )
 from mounts import horse  # noqa: E402
+from rig import Rig, hold, joint  # noqa: E402
 
 # Éomer's own colours (sRGB); the rest come from the kit.
 COAT = 0xA8845A  # his horse, a dun
@@ -162,40 +176,69 @@ LEAN = 6  # degrees his body above the saddle leans forward, into the charge
 PIVOT = V(0, 0.05, 0.80)
 LEANING = Matrix.Translation(PIVOT) @ Matrix.Rotation(math.radians(LEAN), 4, 'X') @ Matrix.Translation(-PIVOT)
 
-# The mail shirt as a barrel of octagons: z, half-width, half-depth and centre y. The belt is the
-# band between the second and third rings.
+# The mail shirt as a barrel of octagons: z, half-width, half-depth and centre y. It is in two
+# pieces, which bend at the belt: the skirt and the belt on his hips, and the chest on his spine,
+# from a ring inside the belt (WAIST) up to his neck.
 TORSO = [
     (0.75, 0.165, 0.125, 0.06),  # in the saddle, round the hips
     (0.915, 0.17, 0.118, 0.05),  # belt, lower edge
     (0.965, 0.178, 0.122, 0.05),  # belt, upper edge
+]
+CHEST = [
+    (0.925, 0.162, 0.11, 0.05),  # inside the belt
     (1.08, 0.205, 0.132, 0.04),  # chest
     (1.175, 0.20, 0.118, 0.05),  # shoulders
     (1.245, 0.072, 0.068, 0.06),  # neck
 ]
-TORSO_BANDS = [0, 1, 0, 0, 0]  # mail, except the belt
+TORSO_BANDS = [0, 1]  # mail, then the belt
+PELVIS, WAIST = V(0, 0.05, 0.80), V(0, 0.05, 0.94)
 
 
 def torso():
     rings = [ellipse(0, cy, z, rx, ry, 8, 22.5) for z, rx, ry, cy in TORSO]
     verts, faces, bands = loft(rings)
     face_mats = [TORSO_BANDS[b] for b in bands]
-    part('torso', verts, faces, [M['mail'], M['leather']], face_mats, inside=lambda c: V(0, 0.05, c.z))
-    axes = [V(0, -1, 0), V(1, 0, 0), V(0, 0, 1)]
-    box('buckle', V(0, -0.072, 0.94), axes, (0.016, 0.04, 0.034), M['trim'], 0.8)
+    with bone('hips'):
+        part('skirt', verts, faces, [M['mail'], M['leather']], face_mats, inside=lambda c: V(0, 0.05, c.z))
+        axes = [V(0, -1, 0), V(1, 0, 0), V(0, 0, 1)]
+        box('buckle', V(0, -0.072, 0.94), axes, (0.016, 0.04, 0.034), M['trim'], 0.8)
+    rings = [ellipse(0, cy, z, rx, ry, 8, 22.5) for z, rx, ry, cy in CHEST]
+    verts, faces, _ = loft(rings)
+    with bone('spine'):
+        part('chest', verts, faces, M['mail'], inside=lambda c: V(0, 0.05, c.z))
+    joint('pelvis', PELVIS)
+    joint('waist', WAIST)
 
 
 # His legs astride the horse: thighs forward and down along the saddle, boots hanging straight.
 HIP, KNEE, ANKLE = V(0.115, 0.03, 0.83), V(0.305, -0.11, 0.665), V(0.31, -0.025, 0.43)
 
 
+KNEE_OVERLAP = 0.03  # how far the thigh runs on past the knee, and the shin starts above it
+
+
 def rider_legs():
+    # Each leg as it was built, through the hip, knee and ankle, but in two at the knee: the thigh
+    # carried on past it along its band, the shin from above it, so the knee can bend.
     for s in (-1, 1):
         flip = V(s, 1, 1)
+        side = 'l' if s > 0 else 'r'
         hip, knee, ankle = (Vector(p * flip) for p in (HIP, KNEE, ANKLE))
-        limb(f'leg-{s}', [hip, knee, ankle], [0.078, 0.062, 0.05], [M['tunic'], M['boots']], [0, 1],
-             side=V(0, 1, 0))
+        rings = bend([hip, knee, ankle], [0.078, 0.062, 0.05], side=V(0, 1, 0))
+        thigh = [rings[0], [p + KNEE_OVERLAP / (knee - hip).length * (p - q) for p, q in zip(rings[1], rings[0])]]
+        shin = [[p + KNEE_OVERLAP / (knee - ankle).length * (p - q) for p, q in zip(rings[1], rings[2])], rings[2]]
+        for name, rings_, line, mat in (('thigh', thigh, [hip, knee], 'tunic'), ('shin', shin, [knee, ankle], 'boots')):
+            verts, faces, _ = loft(rings_)
+            with bone(f'{name}_{side}'):
+                part(f'{name}-{s}', verts, wind(verts, faces, inside=nearest_on_polyline(line)), M[mat])
         axes = [V(s * 0.25, -1, -0.1), V(1, 0, 0), V(0, 0, 1)]
-        box(f'foot-{s}', ankle + V(0, -0.05, -0.03), axes, (0.08, 0.042, 0.04), M['boots'], 0.75)
+        heel = ankle + V(0, -0.05, -0.03)
+        with bone(f'foot_{side}'):
+            box(f'foot-{s}', heel, axes, (0.08, 0.042, 0.04), M['boots'], 0.75)
+        joint(f'hip_{side}', hip)
+        joint(f'knee_{side}', knee)
+        joint(f'ankle_{side}', ankle)
+        joint(f'toe_{side}', heel + 0.08 * Vector(axes[0]).normalized())
 
 
 # Arms: short sleeves of mail, the tunic at the elbow, leather bracers, big fists. The right hand
@@ -208,13 +251,21 @@ SPEAR = V(-0.04, -0.3, 0.95).normalized()  # upright, leaning forward a little
 
 
 def arm(side, shoulder, elbow, wrist, fist, fist_up):
-    tube(f'sleeve-{side}', shoulder, elbow, [(0, 0.078), (1.12, 0.064)], M['mail'])
-    forearm = [(-0.2, 0.058), (0.3, 0.068), (1.0, 0.06)]
-    tube(f'forearm-{side}', elbow, wrist, forearm, [M['tunic'], M['leather']], [0, 1])
+    s = side[0]
+    with bone(f'upper_arm_{s}'):
+        tube(f'sleeve-{side}', shoulder, elbow, [(0, 0.078), (1.12, 0.064)], M['mail'])
+    with bone(f'forearm_{s}'):
+        forearm = [(-0.2, 0.058), (0.3, 0.068), (1.0, 0.06)]
+        tube(f'forearm-{side}', elbow, wrist, forearm, [M['tunic'], M['leather']], [0, 1])
     ahead = (wrist - elbow).normalized()
     up = (Vector(fist_up) - Vector(fist_up).dot(ahead) * ahead).normalized()
     across = ahead.cross(up)
-    box(f'fist-{side}', fist, [ahead, up, across], (0.046, 0.05, 0.05), M['skin'], 0.88)
+    with bone(f'hand_{s}'):
+        box(f'fist-{side}', fist, [ahead, up, across], (0.046, 0.05, 0.05), M['skin'], 0.88)
+    joint(f'shoulder_{s}', shoulder)
+    joint(f'elbow_{s}', elbow)
+    joint(f'wrist_{s}', wrist)
+    joint(f'fist_{s}', fist)
 
 
 def arms():
@@ -225,9 +276,20 @@ def arms():
 # Head --------------------------------------------------------------------------------------------
 
 HEAD_Y = 0.03  # the centre of his head, front to back
+NECK = V(0, 0.05, 1.25)
 
 
 def head():
+    with bone('head'):
+        features()
+        helm()
+        plume()
+        hair()
+    joint('neck', NECK)
+    joint('crown', HELM_TOP)
+
+
+def features():
     # The back and sides of his head, under the helm; the face is a plate in front of it.
     rings = [ellipse(0, HEAD_Y + 0.005, z, 0.098, 0.1, 8, 22.5) for z in (1.24, 1.41)]
     verts, faces, _ = loft(rings)
@@ -336,6 +398,11 @@ def hair():
 
 
 def mantle():
+    with bone('spine'):
+        shoulders()
+
+
+def shoulders():
     neck_z = [1.245, 1.255, 1.265, 1.255, 1.245, 1.225, 1.215, 1.225]
     neck = ellipse(0, 0.055, 0, 0.112, 0.11, 8, 0, neck_z)
     dome = ellipse(0, 0.05, 0, 0.235, 0.17, 8, 0, [z - 0.04 for z in neck_z])
@@ -347,6 +414,14 @@ def mantle():
 
 
 def cape():
+    with bone('cape'):
+        folds()
+    # It hangs from his upper back, so it can stream out behind him.
+    joint('cape_top', V(0, 0.2, 1.13))
+    joint('cape_hem', V(0, 0.27, 0.83))
+
+
+def folds():
     # Down his back to the saddle, narrow enough that the horse's quarters show round it from
     # behind. Each level: z at the middle and at the edges, half-width, half-depth, centre y, how
     # far short of the sides it stops (degrees) and how deep the folds are.
@@ -372,6 +447,13 @@ def cape():
 
 
 def spear():
+    with bone('hand_r'):
+        point, u = spear_parts()
+    # Held by the grip, its point up the shaft and the flat of its head across.
+    hold('r', LEANING @ R_FIST, point, point + 0.1 * u)
+
+
+def spear_parts():
     grip = LEANING @ R_FIST
     along = SPEAR
     butt, top = grip - 0.46 * along, grip + 0.7 * along
@@ -393,33 +475,56 @@ def spear():
     faces += [(last + i, last + (i + 1) % 4, len(verts) - 1) for i in range(4)]
     face_mats = [0 if b == 0 else 1 for b in bands] + [1] * 4
     part('spearhead', verts, faces, [M['trim'], M['steel']], face_mats, inside=nearest_on_polyline([top, point]))
+    return point, u
 
 
 def reins(mount):
-    # From the bits to his hand, by way of points beside the neck.
+    # From the bits to his hand, by way of points beside the neck: each end follows what it is
+    # held by, the bit the horse's head and the other end his hand, and the middle the neck.
     hand = LEANING @ L_FIST
     for s, bit in zip((-1, 1), mount.bits):
         mid = mount.turned(V(s * 0.125, -0.52, 0.92))
-        path = [bit, mid, hand + V(-s * 0.012, 0.0, -0.01)]
+        held = hand + V(-s * 0.012, 0.0, -0.01)
+        path = [bit, mid, held]
         width = V(0, 0, 0.012)
         verts = [p + width for p in path] + [p - width for p in path]
         faces = [(0, 1, 4, 3), (1, 2, 5, 4)]
-        part(f'rein-{s}', verts, faces, M['leather'], outward=V(s, 0, 0))
+
+        def end(p, bit=bit, held=held):
+            return 'mount_head' if (p - bit).length < 0.02 else 'hand_l' if (p - held).length < 0.02 else None
+
+        with bone('mount_neck', follows=end):
+            part(f'rein-{s}', verts, faces, M['leather'], outward=V(s, 0, 0))
 
 
+# His clips (../clips.py), the library's mounted ones: the horse on its own bones and he riding it.
+# The victory's rear takes 1.0 s rather than the style's 1.2, so the horse is down and standing by
+# the time the fight's playback stops, 1 s after the end.
+CLIPS = tweened({
+    'idle': ('saddle', {}),
+    'move': ('gallop', {}),
+    'attack': ('spear', {}),
+    'cast': ('spear', {}),
+    'stun': ('reel', {}),
+    'death': ('fall', {}),
+    'victory': ('rear', {'seconds': 1.0}),
+})
 
-def main():
+
+def build(shield=None):
+    """Makes him and his horse in a fresh scene, every part bound to its bone and the joints marked,
+    and returns the rig to finish() them with. His 2★ model (eomer-2.py) passes its shield as
+    `shield`, a function that makes it on his left arm, before he leans."""
     reset()
     make_materials()
-    mount = horse(COAT, POINTS, blaze=BLAZE, stripe=True, tack='saddle-cloth', raised='left', turn=20)
+    mount = horse(COAT, POINTS, blaze=BLAZE, stripe=True, tack='saddle-cloth', raised='left', turn=20, rigged=True)
     rider_legs()
     fixed = set(bpy.context.scene.objects)
     torso()
     arms()
+    if shield is not None:
+        shield()
     head()
-    helm()
-    plume()
-    hair()
     mantle()
     cape()
     for obj in bpy.context.scene.objects:
@@ -427,7 +532,12 @@ def main():
             obj.data.transform(LEANING)
     spear()
     reins(mount)
-    finish('eomer', budget=MOUNTED_BUDGET)
+    return Rig(kind='mounted', mount=mount.rig, bones={'cape': ('spine', 'cape_top', 'cape_hem')}, clips=CLIPS)
 
 
-main()
+def main():
+    finish('eomer', budget=MOUNTED_BUDGET, rig=build())
+
+
+if __name__ == '__main__':
+    main()

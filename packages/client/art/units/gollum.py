@@ -19,12 +19,24 @@ From the front his eyes and face show above the knot; from behind and above, as 
 seen, the rag on his back and the loincloth, with his bald head and its strands, his elbows, his
 knees and his big feet round them.
 
+He is rigged on the 16 bones every model has (../rig.py). His arms and legs are two pieces each, which
+bend at the elbow and the knee: the upper closed in a bony point just past it and the lower starting
+inside that, 24 triangles in all, since his limbs fold too far for open tubes to hide their ends. His
+body bends at the thin waist, the seat on his hips and the ribs on his spine from a ring inside it;
+the rag and its knot ride his spine and the loincloth his hips. He moves as a creature, not as a
+Hobbit (../clips.py): crouched and watching, his left hand flat on the ground; a low scuttle with that
+hand pawing along; a claw raked down at the foe; three bites for his cast, My precious; dazed on all
+fours; his claw raised high; and a death flat on his belly.
+
 He has no metal worth the name, so his fittings are scraps from the goblins he caught in the dark
 under the Misty Mountains: a toggle pushed through the knot of his rag, a crude buckle on the cord
 he ties round his hips over the loincloth, at the small of his back, and a clip bent round a lock of
 his hair over his left ear. They use `trim`, which the client colours iron, silver or gold by star
 level (docs/viewer-spec.md section 4, "Star levels"): the toggle shows from the front, the buckle
-from behind and the clip from either side. His 2★ model is gollum-2.py and his 3★ model gollum-3.py.
+from behind and the clip from either side. With the rig they would be 14 triangles over the budget,
+so his ribs stop at his shoulders, under the rag, where nobody sees them. His 2★ model is gollum-2.py,
+which imports this script and builds him with the elven rope tied round his left ankle (build()),
+and his 3★ model gollum-3.py.
 
     blender --background --factory-startup --python-exit-code 1 --python gollum.py [-- <out.glb>]
 
@@ -43,6 +55,7 @@ from kit import (  # noqa: E402
     EYES,
     V,
     bent_tube,
+    bone,
     box,
     cone,
     ellipse,
@@ -58,6 +71,8 @@ from kit import (  # noqa: E402
     trim_material,
     tube,
 )
+from clips import paw_down  # noqa: E402
+from rig import Rig, joint  # noqa: E402
 
 # Gollum's own colours (sRGB); the pupils are the kit's EYES.
 SKIN = 0xA6AA8F  # a muted pale grey-green, of something long kept from the sun; a little shiny, slimy
@@ -143,18 +158,30 @@ TORSO = [
     (0.13, 0.055, 0.05, 0.13),  # under the seat
     (0.185, 0.098, 0.082, 0.125),  # hips
     (0.26, 0.078, 0.066, 0.12),  # thin waist
+]
+# In two pieces, which bend at the thin waist: the seat and hips on his hips, and the ribs and
+# shoulders on his spine, from a ring inside the waist up, so the bands are the ones the body had.
+# The ribs stop at the shoulders, open at the top: the rag closes over them from there to his neck,
+# so a band up to the base of the neck would never be seen.
+CHEST = [
+    (0.23, 0.064, 0.054, 0.122),  # inside the waist
     (0.335, 0.108, 0.088, 0.115),  # ribs
-    (0.405, 0.118, 0.08, 0.12),  # shoulders
-    (0.455, 0.055, 0.05, 0.125),  # the base of the neck
+    (0.405, 0.118, 0.08, 0.12),  # shoulders, under the rag
 ]
 NECK = V(0, 0.125, 0.45)  # where the neck leaves the body, before the crouch
+PELVIS, WAIST = V(0, 0.125, 0.2), V(0, 0.12, 0.27)  # before the crouch
 
 
 def torso():
     rings = [ellipse(0, cy, z, rx, ry, 8, 22.5) for z, rx, ry, cy in TORSO]
     verts, faces, _ = loft(rings)
     faces.append(tuple(range(8)))
-    part('torso', verts, faces, M['skin'], inside=lambda c: V(0, 0.12, min(max(c.z, 0.16), 0.44)))
+    with bone('hips'):
+        part('torso', verts, faces, M['skin'], inside=lambda c: V(0, 0.12, max(c.z, 0.16)))
+    rings = [ellipse(0, cy, z, rx, ry, 8, 22.5) for z, rx, ry, cy in CHEST]
+    verts, faces, _ = loft(rings)
+    with bone('spine'):
+        part('chest', verts, faces, M['skin'], inside=lambda c: V(0, 0.12, min(c.z, 0.44)))
 
 
 # Team colour: a rag knotted round his neck and a ragged loincloth ----------------------------------
@@ -463,17 +490,38 @@ L_WRIST, L_AHEAD = V(0.2, -0.235, 0.05), V(-0.1, -1, -0.2)
 R_WRIST, R_AHEAD = V(-0.2, -0.31, 0.15), V(0.1, -1, -0.5)
 
 
+KNOB = 0.026  # how far past the elbow or knee the upper piece closes, in a bony point over the joint
+SOCKET = 0.02  # how far the lower piece starts inside it, so the joint can bend
+
+
+def limb(name, upper, lower, root, middle, end, radii):
+    """An arm or leg in two pieces that bend at the middle joint: the upper closed in a bony point
+    just past it, and the lower starting inside that."""
+    along = (middle - root).normalized()
+    with bone(upper):
+        bent_tube(f'{name}-upper', [root, middle], radii[:2], M['skin'], n=6, end=middle + KNOB * along)
+    with bone(lower):
+        tube(f'{name}-lower', middle, end, [(-SOCKET / (end - middle).length, radii[1]), (1, radii[2])], M['skin'])
+
+
 def arms():
     """Each arm from the hunched shoulder to its hand, the elbow bent out and back like a spider's."""
     for side, sign, wrist, ahead, up, fingers, pole in (
         ('left', 1, L_WRIST, L_AHEAD, V(0, 0, 1), FLAT, V(0.7, 0.3, 0.12)),
         ('right', -1, R_WRIST, R_AHEAD, V(0, 0.5, 1), CLAW, V(-0.6, 0.35, 0.2)),
     ):
+        s = side[0]
         shoulder = hunched(V(sign * 0.1, 0.12, 0.405))
         elbow = bend(shoulder, wrist, UPPER_ARM, FOREARM, shoulder + pole)
-        bent_tube(f'arm-{side}', [shoulder, elbow, wrist + 0.02 * ahead.normalized()], [0.048, 0.038, 0.031],
-                  M['skin'], n=6)
-        hand(f'hand-{side}', wrist, ahead, up, -sign, fingers)
+        ahead = ahead.normalized()
+        limb(f'arm-{side}', f'upper_arm_{s}', f'forearm_{s}', shoulder, elbow, wrist + 0.02 * ahead,
+             [0.048, 0.038, 0.031])
+        with bone(f'hand_{s}'):
+            hand(f'hand-{side}', wrist, ahead, up, -sign, fingers)
+        joint(f'shoulder_{s}', shoulder)
+        joint(f'elbow_{s}', elbow)
+        joint(f'wrist_{s}', wrist)
+        joint(f'fist_{s}', wrist + 0.12 * ahead)  # the end of the palm, where the fingers bend
 
 
 # Feet: long, flat and big, bigger than any other hobbit's, with long splayed toes. The right foot
@@ -518,47 +566,91 @@ def foot(name, at, yaw, inner):
         # Flattened, lying on the ground; their roots are inside the foot.
         cone(f'{name}-toe-{k}', place(base), place(tip), FOOT_SCALE * r, M['skin'], n=4, squash=0.6,
              back=None)
+    joint(f'toe_{"r" if inner > 0 else "l"}', place((0.0, -0.15, 0.015)))  # the roots of the toes
     return place(ANKLE)
 
 
-def legs():
-    """Each leg from the hip to its foot, the knee bent high, out and forward: a frog's crouch."""
+def legs(leash=None):
+    """Each leg from the hip to its foot, the knee bent high, out and forward: a frog's crouch. His 2★
+    model's `leash` is made on the left leg, given its knee and ankle."""
     for side, sign, at, yaw in (('right', -1, R_FOOT, R_YAW), ('left', 1, L_FOOT, L_YAW)):
-        ankle = foot(f'foot-{side}', at, yaw, -sign)
+        s = side[0]
+        with bone(f'foot_{s}'):
+            ankle = foot(f'foot-{side}', at, yaw, -sign)
         hip = hunched(V(sign * 0.065, 0.125, 0.2))
         pole = hip + V(sign * 0.5, -0.4, 0.4)
         knee = bend(hip, ankle, THIGH, SHIN, pole)
-        bent_tube(f'leg-{side}', [hip, knee, ankle], [0.062, 0.044, 0.036], M['skin'], n=6)
+        limb(f'leg-{side}', f'thigh_{s}', f'shin_{s}', hip, knee, ankle, [0.062, 0.044, 0.036])
+        if side == 'left' and leash is not None:
+            leash(knee, ankle)
+        joint(f'hip_{s}', hip)
+        joint(f'knee_{s}', knee)
+        joint(f'ankle_{s}', ankle)
 
 
 SHIFT = V(0, 0.07, 0)  # the whole figure, moved so that his footprint is centred on the origin
 
 
-def main():
+# His clips (../clips.py), a creature's rather than a Hobbit's: crouched and watching, his left hand
+# flat on the ground; a low, quick scuttle, that hand pawing along like a third foot; his claw raked
+# down at the foe, and for his cast, My precious, three bites; dazed on all fours; his claw raised
+# high with the hand still down (paw_down()); and a death flat on his belly.
+RIG = Rig(
+    clips=paw_down({
+        'idle': ('lurk', {}),
+        'move': ('scuttle', {}),
+        'attack': ('rake', {}),
+        'cast': ('bites', {}),
+        'stun': ('cowed', {}),
+        'death': ('sprawl', {}),
+        'victory': ('raise', {'out': 0.5}),
+    }, held=('victory',)),
+)
+
+
+def build(leash=None):
+    """Makes him in a fresh scene, every part bound to its bone and his joints marked, and returns
+    the rig to finish() him with. His 2★ model (gollum-2.py) passes the rope tied round his left ankle
+    as `leash`, a function that makes it given the left knee and ankle, as the legs are made."""
     reset()
     make_materials()
-    legs()
+    legs(leash)
     before = set(bpy.context.scene.objects)
     torso()
-    kerchief()
+    with bone('spine'):
+        kerchief()
     hunch(new_objects(before))
-    loincloth()
-    knot()
-    # The head on the end of his neck, thrust out in front of his shoulders.
+    with bone('hips'):
+        loincloth()
+    with bone('spine'):
+        knot()
+    joint('pelvis', hunched(PELVIS))
+    joint('waist', hunched(WAIST))
+    # The head on the end of his neck, thrust out in front of his shoulders; it turns where the neck
+    # leaves them.
     root = hunched(NECK)
     along = (hunched(NECK + V(0, 0, 0.02)) - root).normalized()
     socket = root + NECK_LENGTH * (along + V(0, 0, 0.6)).normalized()
     before = set(bpy.context.scene.objects)
-    head()
+    with bone('head'):
+        head()
+    joint('crown', APEX)
     frame = head_frame(socket)
     for obj in new_objects(before):
         obj.data.transform(frame)
-    tube('neck', root, socket + 0.02 * (socket - root).normalized(), [(0, 0.05), (1, 0.046)], M['skin'])
+    with bone('head'):
+        tube('neck', root, socket + 0.02 * (socket - root).normalized(), [(0, 0.05), (1, 0.046)], M['skin'])
+    joint('neck', root)
     arms()
     # Centred on his footprint, from his heels to his fingertips.
     for obj in bpy.context.scene.objects:
         obj.data.transform(Matrix.Translation(SHIFT))
-    finish('gollum')
+    return RIG
 
 
-main()
+def main():
+    finish('gollum', rig=build())
+
+
+if __name__ == '__main__':
+    main()

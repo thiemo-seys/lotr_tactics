@@ -1,6 +1,7 @@
 """Renders a model for review with Cycles on the CPU (README.md).
 
-    blender --background --factory-startup --python-exit-code 1 --python preview.py -- <model.glb> <out dir> [--quick] [--fit] [--culled]
+    blender --background --factory-startup --python-exit-code 1 --python preview.py -- <model.glb> <out dir> \
+        [--quick] [--fit] [--culled] [--clips[=idle,attack,...]] [--frames=0,3,8] [--size=480]
 
 Writes one PNG per view and sheet.png, a 4 x 2 grid of them:
 
@@ -14,6 +15,14 @@ model alone for a closer look at a small one. --quick renders only hero.png, sma
 samples. Single-sided materials draw as three.js draws them. --culled draws every material
 single-sided, as three.js would if the client culled back faces, so a face wound inside out, which
 the double-sided export hides, shows as a hole (and the model casts no shadow).
+
+A rigged model is drawn in its rest pose. With --clips it renders its clips instead, all of them or
+those named: <clip>.png for each, a contact sheet of the clip's frames, numbered, in three rows
+seen as the game's camera sees them, from 45 degrees up: from the front (red, as the far side is
+seen), from its right and from behind (blue, as the near side is seen). Short clips show every
+frame, longer ones a dozen spread over them, with every frame of the first 0.2 s of an attack or a
+cast, where the blow lands. --frames picks the frames instead, and --size sets the size of each
+frame in pixels (224 by default), for a closer look.
 """
 
 import math
@@ -28,6 +37,14 @@ args = sys.argv[sys.argv.index('--') + 1 :]
 quick = '--quick' in args
 fit = '--fit' in args
 culled = '--culled' in args
+clips = next((a for a in args if a.split('=')[0] == '--clips'), None)
+
+
+def option(name):
+    return next((a.split('=', 1)[1] for a in args if a.startswith(f'--{name}=')), None)
+
+
+picked = option('frames')
 model_path, out_dir = [a for a in args if not a.startswith('--')][:2]
 os.makedirs(out_dir, exist_ok=True)
 
@@ -35,7 +52,8 @@ TEAM = {'blue': 0x4A90D9, 'red': 0xD9534F}
 TILE = 0x31465F  # team A's half of the board, from scene.ts
 GROUND = 0x12161C  # the game's background
 BACKDROP = 0x2A3039
-SIZE = 384 if quick else 512
+SIZE = int(option('size') or (224 if clips else 384 if quick else 512))
+FPS = 30  # the clips' frames are the sim's ticks
 
 
 def linear(colour):
@@ -57,9 +75,11 @@ def flat_material(name, colour, roughness=0.9):
 
 bpy.ops.wm.read_factory_settings(use_empty=True)
 scene = bpy.context.scene
+scene.render.fps = FPS
+scene.render.fps_base = 1.0
 scene.render.engine = 'CYCLES'
 scene.cycles.device = 'CPU'
-scene.cycles.samples = 16 if quick else 32
+scene.cycles.samples = 12 if clips else 16 if quick else 32
 scene.cycles.use_adaptive_sampling = True
 scene.cycles.use_denoising = True
 scene.cycles.denoiser = 'OPENIMAGEDENOISE'
@@ -79,6 +99,20 @@ world.node_tree.nodes['Background'].inputs['Strength'].default_value = 1.6
 
 # The model on a hex tile, on the dark ground between tiles.
 bpy.ops.import_scene.gltf(filepath=model_path)
+# A rigged model: its armature, in the rest pose, without the shapes the importer draws bones with.
+armature = next((o for o in scene.objects if o.type == 'ARMATURE'), None)
+if armature is not None:
+    for shape in {b.custom_shape for b in armature.pose.bones if b.custom_shape is not None}:
+        bpy.data.objects.remove(shape)
+    data = armature.animation_data
+    if data is not None:
+        for track in data.nla_tracks:
+            track.mute = True
+        data.action = None
+    for b in armature.pose.bones:
+        b.matrix_basis.identity()
+if clips and armature is None:
+    raise RuntimeError('--clips needs a rigged model')
 meshes = [o for o in scene.objects if o.type == 'MESH']
 pivot = bpy.data.objects.new('pivot', None)
 scene.collection.objects.link(pivot)
@@ -161,6 +195,9 @@ for o in meshes:
         high = Vector(map(max, high, p))
 target = Vector((0, 0, (low.z + high.z) / 2 - 0.05))
 reach = max(high.z - low.z, high.x - low.x, high.y - low.y) / 2 + 0.12
+if clips:  # closer, on the hex
+    target.z -= 0.15
+    reach *= 0.8
 distance = reach / math.tan(camera.data.angle / 2)
 
 
@@ -177,6 +214,31 @@ def shoot(name, turn, elevation, colour):
     return path
 
 
+def pixels(path):
+    image = bpy.data.images.load(path)
+    array = np.array(image.pixels[:], dtype=np.float32).reshape(SIZE, SIZE, 4)
+    bpy.data.images.remove(image)
+    return array
+
+
+def save_sheet(paths, columns, name):
+    """A grid of renders, `columns` wide, saved as <name>.png in the output directory."""
+    rows = -(-len(paths) // columns)
+    # Image rows run from the bottom, so the top row of the sheet is the upper end of the array.
+    sheet = np.ones((rows * SIZE, columns * SIZE, 4), dtype=np.float32)
+    for i, path in enumerate(paths):
+        if path is None:
+            continue
+        row, col = divmod(i, columns)
+        sheet[(rows - 1 - row) * SIZE : (rows - row) * SIZE, col * SIZE : (col + 1) * SIZE] = pixels(path)
+    image = bpy.data.images.new(name, columns * SIZE, rows * SIZE)
+    image.pixels.foreach_set(sheet.ravel())
+    image.filepath_raw = os.path.join(out_dir, f'{name}.png')
+    image.file_format = 'PNG'
+    image.save()
+    print(f'SHEET {image.filepath_raw}')
+
+
 # The model faces -Y, towards the camera; turning it by -90 degrees shows its left side.
 VIEWS = [
     ('hero', -35, 12, 'blue'),
@@ -188,24 +250,51 @@ VIEWS = [
     ('back', 180, 5, 'blue'),
     ('right', 90, 5, 'blue'),
 ]
-paths = [shoot(*view) for view in (VIEWS[:1] if quick else VIEWS)]
+# A clip's rows: from the front, its right and behind, at the game camera's 45 degrees.
+CLIP_VIEWS = [('front', 0, 45, 'red'), ('right', 90, 45, 'blue'), ('back', 180, 45, 'blue')]
+ONE_SHOT_DETAIL = 7  # every frame of an attack or cast up to 0.2 s, where it strikes
 
-if not quick:
 
-    def pixels(path):
-        image = bpy.data.images.load(path)
-        array = np.array(image.pixels[:], dtype=np.float32).reshape(SIZE, SIZE, 4)
-        bpy.data.images.remove(image)
-        return array
+def clip_frames(name, last):
+    """The frames a clip's sheet shows: all of a short clip, else a dozen spread over it."""
+    if last <= 12:
+        return list(range(last + 1))
+    step = -(-last // 11)
+    frames = set(range(0, last + 1, step)) | {last}
+    if name in ('attack', 'cast'):
+        frames |= set(range(ONE_SHOT_DETAIL))
+    return sorted(frames)
 
-    # Image rows run from the bottom, so the top row of the sheet is the upper half of the array.
-    sheet = np.ones((2 * SIZE, 4 * SIZE, 4), dtype=np.float32)
-    for i, path in enumerate(paths):
-        row, col = divmod(i, 4)
-        sheet[(1 - row) * SIZE : (2 - row) * SIZE, col * SIZE : (col + 1) * SIZE] = pixels(path)
-    image = bpy.data.images.new('sheet', 4 * SIZE, 2 * SIZE)
-    image.pixels.foreach_set(sheet.ravel())
-    image.filepath_raw = os.path.join(out_dir, 'sheet.png')
-    image.file_format = 'PNG'
-    image.save()
-    print(f'SHEET {image.filepath_raw}')
+
+def stamp(text):
+    render = scene.render
+    render.use_stamp = bool(text)
+    for field in ('date', 'time', 'render_time', 'frame', 'frame_range', 'memory', 'hostname', 'camera',
+                  'lens', 'scene', 'marker', 'filename', 'sequencer_strip'):
+        setattr(render, f'use_stamp_{field}', False)
+    render.use_stamp_note = bool(text)
+    render.stamp_note_text = text
+    render.stamp_font_size = 15
+
+
+if clips:
+    names = clips.split('=')[1].split(',') if '=' in clips else sorted(a.name for a in bpy.data.actions)
+    data = armature.animation_data
+    for name in names:
+        action = bpy.data.actions[name]
+        data.action = action
+        data.action_slot = action.slots[0]
+        last = round(action.frame_range[1])
+        frames = [int(f) for f in picked.split(',') if int(f) <= last] if picked else clip_frames(name, last)
+        paths = []
+        for view, turn, elevation, colour in CLIP_VIEWS:
+            for f in frames:
+                scene.frame_set(f)
+                stamp(f'{name} {f}  {f / FPS:.2f} s')
+                paths.append(shoot(f'{name}-{view}-{f:02d}', turn, elevation, colour))
+        save_sheet(paths, len(frames), name)
+    stamp('')
+else:
+    paths = [shoot(*view) for view in (VIEWS[:1] if quick else VIEWS)]
+    if not quick:
+        save_sheet(paths, 4, 'sheet')

@@ -10,11 +10,24 @@ shield on his left arm and the reins in that hand. The team colour is his cloak,
 shoulders and a cape down his back, and the horse's saddle-cloth and breast strap; everything else
 is muted green, gold, grey and earth.
 
+He is rigged as Éomer is (eomer.py, the reference rider): he and Snowmane are one model on one
+armature, the horse rigged by horse() with bones of its own (mount_...) and his hips hanging from
+its body. His clips are the library's mounted ones (../clips.py): Snowmane stands with a foreleg
+raised, gallops a stride a hex, tosses its head as he cuts down with Herugrim, hangs its head when
+stunned, goes down with him, and rears when they win. His cast, Forth Eorlingas!, is a charge
+(charge): Snowmane springs and stretches out at full gallop as he levels Herugrim at the line, and
+lands as he drives it through; then he lifts it high again. To bend, his legs are a thigh and a shin
+and his mail a skirt on his hips and a chest on his spine, split at rings they already had, so they
+cost no triangles. His long beard and his long hair hang on bones of their own from his head
+(clips.hanging()), so they stay on his chest and his back as his head nods; his cape has its own
+bone too.
+
 His fittings, Herugrim's guard and pommel, the clasps of his cloak, the belt buckle, the shield's
 rim, the stirrups and the horse's browband, use `trim`, which the client colours iron, silver or
 gold by star level (docs/viewer-spec.md section 4, "Star levels"). The circlet on his helm is a
 crown and the shield's face is the golden shield, so they stay `gold` at every level. His 2★ model
-is theoden-2.py and his 3★ model theoden-3.py.
+is theoden-2.py, which imports this script and builds him with a king's long cloak in place of the
+cape (build()), and his 3★ model theoden-3.py.
 
     blender --background --factory-startup --python-exit-code 1 --python theoden.py [-- <out.glb>]
 
@@ -29,6 +42,7 @@ import bpy
 from mathutils import Matrix, Vector
 
 sys.path.insert(0, os.path.join(os.path.dirname(os.path.abspath(__file__)), '..'))
+from clips import fit, hanging  # noqa: E402
 from kit import (  # noqa: E402
     BOOTS,
     BRASS,
@@ -39,20 +53,24 @@ from kit import (  # noqa: E402
     STEEL,
     WOOD,
     V,
-    bent_tube,
+    bone,
     box,
     ellipse,
     finish,
     loft,
     material,
+    nearest_on_polyline,
     on_surface,
     part,
+    path_rings,
     reset,
     team_material,
     trim_material,
     tube,
+    wind,
 )
 from mounts import horse  # noqa: E402
+from rig import Rig, hold, joint  # noqa: E402
 
 # Théoden's own colours (sRGB); the rest come from the kit.
 COAT = 0xA9A8A3  # Snowmane: a light grey rather than white, so the team colour stays the brightest
@@ -88,46 +106,73 @@ LEAN = 4  # degrees his body above the saddle leans forward, into the charge
 PIVOT = V(0, 0.05, 0.80)
 LEANING = Matrix.Translation(PIVOT) @ Matrix.Rotation(math.radians(LEAN), 4, 'X') @ Matrix.Translation(-PIVOT)
 
-# The mail shirt as a barrel of octagons: z, half-width, half-depth and centre y. The belt is the
-# band between the second and third rings. Above the chest the body is hidden under the mantle, so
-# it runs straight to the neck.
+# The mail shirt as a barrel of octagons: z, half-width, half-depth and centre y. It is in two
+# pieces, which bend at the belt, as Éomer's: the skirt and the belt on his hips, and the chest on
+# his spine, from a ring inside the belt (WAIST) up to his neck. Above the chest the body is hidden
+# under the mantle, so it runs straight to the neck.
 TORSO = [
     (0.75, 0.165, 0.125, 0.06),  # in the saddle, round the hips
     (0.915, 0.17, 0.118, 0.05),  # belt, lower edge
     (0.965, 0.178, 0.122, 0.05),  # belt, upper edge
+]
+CHEST = [
+    (0.925, 0.162, 0.11, 0.05),  # inside the belt
     (1.08, 0.205, 0.132, 0.04),  # chest, inside the mantle's hem
     (1.245, 0.072, 0.068, 0.06),  # neck
 ]
-TORSO_BANDS = [0, 1, 0, 0]  # mail, except the belt
+TORSO_BANDS = [0, 1]  # mail, then the belt
+PELVIS, WAIST = V(0, 0.05, 0.80), V(0, 0.05, 0.94)  # the pelvis at the lean's pivot
 
 
 def torso():
     rings = [ellipse(0, cy, z, rx, ry, 8, 22.5) for z, rx, ry, cy in TORSO]
     verts, faces, bands = loft(rings)
     face_mats = [TORSO_BANDS[b] for b in bands]
-    part('torso', verts, faces, [M['mail'], M['leather']], face_mats, inside=lambda c: V(0, 0.05, c.z))
-    # The belt's buckle, a plate standing out from the front of the belt; its back is against it.
-    centre, half, deep = V(0, -0.058, 0.94), V(0.036, 0, 0.03), V(0, -0.018, 0)
-    corners = [V(-1, 0, -1), V(1, 0, -1), V(1, 0, 1), V(-1, 0, 1)]
-    back = [centre + V(c.x * half.x, 0, c.z * half.z) for c in corners]
-    front = [centre + deep + V(0.75 * c.x * half.x, 0, 0.75 * c.z * half.z) for c in corners]
-    faces = [(4, 5, 6, 7)] + [(i, (i + 1) % 4, 4 + (i + 1) % 4, 4 + i) for i in range(4)]
-    part('buckle', back + front, faces, M['trim'], inside=centre)
+    with bone('hips'):
+        part('skirt', verts, faces, [M['mail'], M['leather']], face_mats, inside=lambda c: V(0, 0.05, c.z))
+        # The belt's buckle, a plate standing out from the front of the belt; its back is against it.
+        centre, half, deep = V(0, -0.058, 0.94), V(0.036, 0, 0.03), V(0, -0.018, 0)
+        corners = [V(-1, 0, -1), V(1, 0, -1), V(1, 0, 1), V(-1, 0, 1)]
+        back = [centre + V(c.x * half.x, 0, c.z * half.z) for c in corners]
+        front = [centre + deep + V(0.75 * c.x * half.x, 0, 0.75 * c.z * half.z) for c in corners]
+        faces = [(4, 5, 6, 7)] + [(i, (i + 1) % 4, 4 + (i + 1) % 4, 4 + i) for i in range(4)]
+        part('buckle', back + front, faces, M['trim'], inside=centre)
+    rings = [ellipse(0, cy, z, rx, ry, 8, 22.5) for z, rx, ry, cy in CHEST]
+    verts, faces, _ = loft(rings)
+    with bone('spine'):
+        part('chest', verts, faces, M['mail'], inside=lambda c: V(0, 0.05, c.z))
+    joint('pelvis', PELVIS)
+    joint('waist', WAIST)
 
 
 # His legs astride the horse, as Éomer's: thighs forward and down along the saddle, boots hanging.
 HIP, KNEE, ANKLE = V(0.115, 0.03, 0.83), V(0.305, -0.11, 0.665), V(0.31, -0.025, 0.43)
+KNEE_OVERLAP = 0.03  # how far the thigh runs on past the knee, and the shin starts above it
 
 
 def rider_legs():
+    # Each leg as it was built, through the hip, knee and ankle, but in two at the knee ring: the
+    # thigh carried on past it along its band, the shin from above it, so the knee can bend.
     for s in (-1, 1):
         flip = V(s, 1, 1)
+        side = 'l' if s > 0 else 'r'
         hip, knee, ankle = (Vector(p * flip) for p in (HIP, KNEE, ANKLE))
-        bent_tube(f'leg-{s}', [hip, knee, ankle], [0.078, 0.062, 0.05], [M['tunic'], M['boots']], [0, 1],
-                  side=V(0, 1, 0))
+        rings = path_rings([hip, knee, ankle], [0.078, 0.062, 0.05], side=V(0, 1, 0))
+        thigh = [rings[0], [p + KNEE_OVERLAP / (knee - hip).length * (p - q) for p, q in zip(rings[1], rings[0])]]
+        shin = [[p + KNEE_OVERLAP / (knee - ankle).length * (p - q) for p, q in zip(rings[1], rings[2])], rings[2]]
+        for name, rings_, line, mat in (('thigh', thigh, [hip, knee], 'tunic'), ('shin', shin, [knee, ankle], 'boots')):
+            verts, faces, _ = loft(rings_)
+            with bone(f'{name}_{side}'):
+                part(f'{name}-{s}', verts, wind(verts, faces, inside=nearest_on_polyline(line)), M[mat])
         axes = [V(s * 0.25, -1, -0.1), V(1, 0, 0), V(0, 0, 1)]
-        box(f'foot-{s}', ankle + V(0, -0.05, -0.03), axes, (0.08, 0.042, 0.04), M['boots'], 0.75)
-        stirrup(s, ankle)
+        heel = ankle + V(0, -0.05, -0.03)
+        with bone(f'foot_{side}'):
+            box(f'foot-{s}', heel, axes, (0.08, 0.042, 0.04), M['boots'], 0.75)
+            stirrup(s, ankle)  # round the foot, so it keeps to the boot as his legs go with his hips
+        joint(f'hip_{side}', hip)
+        joint(f'knee_{side}', knee)
+        joint(f'ankle_{side}', ankle)
+        joint(f'toe_{side}', heel + 0.08 * Vector(axes[0]).normalized())
 
 
 # A stirrup iron round the ball of each foot: a flat loop, broad at the tread under the sole and
@@ -158,14 +203,23 @@ REINS = V(0.3, -0.5, 0.8)  # the way the reins run through his left fist
 
 
 def arm(side, shoulder, elbow, wrist, fist, grip):
-    """A mail sleeve, a leather bracer and a fist closed round a grip running along `grip`."""
-    tube(f'sleeve-{side}', shoulder, elbow, [(0, 0.078), (1.12, 0.064)], M['mail'])
-    forearm = [(-0.2, 0.058), (0.3, 0.068), (1.0, 0.06)]
-    tube(f'forearm-{side}', elbow, wrist, forearm, [M['tunic'], M['leather']], [0, 1])
+    """A mail sleeve, a leather bracer and a fist closed round a grip running along `grip`, each on
+    its bone, and the arm's joints."""
+    s = side[0]
+    with bone(f'upper_arm_{s}'):
+        tube(f'sleeve-{side}', shoulder, elbow, [(0, 0.078), (1.12, 0.064)], M['mail'])
+    with bone(f'forearm_{s}'):
+        forearm = [(-0.2, 0.058), (0.3, 0.068), (1.0, 0.06)]
+        tube(f'forearm-{side}', elbow, wrist, forearm, [M['tunic'], M['leather']], [0, 1])
     along = Vector(grip).normalized()
     ahead = wrist - elbow
     ahead = (ahead - ahead.dot(along) * along).normalized()
-    box(f'fist-{side}', fist, [ahead, along, ahead.cross(along)], (0.046, 0.05, 0.05), M['skin'], 0.88)
+    with bone(f'hand_{s}'):
+        box(f'fist-{side}', fist, [ahead, along, ahead.cross(along)], (0.046, 0.05, 0.05), M['skin'], 0.88)
+    joint(f'shoulder_{s}', shoulder)
+    joint(f'elbow_{s}', elbow)
+    joint(f'wrist_{s}', wrist)
+    joint(f'fist_{s}', fist)
 
 
 def arms():
@@ -176,6 +230,7 @@ def arms():
 # Head --------------------------------------------------------------------------------------------
 
 HEAD_Y = 0.03  # the centre of his head, front to back
+NECK = V(0, 0.05, 1.25)
 
 # The face: a shallow pyramid of planes round the root of the nose, from under the helm's brim round
 # the cheekbones to the chin, as Éomer's.
@@ -188,6 +243,22 @@ FACE = [(FACE_RIM[i], FACE_RIM[(i + 1) % 7], NOSE_ROOT) for i in range(7)]
 
 
 def head():
+    with bone('head'):
+        features()
+        helm()
+    with bone('beard'):
+        beard()
+    with bone('hair'):
+        hair()
+    joint('neck', NECK)
+    joint('crown', HELM_TOP)
+    joint('beard_root', BEARD_ROOT)
+    joint('beard_tip', BEARD_TIP)
+    joint('hair_root', HAIR_ROOT)
+    joint('hair_tip', HAIR_TIP)
+
+
+def features():
     # The back and sides of his head, under the helm and his hair.
     rings = [ellipse(0, HEAD_Y + 0.005, z, 0.098, 0.1, 8, 22.5) for z in (1.24, 1.41)]
     verts, faces, _ = loft(rings)
@@ -214,6 +285,11 @@ def head():
                  V(s * 0.106, -0.07, 1.378)]
         faces = [(0, 1, 3), (1, 2, 3), (2, 0, 3), (0, 1, 2)]
         part(f'brow-{s}', verts, faces, M['hair'], inside=sum(verts, Vector()) / 4)
+
+
+# His beard hangs from his chin on a bone of its own (clips.hanging()), from the middle of its top
+# down to its point.
+BEARD_ROOT, BEARD_TIP = V(0, -0.07, 1.31), V(0, -0.17, 0.92)
 
 
 def beard():
@@ -269,6 +345,11 @@ def helm():
              inside=foot - 0.004 * out + V(0, 0, 0.02))
 
 
+# His hair hangs from his head on a bone of its own, as his beard does, from the middle of his head
+# under the helm's brim down to its ends.
+HAIR_ROOT, HAIR_TIP = V(0, 0.05, 1.40), V(0, 0.31, 1.0)
+
+
 def hair():
     # Long white hair from under the helm down over his cloak, in locks.
     def level(z, rx, ry, cy, angles, zs=None):
@@ -295,6 +376,11 @@ def hair():
 
 
 def mantle():
+    with bone('spine'):
+        shoulders()
+
+
+def shoulders():
     neck_z = [1.245, 1.255, 1.265, 1.255, 1.245, 1.225, 1.215, 1.225]
     neck = ellipse(0, 0.055, 0, 0.112, 0.11, 8, 0, neck_z)
     dome = ellipse(0, 0.05, 0, 0.235, 0.17, 8, 0, [z - 0.04 for z in neck_z])
@@ -324,7 +410,18 @@ def clasps(dome, shoulder):
              inside=centre - 0.01 * normal)
 
 
-def cape():
+def cape(folded=True):
+    # The cape's folds, unless the 2★ model's long cloak takes their place (build()); its bone stays
+    # either way, so the rig is the same.
+    if folded:
+        with bone('cape'):
+            folds()
+    # It hangs from his upper back, so it can stream out behind him.
+    joint('cape_top', V(0, 0.2, 1.13))
+    joint('cape_hem', V(0, 0.27, 0.83))
+
+
+def folds():
     # Down his back to the saddle, narrow enough that the horse's quarters show round it from
     # behind. Each level: z at the middle and at the edges, half-width, half-depth, centre y, how
     # far short of the sides it stops (degrees) and how deep the folds are.
@@ -377,14 +474,22 @@ def shield():
     faces.append(tuple(reversed(range(n))))  # the boards behind
     face_mats.append(2)
     verts = [SHIELD_CENTRE + SHIELD_TURN @ v for v in verts]
-    part('shield', verts, faces, [M['gold'], M['steel'], M['wood'], M['trim']], face_mats,
-         inside=SHIELD_CENTRE)
+    with bone('forearm_l'):  # strapped to his forearm
+        part('shield', verts, faces, [M['gold'], M['steel'], M['wood'], M['trim']], face_mats,
+             inside=SHIELD_CENTRE)
 
 
 # Herugrim and the reins, made after he leans --------------------------------------------------------
 
 
 def herugrim():
+    with bone('hand_r'):
+        grip, point, edge = sword()
+    # Held by the grip, its point up the blade and an edge out to his right.
+    hold('r', grip, point, point + 0.1 * edge)
+
+
+def sword():
     grip = LEANING @ R_FIST
     along = (LEANING.to_3x3() @ SWORD).normalized()
     across = along.cross(V(0, 1, 0)).normalized()  # the edges, out to the sides
@@ -396,7 +501,8 @@ def herugrim():
 
     rings = [section(guard, 0.048, 0.014), section(guard + 0.46 * along, 0.04, 0.012)]
     verts, faces, _ = loft(rings)
-    verts.append(guard + 0.59 * along)
+    point = guard + 0.59 * along
+    verts.append(point)
     faces += [(4 + i, 4 + (i + 1) % 4, 8) for i in range(4)]
     part('blade', verts, faces, M['steel'], inside=guard + 0.3 * along)
     box('guard', guard, [along, across, thick], (0.016, 0.1, 0.022), M['trim'], 0.8)
@@ -406,41 +512,79 @@ def herugrim():
     verts = ring + [end - 0.045 * along, end + 0.03 * along]
     faces = [(i, (i + 1) % 4, 4) for i in range(4)] + [(i, (i + 1) % 4, 5) for i in range(4)]
     part('pommel', verts, faces, M['trim'], inside=end)
+    return grip, point, across
 
 
 def reins(mount):
-    # From the bits to his hand, by way of points beside the neck.
+    # From the bits to his hand, by way of points beside the neck: each end follows what it is
+    # held by, the bit the horse's head and the other end his hand, and the middle the neck.
     hand = LEANING @ L_FIST
     for s, bit in zip((-1, 1), mount.bits):
         mid = mount.turned(V(s * 0.125, -0.52, 0.92))
-        path = [bit, mid, hand + V(-s * 0.012, 0.0, -0.01)]
+        held = hand + V(-s * 0.012, 0.0, -0.01)
+        path = [bit, mid, held]
         width = V(0, 0, 0.012)
         verts = [p + width for p in path] + [p - width for p in path]
         faces = [(0, 1, 4, 3), (1, 2, 5, 4)]
-        part(f'rein-{s}', verts, faces, M['leather'], outward=V(s, 0, 0))
+
+        def end(p, bit=bit, held=held):
+            return 'mount_head' if (p - bit).length < 0.02 else 'hand_l' if (p - held).length < 0.02 else None
+
+        with bone('mount_neck', follows=end):
+            part(f'rein-{s}', verts, faces, M['leather'], outward=V(s, 0, 0))
 
 
-def main():
+# His clips (../clips.py), the library's mounted ones, with the charge for his cast and Herugrim
+# lowered to his thigh when he is stunned; his beard and hair hang from his head in every one
+# (hanging()). Snowmane's head, turned to its right, curls further round to its right as it falls
+# (a negative roll), rather than sweeping across the front, so it stays in the hex. fit() draws
+# Herugrim in where it would reach out of the hex, as it is levelled in the charge. The victory's
+# rear takes 1.0 s rather than the style's 1.2, so Snowmane is down and standing by the time the
+# fight's playback stops, 1 s after the end.
+CLIPS = hanging(hanging(fit({
+    'idle': ('saddle', {}),
+    'move': ('gallop', {}),
+    'attack': ('cut', {}),
+    'cast': ('charge', {}),
+    'stun': ('reel', {'low': 1.0}),
+    'death': ('fall', {'roll': -1.0}),
+    'victory': ('rear', {'seconds': 1.0}),
+}, between=True)), bone='hair')
+
+
+def build(cloak=None):
+    """Makes him and his horse in a fresh scene, every part bound to its bone and the joints marked,
+    and returns the rig to finish() them with. His 2★ model (theoden-2.py) passes its long cloak as
+    `cloak`, a function that makes it in place of the cape's folds. Since it lies over the horse's
+    croup as well as down his back, it is made once he leans, as main made it, its rows on his back
+    leaned with him; the cape's bone stays, and carries its top."""
     reset()
     make_materials()
-    mount = horse(COAT, POINTS, blaze=None, stripe=False, tack='saddle-cloth', raised='right', turn=-28)
+    mount = horse(COAT, POINTS, blaze=None, stripe=False, tack='saddle-cloth', raised='right', turn=-28,
+                  rigged=True)
     rider_legs()
     fixed = set(bpy.context.scene.objects)
     torso()
     arms()
     head()
-    beard()
-    helm()
-    hair()
     mantle()
-    cape()
+    cape(folded=cloak is None)
     shield()
     for obj in bpy.context.scene.objects:
         if obj not in fixed:
             obj.data.transform(LEANING)
+    if cloak is not None:
+        cloak()
     herugrim()
     reins(mount)
-    finish('theoden', budget=MOUNTED_BUDGET)
+    bones = {'cape': ('spine', 'cape_top', 'cape_hem'), 'beard': ('head', 'beard_root', 'beard_tip'),
+             'hair': ('head', 'hair_root', 'hair_tip')}
+    return Rig(kind='mounted', mount=mount.rig, bones=bones, clips=CLIPS)
 
 
-main()
+def main():
+    finish('theoden', budget=MOUNTED_BUDGET, rig=build())
+
+
+if __name__ == '__main__':
+    main()

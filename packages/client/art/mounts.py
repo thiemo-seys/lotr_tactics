@@ -10,10 +10,17 @@ The horse makes its `coat`, `horsehair` and `blaze` materials from its colours. 
 the rider's script made those materials first. It is 550 to 580 triangles, with its markings and
 tack, which leaves the rider about 620 of MOUNTED_BUDGET.
 
+A rigged rider asks for its horse rigged too, `horse(..., rigged=True)`: its parts are then bound to
+the horse's own bones (MOUNT_BONES, named mount_...), its joints are marked, and its legs are built
+standing, each in three parts that overlap where they bend, at no cost in triangles. `Horse.rig` is
+then the rig.Mount its rider's Rig takes, whose `raised` foreleg the clips lift as it stands.
+Without it the horse builds exactly as it always has, unbound.
+
 Coordinates are Blender's, as in kit.py: z up, and the horse faces -Y, so its left is +X.
 """
 
 import math
+from contextlib import nullcontext
 from dataclasses import dataclass
 from itertools import pairwise
 
@@ -26,15 +33,26 @@ from kit import (
     LEATHER,
     V,
     bent_tube,
+    bone,
     loft,
     material,
     nearest_on_polyline,
     part,
+    path_rings,
     team_material,
     trim_material,
+    wind,
 )
+from rig import MOUNT_LEGS, Mount, joint
 
 M = {}  # the horse's materials by name, made by horse()
+RIGGED = False  # whether the horse being built is rigged, set by horse()
+
+
+def on(name):
+    """Binds the parts made inside it to the horse's bone `name` when the horse is rigged, and does
+    nothing when it isn't."""
+    return bone(name) if RIGGED else nullcontext()
 
 
 def make_materials(coat, points, blaze):
@@ -281,12 +299,13 @@ def mane():
     inside = nearest_on_polyline(crest)
     part('horse-mane', verts, faces, M['horsehair'], inside=lambda c: inside(c) + V(-0.01, 0, 0.0))
 
-    # The forelock, between the ears and down the brow.
+    # The forelock, between the ears and down the brow, on the head.
     poll = crest[0]
     brow = HEAD_START.lerp(HEAD_END, 0.35) + 0.075 * UP_FACE
     verts = [poll + V(0.03, 0.01, 0.0), poll + V(-0.03, 0.01, 0.0), poll + V(0, 0, 0.04), brow + 0.012 * UP_FACE]
-    part('horse-forelock', verts, [(0, 2, 3), (2, 1, 3), (0, 1, 3)], M['horsehair'],
-         inside=(poll + brow) / 2 - 0.03 * UP_FACE)
+    with on('mount_head'):
+        part('horse-forelock', verts, [(0, 2, 3), (2, 1, 3), (0, 1, 3)], M['horsehair'],
+             inside=(poll + brow) / 2 - 0.03 * UP_FACE)
 
 
 # Legs and tail -----------------------------------------------------------------------------------
@@ -315,6 +334,62 @@ def legs(raised):
         else:
             bent_tube(f'horse-fore-{s}', [j + x for j in FORE], FORE_RADII, mats, LEG_BANDS, phase=30,
                       side=V(1, 0, 0), level_end=True)
+
+
+# A rigged horse's legs stand, each in three parts on three bones: the upper leg (the forearm or the
+# gaskin) to just past the knee or hock, the lower leg (the cannon) from just above it to just past
+# the fetlock, and the pastern and hoof from just above the fetlock. The rings are the unrigged
+# leg's, each part's end carried on along its bands to overlap the next, so the bands, and the
+# triangles, are the same.
+KNEE_OVERLAP, FETLOCK_OVERLAP = 0.032, 0.026
+
+
+def beyond(ring, before, points, i, j, distance):
+    """The ring at points[j] carried on along its bands from the ring `before` at points[i], by
+    `distance` along the leg."""
+    t = distance / (points[j] - points[i]).length
+    return [p + t * (p - q) for p, q in zip(ring, before)]
+
+
+def jointed_leg(name, leg, points, rings, mats, band_mats):
+    """One of a rigged mount's legs, `leg` one of rig.MOUNT_LEGS, through `points` (its top, its
+    knee or hock, its fetlock or wrist, and down to the hoof or paw) and its `rings`, one at each
+    point: three overlapping parts named after `name`, on its bones mount_<fore|hind>_<upper|lower|
+    foot>_<l|r>, each band coloured from `band_mats` as the unrigged leg's; and its joints marked.
+    Returns the leg's bones, (upper, lower, foot)."""
+    kind, side = leg.split('_')
+    last = len(points) - 1
+    pieces = [  # (bone, rings, the points they run through, the first band's index in the leg)
+        ('upper', [rings[0], beyond(rings[1], rings[0], points, 0, 1, KNEE_OVERLAP)], points[:2], 0),
+        ('lower', [beyond(rings[1], rings[2], points, 2, 1, KNEE_OVERLAP),
+                   beyond(rings[2], rings[1], points, 1, 2, FETLOCK_OVERLAP)], points[1:3], 1),
+        ('foot', [beyond(rings[2], rings[3], points, 3, 2, FETLOCK_OVERLAP)] + rings[3:], points[2:], 2),
+    ]
+    bones = []
+    for piece, piece_rings, through, first in pieces:
+        verts, faces, bands = loft(piece_rings)
+        faces = wind(verts, faces, inside=nearest_on_polyline(through))
+        bones.append(f'mount_{kind}_{piece}_{side}')
+        with bone(bones[-1]):
+            part(f'{name}-{piece}', verts, faces, mats, [band_mats[first + b] for b in bands])
+    for where, point in zip(('top', 'knee', 'fetlock', 'toe'), (points[0], points[1], points[2], points[last])):
+        joint(f'mount_{leg}_{where}', point)
+    return tuple(bones)
+
+
+def standing_legs():
+    """A rigged horse's four legs, all standing, since a raised foreleg is a pose its clips give it.
+    Returns each leg's bones."""
+    mats = [M['coat'], M['horsehair']]
+    chains = {}
+    for s in (-1, 1):
+        side = 'l' if s > 0 else 'r'
+        for kind, joints, radii in (('hind', [j + V(s * 0.14, 0.03 if s > 0 else 0, 0) for j in HIND], HIND_RADII),
+                                    ('fore', [j + V(s * 0.13, 0, 0) for j in FORE], FORE_RADII)):
+            rings = path_rings(joints, radii, 6, 30, V(1, 0, 0), level_end=True)
+            chains[f'{kind}_{side}'] = jointed_leg(f'horse-{kind}-{side}', f'{kind}_{side}', joints, rings, mats,
+                                                    LEG_BANDS)
+    return chains
 
 
 def tail():
@@ -426,12 +501,14 @@ STIRRUPS = (V(-0.31, -0.025, 0.43), V(0.31, -0.025, 0.43))  # right, left
 class Horse:
     """Where the rider of a horse() goes, in the model's frame. Éomer (units/eomer.py) sits with his
     hips just above the seat, his knees forward and out over the flanks and his ankles at the
-    stirrups; his reins run from his hand to the bits by way of points beside the neck, turned()."""
+    stirrups; his reins run from his hand to the bits by way of points beside the neck, turned().
+    A rigged horse's `rig` is the rig.Mount its rider's Rig takes, and None for one unrigged."""
 
     seat: Vector  # the top of the cloth in the middle of the back, where he sits
     stirrups: tuple[Vector, Vector]  # where his ankles hang, right (-X) and left (+X)
     bits: tuple[Vector, Vector]  # the corners of the mouth, where the reins start, right and left
     turn: float  # degrees the head is turned to the horse's left
+    rig: Mount | None = None  # its bones, when it is rigged
 
     @property
     def saddle_height(self) -> float:
@@ -447,8 +524,34 @@ class Horse:
 TACK = ('saddle-cloth', 'caparison')
 RAISED = ('left', 'right', None)  # which foreleg is lifted
 
+# A rigged horse's bones besides its legs', each with the joints at its head and tail: the body
+# turns about the middle of its barrel, under the rider, the neck about its root between the
+# shoulders, the head at the poll and the tail at the dock. A knee bends forward and a hock back.
+MOUNT_BONES = {
+    'mount_body': ('root', 'mount_middle', 'mount_breast'),
+    'mount_neck': ('mount_body', 'mount_neck_root', 'mount_poll'),
+    'mount_head': ('mount_neck', 'mount_poll', 'mount_muzzle'),
+    'mount_tail': ('mount_body', 'mount_dock', 'mount_tail_end'),
+}
+MIDDLE, BREAST_POINT = V(0, 0.0, 0.6), V(0, -0.45, 0.62)
+NECK_ROOT, POLL = V(0, -0.31, 0.68), V(0, -0.6, 1.12)
+DOCK, TAIL_END = V(0, 0.46, 0.72), V(0.025, 0.69, 0.16)
+BENDS = {'fore_l': V(0, -1, 0), 'fore_r': V(0, -1, 0), 'hind_l': V(0, 1, 0), 'hind_r': V(0, 1, 0)}
 
-def horse(coat, points, blaze=None, stripe=False, tack='saddle-cloth', raised='left', turn=20):
+
+def mount_rig(chains, bones=MOUNT_BONES, bends=BENDS, raised=None):
+    """The rig.Mount of a mount whose legs' bones are `chains` (jointed_leg()), after its other
+    `bones`: each leg's upper bone hangs from the body."""
+    out = dict(bones)
+    for leg in MOUNT_LEGS:
+        upper, lower, foot = chains[leg]
+        out[upper] = ('mount_body', f'mount_{leg}_top', f'mount_{leg}_knee')
+        out[lower] = (upper, f'mount_{leg}_knee', f'mount_{leg}_fetlock')
+        out[foot] = (lower, f'mount_{leg}_fetlock', f'mount_{leg}_toe')
+    return Mount(out, {leg: chains[leg] for leg in MOUNT_LEGS}, bends, raised=raised)
+
+
+def horse(coat, points, blaze=None, stripe=False, tack='saddle-cloth', raised='left', turn=20, rigged=False):
     """Builds a horse and returns where its rider goes.
 
     `coat` and `points` are sRGB colours: the body, and the mane, tail and lower legs. Its markings
@@ -457,27 +560,47 @@ def horse(coat, points, blaze=None, stripe=False, tack='saddle-cloth', raised='l
     flanks, as for the Nazgûl's black horses; both come with the breast strap. `raised` is the
     foreleg lifted, ready to charge, 'left' or 'right', or None for all four hooves down. `turn` is
     how many degrees the head turns to the horse's left, so it shows past the rider from behind;
-    negative turns it to the right.
+    negative turns it to the right. `rigged` binds it to its own bones for a rigged rider, with all
+    four legs built down and the raised one lifted by the clips instead (`Horse.rig`).
     """
+    global RIGGED
     if tack not in TACK or raised not in RAISED:
         raise ValueError(f'tack is one of {TACK} and raised one of {RAISED}: not {tack!r}, {raised!r}')
+    RIGGED = rigged
     make_materials(coat, points, blaze)
-    body = horse_body()
+    with on('mount_body'):
+        body = horse_body()
     before = set(bpy.context.scene.objects)
-    throat = neck()
-    horse_head(blaze is not None)
-    mane()
+    with on('mount_neck'):
+        throat = neck()
+    with on('mount_head'):
+        horse_head(blaze is not None)
+    with on('mount_neck'):
+        mane()
+    if rigged:  # marked before the head turns, so they turn with it
+        joint('mount_neck_root', NECK_ROOT)
+        joint('mount_poll', POLL)
+        joint('mount_muzzle', HEAD_END)
     turn_head(set(bpy.context.scene.objects) - before, turn)
-    legs(raised)
-    tail()
-    if stripe:
-        dorsal_stripe()
-    if tack == 'caparison':
-        caparison()
-    else:
-        saddle_cloth()
-    breast_strap(Surface(body, throat))
+    chains = standing_legs() if rigged else legs(raised)
+    with on('mount_tail'):
+        tail()
+    with on('mount_body'):
+        if stripe:
+            dorsal_stripe()
+        if tack == 'caparison':
+            caparison()
+        else:
+            saddle_cloth()
+        breast_strap(Surface(body, throat))
+    mount = None
+    if rigged:
+        for name, point in (('mount_middle', MIDDLE), ('mount_breast', BREAST_POINT), ('mount_dock', DOCK),
+                            ('mount_tail_end', TAIL_END)):
+            joint(name, point)
+        mount = mount_rig(chains, raised={'left': 'fore_l', 'right': 'fore_r', None: None}[raised])
+    RIGGED = False
 
     top = body_ring(*body_row(SEAT_Y), grow=CLOTH)
     bits = tuple(turned(head_ring(0.86, 0.0, 0.04, 0.0, 0.062)[i], turn) for i in (4, 2))
-    return Horse(seat=(top[1] + top[2]) / 2, stirrups=STIRRUPS, bits=bits, turn=turn)
+    return Horse(seat=(top[1] + top[2]) / 2, stirrups=STIRRUPS, bits=bits, turn=turn, rig=mount)

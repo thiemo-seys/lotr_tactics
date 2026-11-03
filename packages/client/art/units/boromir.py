@@ -12,6 +12,14 @@ leather with a metal mount, which crosses his breast from his left hip and goes 
 shoulder. The team colour is his cloak: a mantle over his shoulders, and a cloak down his back to his
 calves, under the shield.
 
+He is rigged as Aragorn, Gondor's reference (aragorn.py, ../rig.py): Gondor's idle and run, the horn
+held up as he runs, a forehand slash with the sword, followed through ahead of him so his fist
+stays out of his chest, and for his cast (Horn of Gondor) the horn put to
+his lips and sounded, his head thrown back, the sword held out to the side. Dazed, he lets the horn
+hang from his hand by his hip, and as he dies it falls from his hand. His boots bend at the ankle
+ring and his surcoat at the belt, split at rings they already had, so the rig costs no triangles;
+the baldric that crosses the belt follows his hips below it and his chest above.
+
 Beside the other Men of Gondor he is the horn, the pale baldric and the round shield: Aragorn holds
 his sword high and a banner, Faramir is a hooded ranger with a bow, and Beregond has a winged helm and
 a tall shield. From behind, as the near side sees him, the black shield on the cloak and the horn
@@ -20,8 +28,9 @@ held up beside his head tell him; from the front, the horn and the baldric acros
 His fittings, the shield's rim and boss, the horn's tip and bands, the sword's guard and pommel, the
 baldric's mount and the belt buckle, use `trim`, which the client colours iron, silver or gold by
 star level (docs/viewer-spec.md section 4, "Star levels"): from behind the shield's rim and boss show
-it, and from the front the mount, the buckle and the horn's bands. His 2★ model is boromir-2.py and
-his 3★ model boromir-3.py.
+it, and from the front the mount, the buckle and the horn's bands. His 2★ model is boromir-2.py, which
+imports this script and builds him with its helm over his hair (build()), and his 3★ model
+boromir-3.py.
 
     blender --background --factory-startup --python-exit-code 1 --python boromir.py [-- <out.glb>]
 
@@ -45,6 +54,7 @@ from kit import (  # noqa: E402
     STEEL,
     V,
     bent_tube,
+    bone,
     box,
     cone,
     ellipse,
@@ -61,6 +71,8 @@ from kit import (  # noqa: E402
     tube,
     wind,
 )
+from clips import fit  # noqa: E402
+from rig import Rig, hold, joint  # noqa: E402
 
 # Boromir's own colours (sRGB); the rest come from the kit.
 SKIN = 0xD9A280  # fair
@@ -108,9 +120,13 @@ FOOT = [
 ]
 # Then up the shin to below the knee, round the leg: the height and the radius of each ring.
 SHAFT = [(0.40, 0.08)]
+# The knee, at the top of the boot, a little forward of the line from the hip to the ankle so the leg
+# bends forward; the boot bends at the ring round the ankle.
+KNEE_Z, KNEE_AHEAD = 0.39, 0.012
 
 
 def leg(side, hip, ankle, yaw):
+    s = side[0]
     turn = Matrix.Rotation(math.radians(yaw), 3, 'Z')
     at = V(ankle.x, ankle.y, 0)
     up = hip - ankle
@@ -119,17 +135,28 @@ def leg(side, hip, ankle, yaw):
         return ankle + up * ((z - ankle.z) / up.z) if z > ankle.z else V(at.x, at.y, z)
 
     rings = []
-    for z, (s, heel, toe) in FOOT:
-        outline = [s, heel, (-heel[0], heel[1]), (-s[0], s[1]), (-toe[0], toe[1]), toe]
+    for z, (side_, heel, toe) in FOOT:
+        outline = [side_, heel, (-heel[0], heel[1]), (-side_[0], side_[1]), (-toe[0], toe[1]), toe]
         rings.append([at + turn @ V(x, y, z) for x, y in outline])
     for z, r in SHAFT:
         c = axis(z)
         rings.append([c + turn @ V(r * math.cos(a), r * math.sin(a), 0)
                       for a in (math.radians(60 * i) for i in range(6))])
-    verts, faces, _ = loft(rings)
-    part(f'boot-{side}', verts, faces, M['boots'], inside=lambda c: axis(c.z))
+    # The boot as it was built, in two at the ring round the ankle, which both keep: the foot below it
+    # and the shaft above it, so the foot can roll and the knee bend.
+    with bone(f'foot_{s}'):
+        verts, faces, _ = loft(rings[:3])
+        part(f'boot-{side}', verts, faces, M['boots'], inside=lambda c: axis(c.z))
+    with bone(f'shin_{s}'):
+        verts, faces, _ = loft(rings[2:])
+        part(f'shaft-{side}', verts, faces, M['boots'], inside=lambda c: axis(c.z))
     # The thigh, in dark breeches, from the hip into the boot.
-    tube(f'thigh-{side}', hip, axis(0.38), [(0, 0.095), (1, 0.074)], M['cloth'])
+    with bone(f'thigh_{s}'):
+        tube(f'thigh-{side}', hip, axis(0.38), [(0, 0.095), (1, 0.074)], M['cloth'])
+    joint(f'hip_{s}', hip)
+    joint(f'knee_{s}', axis(KNEE_Z) + KNEE_AHEAD * (turn @ V(0, -1, 0)))
+    joint(f'ankle_{s}', ankle)
+    joint(f'toe_{s}', at + turn @ V(0, -0.15, 0.03))
 
 
 def legs():
@@ -142,31 +169,43 @@ def legs():
 # The surcoat over the mail as a barrel of octagons: z, half-width, half-depth and centre y. His mail
 # coat is long, showing below the surcoat's hem to his knees, and the belt is the band between the
 # fourth and fifth rings. A broad chest: he is the strongest of the Men of the Fellowship.
+# It is in two pieces, which bend at the belt: the skirt and the belt on his hips, and the chest on
+# his spine from a ring inside the belt (WAIST) up to his neck, in as many bands as it had.
 TORSO = [
     (0.44, 0.226, 0.192, 0.0),  # the mail's hem
     (0.505, 0.24, 0.205, 0.0),  # the surcoat's hem, flared over the thighs
     (0.645, 0.196, 0.15, 0.0),  # hips
     (0.70, 0.184, 0.138, -0.004),  # belt, lower edge
     (0.76, 0.19, 0.14, -0.004),  # belt, upper edge
+]
+TORSO_BANDS = [2, 0, 0, 1]  # the mail, then the surcoat, then the belt
+CHEST = [
+    (0.73, 0.178, 0.13, -0.004),  # inside the belt
     (0.89, 0.24, 0.165, -0.01),  # chest
     (0.985, 0.232, 0.142, 0.0),  # shoulders
     (1.0, 0.07, 0.066, 0.01),  # neck, under the collar
 ]
-TORSO_BANDS = [2, 0, 0, 1, 0, 0, 0]  # the mail, then the surcoat, except the belt
+PELVIS, WAIST = V(0, 0.0, 0.64), V(0, -0.004, 0.73)
 
 
 def torso():
-    """Builds the body and returns it, to lay the baldric on."""
+    """Builds the body and returns its two pieces, to lay the baldric on."""
     rings = [ellipse(0, cy, z, rx, ry, 8, 22.5) for z, rx, ry, cy in TORSO]
     verts, faces, bands = loft(rings)
     face_mats = [TORSO_BANDS[b] for b in bands]
-    body = part('torso', verts, faces, [M['sable'], M['leather'], M['mail']], face_mats,
-                inside=lambda c: V(0, 0, c.z))
-
-    # The belt buckle, its face smaller than its back so the edges read as a bevel.
-    axes = [V(0, -1, 0), V(1, 0, 0), V(0, 0, 1)]
-    box('buckle', V(0, -0.142, 0.73), axes, (0.014, 0.032, 0.03), M['trim'], 0.75)
-    return body
+    with bone('hips'):
+        skirt = part('skirt', verts, faces, [M['sable'], M['leather'], M['mail']], face_mats,
+                     inside=lambda c: V(0, 0, c.z))
+        # The belt buckle, its face smaller than its back so the edges read as a bevel.
+        axes = [V(0, -1, 0), V(1, 0, 0), V(0, 0, 1)]
+        box('buckle', V(0, -0.142, 0.73), axes, (0.014, 0.032, 0.03), M['trim'], 0.75)
+    rings = [ellipse(0, cy, z, rx, ry, 8, 22.5) for z, rx, ry, cy in CHEST]
+    verts, faces, _ = loft(rings)
+    with bone('spine'):
+        chest = part('chest', verts, faces, M['sable'], inside=lambda c: V(0, 0, c.z))
+    joint('pelvis', PELVIS)
+    joint('waist', WAIST)
+    return [skirt, chest]
 
 
 def strap(name, centres, half, mat, bodies, lift=0.008):
@@ -231,7 +270,9 @@ BALDRIC = [
 
 
 def baldric(bodies):
-    verts = strap('baldric', BALDRIC, 0.028, M['baldric'], bodies)
+    # It crosses the bend at the belt: the end at his hip follows the hips, the rest the spine.
+    with bone('spine', follows=lambda p: 'hips' if p.z < WAIST.z else None):
+        verts = strap('baldric', BALDRIC, 0.028, M['baldric'], bodies)
     # A metal mount on it over his right breast, between its seventh and eighth points: a lozenge, a
     # little proud of it.
     a, b, c, d = verts[12:16]
@@ -244,7 +285,8 @@ def baldric(bodies):
     centre += 0.004 * out
     verts = [centre + 0.04 * along, centre + 0.033 * side, centre - 0.04 * along, centre - 0.033 * side,
              centre + 0.008 * out]
-    part('mount', verts, [(0, 1, 4), (1, 2, 4), (2, 3, 4), (3, 0, 4)], M['trim'], outward=out)
+    with bone('spine'):
+        part('mount', verts, [(0, 1, 4), (1, 2, 4), (2, 3, 4), (3, 0, 4)], M['trim'], outward=out)
 
 
 # Head --------------------------------------------------------------------------------------------
@@ -272,7 +314,22 @@ def head_ring(z, side, back_corner, back_y, front_corner, front_y):
             V(0, front_y, z), V(fx, fy, z)]
 
 
-def head():
+NECK = V(0, 0.01, 1.04)  # where the head turns on the neck, inside the collar
+
+
+def head(helm=None):
+    # His head and hair, and over them what his 2★ model wears (`helm`), on his head.
+    with bone('head'):
+        features()
+        hair()
+        if helm is not None:
+            helm()
+    joint('neck', NECK)
+    joint('crown', CROWN)
+    joint('mouth', V(0, -0.15, 1.15))  # just in front of his lips, where he sets the horn
+
+
+def features():
     rings = [head_ring(*r) for r in HEAD]
     verts, faces, bands = loft(rings)
     face_mats = [0 if i % 8 in SKIN_FACES[b] else 1 for i, b in zip(range(len(faces)), bands)]
@@ -335,6 +392,11 @@ def hair():
 
 
 def mantle():
+    with bone('spine'):
+        return shoulders()
+
+
+def shoulders():
     # Eight points round the neck and the shoulders, starting at his left shoulder (+X); the front
     # dips at his throat and the back rises behind his neck.
     neck_z = [1.06, 1.075, 1.09, 1.075, 1.06, 1.035, 1.015, 1.035]
@@ -348,6 +410,14 @@ def mantle():
 
 
 def cloak():
+    with bone('cape'):
+        folds()
+    # The cloak hangs from his upper back, so it can swing behind him.
+    joint('cape_top', V(0, 0.2, 0.94))
+    joint('cape_hem', V(0, 0.33, 0.29))
+
+
+def folds():
     # Down his back to his calves, under the shield, in four folds, the hem lowest in the middle.
     # Each level: z at the middle and at the edges, half-width, half-depth, centre y, how far short of
     # the sides it stops (degrees) and how deep the folds are.
@@ -405,7 +475,8 @@ def shield():
     if newell([verts[i] for i in faces[-2]]).y > 0:  # the boss's tip must face outwards
         faces = [tuple(reversed(f)) for f in faces]
     verts = [SHIELD_CENTRE + SHIELD_TURN @ v for v in verts]
-    part('shield', verts, faces, [M['sable'], M['trim'], M['leather']], face_mats)
+    with bone('spine'):
+        part('shield', verts, faces, [M['sable'], M['trim'], M['leather']], face_mats)
 
 
 # Arms --------------------------------------------------------------------------------------------
@@ -427,15 +498,23 @@ def elbow(shoulder, fist, pole):
 
 def arm(side, shoulder, fist, pole, grip):
     """A mail sleeve, a steel vambrace and a fist closed round a grip running along `grip`."""
+    s = side[0]
     bend = elbow(shoulder, fist, pole)
     wrist = fist + (bend - fist).normalized() * 0.045
-    tube(f'sleeve-{side}', shoulder, bend, [(0, 0.08), (1.1, 0.066)], M['mail'])
-    forearm = [(-0.15, 0.06), (0.4, 0.072), (1.0, 0.062)]
-    tube(f'forearm-{side}', bend, wrist, forearm, [M['mail'], M['steel']], [0, 1])
+    with bone(f'upper_arm_{s}'):
+        tube(f'sleeve-{side}', shoulder, bend, [(0, 0.08), (1.1, 0.066)], M['mail'])
+    with bone(f'forearm_{s}'):
+        forearm = [(-0.15, 0.06), (0.4, 0.072), (1.0, 0.062)]
+        tube(f'forearm-{side}', bend, wrist, forearm, [M['mail'], M['steel']], [0, 1])
     along = Vector(grip).normalized()
     ahead = wrist - bend
     ahead = (ahead - ahead.dot(along) * along).normalized()
-    box(f'fist-{side}', fist, [ahead, along, ahead.cross(along)], (0.05, 0.057, 0.055), M['skin'], 0.88)
+    with bone(f'hand_{s}'):
+        box(f'fist-{side}', fist, [ahead, along, ahead.cross(along)], (0.05, 0.057, 0.055), M['skin'], 0.88)
+    joint(f'shoulder_{s}', shoulder)
+    joint(f'elbow_{s}', bend)
+    joint(f'wrist_{s}', wrist)
+    joint(f'fist_{s}', fist)
 
 
 # The sword, ready in his right hand: low at his hip, its point up and out -------------------------
@@ -446,6 +525,15 @@ SWORD = V(-0.5, -0.18, 0.85).normalized()
 
 
 def sword():
+    with bone('hand_r'):
+        point, edge = blade()
+    arm('right', R_SHOULDER, R_FIST, R_POLE, SWORD)
+    # Held by the grip in his fist, its point up the blade and an edge out to his right.
+    hold('r', R_FIST, point, point + 0.1 * edge)
+
+
+def blade():
+    """Builds the sword and returns its point and the way one edge faces."""
     along = SWORD
     across = along.cross(V(0, 1, 0)).normalized()  # the edges; the flats face forward and back
     thick = across.cross(along)
@@ -465,8 +553,7 @@ def sword():
     box('guard', guard, [along, across, thick], (0.017, 0.1, 0.022), M['trim'], 0.8)
     cone('pommel', R_FIST - 0.085 * along, R_FIST - 0.125 * along, 0.03, M['trim'], n=4,
          back=R_FIST - 0.05 * along)
-
-    arm('right', R_SHOULDER, R_FIST, R_POLE, along)
+    return guard + 0.62 * along, across
 
 
 # The Horn of Gondor, raised in his left hand ------------------------------------------------------
@@ -497,6 +584,18 @@ def horn_at(t):
 
 
 def great_horn():
+    with bone('hand_l'):
+        horn()
+    fist, along = horn_at(HORN_GRIP)
+    arm('left', L_SHOULDER, fist, L_POLE, along)
+    # Held by the grip in his fist, up to the bell, which opens towards the fight; and its mouthpiece,
+    # which he sounds it by (the cast's `horn` style brings it to his lips).
+    bell, ahead = horn_at(1.0)
+    hold('l', fist, bell, bell + 0.1 * ahead)
+    joint('mouthpiece', HORN_CURVE[0])
+
+
+def horn():
     points = [horn_at(t)[0] for t, _, _ in HORN]
     radii = [r for _, r, _ in HORN]
     mats = ['trim', 'horn']
@@ -509,24 +608,41 @@ def great_horn():
     faces = wind(verts, [(i, (i + 1) % 6, 6) for i in range(6)], outward=ahead)
     part('horn-hollow', verts, faces, M['hollow'])
 
-    fist, along = horn_at(HORN_GRIP)
-    arm('left', L_SHOULDER, fist, L_POLE, along)
+
+# His clips (../clips.py), as Aragorn's, Gondor's reference (aragorn.py): the same idle and run. Dazed,
+# he lets the horn he holds up hang by his hip.
+CLIPS = fit({
+    'idle': ('ready', {}),
+    'move': ('run', {'heavy': 0.3, 'lean': 10.0, 'off': 'high'}),
+    'attack': ('swing', {'ahead': 0.25}),
+    'cast': ('horn', {}),
+    'stun': ('dazed', {'off_low': 1.0}),
+    'death': ('knees', {'dropped': True}),
+    'victory': ('raise', {}),
+}, between=True)
 
 
-def main():
+def build(helm=None):
+    """Makes him in a fresh scene, every part bound to its bone and his joints marked, and returns
+    the rig to finish() him with. His 2★ model (boromir-2.py) passes its helm as `helm`, a function
+    that makes it, which he wears over his hair, bound to his head."""
     reset()
     make_materials()
     legs()
     body = torso()
-    head()
-    hair()
+    head(helm)
     cape = mantle()
-    baldric([body, cape])
+    baldric(body + [cape])
     cloak()
     shield()
     sword()
     great_horn()
-    finish('boromir')
+    return Rig(bones={'cape': ('spine', 'cape_top', 'cape_hem')}, clips=CLIPS)
 
 
-main()
+def main():
+    finish('boromir', rig=build())
+
+
+if __name__ == '__main__':
+    main()

@@ -15,10 +15,19 @@ cloak, the warg's ragged saddle-cloth and the rag knotted round its throat, seen
 behind and from above; the cap, his ears and the blade show above it, and the warg's tail and
 quarters below it.
 
+He and the warg are rigged as one (../rig.py, ../clips.py), as Éomer and his horse are (eomer.py, the
+reference rider): the warg has bones of its own (mount_..., with a jaw that bites) and his hips hang
+from its body. His clips are the library's mounted ones: the warg stands breathing, lopes low with
+its back rocking, a bound a hex, tosses its head as he cuts down with his blade, bites for his cast
+(Warg bite), hangs its head and sways when stunned, goes down with him and rears when they win. To bend,
+the warg's legs are each three parts and his jerkin two, split at rings they already had, so they
+cost no triangles, and the warg's fangs and fur are split between the bones they follow.
+
 His fittings, the cap's brow band, the blade's guard and pommel, the bands at the top of his bracers
 and the ring his rein is tied to at the warg's throat, use `trim`, which the client colours iron,
 silver or gold by star level (docs/viewer-spec.md section 4, "Star levels"). His 2★ model is
-sharku-2.py and his 3★ model sharku-3.py.
+sharku-2.py, which imports this script and builds him and the warg with its round black shield
+strapped to his rein arm (build()), and his 3★ model sharku-3.py.
 
     blender --background --factory-startup --python-exit-code 1 --python sharku.py [-- <out.glb>]
 
@@ -35,6 +44,7 @@ import bpy
 from mathutils import Matrix, Vector
 
 sys.path.insert(0, os.path.join(os.path.dirname(os.path.abspath(__file__)), '..'))
+from clips import tweened  # noqa: E402
 from kit import (  # noqa: E402
     BOOTS,
     CLOTH,
@@ -43,6 +53,7 @@ from kit import (  # noqa: E402
     MOUNTED_BUDGET,
     STEEL,
     V,
+    bone,
     box,
     cone,
     ellipse,
@@ -60,6 +71,8 @@ from kit import (  # noqa: E402
     tube,
     wind,
 )
+from mounts import jointed_leg, mount_rig  # noqa: E402
+from rig import Rig, hold, joint  # noqa: E402
 
 # Sharku's own colours (sRGB); the rest come from the kit.
 SKIN = 0x7E7A5A  # sallow, olive-grey, as Gorbag's
@@ -338,21 +351,26 @@ def warg_head():
     last = (len(rings) - 1) * 4
     faces += wind(verts, [tuple(range(last, last + 4))], outward=FORE)
     face_mats.append(0)
-    jaw = part('warg-jaw', verts, faces, [M['pale_fur'], M['eyes']], face_mats)
+    with bone('mount_jaw'):
+        jaw = part('warg-jaw', verts, faces, [M['pale_fur'], M['eyes']], face_mats)
     jaw.data.transform(OPEN)
+    joint('mount_hinge', HINGE)
+    joint('mount_chin', OPEN @ hp(0.95, -0.07, 0))
 
-    # Fangs: two long ones down from the upper jaw and two up from the lower.
-    spikes = []
+    # Fangs: two long ones down from the upper jaw and two up from the lower, on the jaw.
+    upper, lower = [], []
     for s in (-1, 1):
         base = lip(0.82, s) - 0.016 * s * SIDE + 0.016 * UP
-        spikes.append(([base + 0.024 * FORE, base - 0.016 * FORE + 0.012 * s * SIDE,
-                        base - 0.016 * FORE - 0.014 * s * SIDE], base - 0.11 * UP + 0.015 * FORE))
+        upper.append(([base + 0.024 * FORE, base - 0.016 * FORE + 0.012 * s * SIDE,
+                       base - 0.016 * FORE - 0.014 * s * SIDE], base - 0.11 * UP + 0.015 * FORE))
         t, top, half = 0.88, -0.045, 0.066
         low = hp(t, top - 0.016, s * (half - 0.016))
         base = [low + 0.018 * FORE, low - 0.014 * FORE + 0.012 * s * SIDE,
                 low - 0.014 * FORE - 0.014 * s * SIDE]
-        spikes.append(([OPEN @ p for p in base], OPEN @ (low + 0.09 * UP)))
-    tufts('warg-fangs', spikes, M['bone'])
+        lower.append(([OPEN @ p for p in base], OPEN @ (low + 0.09 * UP)))
+    tufts('warg-fangs', upper, M['bone'])
+    with bone('mount_jaw'):
+        tufts('warg-jaw-fangs', lower, M['bone'])
 
     # Ears pinned back, out and up.
     spikes = []
@@ -472,11 +490,16 @@ LEGS = [
 
 
 def warg_legs():
-    spikes = []
+    """The four legs, each in three overlapping parts on its bones (mounts.jointed_leg()), with the
+    fur on each: the breeches on the thigh, the feathering on the forearm. Returns each leg's bones."""
+    chains = {}
     for name, joints, radii, x, ahead in LEGS:
         s = 1 if x > 0 else -1
+        leg = f'{name.split("-")[0]}_{"l" if s > 0 else "r"}'
         points = [V(x + s * j.x, j.y + ahead, j.z) for j in joints]
-        shaggy_tube(f'warg-{name}', points, radii, M['fur'], n=5, phase=90, side=SIDE)
+        rings = path_rings(points, radii, 5, 90, SIDE)
+        upper, lower, foot = chains[leg] = jointed_leg(f'warg-{name}', leg, points, rings, [M['fur']], [0, 0, 0])
+        spikes = []
         if name.startswith('hind'):
             # Shaggy breeches down the back of the thigh.
             hip, stifle = points[0], points[1]
@@ -484,15 +507,20 @@ def warg_legs():
                 c = hip.lerp(stifle, f) + V(s * 0.03, 0.07, 0)
                 base = [c + V(s * 0.03, -0.03, 0.04), c + V(-s * 0.02, -0.03, 0.04), c + V(0, -0.02, -0.05)]
                 spikes.append((base, c + V(s * 0.04, length, -0.05)))
+            fur = upper
         else:
             # Feathering down the back of the foreleg.
             c = points[1] + V(s * 0.01, 0.04, 0.02)
             base = [c + V(s * 0.03, -0.03, 0.05), c + V(-s * 0.025, -0.03, 0.05), c + V(0, -0.02, -0.04)]
             spikes.append((base, c + V(s * 0.02, 0.08, -0.1)))
-        foot = points[-1]
+            fur = lower
+        with bone(fur):
+            tufts(f'warg-feathering-{name}', spikes, M['fur'])
+        paw = points[-1]
         axes = [V(0, -1, 0), V(1, 0, 0), V(0, 0, 1)]
-        box(f'warg-paw-{name}', V(foot.x, foot.y - 0.035, 0.032), axes, (0.075, 0.056, 0.032), M['fur'], 0.7)
-    tufts('warg-feathering', spikes, M['fur'])
+        with bone(foot):
+            box(f'warg-paw-{name}', V(paw.x, paw.y - 0.035, 0.032), axes, (0.075, 0.056, 0.032), M['fur'], 0.7)
+    return chains
 
 
 TAIL = [V(0, 0.42, 0.54), V(0, 0.55, 0.59), V(0.015, 0.67, 0.56), V(0.035, 0.77, 0.47)]
@@ -553,31 +581,62 @@ def saddle_cloth():
 
 @dataclass
 class Warg:
-    """Where the rider of a warg() goes, in the model's frame, as mounts.Horse is for a horse."""
+    """Where the rider of a warg() goes, in the model's frame, as mounts.Horse is for a horse, and
+    its bones for the rider's Rig."""
 
     seat: Vector  # the top of the cloth in the middle of its back at SEAT_Y, where he sits
     knot: Vector  # where his rein is tied to the rag round its throat
     turn: float  # degrees its head is turned to its left
+    rig: object  # its bones (rig.Mount)
+
+
+# The warg's bones besides its legs': the body turns about the middle of its barrel, under him, the
+# neck about its root in the shoulders, the head at the back of the skull and the jaw at its hinge.
+# Its forelegs bend back at the elbow and its hind legs forward at the stifle.
+WARG_BONES = {
+    'mount_body': ('root', 'mount_middle', 'mount_breast'),
+    'mount_neck': ('mount_body', 'mount_neck_root', 'mount_poll'),
+    'mount_head': ('mount_neck', 'mount_poll', 'mount_nose'),
+    'mount_jaw': ('mount_head', 'mount_hinge', 'mount_chin'),
+    'mount_tail': ('mount_body', 'mount_dock', 'mount_tail_end'),
+}
+WARG_BENDS = {'fore_l': V(0, 1, 0), 'fore_r': V(0, 1, 0), 'hind_l': V(0, -1, 0), 'hind_r': V(0, -1, 0)}
 
 
 def warg():
-    """Builds the warg, with its saddle-cloth, and returns where its rider goes."""
-    warg_body()
+    """Builds the warg, with its saddle-cloth, its parts on its own bones, and returns where its
+    rider goes."""
+    with bone('mount_body'):
+        warg_body()
     before = set(bpy.context.scene.objects)
-    warg_neck()
-    warg_head()
-    hackles()
-    ruff()
-    knot = collar()
+    with bone('mount_neck'):
+        warg_neck()
+    with bone('mount_head'):
+        warg_head()
+    with bone('mount_neck'):
+        hackles()
+        ruff()
+        knot = collar()
+    joint('mount_neck_root', V(0, -0.34, 0.5))
+    joint('mount_poll', SKULL_BACK)
+    joint('mount_nose', NOSE)
     for obj in new_objects(before):
         for v in obj.data.vertices:
             v.co = turned(v.co)
-    warg_legs()
-    belly_fringe()
-    warg_tail()
-    saddle_cloth()
+    chains = warg_legs()
+    with bone('mount_body'):
+        belly_fringe()
+    with bone('mount_tail'):
+        warg_tail()
+    with bone('mount_body'):
+        saddle_cloth()
+    joint('mount_middle', V(0, 0.0, 0.48))
+    joint('mount_breast', BREAST)
+    joint('mount_dock', TAIL[0])
+    joint('mount_tail_end', TAIL_TIP)
     top = ring8(*body_row(SEAT_Y), grow=CLOTH_GAP)
-    return Warg(seat=(top[1] + top[2]) / 2, knot=turned(knot), turn=TURN)
+    return Warg(seat=(top[1] + top[2]) / 2, knot=turned(knot), turn=TURN,
+                rig=mount_rig(chains, bones=WARG_BONES, bends=WARG_BENDS))
 
 
 # The rider -----------------------------------------------------------------------------------------
@@ -613,29 +672,51 @@ def hunch(objects):
 
 # A barrel of octagons, built upright: z, half-width, half-depth and centre y. He sits on the cloth,
 # whose top is at about 0.63 under him.
+# It is in two pieces, which bend at the belt: the breeches and the belt on his hips, and the jerkin
+# on his spine, from a ring inside the belt (WAIST) up to his neck.
 TORSO = [
     (0.63, 0.14, 0.115, 0.05),  # in the saddle, round the hips
     (0.71, 0.15, 0.12, 0.05),  # belt, lower edge
     (0.77, 0.155, 0.125, 0.05),  # belt, upper edge
+]
+CHEST = [
+    (0.735, 0.14, 0.11, 0.05),  # inside the belt
     (0.90, 0.2, 0.145, 0.05),  # chest
     (1.02, 0.21, 0.14, 0.07),  # shoulders
     (1.10, 0.11, 0.10, 0.04),  # neck
 ]
-TORSO_BANDS = [0, 1, 2, 2, 2]  # breeches, belt, leather jerkin
+TORSO_BANDS = [0, 1]  # breeches, belt
+PELVIS_Y = 0.05
 
 
 def torso():
+    mats = [M['cloth'], M['boots'], M['leather'], M['skin']]
+
+    def inside(c):
+        return V(0, 0.05, min(max(c.z, 0.66), 1.06))
+
     rings = [ellipse(0, cy, z, rx, ry, 8, 22.5) for z, rx, ry, cy in TORSO]
     verts, faces, bands = loft(rings)
-    face_mats = [TORSO_BANDS[b] for b in bands]
-    faces = wind(verts, faces, inside=lambda c: V(0, 0.05, min(max(c.z, 0.66), 1.06)))
+    with bone('hips'):
+        part('breeches', verts, wind(verts, faces, inside=inside), mats, [TORSO_BANDS[b] for b in bands])
+    rings = [ellipse(0, cy, z, rx, ry, 8, 22.5) for z, rx, ry, cy in CHEST]
+    verts, faces, bands = loft(rings)
+    faces = wind(verts, faces, inside=inside)
     top = tuple(range(len(verts) - 8, len(verts)))  # the top of the neck
     faces += wind(verts, [top], outward=V(0, 0, 1))
-    face_mats.append(3)
-    part('torso', verts, faces, [M['cloth'], M['boots'], M['leather'], M['skin']], face_mats)
+    with bone('spine'):
+        part('jerkin', verts, faces, mats, [2] * len(bands) + [3])
+    joint('pelvis', PIVOT)
+    joint('waist', V(0, PELVIS_Y, 0.76))
+    joint('neck', V(0, 0.04, 1.08))
 
 
 def cloak():
+    with bone('spine'):
+        rags()
+
+
+def rags():
     # A ragged cloak round his neck and over his shoulders, as Gorbag's cowl: eight points from his
     # left (+X), the collar rising behind his neck and dipping in front; rags hang from the hem,
     # longest down his back, where they stream out behind him.
@@ -678,6 +759,12 @@ def head_origin():
 
 
 def head():
+    with bone('head'):
+        face()
+    joint('crown', head_origin() + HEAD_SCALE * V(0, 0.03, 0.42))
+
+
+def face():
     origin = head_origin()
 
     def h(x, y, z):
@@ -768,17 +855,25 @@ UPPER_ARM, FOREARM = 0.27, 0.28  # long arms, as orcs have
 
 def arm(side, shoulder, fist, pole, fist_up):
     """An arm from the shoulder to a fist at `fist`, its elbow bent towards `pole`."""
+    s = side[0]
     reach = (fist - shoulder).normalized()
     elbow = bend(shoulder, fist - 0.05 * reach, UPPER_ARM, FOREARM, pole)
     wrist = fist - 0.05 * (fist - elbow).normalized()
-    tube(f'upper-arm-{side}', shoulder, elbow, [(-0.1, 0.07), (1.08, 0.058)], M['skin'])
-    tube(f'forearm-{side}', elbow, wrist, [(-0.12, 0.056), (0.4, 0.064), (1.0, 0.058)],
-         [M['skin'], M['iron']], [0, 1])
-    # A metal band round the top of the iron bracer.
-    tube(f'bracer-band-{side}', elbow, wrist, [(0.4, 0.071), (0.52, 0.07)], M['trim'])
+    with bone(f'upper_arm_{s}'):
+        tube(f'upper-arm-{side}', shoulder, elbow, [(-0.1, 0.07), (1.08, 0.058)], M['skin'])
+    with bone(f'forearm_{s}'):
+        tube(f'forearm-{side}', elbow, wrist, [(-0.12, 0.056), (0.4, 0.064), (1.0, 0.058)],
+             [M['skin'], M['iron']], [0, 1])
+        # A metal band round the top of the iron bracer.
+        tube(f'bracer-band-{side}', elbow, wrist, [(0.4, 0.071), (0.52, 0.07)], M['trim'])
     ahead = (fist - elbow).normalized()
     up = (Vector(fist_up) - Vector(fist_up).dot(ahead) * ahead).normalized()
-    box(f'fist-{side}', fist, [ahead, up, ahead.cross(up)], (0.046, 0.05, 0.05), M['skin'], 0.85)
+    with bone(f'hand_{s}'):
+        box(f'fist-{side}', fist, [ahead, up, ahead.cross(up)], (0.046, 0.05, 0.05), M['skin'], 0.85)
+    joint(f'shoulder_{s}', shoulder)
+    joint(f'elbow_{s}', elbow)
+    joint(f'wrist_{s}', wrist)
+    joint(f'fist_{s}', fist)
 
 
 # The blade, raised in his right fist: broad, single-edged and curved back towards a clipped point.
@@ -788,6 +883,13 @@ BLADE_EDGE = V(-1.0, -0.3, 0.0)  # the way the edge faces: out to his right and 
 
 
 def blade():
+    with bone('hand_r'):
+        point, edge = blade_parts()
+    # Held by the grip, its point up the blade and its edge out to his right.
+    hold('r', BLADE_FIST, point, point + 0.1 * edge)
+
+
+def blade_parts():
     along = BLADE_UP
     edge = (BLADE_EDGE - BLADE_EDGE.dot(along) * along).normalized()
     flat = along.cross(edge)
@@ -811,6 +913,7 @@ def blade():
     # A metal guard across the foot of the blade, and a pommel under his fist.
     box('guard', BLADE_FIST + 0.06 * along, [along, edge, flat], (0.012, 0.055, 0.022), M['trim'])
     cone('pommel', BLADE_FIST - 0.05 * along, BLADE_FIST - 0.1 * along, 0.03, M['trim'], n=4)
+    return point, edge
 
 
 REIN_FIST = V(0.1, -0.33, 0.76)  # his left fist, low over the warg's withers
@@ -822,11 +925,14 @@ def arms(mount):
     arm('right', right, BLADE_FIST, right + V(-0.3, 0.1, -0.15), BLADE_UP)
     # The rein hand low over the warg's withers, the elbow out to his left.
     arm('left', left, REIN_FIST, left + V(0.3, 0.1, -0.2), V(0, -0.3, 1))
-    # The rein, a leather strap from his fist over the ruff to the rag round the warg's throat.
+    # The rein, a leather strap from his fist over the ruff to the rag round the warg's throat: the
+    # end in his fist follows it, the rest the warg's neck.
     width = V(0, 0, 0.013)
-    path = [REIN_FIST + V(0, -0.04, 0), (REIN_FIST + mount.knot) / 2 + V(0, 0, 0.03), mount.knot]
+    held = REIN_FIST + V(0, -0.04, 0)
+    path = [held, (REIN_FIST + mount.knot) / 2 + V(0, 0, 0.03), mount.knot]
     verts = [p + width for p in path] + [p - width for p in path]
-    part('rein', verts, [(0, 1, 4, 3), (1, 2, 5, 4)], M['leather'], outward=V(1, 0, 0))
+    with bone('mount_neck', follows=lambda p: 'hand_l' if (p - held).length < 0.02 else None):
+        part('rein', verts, [(0, 1, 4, 3), (1, 2, 5, 4)], M['leather'], outward=V(1, 0, 0))
     rein_ring(mount.knot)
 
 
@@ -836,7 +942,8 @@ def rein_ring(knot):
     at = knot + 0.008 * out
     outer, inner = (segment(at - 0.01 * out, at + 0.01 * out, [(0.5, r)], 6, 30)[0] for r in (0.036, 0.021))
     faces = [(i, (i + 1) % 6, 6 + (i + 1) % 6, 6 + i) for i in range(6)]
-    part('rein-ring', outer + inner, faces, M['trim'], outward=out)
+    with bone('mount_neck'):  # with the rag round the throat, and the rein's end on it
+        part('rein-ring', outer + inner, faces, M['trim'], outward=out)
 
 
 # Legs astride the warg: thighs forward and down over its flanks, knees gripping, feet tucked back.
@@ -846,19 +953,47 @@ HIP, KNEE, ANKLE = V(0.1, 0.05, 0.68), V(0.285, -0.12, 0.52), V(0.26, 0.05, 0.36
 def legs():
     for s in (-1, 1):
         flip = V(s, 1, 1)
+        side = 'l' if s > 0 else 'r'
         hip, knee, ankle = (Vector(p * flip) for p in (HIP, KNEE, ANKLE))
-        tube(f'thigh-{s}', hip, knee, [(-0.1, 0.08), (1.1, 0.064)], M['cloth'])
-        tube(f'shin-{s}', knee, ankle, [(-0.1, 0.058), (1.15, 0.05)], M['skin'])
+        with bone(f'thigh_{side}'):
+            tube(f'thigh-{s}', hip, knee, [(-0.1, 0.08), (1.1, 0.064)], M['cloth'])
+        with bone(f'shin_{side}'):
+            tube(f'shin-{s}', knee, ankle, [(-0.1, 0.058), (1.15, 0.05)], M['skin'])
+            # A crude iron cop over the knee, which hides the joint.
+            out = V(s * 0.6, -1, 0.1).normalized()
+            base = segment(knee, knee + out, [(0, 0.06)], 4, 45)[0]
+            part(f'knee-{s}', base + [knee + 0.085 * out], [(i, (i + 1) % 4, 4) for i in range(4)], M['iron'],
+                 inside=knee)
         axes = [V(s * 0.1, -1, -0.35), V(1, 0, 0), V(0, 0, 1)]
-        box(f'foot-{s}', ankle + V(0, -0.05, -0.03), axes, (0.085, 0.045, 0.042), M['boots'], 0.75)
-        # A crude iron cop over the knee, which hides the joint.
-        out = V(s * 0.6, -1, 0.1).normalized()
-        base = segment(knee, knee + out, [(0, 0.06)], 4, 45)[0]
-        part(f'knee-{s}', base + [knee + 0.085 * out], [(i, (i + 1) % 4, 4) for i in range(4)], M['iron'],
-             inside=knee)
+        heel = ankle + V(0, -0.05, -0.03)
+        with bone(f'foot_{side}'):
+            box(f'foot-{s}', heel, axes, (0.085, 0.045, 0.042), M['boots'], 0.75)
+        joint(f'hip_{side}', hip)
+        joint(f'knee_{side}', knee)
+        joint(f'ankle_{side}', ankle)
+        joint(f'toe_{side}', heel + 0.085 * Vector(axes[0]).normalized())
 
 
-def main():
+# His clips (../clips.py), the library's mounted ones, the warg's run a low, bounding lope and his cast
+# the warg's bite. As his cut comes over the top the blade is turned in across his front and further
+# down (across, early), so it passes level pointing ahead rather than out past his hex between frames.
+# The victory's rear takes 1.0 s rather than the style's 1.2, so the warg is down and standing by the
+# time the fight's playback stops, 1 s after the end.
+CLIPS = tweened({
+    'idle': ('saddle', {}),
+    'move': ('gallop', {'bound': 1.0, 'lean': 4.0, 'carry': 0.0, 'tail': -14.0}),
+    'attack': ('cut', {'across': 40.0, 'early': 15.0}),
+    'cast': ('bite', {}),
+    'stun': ('reel', {}),
+    'death': ('fall', {}),
+    'victory': ('rear', {'rear': 0.6, 'seconds': 1.0}),
+})
+
+
+def build(shield=None):
+    """Makes him and the warg in a fresh scene, every part bound to its bone and the joints marked,
+    and returns the rig to finish() them with. His 2★ model (sharku-2.py) passes its shield as
+    `shield`, a function that makes it on his rein arm, after his arms."""
     reset()
     make_materials()
     mount = warg()
@@ -870,7 +1005,14 @@ def main():
     head()
     blade()
     arms(mount)
-    finish('sharku', budget=MOUNTED_BUDGET)
+    if shield is not None:
+        shield()
+    return Rig(kind='mounted', mount=mount.rig, clips=CLIPS)
 
 
-main()
+def main():
+    finish('sharku', budget=MOUNTED_BUDGET, rig=build())
+
+
+if __name__ == '__main__':
+    main()

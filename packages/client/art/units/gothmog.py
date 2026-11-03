@@ -11,11 +11,23 @@ on. The team colour is the banner, which bears the sign of Morgul on both faces,
 death's face; the ragged mantle round his neck, under his pauldrons and down his back; and the ragged
 tabard hanging from his belt.
 
+He is rigged as Gorbag, the Orcs' reference (gorbag.py, ../rig.py), with the Orcs' idle and run, and
+as Aragorn (aragorn.py) carries the standard of Gondor he carries the war-banner (../clips.py,
+fit(pole=...)): it stays planted while he stands, fights and is stunned, is carried clear of the
+ground as he runs, tips over across his hex as he falls and is lifted as he wins. He hacks straight
+down with the cleaver, bringing it over and back out past his head and ears; his cast (Unleash the
+Orcs) heaves the banner up and stamps it down again as he thrusts the cleaver high, calling the Orcs
+on, as Balin rallies his Dwarves. Falling, he sinks to his knees with the cleaver upright beside him
+as the banner topples across his hex. His legs bend at the knee, where
+the thigh and the greave already overlap, his arms at the elbow, and his body at the belt, where his
+cuirass now starts inside it, so the rig costs no triangles.
+
 His fittings, the rims of his pauldrons, his belt buckle, the band binding the cleaver's blade to its
 haft and its pommel, and the standard's spear-point and the finials of its cross-bar, use `trim`,
 which the client colours iron, silver or gold by star level (docs/viewer-spec.md section 4, "Star
-levels"). The pale moon stays bone: it is a device, not a fitting. His 2★ model is gothmog-2.py and
-his 3★ model gothmog-3.py.
+levels"). The pale moon stays bone: it is a device, not a fitting. His 2★ model is gothmog-2.py,
+which imports this script and builds him with its long black cloak hanging from his shoulders under
+the mantle (build()), and his 3★ model gothmog-3.py.
 
     blender --background --factory-startup --python-exit-code 1 --python gothmog.py [-- <out.glb>]
 
@@ -37,6 +49,7 @@ from kit import (  # noqa: E402
     LEATHER,
     STEEL,
     V,
+    bone,
     box,
     cone,
     ellipse,
@@ -53,6 +66,8 @@ from kit import (  # noqa: E402
     turn,
     wind,
 )
+from clips import fit  # noqa: E402
+from rig import Rig, hold, joint  # noqa: E402
 
 # Gothmog's own colours (sRGB); the rest come from the kit. His skin, hair and bone are his people's,
 # as Gorbag has them.
@@ -136,14 +151,24 @@ def boot(name, ankle, yaw):
 def legs():
     for side, hip, knee, ankle, yaw in (('right', R_HIP, R_KNEE, R_ANKLE, R_YAW),
                                         ('left', L_HIP, L_KNEE, L_ANKLE, L_YAW)):
-        tube(f'thigh-{side}', hip, knee, [(-0.1, 0.1), (1.1, 0.078)], M['cloth'])
-        tube(f'greave-{side}', knee, ankle, [(-0.1, 0.072), (1.3, 0.062)], M['iron'])
-        boot(f'boot-{side}', ankle, yaw)
-        # An iron cop over the knee that ends in a spike, pointing out of the bend and forward.
-        forward = knee - (hip + ankle) / 2
-        forward = V(forward.x, forward.y - 0.1, 0).normalized()
-        cone(f'knee-{side}', knee, knee + 0.14 * forward + V(0, 0, 0.02), 0.075, M['iron'], n=4, phase=45,
-             back=None)
+        s = side[0]
+        # The thigh and the greave already overlap at the knee, so the knee bends without a gap.
+        with bone(f'thigh_{s}'):
+            tube(f'thigh-{side}', hip, knee, [(-0.1, 0.1), (1.1, 0.078)], M['cloth'])
+        with bone(f'shin_{s}'):
+            tube(f'greave-{side}', knee, ankle, [(-0.1, 0.072), (1.3, 0.062)], M['iron'])
+            # An iron cop over the knee that ends in a spike, pointing out of the bend and forward, on
+            # the greave.
+            forward = knee - (hip + ankle) / 2
+            forward = V(forward.x, forward.y - 0.1, 0).normalized()
+            cone(f'knee-{side}', knee, knee + 0.14 * forward + V(0, 0, 0.02), 0.075, M['iron'], n=4, phase=45,
+                 back=None)
+        with bone(f'foot_{s}'):
+            boot(f'boot-{side}', ankle, yaw)
+        joint(f'hip_{s}', hip)
+        joint(f'knee_{s}', knee)
+        joint(f'ankle_{s}', ankle)
+        joint(f'toe_{s}', V(ankle.x, ankle.y, 0) + Matrix.Rotation(math.radians(yaw), 3, 'Z') @ V(0, -0.15, 0.03))
 
 
 # Body --------------------------------------------------------------------------------------------
@@ -161,6 +186,9 @@ TORSO = [
 ]
 TORSO_BANDS = [0, 1, 2, 0, 0, 0]  # iron, except the breeches over the hips and the belt
 SKIRT_DIP = 0.04  # every other point of the skirt's hem hangs lower, so it reads as plates
+# It is in two pieces, which bend at the belt: the skirt, the breeches and the belt on his hips, and the
+# cuirass on his spine from a ring inside the belt (the waist) up, in as many bands as it had.
+INSIDE_BELT = (0.585, 0.198, 0.152, 0.02)
 
 
 def torso():
@@ -168,18 +196,34 @@ def torso():
     for k, (z, rx, ry, cy) in enumerate(TORSO):
         zs = [z - (SKIRT_DIP if i % 2 else 0) for i in range(8)] if k == 0 else None
         rings.append(ellipse(0, cy, z, rx, ry, 8, 0, zs))
-    verts, faces, bands = loft(rings)
-    face_mats = [TORSO_BANDS[b] for b in bands]
-    faces.append(tuple(range(len(verts) - 8, len(verts))))  # the top of the neck
-    face_mats.append(3)
     mats = [M['iron'], M['cloth'], M['leather'], M['skin']]
-    part('torso', verts, faces, mats, face_mats, inside=lambda c: V(0, 0.02, min(max(c.z, 0.42), 0.95)))
+
+    def inside(c):
+        return V(0, 0.02, min(max(c.z, 0.42), 0.95))
+
+    with bone('hips'):
+        verts, faces, bands = loft(rings[:4])
+        part('skirt', verts, faces, mats, [TORSO_BANDS[b] for b in bands], inside=inside)
+    z, rx, ry, cy = INSIDE_BELT
+    with bone('spine'):
+        verts, faces, _ = loft([ellipse(0, cy, z, rx, ry, 8, 0)] + rings[4:])
+        face_mats = [0] * len(faces)
+        faces.append(tuple(range(len(verts) - 8, len(verts))))  # the top of the neck
+        face_mats.append(3)
+        part('cuirass', verts, faces, mats, face_mats, inside=inside)
+    joint('pelvis', PIVOT)
+    joint('waist', V(0, cy, z))
 
 
 SHOULDERS = {s: V(s * 0.29, 0.035, 0.9) for s in (-1, 1)}  # the middle of each pauldron, upright
 
 
 def pauldron(s):
+    with bone('spine'):
+        shell(s)
+
+
+def shell(s):
     # A shell of iron over the shoulder in rings of six, tipped out, with two spikes: one standing up
     # and out from its crown, and one out from its side.
     tip = Matrix.Rotation(math.radians(s * 28), 3, 'Y')
@@ -220,18 +264,21 @@ def mantle():
         out = V(mid.x, mid.y - 0.02, 0).normalized()
         verts.append(mid + 0.012 * out - V(0, 0, drops[i]))
         faces.append((i, (i + 1) % 8, len(verts) - 1))
-    part('mantle', verts, faces, M['team'], inside=lambda c: V(0, 0.02, min(c.z, 0.9) - 0.12))
+    with bone('spine'):
+        part('mantle', verts, faces, M['team'], inside=lambda c: V(0, 0.02, min(c.z, 0.9) - 0.12))
 
 
 TABARD_Z = 0.565  # the height of the top of the tabard, tucked under the belt
 
 
 def buckle():
-    # A square buckle on the ridge down the front of the belt, over the top of the tabard.
+    # A square buckle on the ridge down the front of the belt, over the top of the tabard, on his
+    # hips with the belt.
     centre = leaned(V(0, 0.02 - 0.165 - 0.012, 0.585))
     out = leaned(V(0, -1, 0)) - leaned(V(0, 0, 0))
     up = leaned(V(0, 0, 1)) - leaned(V(0, 0, 0))
-    box('buckle', centre, [out, V(1, 0, 0), up], (0.014, 0.05, 0.04), M['trim'], 0.75)
+    with bone('hips'):
+        box('buckle', centre, [out, V(1, 0, 0), up], (0.014, 0.05, 0.04), M['trim'], 0.75)
 
 
 def tabard():
@@ -245,7 +292,8 @@ def tabard():
     hem = [0.2, 0.26, 0.18, 0.24]
     rows.append([V(0.9 * p.x, p.y - 0.035, z) for p, z in zip(top, hem)])
     verts, faces, _ = loft(rows, closed=False)
-    part('tabard', verts, faces, M['team'], outward=V(0, -1, 0))
+    with bone('hips'):
+        part('tabard', verts, faces, M['team'], outward=V(0, -1, 0))
 
 
 # Head ----------------------------------------------------------------------------------------------
@@ -271,6 +319,14 @@ def h(x, y, z):
 
 
 def head():
+    with bone('head'):
+        features()
+        helm()
+    joint('neck', h(0, 0.06, 0.05))  # at the back of his skull, on his bull neck
+    joint('crown', h(*HELM_TOP))
+
+
+def features():
     rings = []
     for z, side, corner, back, front_corner, front in SKULL:
         ring = [side, corner, (0, back), (-corner[0], corner[1]), (-side[0], side[1]),
@@ -379,18 +435,27 @@ UPPER_ARM, FOREARM = 0.28, 0.29  # long arms, as orcs have
 def arm(side, shoulder, fist, pole, grip):
     """An arm from the shoulder to a fist at `fist` closed round a grip along `grip`, the elbow bent
     towards `pole`: bare, with an iron vambrace on the forearm."""
+    s = side[0]
     reach = (fist - shoulder).normalized()
     elbow = bend(shoulder, fist - 0.05 * reach, UPPER_ARM, FOREARM, pole)
     wrist = fist - 0.05 * (fist - elbow).normalized()
-    tube(f'upper-arm-{side}', shoulder, elbow, [(-0.1, 0.08), (1.08, 0.066)], M['skin'])
-    tube(f'forearm-{side}', elbow, wrist, [(-0.12, 0.064), (0.35, 0.076), (1.0, 0.068)],
-         [M['skin'], M['iron']], [0, 1])
+    # The upper arm and the forearm already overlap at the elbow, so it bends without a gap.
+    with bone(f'upper_arm_{s}'):
+        tube(f'upper-arm-{side}', shoulder, elbow, [(-0.1, 0.08), (1.08, 0.066)], M['skin'])
+    with bone(f'forearm_{s}'):
+        tube(f'forearm-{side}', elbow, wrist, [(-0.12, 0.064), (0.35, 0.076), (1.0, 0.068)],
+             [M['skin'], M['iron']], [0, 1])
+        # A spiked iron cop on the point of the elbow, out of the bend, which goes with the forearm.
+        point = ((elbow - shoulder).normalized() + (elbow - wrist).normalized()).normalized()
+        cone(f'elbow-{side}', elbow - 0.02 * point, elbow + 0.12 * point, 0.06, M['iron'], n=4, back=None)
     ahead = (fist - elbow).normalized()
     up = (Vector(grip) - Vector(grip).dot(ahead) * ahead).normalized()
-    box(f'fist-{side}', fist, [ahead, up, ahead.cross(up)], (0.052, 0.058, 0.056), M['skin'], 0.85)
-    # A spiked iron cop on the point of the elbow, out of the bend.
-    point = ((elbow - shoulder).normalized() + (elbow - wrist).normalized()).normalized()
-    cone(f'elbow-{side}', elbow - 0.02 * point, elbow + 0.12 * point, 0.06, M['iron'], n=4, back=None)
+    with bone(f'hand_{s}'):
+        box(f'fist-{side}', fist, [ahead, up, ahead.cross(up)], (0.052, 0.058, 0.056), M['skin'], 0.85)
+    joint(f'shoulder_{s}', shoulder)
+    joint(f'elbow_{s}', elbow)
+    joint(f'wrist_{s}', wrist)
+    joint(f'fist_{s}', fist)
     return elbow
 
 
@@ -410,6 +475,23 @@ SPINE_T, BEVEL_T = 0.018, 0.012  # half-thickness of the back and at the bevel
 
 
 def cleaver():
+    with bone('hand_r'):
+        blade()
+    shoulder = leaned(V(-0.255, 0.03, 0.86))
+    arm('right', shoulder, R_FIST, shoulder + V(-0.35, 0.08, -0.05), HAFT)
+    # Held by the haft in his fist, up to the point of the blade, its edge out away from his head.
+    out = cleaver_out()
+    point = R_FIST + EDGE[1][0] * out + EDGE[1][1] * HAFT
+    hold('r', R_FIST, point, point + 0.1 * out)
+
+
+def cleaver_out():
+    """The way the cleaver's edge faces: out from his head, turned EDGE_TURN degrees forward."""
+    out = V(-math.cos(math.radians(EDGE_TURN)), -math.sin(math.radians(EDGE_TURN)), 0)
+    return (out - out.dot(HAFT) * HAFT).normalized()
+
+
+def blade():
     along = HAFT
     out = V(-math.cos(math.radians(EDGE_TURN)), -math.sin(math.radians(EDGE_TURN)), 0)
     out = (out - out.dot(along) * along).normalized()
@@ -437,8 +519,6 @@ def cleaver():
     cone('pommel', at(0, -0.12), at(0, -0.17), 0.036, M['trim'], n=4)
     # A band of trim binding the heel of the blade to the haft, just above his fist.
     box('cleaver-band', at(0.045, 0.085), [along, out, flat], (0.022, 0.095, 0.03), M['trim'])
-    shoulder = leaned(V(-0.255, 0.03, 0.86))
-    arm('right', shoulder, R_FIST, shoulder + V(-0.35, 0.08, -0.05), along)
 
 
 # The war-banner of Morgul, planted in his left hand --------------------------------------------------
@@ -458,6 +538,16 @@ L_FIST = V(POLE_FOOT.x, POLE_FOOT.y, 0.86)
 
 
 def banner():
+    with bone('hand_l'):
+        standard()
+    shoulder = leaned(V(0.255, 0.03, 0.86))
+    arm('left', shoulder, L_FIST, shoulder + V(0.12, 0.12, -0.4), V(0, 0, 1))
+    # Held by the grip in his fist, up the pole to its top, the banner's face to the front.
+    top = POLE_FOOT + V(0, 0, POLE_TOP)
+    hold('l', L_FIST, top, top + Matrix.Rotation(math.radians(BANNER_TURN), 3, 'Z') @ V(0, -0.1, 0))
+
+
+def standard():
     tube('pole', POLE_FOOT, POLE_FOOT + V(0, 0, POLE_TOP), [(0, 0.024), (1, 0.02)], M['wood'], n=6)
     top = POLE_FOOT + V(0, 0, POLE_TOP)
     cone('pole-spike', top - V(0, 0, 0.02), top + V(0, 0, 0.13), 0.034, M['trim'], n=4, phase=45)
@@ -501,11 +591,37 @@ def banner():
             part(f'moon-face-{name}-{k}', verts, faces, M['eyes'], outward=V(0, sign, 0))
     turn(new_objects(before), POLE_FOOT, BANNER_TURN)
 
-    shoulder = leaned(V(0.255, 0.03, 0.86))
-    arm('left', shoulder, L_FIST, shoulder + V(0.12, 0.12, -0.4), V(0, 0, 1))
+
+# His clips (../clips.py): the Orcs' idle and run, as Gorbag's (gorbag.py), fitted by fit() to the
+# banner he holds as Aragorn holds his standard; a hack down with the cleaver, and for his cast
+# (Unleash the Orcs) a Captain's rally to the banner, heaved up and stamped down as the cleaver goes
+# up, as Balin's (balin.py). Dazed, he lets the cleaver he holds up hang by his hip.
+#
+# The cleaver is long, held up by his big head and its swept-back ears, and fit() draws a blade that
+# would reach out of the hex in towards him. So the hack is steep, the blade cleaving straight down
+# in front (steep) rather than reaching level, turned out to his right so it shows past him from
+# behind (out), and it comes over the top and is lifted back out on his own side, past his head and
+# ears (wide, clear), the blade still pointing ahead as his fist comes back (lift), so its pommel
+# passes outside his chest. In his rally the cleaver goes up well out from his head (out), and as he
+# wins he holds it up beside his head rather than over it (out). Falling, he keeps the cleaver
+# upright beside him as the banner topples (knees with the banner hand as its weapon hand: holding()
+# lays the banner down, and the cleaver is the hand it rests upright), rather than laying it down in
+# front, where its back spike went through his face.
+CLIPS = fit({
+    'idle': ('ready', {'seconds': 2.0, 'crouch': 0.06}),
+    'move': ('run', {'seconds': 0.43, 'heavy': 0.7, 'stride': 0.3, 'lift': 0.25, 'lean': 6.0}),
+    'attack': ('chop', {'wide': 0.5, 'steep': 60.0, 'out': 40.0, 'clear': 0.7, 'lift': 80.0}),
+    'cast': ('plant', {'out': 0.45}),
+    'stun': ('dazed', {'low': 1.0}),
+    'death': ('knees', {'hand': 'l'}),
+    'victory': ('raise', {'out': 0.4}),
+}, pole='l', free=('cast',), between=True)
 
 
-def main():
+def build(cloak=None):
+    """Makes him in a fresh scene, every part bound to its bone and his joints marked, and returns
+    the rig to finish() him with. His 2★ model (gothmog-2.py) passes its cloak as `cloak`, a function
+    that makes it hanging from his shoulders, once he leans, after the tabard and the buckle."""
     reset()
     make_materials()
     legs()
@@ -517,13 +633,19 @@ def main():
     lean(new_objects(before), PIVOT, LEAN)
     tabard()
     buckle()
+    if cloak is not None:
+        cloak()
     before = set(bpy.context.scene.objects)
     head()
-    helm()
     lean(new_objects(before), h(0, 0.04, 0.04), -HEAD_PITCH)
     cleaver()
     banner()
-    finish('gothmog')
+    return Rig(clips=CLIPS)
 
 
-main()
+def main():
+    finish('gothmog', rig=build())
+
+
+if __name__ == '__main__':
+    main()

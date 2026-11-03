@@ -9,11 +9,27 @@ draws a great bow to the full for his heavy shot, aimed a little upward and to h
 shows its curve to the game's camera from behind and in front, and long arrows stand out of the
 quiver on his back. The team colour is his hooded cloak, the hood up.
 
+He is rigged as Aragorn, Gondor's reference (aragorn.py, ../rig.py), with Gondor's idle and run, and
+he is the archer the library's drawn shot was made on (../clips.py, An archer at the draw): he
+stands, breathes and runs at full draw, the drawing hand kept on the string; the middle of the
+string and the nocked arrow follow bones of their own, so his shot snaps the string straight, puts
+the loosed arrow away in the quiver (the viewer's arrow flies in its place), and draws a fresh one
+from it, swinging it up past his shoulder clear of his hood, nocks it and draws again. His cast
+(Ranger's shot) is a heavier shot, raised for the farthest foe. Stunned or winning, he lets the
+string down and keeps the arrow in his fingers: dazed, his bow droops, and his drawing hand comes
+down off the string before his chest, the arrow pointing down past the bow, clear of his chest and
+his mask and inside his hex (clips.let_down()); as he wins, he holds it aloft at arm's length,
+upright on its string so its curve shows from behind. Falling, his bow arm sags back and down as
+his knees give, so the bow's top, falling forward, stays in his hex, and he drops bow and arrow
+together. His legs and arms bend at the knee and elbow rings they already had, and his
+tunic at the belt, so the rig costs no triangles.
+
 His fittings, the belt buckle, the clasp at the throat of his cloak, the buckle of the quiver's strap
 on his breast, the quiver's mouth and its shod foot, and the bands either side of the bow's grip, use
 `trim`, which the client colours iron, silver or gold by star level (docs/viewer-spec.md section 4,
 "Star levels"); from behind, the quiver's mouth and foot and the bow's bands show it. His 2★ model is
-faramir-2.py and his 3★ model faramir-3.py.
+faramir-2.py, which imports this script and builds him with its sword at his left hip (build()), and
+his 3★ model faramir-3.py.
 
     blender --background --factory-startup --python-exit-code 1 --python faramir.py [-- <out.glb>]
 
@@ -35,7 +51,7 @@ from kit import (  # noqa: E402
     LEATHER,
     STEEL,
     V,
-    bent_tube,
+    bone,
     box,
     cone,
     finish,
@@ -45,13 +61,17 @@ from kit import (  # noqa: E402
     nearest_on_polyline,
     on_surface,
     part,
+    path_rings,
     reset,
     segment,
     team_material,
     trim_material,
     tube,
     turn,
+    wind,
 )
+from clips import fit  # noqa: E402
+from rig import Rig, hold, joint  # noqa: E402
 
 # Faramir's own colours (sRGB); the rest come from the kit.
 SKIN = 0xD4A07E
@@ -113,6 +133,18 @@ def new_objects(before):
     return [o for o in bpy.context.scene.objects if o not in before]
 
 
+def jointed(name, points, radii, mats, band_mats, pieces):
+    """A bent tube as bent_tube() builds it along `points`, open at both ends, but lofted in pieces
+    that share the rings where they meet, each on its own bone: `pieces` are (bone, first ring, last
+    ring). So a limb bends at a ring it already has and costs no triangles more."""
+    rings = path_rings(points, radii, 6)
+    line = nearest_on_polyline(points)
+    for bone_name, first, last in pieces:
+        verts, faces, bands = loft(rings[first:last + 1])
+        with bone(bone_name):
+            part(f'{name}-{bone_name}', verts, wind(verts, faces, inside=line), mats, [band_mats[first + b] for b in bands])
+
+
 def bend(root, end, upper, lower, pole):
     """The middle joint of a limb from root to end, its bones upper and lower long, bent towards pole."""
     root, end, pole = Vector(root), Vector(end), Vector(pole)
@@ -159,17 +191,24 @@ def boot(name, ankle, foot_yaw):
 
 def legs():
     for side, (hip, ankle, foot_yaw) in LEGS.items():
+        s = side[0]
         hip = turned(hip, HIPS_YAW)
         ahead = turned(V(0, -1, 0), foot_yaw)
         knee = bend(hip, ankle, THIGH, SHIN, (hip + ankle) / 2 + 0.3 * ahead)
         # Breeches to the knee, then a ranger's high boot, as Aragorn's, with a turned-down cuff of
-        # paler leather.
+        # paler leather: one tube as it was built, in two at the knee.
         shin = knee.lerp(ankle, 0.14)
-        bent_tube(f'leg-{side}', [hip + V(0, 0, 0.05), knee, shin, ankle], [0.096, 0.074, 0.072, 0.062],
-                  [M['buckskin'], M['boots']], band_mats=[0, 0, 1])
-        tube(f'cuff-{side}', knee.lerp(ankle, 0.1), knee.lerp(ankle, 0.27), [(0, 0.078), (1, 0.088)],
-             M['leather'])
-        boot(f'boot-{side}', ankle, foot_yaw)
+        jointed(f'leg-{side}', [hip + V(0, 0, 0.05), knee, shin, ankle], [0.096, 0.074, 0.072, 0.062],
+                [M['buckskin'], M['boots']], [0, 0, 1], [(f'thigh_{s}', 0, 1), (f'shin_{s}', 1, 3)])
+        with bone(f'shin_{s}'):
+            tube(f'cuff-{side}', knee.lerp(ankle, 0.1), knee.lerp(ankle, 0.27), [(0, 0.078), (1, 0.088)],
+                 M['leather'])
+        with bone(f'foot_{s}'):
+            boot(f'boot-{side}', ankle, foot_yaw)
+        joint(f'hip_{s}', hip)
+        joint(f'knee_{s}', knee)
+        joint(f'ankle_{s}', ankle)
+        joint(f'toe_{s}', V(ankle.x, ankle.y, 0) + yaw(foot_yaw) @ V(0, -0.14, 0.03))
 
 
 # Body, in the torso's frame: facing -Y, turned into the pose by TORSO_YAW ---------------------------
@@ -187,16 +226,27 @@ TORSO = [
 ]
 TORSO_BANDS = [0, 0, 1, 2, 2, 2]  # the tunic, the belt, the jerkin
 OCTAGON = [math.radians(22.5 + 45 * i) for i in range(8)]
+# It is in two pieces, which bend at the belt: the skirt and the belt on his hips, and the jerkin on
+# his spine from a ring inside the belt (the waist) up, in as many bands as it had.
+INSIDE_BELT = (0.725, 0.165, 0.128, -0.004)
 
 
 def torso():
     rings = [[V(rx * math.cos(a), cy + ry * math.sin(a), z) for a in OCTAGON] for z, rx, ry, cy in TORSO]
-    verts, faces, bands = loft(rings)
-    part('torso', verts, faces, [M['tunic'], M['leather'], M['buckskin']], [TORSO_BANDS[b] for b in bands],
-         inside=lambda c: V(0, 0, c.z))
-    # The belt buckle, its face smaller than its back so the edges read as a bevel.
-    axes = [V(0, -1, 0), V(1, 0, 0), V(0, 0, 1)]
-    box('buckle', V(0, -0.14, 0.725), axes, (0.014, 0.03, 0.028), M['trim'], 0.75)
+    with bone('hips'):
+        verts, faces, bands = loft(rings[:4])
+        part('skirt', verts, faces, [M['tunic'], M['leather'], M['buckskin']], [TORSO_BANDS[b] for b in bands],
+             inside=lambda c: V(0, 0, c.z))
+        # The belt buckle, its face smaller than its back so the edges read as a bevel.
+        axes = [V(0, -1, 0), V(1, 0, 0), V(0, 0, 1)]
+        box('buckle', V(0, -0.14, 0.725), axes, (0.014, 0.03, 0.028), M['trim'], 0.75)
+    z, rx, ry, cy = INSIDE_BELT
+    inside = [V(rx * math.cos(a), cy + ry * math.sin(a), z) for a in OCTAGON]
+    with bone('spine'):
+        verts, faces, _ = loft([inside] + rings[4:])
+        part('chest', verts, faces, M['buckskin'], inside=lambda c: V(0, 0, c.z))
+    joint('pelvis', V(0, 0, 0.64))
+    joint('waist', V(0, cy, z))
 
 
 def torso_point(degrees, z, out=0.0):
@@ -216,14 +266,15 @@ def baldric():
     path = [(202.5, 0.95), (247.5, 0.915), (292.5, 0.84), (337.5, 0.775), (22.5, 0.74)]
     rows = [[torso_point(a, z + dz, 0.008) for a, z in path] for dz in (-0.028, 0.028)]
     verts, faces, _ = loft(rows, closed=False)
-    part('baldric', verts, faces, M['leather'], inside=lambda c: V(0, 0, c.z))
-    # Its buckle in the middle of his breast, square to the strap.
-    (a0, z0), (a1, z1) = path[1], path[2]
-    along = (torso_point(a1, z1) - torso_point(a0, z0)).normalized()
-    out = V(0, -1, 0)
-    across = along.cross(out).normalized()
-    box('strap-buckle', torso_point(270, (z0 + z1) / 2, 0.016), [out, along, across], (0.01, 0.024, 0.036),
-        M['trim'], 0.7)
+    with bone('spine'):
+        part('baldric', verts, faces, M['leather'], inside=lambda c: V(0, 0, c.z))
+        # Its buckle in the middle of his breast, square to the strap.
+        (a0, z0), (a1, z1) = path[1], path[2]
+        along = (torso_point(a1, z1) - torso_point(a0, z0)).normalized()
+        out = V(0, -1, 0)
+        across = along.cross(out).normalized()
+        box('strap-buckle', torso_point(270, (z0 + z1) / 2, 0.016), [out, along, across], (0.01, 0.024, 0.036),
+            M['trim'], 0.7)
 
 
 # Team colour: the hooded cloak --------------------------------------------------------------------
@@ -251,14 +302,15 @@ def cloak_ring(front, back, rx, ry, cy, fold, opening):
 def cloak():
     rings = [cloak_ring(*level) for level in CLOAK]
     verts, faces, _ = loft(rings, closed=False)
-    part('cloak', verts, faces, M['team'], inside=lambda c: V(0, 0.02, c.z))
+    with bone('spine'):
+        part('cloak', verts, faces, M['team'], inside=lambda c: V(0, 0.02, c.z))
 
-    # The clasp at his throat: a bar from one edge of the collar to the other, and a boss on it.
-    edge = rings[0][0]  # the collar's left edge; the right mirrors it
-    z, y = edge.z - 0.016, edge.y - 0.006
-    box('clasp-bar', V(0, y, z), [V(1, 0, 0), V(0, 1, 0), V(0, 0, 1)], (edge.x + 0.008, 0.008, 0.009), M['trim'])
-    at = V(0, y - 0.006, z)
-    cone('clasp', at, at + V(0, -0.024, 0), 0.026, M['trim'], n=4, phase=45, back=at + V(0, 0.01, 0))
+        # The clasp at his throat: a bar from one edge of the collar to the other, and a boss on it.
+        edge = rings[0][0]  # the collar's left edge; the right mirrors it
+        z, y = edge.z - 0.016, edge.y - 0.006
+        box('clasp-bar', V(0, y, z), [V(1, 0, 0), V(0, 1, 0), V(0, 0, 1)], (edge.x + 0.008, 0.008, 0.009), M['trim'])
+        at = V(0, y - 0.006, z)
+        cone('clasp', at, at + V(0, -0.024, 0), 0.026, M['trim'], n=4, phase=45, back=at + V(0, 0.01, 0))
 
 
 # The quiver lies on his back over the cloak, from its hem by his left hip to behind his right
@@ -267,6 +319,14 @@ QUIVER_FOOT, QUIVER_TOP = V(0.11, 0.282, 0.68), V(-0.1, 0.232, 1.18)
 
 
 def quiver():
+    with bone('spine'):
+        arrows()
+    # Where a fresh arrow is drawn from, and a loosed one put away (../clips.py, Bow).
+    joint('quiver_mouth', QUIVER_TOP)
+    joint('quiver_foot', QUIVER_FOOT)
+
+
+def arrows():
     foot, top = QUIVER_FOOT, QUIVER_TOP
     along = (top - foot).normalized()
     tube('quiver', foot, top, [(0, 0.066), (0.11, 0.066), (0.12, 0.063), (1, 0.074)],
@@ -367,6 +427,15 @@ HOOD = [
      (0.14, 0.106, 1.03), (0, 0.095, 0.98)],  # behind the head
 ]
 HOOD_POINT = V(0, 0.212, 1.38)  # the hood's soft point at the back of the crown
+CROWN = V(0, -0.01, 1.43)  # the top of the hood
+
+
+def head():
+    with bone('head'):
+        face()
+        hood()
+    joint('neck', NECK)
+    joint('crown', CROWN)
 
 
 def hood():
@@ -420,7 +489,26 @@ STAVE = [
 STAVE_BANDS = [0, 0, 0, 0, 2, 1, 2, 0, 0, 0, 0]  # wood, the grip wrapped in leather between metal bands
 
 
+# The string's middle, at the nock, follows a bone of its own (`string`), from the nock at full draw to
+# where it rests let down, straight between the tips but for the arrow's rest; the nocked arrow
+# follows another (`arrow`) on it. The bow's own clips (../clips.py, Bow) let the string down, put a
+# loosed arrow away in the quiver and draw a fresh one from it.
+LOOSE = NOCK + (DRAW - STAVE[-1][1]) * AIM  # the nock, the string let down
+
+
 def bow():
+    with bone('hand_l', follows=lambda p: 'string' if (p - NOCK).length < 0.02 else None):
+        top, tip = stave()
+    with bone('arrow'):
+        nocked(tip)
+    hold('l', GRIP, top, GRIP + AIM)
+    joint('nock', NOCK)
+    joint('loose', LOOSE)
+    joint('arrow_point', tip)
+
+
+def stave():
+    """Builds the bow and its string, and returns the bow's upper end and the arrow's point."""
     side = AIM.cross(BOW_UP).normalized()  # across the bow's plane
     centres = [GRIP + u * BOW_UP - w * AIM for u, w, _ in STAVE]
     rings = []
@@ -443,22 +531,34 @@ def bow():
     top, bottom = centres[-1] - 0.03 * BOW_UP, centres[0] + 0.03 * BOW_UP
     for name, a, b in (('string-top', NOCK, top), ('string-bottom', NOCK, bottom)):
         tube(name, a, b, [(0, 0.008), (1, 0.008)], M['feather'], n=3)
-
-    # The arrow: a long shaft from the nock past the grip and a broad steel head for a heavy shot.
     point = GRIP + REST * BOW_UP + 0.1 * AIM
+    return centres[-1], point + 0.08 * AIM
+
+
+def nocked(tip):
+    """The arrow: a long shaft from the nock past the grip and a broad steel head for a heavy shot."""
+    side = AIM.cross(BOW_UP).normalized()
+    point = tip - 0.08 * AIM
     tube('arrow', NOCK - 0.02 * AIM, point, [(0, 0.01), (1, 0.01)], M['wood'], n=3)
     ring = [point + 0.03 * side, point + 0.01 * BOW_UP, point - 0.03 * side, point - 0.01 * BOW_UP]
     tip = point + 0.08 * AIM
     verts = ring + [tip]
     faces = [(i, (i + 1) % 4, 4) for i in range(4)] + [(3, 2, 1, 0)]
     part('arrowhead', verts, faces, M['steel'], inside=point + 0.02 * AIM)
+    return tip
 
 
-def arm(side, shoulder, elbow, wrist):
-    """A green sleeve from the shoulder to the elbow, and the forearm in a green gauntlet."""
+def arm(side, shoulder, elbow, wrist, fist):
+    """A green sleeve from the shoulder to the elbow, and the forearm in a green gauntlet: one tube as
+    it was built, in two at the elbow."""
+    s = side[0]
     cuff = elbow.lerp(wrist, 0.35)
-    bent_tube(f'arm-{side}', [shoulder, elbow, cuff, wrist], [0.074, 0.06, 0.07, 0.052],
-              [M['tunic'], M['gauntlet']], band_mats=[0, 0, 1])
+    jointed(f'arm-{side}', [shoulder, elbow, cuff, wrist], [0.074, 0.06, 0.07, 0.052],
+            [M['tunic'], M['gauntlet']], [0, 0, 1], [(f'upper_arm_{s}', 0, 1), (f'forearm_{s}', 1, 3)])
+    joint(f'shoulder_{s}', shoulder)
+    joint(f'elbow_{s}', elbow)
+    joint(f'wrist_{s}', wrist)
+    joint(f'fist_{s}', fist)
 
 
 def arms():
@@ -470,22 +570,46 @@ def arms():
     reach = (fist - left_shoulder).normalized()
     wrist = fist - 0.05 * reach
     elbow = bend(left_shoulder, wrist, UPPER_ARM, FOREARM, (left_shoulder + wrist) / 2 + V(0.1, 0.05, -0.3))
-    arm('left', left_shoulder, elbow, wrist)
+    arm('left', left_shoulder, elbow, wrist, fist)
     up = (BOW_UP - BOW_UP.dot(reach) * reach).normalized()
-    box('fist-left', fist, [reach, up, reach.cross(up)], (0.05, 0.056, 0.046), M['gauntlet'], 0.85)
+    with bone('hand_l'):
+        box('fist-left', fist, [reach, up, reach.cross(up)], (0.05, 0.056, 0.046), M['gauntlet'], 0.85)
 
     # The drawing arm, the elbow up and back behind him, the fingers hooked round the string.
     fist = NOCK - 0.016 * AIM - 0.014 * BOW_UP
     wrist = fist - 0.06 * AIM + V(-0.02, 0.02, -0.01)
     pole = right_shoulder - 0.4 * AIM + V(-0.1, 0.0, 0.45)
     elbow = bend(right_shoulder, wrist, UPPER_ARM, FOREARM, pole)
-    arm('right', right_shoulder, elbow, wrist)
+    arm('right', right_shoulder, elbow, wrist, fist)
     ahead = (fist - wrist).normalized()
     up = (V(0, 0, 1) - ahead.z * ahead).normalized()
-    box('fist-right', fist, [ahead, up, ahead.cross(up)], (0.046, 0.05, 0.044), M['gauntlet'], 0.85)
+    with bone('hand_r'):
+        box('fist-right', fist, [ahead, up, ahead.cross(up)], (0.046, 0.05, 0.044), M['gauntlet'], 0.85)
 
 
-def main():
+# His clips (../clips.py): Gondor's idle and run, as Aragorn's (aragorn.py), with the bow kept drawn,
+# the shot from the draw he stands at, for his cast a heavy shot raised high at the farthest foe, and
+# an archer's victory, the bow held aloft and the drawing hand clenched in front of his chest
+# rather than in it. Stunned, the bow droops halfway to his hip and the drawing hand comes down off
+# the string, out before his chest, the arrow in its fingers turned down past the bow (`off_ahead`).
+# Falling, his bow arm sags back and down as his knees give (`fall`), so the bow's top stays in his
+# hex between frames.
+CLIPS = fit({
+    'idle': ('ready', {'hand': 'l'}),
+    'move': ('run', {'hand': 'l', 'heavy': 0.3, 'lean': 10.0, 'carry': 'steady'}),
+    'attack': ('shot', {'drawn': True}),
+    'cast': ('shot', {}),
+    'stun': ('dazed', {'hand': 'l', 'low': 0.6, 'off_ahead': 0.3}),
+    'death': ('knees', {'hand': 'l', 'dropped': True, 'fall': (0.0, 0.15, -0.25)}),
+    'victory': ('aloft', {'clench': (0.06, -0.12, -0.4)}),
+}, bow='l', between=True)
+BONES = {'string': ('hand_l', 'nock', 'loose'), 'arrow': ('hand_l', 'nock', 'arrow_point')}
+
+
+def build(sword=None):
+    """Makes him in a fresh scene, every part bound to its bone and his joints marked, and returns
+    the rig to finish() him with. His 2★ model (faramir-2.py) passes its sword as `sword`, a function
+    that makes it at his left hip in the torso's frame, before the torso is turned into the pose."""
     reset()
     make_materials()
     legs()
@@ -494,14 +618,20 @@ def main():
     baldric()
     cloak()
     quiver()
+    if sword is not None:
+        sword()
     turn(new_objects(before), V(0, 0, 0), TORSO_YAW)
     before = set(bpy.context.scene.objects)
-    face()
-    hood()
+    head()
     turn(new_objects(before), NECK, HEAD_YAW)
     arms()
     bow()
-    finish('faramir')
+    return Rig(bones=BONES, clips=CLIPS)
 
 
-main()
+def main():
+    finish('faramir', rig=build())
+
+
+if __name__ == '__main__':
+    main()

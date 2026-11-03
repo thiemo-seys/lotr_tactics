@@ -14,11 +14,22 @@ and her girdle, whose long ends hang down the front of the gown. Her deep-gold h
 mantle to her waist, and the white gown spreads below it, so from behind she is gold and white as
 much as the team's colour.
 
+She is rigged as Legolas, the Elves' reference (legolas.py, ../rig.py), with the Elves' calm idle and
+light run, and her gown to the ground as Elrond's robe is (elrond.py): the bodice on the spine, from
+inside the girdle; the skirt and the girdle on the hips, down to a ring inside the gown below the
+knees; and the gown below the knees, with its train, on a bone of its own, `robe`, which hangs plumb
+under her, twists after her knees as she strides and rests on the ground as she sinks into it
+(../clips.py, robed()). Her legs are hidden; small pale slippers, their toes showing under the hem,
+step out from under it as she runs, so the run doesn't glide. She looses her bolts from the star-glass,
+thrust out at the foe (bolt); her cast (Light of the Eldar) gathers it in to her breast and lifts it
+high over her head (beacon).
+
 Her fittings use `trim`, which the client colours iron, silver or gold by star level
 (docs/viewer-spec.md section 4, "Star levels"): from in front, the two brooches and the chain that
 fasten the mantle across her breast, the clasp on the girdle's knot and the cup the phial stands in;
 from every side, the band about her raised forearm; and from behind, the clasp that binds her hair
-between her shoulders. Her 2★ model is galadriel-2.py and her 3★ model galadriel-3.py.
+between her shoulders. Her 2★ model is galadriel-2.py, which imports this script and builds her with
+a circlet of golden flowers on her head (build()), and her 3★ model galadriel-3.py.
 
     blender --background --factory-startup --python-exit-code 1 --python galadriel.py [-- <out.glb>]
 
@@ -30,12 +41,13 @@ import os
 import sys
 from itertools import pairwise
 
-from mathutils import Vector
+from mathutils import Matrix, Vector
 
 sys.path.insert(0, os.path.join(os.path.dirname(os.path.abspath(__file__)), '..'))
 from kit import (  # noqa: E402
     EYES,
     V,
+    bone,
     box,
     cone,
     finish,
@@ -49,6 +61,8 @@ from kit import (  # noqa: E402
     trim_material,
     tube,
 )
+from clips import fit, robed  # noqa: E402
+from rig import Rig, hold, joint  # noqa: E402
 
 # Galadriel's own colours (sRGB); the eyes come from the kit.
 GOWN = 0xDDD8CC  # white, warmed and greyed a little so the light outshines it
@@ -57,6 +71,7 @@ BROWS = 0x8E6A38  # a darker gold, so the brows show on her fair skin
 SKIN = 0xE8C8AC  # fair
 LIGHT = 0xF7F5EC  # the star-glass: a pale white, never blue
 LIPS = 0xA8705F  # a muted rose-brown, not red
+SLIPPERS = 0xA9A397  # pale grey, a shade under the gown so the toes show against its hem
 
 M = {}  # materials by name, made once the scene is reset
 
@@ -71,6 +86,7 @@ def make_materials():
         eyes=material('eyes', EYES, roughness=0.6),
         lips=material('lips', LIPS, roughness=0.8),
         light=material('light', LIGHT, roughness=0.5, emission=LIGHT, emission_strength=1.0),
+        slippers=material('slippers', SLIPPERS, roughness=0.85),
         # Fittings: the renderer recolours this iron, silver or gold by star level.
         trim=trim_material(),
     )
@@ -124,9 +140,9 @@ SKIRT_BANDS = [0, 0, 0, 0, 1]  # gown, then the girdle
 TRAIN_SWEEP = 20  # degrees the train is swept round to her left
 
 
-def skirt_rings():
+def skirt_rings(levels=SKIRT):
     rings = []
-    for z, rx, ry, cy, pleat, train in SKIRT:
+    for z, rx, ry, cy, pleat, train in levels:
         ring = []
         for i in range(12):
             a = math.tau * i / 12
@@ -137,10 +153,25 @@ def skirt_rings():
     return rings
 
 
+# It is in two pieces: the gown below the knees, with its train, on a bone of its own, which hangs plumb
+# under her (../clips.py, robed()), from the middle of the knees' ring to the middle of the hem; and the
+# skirt above, with the girdle, on her hips, reaching down inside it to a ring a little inside the gown
+# (KNEES_INSIDE), so no gap opens as she sinks into it.
+KNEES_INSIDE = (0.27, 0.2, 0.182, 0.01, 0.016, 0.0)
+ROBE_TOP, ROBE_FOOT = V(0, 0.008, 0.34), V(0, 0.02, 0.0)
+
+
 def skirt():
-    verts, faces, bands = loft(skirt_rings())
-    face_mats = [SKIRT_BANDS[b] for b in bands]
-    part('skirt', verts, faces, [M['gown'], M['team']], face_mats, inside=lambda c: V(0, 0.01, c.z))
+    rings = skirt_rings()
+    inside = skirt_rings([KNEES_INSIDE])[0]
+    for name, bone_name, pieces, mats in (('robe', 'robe', rings[:3], SKIRT_BANDS[:2]),
+                                           ('skirt', 'hips', [inside] + rings[2:], [0] + SKIRT_BANDS[2:])):
+        verts, faces, bands = loft(pieces)
+        with bone(bone_name):
+            part(name, verts, faces, [M['gown'], M['team']], [mats[b] for b in bands],
+                 inside=lambda c: V(0, 0.01, c.z))
+    joint('robe_top', ROBE_TOP)
+    joint('robe_foot', ROBE_FOOT)
 
 
 def skirt_front(x, z):
@@ -149,7 +180,43 @@ def skirt_front(x, z):
     return on_surface(triangles(verts, faces, lambda c: c.y < 0), x, z)
 
 
+# Small slippers, of which only the toes show under the hem: the height of each ring and the right half
+# of its outline, side, heel and toe, in the foot's own frame (toes towards -y); where each stands and
+# its yaw. Her legs are hidden under the gown: only their joints are marked, the hip, the knee a little
+# forward of the line from it to the ankle, so it bends forward, and the ankle over the slipper.
+SLIPPER_RINGS = [
+    (0.0, [(0.044, -0.01), (0.036, 0.055), (0.014, -0.14)]),
+    (0.055, [(0.04, 0.0), (0.034, 0.05), (0.014, -0.085)]),
+]
+FEET = [(V(-0.08, -0.125, 0), -7), (V(0.08, -0.125, 0), 7)]  # alike, so her knees bend alike as she stands
+HIP_Z, KNEE_Z, ANKLE_Z = 0.8, 0.44, 0.065
+
+
+def slippers():
+    for at, yaw in FEET:
+        s = 'r' if at.x < 0 else 'l'
+        turn = Matrix.Rotation(math.radians(yaw), 3, 'Z')
+        outlines = [(z, [side, heel, (-heel[0], heel[1]), (-side[0], side[1]), (-toe[0], toe[1]), toe])
+                    for z, (side, heel, toe) in SLIPPER_RINGS]
+        rings = [[at + turn @ V(x, y, z) for x, y in ring] for z, ring in outlines]
+        verts, faces, _ = loft(rings)
+        faces.append(tuple(range(6, 12)))
+        with bone(f'foot_{s}'):
+            part(f'slipper-{s}', verts, faces, M['slippers'], inside=at + V(0, 0, 0.025))
+        ankle = at + turn @ V(0, 0.01, ANKLE_Z)
+        hip = V(at.x, 0.0, HIP_Z)
+        joint(f'hip_{s}', hip)
+        joint(f'knee_{s}', hip.lerp(ankle, (HIP_Z - KNEE_Z) / (HIP_Z - ANKLE_Z)) + V(0, -0.03, 0))
+        joint(f'ankle_{s}', ankle)
+        joint(f'toe_{s}', at + turn @ V(0, -0.14, 0.02))
+
+
 def girdle_ends():
+    with bone('hips'):
+        knot_and_ends()
+
+
+def knot_and_ends():
     # The girdle's two long ends, from a knot at the front of the waist down the front of the gown,
     # one longer than the other. Each is a strip of rows (x of its edges, z) laid on the skirt.
     knot = V(0.012, -0.096, 0.885)
@@ -200,7 +267,10 @@ def bodice():
     verts, faces, bands = loft(rings)
     # The front of the top band is bare: the neckline, from the dip to the neck.
     face_mats = [1 if b == 3 and sum(verts[i].y for i in f) / 4 < -0.03 else 0 for f, b in zip(faces, bands)]
-    part('bodice', verts, faces, [M['gown'], M['skin']], face_mats, inside=lambda c: V(0, 0, c.z))
+    with bone('spine'):  # from inside the girdle, so it bends at the waist
+        part('bodice', verts, faces, [M['gown'], M['skin']], face_mats, inside=lambda c: V(0, 0, c.z))
+    joint('pelvis', V(0, 0.0, 0.8))
+    joint('waist', V(0, 0.0, 0.885))
 
 
 # Mantle: the team colour ------------------------------------------------------------------------------
@@ -238,22 +308,23 @@ def mantle_back():
 
 def mantle():
     verts, faces, _ = loft([mantle_ring(*level) for level in MANTLE], closed=False)
-    part('mantle', verts, faces, M['team'], inside=lambda c: V(0, 0, c.z))
+    with bone('spine'):
+        part('mantle', verts, faces, M['team'], inside=lambda c: V(0, 0, c.z))
 
-    # Fastened across her breast, below the throat where her chin would hide it: a brooch on each
-    # front edge, over the collarbones, and a short chain between them, sagging a little.
-    collar, shoulders = mantle_ring(*MANTLE[0]), mantle_ring(*MANTLE[1])
-    pins = []
-    for i in (0, N_MANTLE - 1):
-        at = collar[i].lerp(shoulders[i], 0.72) + V(0, -0.008, 0)
-        out = V(0.3 * math.copysign(1.0, at.x), -1, 0.3).normalized()
-        cone(f'brooch-{i}', at, at + 0.013 * out, 0.025, M['trim'], n=6, back=at - 0.006 * out)
-        pins.append(at)
-    left, right = pins
-    middle = left.lerp(right, 0.5) + V(0, -0.006, -0.028)
-    verts = [left + V(0, 0, 0.006), middle + V(0, 0, 0.006), right + V(0, 0, 0.006),
-             right - V(0, 0, 0.006), middle - V(0, 0, 0.006), left - V(0, 0, 0.006)]
-    part('chain', verts, [(0, 1, 4, 5), (1, 2, 3, 4)], M['trim'], outward=V(0, -1, 0))
+        # Fastened across her breast, below the throat where her chin would hide it: a brooch on each
+        # front edge, over the collarbones, and a short chain between them, sagging a little.
+        collar, shoulders = mantle_ring(*MANTLE[0]), mantle_ring(*MANTLE[1])
+        pins = []
+        for i in (0, N_MANTLE - 1):
+            at = collar[i].lerp(shoulders[i], 0.72) + V(0, -0.008, 0)
+            out = V(0.3 * math.copysign(1.0, at.x), -1, 0.3).normalized()
+            cone(f'brooch-{i}', at, at + 0.013 * out, 0.025, M['trim'], n=6, back=at - 0.006 * out)
+            pins.append(at)
+        left, right = pins
+        middle = left.lerp(right, 0.5) + V(0, -0.006, -0.028)
+        verts = [left + V(0, 0, 0.006), middle + V(0, 0, 0.006), right + V(0, 0, 0.006),
+                 right - V(0, 0, 0.006), middle - V(0, 0, 0.006), left - V(0, 0, 0.006)]
+        part('chain', verts, [(0, 1, 4, 5), (1, 2, 3, 4)], M['trim'], outward=V(0, -1, 0))
 
 
 # Head ---------------------------------------------------------------------------------------------
@@ -284,7 +355,20 @@ def mirror(p):
     return V(-p.x, p.y, p.z)
 
 
-def head():
+NECK = V(0, 0.008, 1.17)  # where the head turns, inside the mantle's collar
+
+
+def head(circlet=None):
+    # Her head, and what her 2★ model wears on it (`circlet`), bound to it.
+    with bone('head'):
+        features()
+        if circlet is not None:
+            circlet()
+    joint('neck', NECK)
+    joint('crown', CROWN)
+
+
+def features():
     verts, faces, _ = loft([[V(*p) for p in ring] for ring in HAIR_RINGS])
     last = len(verts) - 8
     verts.append(CROWN)
@@ -367,10 +451,12 @@ def hair_fall():
         verts.append(on_mantle(f * 0.08, z, 0.02))
     faces += [(q[0], q[1], n), (q[1], q[2], n), (q[2], q[3], n + 1), (q[3], q[4], n + 1),
               (q[4], q[5], n + 2), (q[5], q[6], n + 2)]
-    part('hair-fall', verts, faces, M['hair'], outward=V(0, 1, 0))
+    # It lies on her back, but its top follows her head.
+    with bone('spine', follows=lambda p: 'head' if p.z > 1.3 else None):
+        part('hair-fall', verts, faces, M['hair'], outward=V(0, 1, 0))
 
     # A clasp of metal binds it between her shoulders, laid across it and tilted with it, its face
-    # smaller than its back.
+    # smaller than its back; on her back with it.
     z = HAIR_CLASP_Z
     centre = V(0, on_surface(sheet, 0, z), z)
     down = V(0, on_surface(sheet, 0, z - 0.05), z - 0.05) - centre
@@ -378,7 +464,8 @@ def hair_fall():
     if out.y < 0:
         out = -out
     up = V(1, 0, 0).cross(out)
-    box('hair-clasp', centre + 0.004 * out, [out, V(1, 0, 0), up], (0.014, 0.085, 0.022), M['trim'], 0.8)
+    with bone('spine'):
+        box('hair-clasp', centre + 0.004 * out, [out, V(1, 0, 0), up], (0.014, 0.085, 0.022), M['trim'], 0.8)
 
 
 def front_lock():
@@ -392,7 +479,9 @@ def front_lock():
     verts, faces, _ = loft(rows, closed=False)
     verts.append(V(0.098, -0.136, 0.9))
     faces += [(6, 7, 9), (7, 8, 9)]
-    part('front-lock', verts, faces, M['hair'], outward=V(0, -1, 0.2))
+    # It lies on her breast, but its top follows her head.
+    with bone('spine', follows=lambda p: 'head' if p.z > 1.25 else None):
+        part('front-lock', verts, faces, M['hair'], outward=V(0, -1, 0.2))
 
 
 # Arms, the star-glass and the open hand -------------------------------------------------------------
@@ -406,21 +495,31 @@ L_WRIST = V(0.37, -0.15, 0.72)  # low and out to her side, the hand open
 def raised_arm():
     shoulder, wrist = R_SHOULDER, R_WRIST
     elbow = bend(shoulder, wrist, UPPER_ARM, FOREARM, shoulder + V(-0.3, -0.05, -0.1))
-    tube('upper-arm-right', shoulder, elbow, [(-0.1, 0.05), (1.06, 0.042)], M['gown'])
-    # The wide sleeve has fallen back from her raised forearm and hangs from the elbow.
+    with bone('upper_arm_r'):
+        tube('upper-arm-right', shoulder, elbow, [(-0.1, 0.05), (1.06, 0.042)], M['gown'])
+    # The wide sleeve has fallen back from her raised forearm and hangs from the elbow, round the forearm.
     ahead = (wrist - elbow).normalized()
     down = (shoulder - elbow).normalized()
     rings = segment(elbow + 0.04 * ahead, elbow + 0.12 * down, [(0, 0.048), (1, 0.088)], 6)
     rings[1] = [p + V(0, 0, -0.04 - 0.12 * max(0.0, -(p - elbow - 0.12 * down).normalized().z)) for p in rings[1]]
     verts, faces, _ = loft(rings)
-    part('sleeve-right', verts, faces, M['gown'], inside=lambda c: elbow + (c - elbow).dot(down) * down)
-    tube('forearm-right', elbow, wrist, [(-0.05, 0.04), (1.0, 0.033)], M['skin'])
-    # A band of metal about her forearm below the elbow, well clear of her hand.
-    tube('armlet', elbow.lerp(wrist, 0.22), elbow.lerp(wrist, 0.4), [(0, 0.04), (0.5, 0.048), (1, 0.039)], M['trim'])
+    with bone('forearm_r'):
+        part('sleeve-right', verts, faces, M['gown'], inside=lambda c: elbow + (c - elbow).dot(down) * down)
+        tube('forearm-right', elbow, wrist, [(-0.05, 0.04), (1.0, 0.033)], M['skin'])
+        # A band of metal about her forearm below the elbow, well clear of her hand.
+        tube('armlet', elbow.lerp(wrist, 0.22), elbow.lerp(wrist, 0.4), [(0, 0.04), (0.5, 0.048), (1, 0.039)],
+             M['trim'])
     fist = wrist + 0.035 * ahead
     up = (V(0, -1, 0) - V(0, -1, 0).dot(ahead) * ahead).normalized()
-    box('fist-right', fist, [ahead, up, ahead.cross(up)], (0.036, 0.036, 0.032), M['skin'], 0.8)
-    star_glass(fist + 0.075 * ahead)
+    with bone('hand_r'):
+        box('fist-right', fist, [ahead, up, ahead.cross(up)], (0.036, 0.036, 0.032), M['skin'], 0.8)
+        top = star_glass(fist + 0.075 * ahead)
+    joint('shoulder_r', shoulder)
+    joint('elbow_r', elbow)
+    joint('wrist_r', wrist)
+    joint('fist_r', wrist + 0.071 * ahead)
+    # Held in the fist, from it up to the top of the star's light, facing the front.
+    hold('r', fist, top, top + V(0, -0.1, 0))
 
 
 def star_glass(centre):
@@ -436,44 +535,77 @@ def star_glass(centre):
         out = V(math.cos(a), math.sin(a), 0.0)
         cone(f'ray-{k}', centre, centre + 0.135 * out, 0.02, M['light'], n=3, back=None)
     cone('ray-up', centre + 0.05 * tall, centre + 0.2 * tall, 0.02, M['light'], n=3, back=None)
+    return centre + 0.2 * tall
 
 
 def open_arm():
     shoulder, wrist = L_SHOULDER, L_WRIST
     elbow = bend(shoulder, wrist, UPPER_ARM, FOREARM, shoulder + V(0.3, -0.05, -0.15))
-    tube('upper-arm-left', shoulder, elbow, [(-0.1, 0.05), (1.06, 0.042)], M['gown'])
+    with bone('upper_arm_l'):
+        tube('upper-arm-left', shoulder, elbow, [(-0.1, 0.05), (1.06, 0.042)], M['gown'])
     # A wide sleeve, flaring from the elbow, its lower edge hanging below the wrist.
     ahead = (wrist - elbow).normalized()
     rings = segment(elbow, wrist + 0.01 * ahead, [(0, 0.046), (1.0, 0.09)], 6)
     rings[1] = [p + V(0, 0, -0.18 * max(0.0, -(p - wrist).normalized().z)) for p in rings[1]]
     verts, faces, _ = loft(rings)
-    part('sleeve-left', verts, faces, M['gown'], inside=lambda c: elbow + (c - elbow).dot(ahead) * ahead)
-    tube('wrist-left', wrist - 0.05 * ahead, wrist + 0.03 * ahead, [(0, 0.032), (1, 0.03)], M['skin'])
+    with bone('forearm_l'):
+        part('sleeve-left', verts, faces, M['gown'], inside=lambda c: elbow + (c - elbow).dot(ahead) * ahead)
+        tube('wrist-left', wrist - 0.05 * ahead, wrist + 0.03 * ahead, [(0, 0.032), (1, 0.03)], M['skin'])
     # The open hand, palm forward, fingers down and out.
     fingers = (ahead + V(0.25, 0.0, -0.5)).normalized()
     palm = (V(0.35, -1, 0) - V(0.35, -1, 0).dot(fingers) * fingers).normalized()
     across = fingers.cross(palm)
     hand = wrist + 0.03 * ahead + 0.05 * fingers
-    box('hand-left', hand, [fingers, palm, across], (0.054, 0.014, 0.036), M['skin'], 0.8)
-    outer = across if across.x > 0 else -across  # with the palm forward, the thumb is on her outer side
-    thumb = wrist + 0.03 * ahead + 0.022 * fingers + 0.04 * outer
-    box('thumb-left', thumb, [(fingers + 0.5 * outer).normalized(), palm, across], (0.028, 0.013, 0.013),
-        M['skin'], 0.7)
+    with bone('hand_l'):
+        box('hand-left', hand, [fingers, palm, across], (0.054, 0.014, 0.036), M['skin'], 0.8)
+        outer = across if across.x > 0 else -across  # with the palm forward, the thumb is on her outer side
+        thumb = wrist + 0.03 * ahead + 0.022 * fingers + 0.04 * outer
+        box('thumb-left', thumb, [(fingers + 0.5 * outer).normalized(), palm, across], (0.028, 0.013, 0.013),
+            M['skin'], 0.7)
+    joint('shoulder_l', shoulder)
+    joint('elbow_l', elbow)
+    joint('wrist_l', wrist)
+    joint('fist_l', hand + 0.054 * fingers)
 
 
-def main():
+# Her clips (../clips.py): the Elves' idle and run, as Legolas's (legolas.py), the star-glass held up as
+# she runs; her bolt thrust out from it; for her cast, the star-glass drawn in and lifted high; dazed,
+# it sinks towards her hip; falling, she sinks to her knees into her gown, the light laid before her and
+# her open hand dropping by her knee; winning, she holds it up high. The gown below her knees hangs plumb
+# under her through all of them (robed()).
+CLIPS = robed(fit({
+    'idle': ('ready', {'breath': 0.8, 'sway': 0.7, 'crouch': 0.02}),
+    'move': ('run', {'heavy': 0.1, 'stride': 0.42, 'lift': 0.32, 'lean': 6.0}),
+    'attack': ('bolt', {}),
+    'cast': ('beacon', {}),
+    'stun': ('dazed', {'low': 0.6}),
+    'death': ('knees', {'dropped': True}),
+    'victory': ('raise', {'out': 0.2}),
+}))
+
+
+def build(circlet=None):
+    """Makes her in a fresh scene, every part bound to its bone and her joints marked, and returns
+    the rig to finish() her with. Her 2★ model (galadriel-2.py) passes its circlet as `circlet`, a
+    function that makes it, which she wears on her head, bound to it."""
     reset()
     make_materials()
+    slippers()
     skirt()
     girdle_ends()
     bodice()
     mantle()
-    head()
+    head(circlet)
     hair_fall()
     front_lock()
     raised_arm()
     open_arm()
-    finish('galadriel')
+    return Rig(bones={'robe': ('root', 'robe_top', 'robe_foot')}, clips=CLIPS)
 
 
-main()
+def main():
+    finish('galadriel', rig=build())
+
+
+if __name__ == '__main__':
+    main()

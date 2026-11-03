@@ -15,12 +15,30 @@ anvil under a crown on the team colour, flying out to his left above his head, s
 front and from behind without the pole crossing it; in his right, a bearded axe at the ready. The
 short mantle leaves his coat and mail sleeves to show from behind, round the team colour.
 
+He is rigged as Gimli is (gimli.py, the Dwarves' reference rig): every part bound to the bone it
+moves with, his joints marked as the parts round them are built. To bend, his legs are a thigh and a
+shin, as Gimli's, which costs 24 triangles, and his coat is a skirt on his hips and a chest on his
+spine that starts deep inside the belt, so it stays in it as he bends, which costs none; the
+mantle's neck runs well up inside the hood for the same reason. His long beard is in two: the top on
+his head, and the rest on a bone of its own that hangs from his chin, overlapping it by a band (12
+triangles), so it follows his head where it joins his face but keeps hanging down his chest as he
+nods and looks about (clips.hanging()). His clips (../clips.py) are Gimli's, fitted by fit() to the
+standard: a Dwarf's heavy run and the stance he stands in, a chop of the axe and a fall to his
+knees; the standard stays planted as he stands, fights and is stunned, is carried clear of the
+ground as he runs, tips over across his hex as he falls and is lifted as he wins. His cast, Lord of
+Moria, is a Captain's rally to the standard (plant): heaved up and planted again with a stamp, the
+axe thrust high.
+
 His fittings, the point on the banner pole, the axe's pommel and the collar under its head, and the
 studs on his belt, use `trim`, which the client colours iron, silver or gold by star level
 (docs/viewer-spec.md section 4, "Star levels"); from behind the pole's point, the collar and the
 studs on the back of the belt show it, and from in front the point, the axe's fittings and the studs
-either side of his beard. The circlet is a lord's crown, not a fitting, and stays brass. His 2★
-model is balin-2.py and his 3★ model balin-3.py.
+either side of his beard. The circlet is a lord's crown, not a fitting, and stays brass. With the
+rig, the studs and the collar would be 27 triangles over the budget, so triangles nobody sees pay
+for them: his chest stops at his shoulders, inside the mantle; his brows are open at the back,
+where they lie on his brow; and the hood has no throat behind his face. His 2★ model is balin-2.py,
+which imports this script and builds him with its jewelled belt in place of the plain one (build()),
+and his 3★ model balin-3.py.
 
     blender --background --factory-startup --python-exit-code 1 --python balin.py [-- <out.glb>]
 
@@ -45,6 +63,7 @@ from kit import (  # noqa: E402
     STEEL,
     WOOD,
     V,
+    bone,
     box,
     cone,
     ellipse,
@@ -62,6 +81,8 @@ from kit import (  # noqa: E402
     tube,
     wind,
 )
+from clips import fit, hanging  # noqa: E402
+from rig import Rig, hold, joint  # noqa: E402
 
 # Balin's own colours (sRGB); the rest come from the kit.
 BEARD = 0xDEDAD1  # white with age
@@ -118,68 +139,109 @@ BOOT_RINGS = [
 ]
 
 
-def boot(name, ankle, yaw):
+def boot(s, ankle, yaw):
     turn = Matrix.Rotation(math.radians(yaw), 3, 'Z')
+    joint(f'toe_{s}', V(ankle.x, ankle.y, 0) + turn @ V(0, -0.125, 0.025))
     at = V(ankle.x, ankle.y, 0)
     outlines = [(z, [side, heel, (-heel[0], heel[1]), (-side[0], side[1]), (-toe[0], toe[1]), toe])
                 for z, (side, heel, toe) in BOOT_RINGS]
     rings = [[at + turn @ V(x, y, z) for x, y in ring] for z, ring in outlines]
     verts, faces, _ = loft(rings)
-    part(name, verts, faces, M['boots'], inside=at + V(0, 0, 0.07))
+    part(f'boot-{s}', verts, faces, M['boots'], inside=at + V(0, 0, 0.07))
     # A turned-down cuff, which makes the boot read as heavy.
     top = outlines[-1][1]
     cuff = [[at + turn @ V(1.24 * x, 1.24 * y + 0.006, z) for x, y in top] for z in (0.105, 0.178)]
     verts, faces, _ = loft(cuff)
-    part(name + '-cuff', verts, faces, M['leather'], inside=at + V(0, 0, 0.14))
+    part(f'boot-{s}-cuff', verts, faces, M['leather'], inside=at + V(0, 0, 0.14))
+
+
+# Each leg as it was built, one tube from the hip to the ankle, but in two at a knee halfway down and
+# a little forward, as Gimli's: the thigh's end overlapping the shin's top so the knee can bend.
+LEGS = [('r', V(-0.11, 0.02, 0.36), RIGHT_ANKLE, RIGHT_YAW), ('l', V(0.11, 0.0, 0.36), LEFT_ANKLE, LEFT_YAW)]
+KNEE_AHEAD = 0.014
+OVERLAP = 0.035
 
 
 def legs():
-    tube('leg-right', V(-0.11, 0.02, 0.36), RIGHT_ANKLE, [(0, 0.09), (1, 0.066)], M['cloth'])
-    tube('leg-left', V(0.11, 0.0, 0.36), LEFT_ANKLE, [(0, 0.09), (1, 0.066)], M['cloth'])
-    boot('boot-right', RIGHT_ANKLE, RIGHT_YAW)
-    boot('boot-left', LEFT_ANKLE, LEFT_YAW)
+    for s, hip, ankle, yaw in LEGS:
+        ahead = Matrix.Rotation(math.radians(yaw), 3, 'Z') @ V(0, -1, 0)
+        knee = hip.lerp(ankle, 0.5) + KNEE_AHEAD * ahead
+        thigh, shin = (knee - hip).length, (ankle - knee).length
+        with bone(f'thigh_{s}'):
+            tube(f'thigh-{s}', hip, knee, [(0, 0.09), (1 + OVERLAP / thigh, 0.077)], M['cloth'])
+        with bone(f'shin_{s}'):
+            tube(f'shin-{s}', knee, ankle, [(-OVERLAP / shin, 0.074), (1, 0.066)], M['cloth'])
+        with bone(f'foot_{s}'):
+            boot(s, ankle, yaw)
+        joint(f'hip_{s}', hip)
+        joint(f'knee_{s}', knee)
+        joint(f'ankle_{s}', ankle)
 
 
 # Coat --------------------------------------------------------------------------------------------
 
 # The coat as a barrel of octagons, from the hem up: z, half-width, half-depth and centre y. The belt
-# is the band between the third and fourth rings.
+# is the band between the third and fourth rings. It is in two pieces, which bend at the belt, as
+# Gimli's mail is: the skirt and the belt on his hips, and the chest on his spine, from inside the
+# belt (WAIST) up to his shoulders. It stops there, inside the mantle, which closes over it to the
+# neck and up into the hood, so a band from there to the neck would never be seen.
 TORSO = [
     (0.235, 0.29, 0.252, 0.0),  # the hem, flared over the knees
     (0.37, 0.258, 0.218, 0.0),  # hips
     (0.43, 0.272, 0.238, -0.005),  # belt, lower edge
     (0.505, 0.282, 0.244, -0.005),  # belt, upper edge
-    (0.615, 0.312, 0.242, 0.0),  # barrel chest
-    (0.715, 0.298, 0.202, 0.01),  # shoulders
-    (0.79, 0.145, 0.125, 0.02),  # neck
 ]
-TORSO_BANDS = [0, 0, 1, 0, 0, 0]  # coat, except the belt
+CHEST = [
+    (0.38, 0.244, 0.208, -0.005),  # inside the belt, deep enough to stay in it as he bends
+    (0.615, 0.312, 0.242, 0.0),  # barrel chest
+    (0.715, 0.298, 0.202, 0.01),  # shoulders, inside the mantle
+]
+TORSO_BANDS = [0, 0, 1]  # coat, except the belt
+PELVIS, WAIST = V(0, 0, 0.33), V(0, -0.005, 0.47)
 BELT = 2  # the ring at the belt's lower edge
 # Square studs on the belt, on the faces of the coat's octagon at these angles (degrees from +X,
 # his left): three on the back, and one either side of his beard in front.
 STUDS = [45, 90, 135, 225, 315]
 
 
-def coat():
+def coat(belt=True):
+    # Without the plain `belt`, as his 2★ model has it, the belt's band is coat and has no studs.
     rings = [ellipse(0, cy, z, rx, ry, 8, 22.5) for z, rx, ry, cy in TORSO]
     verts, faces, bands = loft(rings)
-    face_mats = [TORSO_BANDS[b] for b in bands]
-    part('coat', verts, faces, [M['coat'], M['leather']], face_mats, inside=lambda c: V(0, 0, c.z))
-    for a in STUDS:
-        k = a // 45 - 1  # the face at angle a runs from vertex k to k + 1 of each ring
-        j = (k + 1) % 8
-        corners = [rings[BELT][k], rings[BELT][j], rings[BELT + 1][j], rings[BELT + 1][k]]
-        at = sum(corners, Vector()) / 4
-        out = newell(corners).normalized()
-        if out.dot(V(at.x, at.y, 0)) < 0:
-            out = -out
-        cone(f'stud-{a}', at - 0.004 * out, at + 0.018 * out, 0.027, M['trim'], n=4, phase=45, back=None)
+    face_mats = [TORSO_BANDS[b] if belt else 0 for b in bands]
+    with bone('hips'):
+        part('skirt', verts, faces, [M['coat'], M['leather']], face_mats, inside=lambda c: V(0, 0, c.z))
+        # The studs, on the belt with the skirt.
+        for a in STUDS if belt else ():
+            k = a // 45 - 1  # the face at angle a runs from vertex k to k + 1 of each ring
+            j = (k + 1) % 8
+            corners = [rings[BELT][k], rings[BELT][j], rings[BELT + 1][j], rings[BELT + 1][k]]
+            at = sum(corners, Vector()) / 4
+            out = newell(corners).normalized()
+            if out.dot(V(at.x, at.y, 0)) < 0:
+                out = -out
+            cone(f'stud-{a}', at - 0.004 * out, at + 0.018 * out, 0.027, M['trim'], n=4, phase=45, back=None)
+    rings = [ellipse(0, cy, z, rx, ry, 8, 22.5) for z, rx, ry, cy in CHEST]
+    verts, faces, _ = loft(rings)
+    with bone('spine'):
+        part('chest', verts, faces, M['coat'], inside=lambda c: V(0, 0, c.z))
+    joint('pelvis', PELVIS)
+    joint('waist', WAIST)
 
 
 # Head --------------------------------------------------------------------------------------------
 
+NECK, CROWN = V(0, 0.02, 0.79), V(0, 0.03, 1.13)
+
 
 def head():
+    with bone('head'):
+        features()
+    joint('neck', NECK)
+    joint('crown', CROWN)
+
+
+def features():
     # The face: a shallow pyramid of planes round the root of the nose, from under the brow round
     # the cheekbones to behind the moustache. Gimli's.
     rim = [
@@ -206,14 +268,15 @@ def head():
 
     # Bushy white brows jutting over the eyes: an arch over each, dipping where they meet over the
     # nose and drooping at the ends with age, kindlier than Gimli's frown. Each section is the top,
-    # the jutting front and the underside, from his right to his left.
+    # the jutting front and the underside, from his right to his left. Their backs lie on his brow
+    # under the hood, so they are left open.
     half = [
         [(-0.15, -0.108, 0.952), (-0.152, -0.176, 0.926), (-0.148, -0.116, 0.902)],
         [(-0.075, -0.124, 0.978), (-0.078, -0.206, 0.954), (-0.075, -0.134, 0.921)],
         [(0.0, -0.142, 0.962), (0.0, -0.204, 0.94), (0.0, -0.152, 0.914)],
     ]
     sections = [[V(*p) for p in s] for s in half] + [[V(-x, y, z) for x, y, z in s] for s in reversed(half[:-1])]
-    verts, faces, _ = loft(sections)
+    verts, faces, _ = loft(sections, closed=False)
     last = 3 * (len(sections) - 1)
     faces += [(0, 1, 2), (last, last + 1, last + 2)]
     part('brows', verts, faces, M['beard'], inside=V(0, -0.09, 0.94))
@@ -237,11 +300,12 @@ HOOD = [
     ((0.098, 0.05, 1.12), (0.072, 0.14, 1.126), (0.152, 1.13), (0.062, -0.05, 1.113), (-0.062, 1.108)),
 ]
 HOOD_PEAK = V(0, 0.105, 1.153)
-NECK = 3  # the ring where the hood starts; the mantle tucks up under it
+HOOD_NECK = 3  # the ring where the hood starts; the mantle tucks up under it
 UNDER_BROW = 4  # the band from the eyes to the brow, whose front is the underside of the brow
 # The mantle hangs in folds: every other point of its rings of sixteen stands out (and at the hem
 # hangs lower), from the hem up to the shoulders.
 MANTLE_FOLD = [(0.032, 0.022), (0.016, 0.0), (0.0, 0.0)]  # out and down, hem, shoulder, upper
+MANTLE_TUCK = 0.07  # how far its neck runs up inside the hood
 
 
 def hood_ring(side, back_corner, back, front_corner, front):
@@ -256,29 +320,40 @@ def inside_garment(c):
 
 def mantle(rings):
     folded = []
-    for ring, (out, down) in zip(rings[:NECK], MANTLE_FOLD):
+    for ring, (out, down) in zip(rings[:HOOD_NECK], MANTLE_FOLD):
         points = []
         for a, b in zip(ring, ring[1:] + ring[:1]):
             mid = (a + b) / 2
             points += [a, mid + out * V(mid.x, mid.y - 0.03, 0).normalized() - V(0, 0, down)]
         folded.append(points)
-    # Its neck runs up under the hood, out of sight, so the hood's edge lies over it.
-    neck = [p for a, b in zip(rings[NECK], rings[NECK][1:] + rings[NECK][:1]) for p in (a, (a + b) / 2)]
-    folded.append([V(0.78 * p.x, 0.03 + 0.78 * (p.y - 0.03), p.z + 0.025) for p in neck])
+    # Its neck runs up under the hood, out of sight, so the hood's edge lies over it, and far enough
+    # up inside it that it still does as he bows his head.
+    ring = rings[HOOD_NECK]
+    neck = [p for a, b in zip(ring, ring[1:] + ring[:1]) for p in (a, (a + b) / 2)]
+    folded.append([V(0.78 * p.x, 0.03 + 0.78 * (p.y - 0.03), p.z + MANTLE_TUCK) for p in neck])
     verts, faces, _ = loft(folded)
-    part('mantle', verts, faces, M['team'], inside=inside_garment)
+    with bone('spine'):
+        part('mantle', verts, faces, M['team'], inside=inside_garment)
 
 
 def hood(rings):
-    verts, faces, bands = loft(rings[NECK:])
-    apex, last = len(verts), (len(rings) - NECK - 1) * 8
+    with bone('head'):
+        cowl(rings)
+
+
+def cowl(rings):
+    verts, faces, bands = loft(rings[HOOD_NECK:])
+    apex, last = len(verts), (len(rings) - HOOD_NECK - 1) * 8
     verts.append(HOOD_PEAK)
     faces += [(last + i, last + (i + 1) % 8, apex) for i in range(8)]
-    bands = [NECK + b for b in bands] + [len(rings) - 1] * 8
+    bands = [HOOD_NECK + b for b in bands] + [len(rings) - 1] * 8
     # Every face points away from the inside of the garment, except the two under the brow, which
-    # face down into the face.
+    # face down into the face. The two in front of the throat, behind his face and the top of his
+    # beard, are left out: nobody sees them.
     wound = []
     for k, (face, band) in enumerate(zip(faces, bands)):
+        if band == HOOD_NECK and k % 8 in (5, 6):
+            continue
         if band == UNDER_BROW and k % 8 in (5, 6):
             wound += wind(verts, [face], V(0, 0.05, 1.06))
         else:
@@ -298,31 +373,47 @@ def circlet(rings):
             ring.append(p + proud * V(p.x, p.y - 0.03, 0).normalized())
         band.append(ring)
     verts, faces, _ = loft(band)
-    part('circlet', verts, faces, M['brass'], inside=lambda c: V(0, 0.03, c.z))
+    with bone('head'):
+        part('circlet', verts, faces, M['brass'], inside=lambda c: V(0, 0.03, c.z))
 
 
 # Beard ---------------------------------------------------------------------------------------------
 
 
+# Long and white, from the cheeks over the belt to his knees, in three locks (a W in section) that part
+# into two forks at the end. Each level runs from his right side across the front to his left: the
+# side, tucked into the hood or the coat, the lock's ridge, the valley and the middle.
+BEARD_LEVELS = [
+    [(-0.146, -0.072, 0.935), (-0.142, -0.118, 0.882), (-0.076, -0.158, 0.853), (0.0, -0.172, 0.845)],
+    [(-0.182, -0.085, 0.80), (-0.174, -0.218, 0.772), (-0.082, -0.248, 0.766), (0.0, -0.278, 0.760)],
+    [(-0.168, -0.175, 0.655), (-0.162, -0.298, 0.645), (-0.076, -0.316, 0.64), (0.0, -0.342, 0.635)],
+    [(-0.138, -0.205, 0.52), (-0.132, -0.312, 0.51), (-0.064, -0.326, 0.505), (0.0, -0.35, 0.50)],
+    [(-0.108, -0.19, 0.40), (-0.104, -0.296, 0.39), (-0.05, -0.30, 0.385), (0.0, -0.318, 0.38)],
+    [(-0.072, -0.205, 0.30), (-0.066, -0.27, 0.238), (-0.034, -0.274, 0.272), (0.0, -0.284, 0.342)],
+]
+# It is in two: the top, from the cheeks to his chest, on his head, and the rest on a bone of its own
+# that hangs from his chin (beard_root, in the middle of the level it parts at), its top a little up
+# inside the top's last band so they overlap as it swings.
+BEARD_PARTS = 2  # the level the two pieces part at
+BEARD_OVERLAP = 0.3  # how far up the band above it the lower piece starts, a share of it
+BEARD_ROOT, BEARD_TIP = V(0, -0.29, 0.645), V(0, -0.29, 0.3)
+
+
 def beard():
-    # Long and white, from the cheeks over the belt to his knees, in three locks (a W in section) that
-    # part into two forks at the end. Each level runs from his right side across the front to his
-    # left: the side, tucked into the hood or the coat, the lock's ridge, the valley and the middle.
-    half = [
-        [(-0.146, -0.072, 0.935), (-0.142, -0.118, 0.882), (-0.076, -0.158, 0.853), (0.0, -0.172, 0.845)],
-        [(-0.182, -0.085, 0.80), (-0.174, -0.218, 0.772), (-0.082, -0.248, 0.766), (0.0, -0.278, 0.760)],
-        [(-0.168, -0.175, 0.655), (-0.162, -0.298, 0.645), (-0.076, -0.316, 0.64), (0.0, -0.342, 0.635)],
-        [(-0.138, -0.205, 0.52), (-0.132, -0.312, 0.51), (-0.064, -0.326, 0.505), (0.0, -0.35, 0.50)],
-        [(-0.108, -0.19, 0.40), (-0.104, -0.296, 0.39), (-0.05, -0.30, 0.385), (0.0, -0.318, 0.38)],
-        [(-0.072, -0.205, 0.30), (-0.066, -0.27, 0.238), (-0.034, -0.274, 0.272), (0.0, -0.284, 0.342)],
-    ]
     rings = []
-    for level in half:
+    for level in BEARD_LEVELS:
         right = [V(*p) for p in level]
         left = [V(-p.x, p.y, p.z) for p in reversed(right[:-1])]
         rings.append(right + left)
-    verts, faces, _ = loft(rings, closed=False)
-    part('beard', verts, faces, M['beard'], inside=lambda c: V(0, -0.05, c.z))
+    top = rings[:BEARD_PARTS + 1]
+    tucked = [a.lerp(b, BEARD_OVERLAP) + V(0, 0.006, 0) for a, b in zip(rings[BEARD_PARTS], rings[BEARD_PARTS - 1])]
+    hanging = [tucked] + rings[BEARD_PARTS:]
+    for name, bone_name, levels in (('beard', 'head', top), ('beard-hanging', 'beard', hanging)):
+        verts, faces, _ = loft(levels, closed=False)
+        with bone(bone_name):
+            part(name, verts, faces, M['beard'], inside=lambda c: V(0, -0.05, c.z))
+    joint('beard_root', BEARD_ROOT)
+    joint('beard_tip', BEARD_TIP)
 
     # A long moustache in two sweeps from under the nose, out and down over the beard.
     for s in (-1, 1):
@@ -332,7 +423,8 @@ def beard():
         verts, faces, _ = loft([root, mid])
         verts.append(tip)
         faces += [(3, 4, 6), (4, 5, 6), (5, 3, 6)]
-        part(f'moustache-{s}', verts, faces, M['beard'], inside=V(s * 0.06, -0.17, 0.84))
+        with bone('head'):
+            part(f'moustache-{s}', verts, faces, M['beard'], inside=V(s * 0.06, -0.17, 0.84))
 
 
 # Arms ----------------------------------------------------------------------------------------------
@@ -340,18 +432,26 @@ def beard():
 
 def arm(side, shoulder, elbow, wrist, fist, fist_up, thumb=False):
     """A mail sleeve, the coat's cuff at the elbow, a leather bracer and a big fist closed round a
-    grip running along `fist_up`."""
-    tube(f'sleeve-{side}', shoulder, elbow, [(0, 0.104), (1.12, 0.084)], M['mail'])
-    forearm = [(-0.2, 0.074), (0.3, 0.09), (1.0, 0.082)]
-    tube(f'forearm-{side}', elbow, wrist, forearm, [M['coat'], M['leather']], [0, 1])
+    grip running along `fist_up`; the sleeve overlaps the cuff, so it bends at the elbow, as Gimli's."""
+    s = side[0]
+    with bone(f'upper_arm_{s}'):
+        tube(f'sleeve-{side}', shoulder, elbow, [(0, 0.104), (1.12, 0.084)], M['mail'])
+    with bone(f'forearm_{s}'):
+        forearm = [(-0.2, 0.074), (0.3, 0.09), (1.0, 0.082)]
+        tube(f'forearm-{side}', elbow, wrist, forearm, [M['coat'], M['leather']], [0, 1])
     ahead = (wrist - elbow).normalized()
     up = (Vector(fist_up) - Vector(fist_up).dot(ahead) * ahead).normalized()
     across = ahead.cross(up)  # away from the body for the right hand
-    box(f'fist-{side}', fist, [ahead, up, across], (0.056, 0.06, 0.062), M['skin'], 0.88)
-    if thumb:
-        # Pressed along the inside of the fist and over the haft, so it reads as a grip.
-        centre = fist + 0.012 * ahead + 0.03 * up - 0.06 * across
-        box(f'thumb-{side}', centre, [ahead, up, across], (0.047, 0.024, 0.02), M['skin'], 0.7)
+    with bone(f'hand_{s}'):
+        box(f'fist-{side}', fist, [ahead, up, across], (0.056, 0.06, 0.062), M['skin'], 0.88)
+        if thumb:
+            # Pressed along the inside of the fist and over the haft, so it reads as a grip.
+            centre = fist + 0.012 * ahead + 0.03 * up - 0.06 * across
+            box(f'thumb-{side}', centre, [ahead, up, across], (0.047, 0.024, 0.02), M['skin'], 0.7)
+    joint(f'shoulder_{s}', shoulder)
+    joint(f'elbow_{s}', elbow)
+    joint(f'wrist_{s}', wrist)
+    joint(f'fist_{s}', fist)
 
 
 # Axe, in his right hand, at the ready ---------------------------------------------------------------
@@ -376,6 +476,15 @@ AXE_BLADE = [
 
 
 def axe():
+    with bone('hand_r'):
+        axe_parts()
+    arm('right', R_SHOULDER, R_ELBOW, R_WRIST, R_FIST, HAFT, thumb=True)
+    # Held by the grip, its head up the haft and its edge outwards.
+    eye = R_FIST + 0.47 * HAFT
+    hold('r', R_FIST, eye, eye + 0.2 * (BLADE_OUT - BLADE_OUT.dot(HAFT) * HAFT).normalized())
+
+
+def axe_parts():
     grip, along = R_FIST, HAFT
     out = (BLADE_OUT - BLADE_OUT.dot(along) * along).normalized()
     across = out.cross(along)
@@ -419,8 +528,6 @@ def axe():
     faces += wind(verts, walls, inside=eye + 0.12 * out)
     part('blade', verts, faces, M['steel'])
 
-    arm('right', R_SHOULDER, R_ELBOW, R_WRIST, R_FIST, along, thumb=True)
-
 
 # The standard of Durin's folk, in his left hand ------------------------------------------------------
 
@@ -454,6 +561,17 @@ DEVICE_FACES = [
 
 
 def standard():
+    with bone('hand_l'):
+        banner()
+    shoulder = leaned(L_SHOULDER)
+    wrist = L_FIST + (L_ELBOW - L_FIST).normalized() * 0.045
+    arm('left', shoulder, L_ELBOW, wrist, L_FIST, V(0, 0, 1))
+    # Held by the grip in his fist, up the pole to its top, the banner's face to the front.
+    top = POLE + V(0, 0, POLE_TOP)
+    hold('l', L_FIST, top, top + V(0, -0.1, 0))
+
+
+def banner():
     tube('pole', POLE, POLE + V(0, 0, POLE_TOP), [(0, 0.021), (1, 0.018)], M['wood'])
     # A point on the top.
     top = POLE + V(0, 0, POLE_TOP)
@@ -482,17 +600,32 @@ def standard():
         verts = [at(cu - 0.2 * u, cz - 0.15 + 0.3 * v, lift) for u, v in DEVICE]
         part(name, verts, DEVICE_FACES, M['silver'], outward=normal)
 
-    shoulder = leaned(L_SHOULDER)
-    wrist = L_FIST + (L_ELBOW - L_FIST).normalized() * 0.045
-    arm('left', shoulder, L_ELBOW, wrist, L_FIST, V(0, 0, 1))
+
+# His clips (../clips.py): Gimli's stance and heavy run, a chop of the axe, and for his cast a rally to
+# the standard, fitted to the standard he holds; his beard hanging from his chin through them all.
+CLIPS = hanging(fit({
+    'idle': ('ready', {}),
+    'move': ('run', {'heavy': 1.0}),
+    'attack': ('chop', {}),
+    'cast': ('plant', {'rise': 0.26}),
+    'stun': ('dazed', {}),
+    'death': ('knees', {}),
+    'victory': ('raise', {}),
+}, pole='l', free=('cast',)))
 
 
-def main():
+def build(girdle=None):
+    """Makes him in a fresh scene, every part bound to its bone and his joints marked, and returns
+    the rig to finish() him with. His 2★ model (balin-2.py) passes its jewelled belt as `girdle`, a
+    function that makes it on his hips before he leans, which takes the place of the plain belt and
+    its studs."""
     reset()
     make_materials()
     legs()
     lower = set(bpy.context.scene.objects)
-    coat()
+    coat(belt=girdle is None)
+    if girdle is not None:
+        girdle()
     head()
     rings = [hood_ring(*level) for level in HOOD]
     mantle(rings)
@@ -502,7 +635,12 @@ def main():
     axe()
     lean([o for o in bpy.context.scene.objects if o not in lower], PIVOT, LEAN)
     standard()
-    finish('balin')
+    return Rig(bones={'beard': ('head', 'beard_root', 'beard_tip')}, clips=CLIPS)
 
 
-main()
+def main():
+    finish('balin', rig=build())
+
+
+if __name__ == '__main__':
+    main()

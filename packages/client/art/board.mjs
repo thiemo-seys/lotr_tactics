@@ -84,6 +84,7 @@ const PAGE = `<!doctype html><html><head><style>html,body{margin:0;background:#1
 const MAIN = `
 import * as THREE from 'three';
 import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
+import { clone as cloneSkinned } from 'three/addons/utils/SkeletonUtils.js';
 
 const config = window.CONFIG;
 const renderer = new THREE.WebGLRenderer({ antialias: true, preserveDrawingBuffer: true });
@@ -171,7 +172,9 @@ const marks = [];
 function model(index, team, col, row, face) {
   const p = at(col, row);
   marks.push({ index, team, position: new THREE.Vector3(p.x, 1.45, p.z) });
-  const copy = gltfs[index].scene.clone(true);
+  // SkeletonUtils gives a rigged model's copy bones of its own; clone() would leave it skinned to
+  // the original's, drawn where they are rather than on its tile. A static model copies as before.
+  const copy = cloneSkinned(gltfs[index].scene);
   copy.traverse((o) => {
     if (o.isMesh) o.material = Array.isArray(o.material) ? o.material.map((m) => dress(m, team)) : dress(o.material, team);
   });

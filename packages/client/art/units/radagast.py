@@ -15,10 +15,31 @@ About 1.45 to the hat's brim; the crown, the staff and the birds go higher. The 
 hat, seen from every side and from above, and a sash round his middle knotted at his right hip, its
 ends hanging down his robe. The birds stay greys and browns, and everything else is earth and moss.
 
+He is rigged as Gandalf, the Istari's reference (gandalf.py, ../rig.py), with the Istari's idle and
+run, his staff planted beside him in his left hand (fit(pole='l')). His robe to the ground is in three
+pieces, as Gandalf's is: the chest on the spine, from a ring inside the sash; the skirt and the sash
+on the hips, down inside the robe below the knees; and the robe below the knees, with its ragged
+hem, on a bone of its own, `robe`, which hangs plumb under him, twists after his knees as he strides
+and rests on the ground as he sinks into it (robed()). His legs are hidden but for the boots, which
+step out from under the hem. His beard is short enough to stay on his head. The bird on his fist sits
+on a bone of its own, `bird`, so it can fly. The split costs 24 triangles, paid for with 26 nobody
+sees: the robe's band from the shoulders to the neck, under the mantle, and the staff's ring inside
+his fist.
+
+He points his staff at the foe to shoot (point), as Gandalf does. For his cast (Flock) he calls his
+birds down on the foe: crouched over the staff with his fist drawn in, he flings both up, the staff
+high and the fist thrown up before his face, and the bird on it leaps off and flies out and up
+towards the foe, circles back and lands on his fist again (flock). He holds the staff up high as he
+wins.
+
 His few fittings, a brooch on the hat's band, the ring his sash is drawn through beside the knot, the
 clasp of the herb pouch's flap, and the staff's ferrule and a band binding it below its fork, use
 `trim`, which the client colours iron, silver or gold by star level (docs/viewer-spec.md section 4,
-"Star levels"). His 2★ model is radagast-2.py and his 3★ model radagast-3.py.
+"Star levels"). With the rig they would be 8 triangles over the budget, so triangles nobody sees pay
+for them: his brows are open at the back, where they lie on his brow, his thumb has no side against
+his fist, and the staff's side shoot is open at its end, inside its leaves. His 2★ model is
+radagast-2.py, which imports this script and builds him with a badger at his heel (build()), and his
+3★ model radagast-3.py.
 
     blender --background --factory-startup --python-exit-code 1 --python radagast.py [-- <out.glb>]
 
@@ -41,6 +62,7 @@ from kit import (  # noqa: E402
     WOOD,
     V,
     bent_tube,
+    bone,
     box,
     cone,
     ellipse,
@@ -58,6 +80,8 @@ from kit import (  # noqa: E402
     trim_material,
     tube,
 )
+from clips import fit, robed  # noqa: E402
+from rig import Rig, hold, joint  # noqa: E402
 
 # Radagast's own colours (sRGB); the rest come from the kit. Browns and a muted, yellowish green,
 # kept clear of the team colours and of Gandalf's greys.
@@ -180,43 +204,62 @@ def bird(name, seat, facing, size=1.0, wings=0.0, tilt_up=18.0):
 
 # Body: a stout robe to the ground, a sash round his middle and a short mantle -------------------------
 
-# Heavy boots, of which only the toes show under the hem.
+# Heavy boots, of which only the toes show under the hem. His legs are hidden under the robe: only
+# their joints are marked, the hip, the knee a little forward of the line from it to the ankle, so it
+# bends forward, the ankle in the boot and the toe it rolls over.
 RIGHT_ANKLE, RIGHT_YAW = V(-0.105, -0.16, 0.10), -14
 LEFT_ANKLE, LEFT_YAW = V(0.11, -0.14, 0.10), 10
 BOOT_RINGS = [  # height, then the right half of the outline: side, heel, toe
     (0.0, [(0.076, -0.02), (0.064, 0.07), (0.06, -0.146)]),
     (0.13, [(0.07, 0.0), (0.06, 0.066), (0.054, -0.06)]),
 ]
+HIP_X, HIP_Z, KNEE_AHEAD = 0.09, 0.62, 0.025
 
 
 def boot(name, ankle, yaw):
+    s = 'r' if ankle.x < 0 else 'l'
     turn = Matrix.Rotation(math.radians(yaw), 3, 'Z')
     at = V(ankle.x, ankle.y, 0)
     outlines = [(z, [side, heel, (-heel[0], heel[1]), (-side[0], side[1]), (-toe[0], toe[1]), toe])
                 for z, (side, heel, toe) in BOOT_RINGS]
     rings = [[at + turn @ V(x, y, z) for x, y in ring] for z, ring in outlines]
     verts, faces, _ = loft(rings)
-    part(name, verts, faces, M['boots'], inside=at + V(0, 0, 0.07))
+    with bone(f'foot_{s}'):
+        part(name, verts, faces, M['boots'], inside=at + V(0, 0, 0.07))
+    hip = V(math.copysign(HIP_X, ankle.x), 0.0, HIP_Z)
+    joint(f'hip_{s}', hip)
+    joint(f'knee_{s}', hip.lerp(ankle, 0.5) + KNEE_AHEAD * (turn @ V(0, -1, 0)))
+    joint(f'ankle_{s}', ankle)
+    joint(f'toe_{s}', at + turn @ V(0, -0.13, 0.025))
 
 
 # The skirt below the sash, in twelve pleats that are deepest at the hem and gone at the waist: z,
-# half-width, half-depth, centre y and the depth of the pleats. It is wider than Gandalf's, a bell.
+# half-width, half-depth, centre y and the depth of the pleats. It is wider than Gandalf's, a bell. It
+# is in two pieces: the robe below the knees, with its ragged hem, on its own bone, which hangs plumb
+# under him (../clips.py, robed()), from the middle of the knees' ring to the middle of the hem; and
+# the skirt above on his hips, reaching down inside it to a ring a little inside the robe
+# (KNEES_INSIDE), so no gap opens as he sinks into it.
 SKIRT = [
     (0.0, 0.288, 0.262, 0.02, 0.026),  # the hem, on the ground
     (0.36, 0.248, 0.22, 0.012, 0.014),
     (0.70, 0.196, 0.172, 0.0, 0.0),
 ]
 HEM_RAGS = [0.0, 0.03, 0.0, 0.012, 0.0, 0.026, 0.0, 0.016, 0.0, 0.032, 0.0, 0.01]  # the hem, worn ragged
+KNEES_INSIDE = (0.27, 0.248, 0.222, 0.012, 0.014)
+ROBE_TOP, ROBE_FOOT = V(0, 0.012, 0.36), V(0, 0.02, 0.0)
 
 # The robe from the sash up, in octagons: z, half-width, half-depth and centre y. The sash is the
-# first band, round a stout middle. It stops at the shoulders: above them the mantle, his hair and
-# his beard hide it.
+# first band, round a stout middle. It bends at the sash: the sash on his hips, and the chest on his
+# spine from a ring inside the sash (INSIDE_SASH) up to his shoulders, where the mantle covers it; the
+# band from his shoulders to his neck, wholly under the mantle, is left out.
 ROBE_RINGS = [
     (0.68, 0.213, 0.19, 0.0),  # the sash, lower edge
     (0.80, 0.216, 0.186, 0.0),  # the sash, upper edge
-    (1.02, 0.22, 0.156, 0.012),  # shoulders
+    (1.02, 0.22, 0.156, 0.012),  # shoulders, under the mantle
 ]
-ROBE_BANDS = [1, 0]  # the sash, then robe
+INSIDE_SASH = (0.70, 0.205, 0.178, 0.0)
+# His spine bends about the back of his waist, as Gandalf's does.
+PELVIS, WAIST = V(0, 0.0, 0.62), V(0, 0.1, 0.74)
 
 
 def skirt_at(z, degrees, out=0.0):
@@ -230,22 +273,36 @@ def skirt_at(z, degrees, out=0.0):
     return V((rx + out) * math.cos(a), cy + (ry + out) * math.sin(a), z)
 
 
+def pleated(z, rx, ry, cy, pleat, rags=None):
+    ring = []
+    for i in range(12):
+        a = math.tau * i / 12
+        d = pleat if i % 2 else 0.0
+        ring.append(V((rx + d) * math.cos(a), cy + (ry + d) * math.sin(a), z + (rags[i] if rags else 0.0)))
+    return ring
+
+
 def robe():
     rings = [ellipse(0, cy, z, rx, ry, 8, 22.5) for z, rx, ry, cy in ROBE_RINGS]
-    verts, faces, bands = loft(rings)
-    face_mats = [ROBE_BANDS[b] for b in bands]
-    part('robe', verts, faces, [M['robe'], M['team']], face_mats, inside=lambda c: V(0, 0.01, c.z))
+    with bone('hips'):
+        verts, faces, _ = loft(rings[:2])
+        part('sash', verts, faces, M['team'], inside=lambda c: V(0, 0.01, c.z))
+    z, rx, ry, cy = INSIDE_SASH
+    with bone('spine'):
+        verts, faces, _ = loft([ellipse(0, cy, z, rx, ry, 8, 22.5)] + rings[2:])
+        part('robe', verts, faces, M['robe'], inside=lambda c: V(0, 0.01, c.z))
+    joint('pelvis', PELVIS)
+    joint('waist', WAIST)
 
-    rings = []
-    for k, (z, rx, ry, cy, pleat) in enumerate(SKIRT):
-        ring = []
-        for i in range(12):
-            a = math.tau * i / 12
-            d = pleat if i % 2 else 0.0
-            ring.append(V((rx + d) * math.cos(a), cy + (ry + d) * math.sin(a), z + (HEM_RAGS[i] if k == 0 else 0)))
-        rings.append(ring)
-    verts, faces, _ = loft(rings)
-    part('skirt', verts, faces, M['robe'], inside=lambda c: V(0, 0.01, c.z))
+    rings = [pleated(*level, rags=HEM_RAGS if k == 0 else None) for k, level in enumerate(SKIRT)]
+    with bone('robe'):
+        verts, faces, _ = loft(rings[:2])
+        part('robe-hem', verts, faces, M['robe'], inside=lambda c: V(0, 0.01, c.z))
+    with bone('hips'):
+        verts, faces, _ = loft([pleated(*KNEES_INSIDE)] + rings[1:])
+        part('skirt', verts, faces, M['robe'], inside=lambda c: V(0, 0.01, c.z))
+    joint('robe_top', ROBE_TOP)
+    joint('robe_foot', ROBE_FOOT)
 
 
 # The sash is knotted at his right hip, a little to the front, and its two ends hang down the skirt.
@@ -276,19 +333,20 @@ def sash():
     a = math.radians(KNOT)
     out = V(math.cos(a), math.sin(a), 0)
     knot = V(0.215 * math.cos(a), 0.19 * math.sin(a), 0.74) + 0.018 * out
-    lump('sash-knot', knot, (0.046, 0.04, 0.04), M['team'], seed=5, rough=0.1, angles=(0, 0, KNOT))
-    for k, (turn, bottom, half) in enumerate(SASH_ENDS):
-        levels = []
-        for j, z in enumerate((0.70, (0.70 + bottom) / 2, bottom)):
-            middle = KNOT + turn * (j / 2)
-            fork = 0.03 if j == 2 else 0.0  # the end is cut in a fork
-            levels.append([
-                skirt_at(z, middle - half, 0.02),
-                skirt_at(z + fork, middle, 0.03),
-                skirt_at(z, middle + half, 0.02),
-            ])
-        verts, faces, _ = loft(levels, closed=False)
-        part(f'sash-end-{k}', verts, faces, M['team'], outward=out)
+    with bone('hips'):
+        lump('sash-knot', knot, (0.046, 0.04, 0.04), M['team'], seed=5, rough=0.1, angles=(0, 0, KNOT))
+        for k, (turn, bottom, half) in enumerate(SASH_ENDS):
+            levels = []
+            for j, z in enumerate((0.70, (0.70 + bottom) / 2, bottom)):
+                middle = KNOT + turn * (j / 2)
+                fork = 0.03 if j == 2 else 0.0  # the end is cut in a fork
+                levels.append([
+                    skirt_at(z, middle - half, 0.02),
+                    skirt_at(z + fork, middle, 0.03),
+                    skirt_at(z, middle + half, 0.02),
+                ])
+            verts, faces, _ = loft(levels, closed=False)
+            part(f'sash-end-{k}', verts, faces, M['team'], outward=out)
 
     # The ring the sash is drawn through before it is knotted, flat on the face of the sash that
     # runs from the knot towards the front.
@@ -301,7 +359,8 @@ def sash():
 
     start, end = corner(202.5), corner(247.5)
     face_out = (end - start).cross(V(0, 0, 1)).normalized()
-    flat_ring('sash-ring', start.lerp(end, RING_AT) + 0.006 * face_out, face_out, V(0, 0, 1), *RING)
+    with bone('hips'):
+        flat_ring('sash-ring', start.lerp(end, RING_AT) + 0.006 * face_out, face_out, V(0, 0, 1), *RING)
 
 
 def pouch():
@@ -312,13 +371,14 @@ def pouch():
     along = V(-math.sin(a), math.cos(a), 0)
     up = V(0, 0, 1)
     centre = skirt_at(0.6, 140, 0.032)
-    box('pouch', centre, [out, along, up], (0.03, 0.058, 0.062), M['leather'], 0.72)
-    face = centre + 0.033 * out  # just proud of its outer face
-    verts = [face + 0.044 * along + 0.0446 * up, face - 0.044 * along + 0.0446 * up,
-             face - 0.044 * along + 0.004 * up, face - 0.026 * up, face + 0.044 * along + 0.004 * up]
-    part('pouch-flap', verts, [(0, 1, 2, 3, 4)], M['boots'], outward=out)
-    clasp = face - 0.013 * up
-    cone('pouch-clasp', clasp - 0.002 * out, clasp + 0.018 * out, 0.023, M['trim'], n=4, back=None)
+    with bone('hips'):
+        box('pouch', centre, [out, along, up], (0.03, 0.058, 0.062), M['leather'], 0.72)
+        face = centre + 0.033 * out  # just proud of its outer face
+        verts = [face + 0.044 * along + 0.0446 * up, face - 0.044 * along + 0.0446 * up,
+                 face - 0.044 * along + 0.004 * up, face - 0.026 * up, face + 0.044 * along + 0.004 * up]
+        part('pouch-flap', verts, [(0, 1, 2, 3, 4)], M['boots'], outward=out)
+        clasp = face - 0.013 * up
+        cone('pouch-clasp', clasp - 0.002 * out, clasp + 0.018 * out, 0.023, M['trim'], n=4, back=None)
 
 
 # The mantle over his shoulders, eight points round from his left (+X): the back rises, the front dips
@@ -340,12 +400,14 @@ def mantle():
         out = V(mid.x, mid.y - 0.025, 0).normalized()
         verts.append(mid + 0.02 * out - V(0, 0, TONGUE))
         faces.append((i, (i + 1) % 8, len(verts) - 1))
-    part('mantle', verts, faces, M['moss'], inside=V(0, 0.02, 0.95))
+    with bone('spine'):
+        part('mantle', verts, faces, M['moss'], inside=V(0, 0.02, 0.95))
 
 
 # Head ----------------------------------------------------------------------------------------------
 
 HEAD = V(0, 0, 1.33)  # the middle of his head, before the stoop carries it forward
+NECK, CROWN_TOP = V(0, 0.015, 1.15), V(0, 0.0, 1.46)  # where the head turns, and its top under the hat
 
 
 def hair():
@@ -362,7 +424,10 @@ def hair():
         rings.append([V((rx + o) * math.cos(math.radians(a)), cy + (ry + o) * math.sin(math.radians(a)), z + d)
                       for a, o, d in zip(angles, out, drop)])
     verts, faces, _ = loft(rings, closed=False)
-    part('hair', verts, faces, M['hair'], inside=lambda c: V(0, 0.01, c.z))
+    with bone('head'):
+        part('hair', verts, faces, M['hair'], inside=lambda c: V(0, 0.01, c.z))
+    joint('neck', NECK)
+    joint('crown', CROWN_TOP)
 
 
 # The face: a shallow pyramid of planes round the root of the nose, from under the hat round the
@@ -375,6 +440,11 @@ FACE_ROOT = V(0, -0.158, 1.35)
 
 
 def face():
+    with bone('head'):
+        features()
+
+
+def features():
     rim, root = FACE_RIM, FACE_ROOT
     plate = [(rim[i], rim[(i + 1) % 7], root) for i in range(7)]
     part('face', rim + [root], [(i, (i + 1) % 7, 7) for i in range(7)], M['skin'], outward=V(0, -1, 0))
@@ -398,7 +468,8 @@ def face():
         mid = [V(s * 0.088, -0.13, 1.408), V(s * 0.09, -0.195, 1.39), V(s * 0.088, -0.14, 1.352)]
         tip = V(s * 0.168, -0.15, 1.39)
         verts = inner + mid + [tip]
-        faces = [(0, 1, 4, 3), (1, 2, 5, 4), (2, 0, 3, 5), (3, 4, 6), (4, 5, 6), (5, 3, 6), (0, 2, 1)]
+        # Open at the back, where it lies on his brow: nobody sees it.
+        faces = [(0, 1, 4, 3), (1, 2, 5, 4), (3, 4, 6), (4, 5, 6), (5, 3, 6), (0, 2, 1)]
         part(f'brow-{s}', verts, faces, M['hair'], inside=sum(verts, Vector()) / len(verts))
 
 
@@ -410,11 +481,13 @@ def moustache():
         tip = V(s * 0.125, -0.2, 1.15)
         verts = root + mid + [tip]
         faces = [(0, 1, 4, 3), (1, 2, 5, 4), (2, 0, 3, 5), (3, 4, 6), (4, 5, 6), (5, 3, 6)]
-        part(f'moustache-{s}', verts, faces, M['hair'], inside=sum(verts, Vector()) / len(verts))
+        with bone('head'):
+            part(f'moustache-{s}', verts, faces, M['hair'], inside=sum(verts, Vector()) / len(verts))
 
 
 # The beard: bushy and broad, to the middle of his chest, its end ragged. Each level runs from his
 # right side across the front to his left: the side, the lock's ridge, the valley, then the centre.
+# It is short enough to stay on his head as it nods.
 BEARD = [
     [(-0.135, -0.07, 1.31), (-0.128, -0.112, 1.262), (-0.072, -0.142, 1.232), (0.0, -0.15, 1.222)],
     [(-0.188, -0.08, 1.14), (-0.182, -0.19, 1.12), (-0.09, -0.218, 1.11), (0.0, -0.238, 1.105)],
@@ -430,7 +503,8 @@ def beard():
         left = [V(-p.x, p.y, p.z) for p in reversed(right[:-1])]
         rings.append(right + left)
     verts, faces, _ = loft(rings, closed=False)
-    part('beard', verts, faces, M['hair'], inside=lambda c: V(0, -0.05, c.z))
+    with bone('head'):
+        part('beard', verts, faces, M['hair'], inside=lambda c: V(0, -0.05, c.z))
 
 
 # Hat: a wide, floppy brim, turned up in front and drooping at the sides and back, round a low, rounded
@@ -445,7 +519,7 @@ CROWN = [  # height above the brim, half-width, half-depth, centre x and y
     (0.1, 0.158, 0.154, -0.008, 0.006),
     (0.16, 0.112, 0.108, -0.024, 0.012),
 ]
-CROWN_TOP = V(-0.032, 0.016, BRIM_Z + 0.182)  # the soft crown slumps a little to his right
+HAT_TOP = V(-0.032, 0.016, BRIM_Z + 0.182)  # the soft crown slumps a little to his right
 BROOCH_Z = 0.021  # how high over the brim the brooch is: the middle of the band where it shows
 
 
@@ -457,6 +531,11 @@ def droop(a):
 
 
 def hat():
+    with bone('head'):
+        felt()
+
+
+def felt():
     n = 12
     rings = []
     for k, (r, dz) in enumerate(BRIM):
@@ -474,7 +553,7 @@ def hat():
     verts, faces, bands = loft(rings)
     face_mats = [1 if b == 0 else 0 for b in bands]
     apex = len(verts)
-    verts.append(CROWN_TOP)
+    verts.append(HAT_TOP)
     last = (len(CROWN) - 1) * 8
     faces += [(last + i, last + (i + 1) % 8, apex) for i in range(8)]
     face_mats += [0] * 8
@@ -484,7 +563,7 @@ def hat():
     base = V(0, -0.138, BRIM_Z + BROOCH_Z)
     cone('hat-brooch', base, base - V(0, 0.026, 0), 0.029, M['trim'], n=4, squash=1.2, back=None)
 
-    bird('bird-hat', CROWN_TOP - V(0, 0, 0.012), (1.0, 0.12), size=1.5)
+    bird('bird-hat', HAT_TOP - V(0, 0, 0.012), (1.0, 0.12), size=1.5)
 
 
 # Arms: wide brown sleeves and big hands. The left holds the staff out from his side; the right is
@@ -495,23 +574,43 @@ R_FIST = V(-0.45, -0.175, 1.05)
 
 
 def arm(side, shoulder, elbow, wrist, fist, grip, thumb=0):
+    """A wide sleeve to the elbow, a bell sleeve on the forearm and a big fist closed round a grip
+    running along `grip`, each on its bone, with the joints of the arm. Returns the top of the fist."""
+    s = side[0]
     shoulder = bent(shoulder)
-    tube(f'sleeve-{side}', shoulder, elbow, [(0, 0.08), (1.12, 0.072)], M['robe'])
-    tube(f'cuff-{side}', elbow, wrist, [(-0.15, 0.068), (1.0, 0.098)], M['robe'])
+    with bone(f'upper_arm_{s}'):
+        tube(f'sleeve-{side}', shoulder, elbow, [(0, 0.08), (1.12, 0.072)], M['robe'])
+    with bone(f'forearm_{s}'):
+        tube(f'cuff-{side}', elbow, wrist, [(-0.15, 0.068), (1.0, 0.098)], M['robe'])
     ahead = (fist - elbow).normalized()
     up = (Vector(grip) - Vector(grip).dot(ahead) * ahead).normalized()
     across = ahead.cross(up)
-    box(f'fist-{side}', fist, [ahead, up, across], (0.052, 0.056, 0.056), M['skin'], 0.88)
-    if thumb:
-        # Pressed along the inside of the fist and over the staff, so it reads as a grip.
-        centre = fist + 0.012 * ahead + 0.03 * up + thumb * 0.058 * across
-        box(f'thumb-{side}', centre, [ahead, up, across], (0.044, 0.022, 0.019), M['skin'], 0.7)
+    with bone(f'hand_{s}'):
+        box(f'fist-{side}', fist, [ahead, up, across], (0.052, 0.056, 0.056), M['skin'], 0.88)
+        if thumb:
+            # Pressed along the inside of the fist and over the staff, so it reads as a grip: a box as
+            # box() makes it, but for its side against the fist, inside it, which nobody sees.
+            centre = fist + 0.012 * ahead + 0.03 * up + thumb * 0.058 * across
+            verts = [centre + sa * 0.044 * ahead + (0.7 if sa > 0 else 1.0) * (sb * 0.022 * up + sc * 0.019 * across)
+                     for sa in (-1, 1) for sb, sc in ((-1, -1), (1, -1), (1, 1), (-1, 1))]
+            faces = [(0, 1, 2, 3), (4, 5, 6, 7), (0, 1, 5, 4), (1, 2, 6, 5), (2, 3, 7, 6), (3, 0, 4, 7)]
+            del faces[2 if thumb > 0 else 4]
+            part(f'thumb-{side}', verts, faces, M['skin'], inside=centre)
+    joint(f'shoulder_{s}', shoulder)
+    joint(f'elbow_{s}', elbow)
+    joint(f'wrist_{s}', wrist)
+    joint(f'fist_{s}', fist)
     return fist + 0.056 * up  # the top of the fist
 
 
 def perch():
     top = arm('right', R_SHOULDER, R_ELBOW, R_WRIST, R_FIST, V(0, 0, 1))
-    bird('bird-hand', top - V(0, 0, 0.01), (0.9, 0.2), size=1.6)
+    # The bird on his fist sits on a bone of its own, from its feet up through it, so it can fly.
+    seat = top - V(0, 0, 0.01)
+    with bone('bird'):
+        bird('bird-hand', seat, (0.9, 0.2), size=1.6)
+    joint('bird_seat', seat)
+    joint('bird_top', seat + V(0, 0, 0.12))
 
 
 # Staff, in his left hand: a crooked branch, knotted where it bends, in leaf at its head ----------------
@@ -524,8 +623,7 @@ STAFF = [  # distance along the staff from his fist (None for the foot, on the g
     (0.5, 0.034, V(0.011, -0.003, 0)),
     (0.38, 0.026, V(-0.026, 0.014, 0)),
     (0.17, 0.032, V(0.012, -0.004, 0)),
-    (0.0, 0.028, V(0, 0, 0)),
-    (-0.3, 0.03, V(-0.022, 0.006, 0)),
+    (-0.3, 0.03, V(-0.022, 0.006, 0)),  # the ring inside his fist is left out: it ran straight through it
     (-0.885, 0.033, V(0.004, 0.0, 0)),  # the top of the ferrule
     (None, 0.028, V(0, 0, 0)),
 ]
@@ -556,6 +654,15 @@ def leaf(name, base, tip, width=0.034):
 
 
 def staff():
+    with bone('hand_l'):
+        top = branch()
+    arm('left', L_SHOULDER, L_ELBOW, L_WRIST, STAFF_GRIP, STAFF_UP, thumb=1)
+    # Held by the grip, up the staff to its top among the leaves, facing the front.
+    hold('l', STAFF_GRIP, top, top + V(0, -0.1, 0))
+
+
+def branch():
+    """Builds the staff, its leaves and its bird, and returns the top of the staff."""
     points, radii = [], []
     for t, r, kink in STAFF:
         if t is None:
@@ -572,7 +679,7 @@ def staff():
     clump = top + 0.03 * STAFF_UP
     lump('leaves', clump, (0.125, 0.115, 0.095), M['leaves'], seed=7, rough=0.22)
     shoot = [points[1], points[1] + V(0.1, -0.015, 0.075)]
-    bent_tube('shoot', shoot, [0.02, 0.014], M['wood'], n=4, end='cap')
+    bent_tube('shoot', shoot, [0.02, 0.014], M['wood'], n=4)  # open at its end, inside its leaves
     tuft = shoot[1] + V(0.025, 0, 0.015)
     lump('leaves-shoot', tuft, (0.078, 0.072, 0.062), M['leaves'], seed=11, rough=0.22)
     for k, (centre, reach, degrees, dip) in enumerate(LEAVES_OUT):
@@ -582,11 +689,31 @@ def staff():
         leaf(f'leaf-{k}', c + 0.6 * reach * out, c + (reach + 0.075) * out)
 
     bird('bird-staff', clump + V(0, 0, 0.07), (-0.55, -0.8), size=1.45, wings=0.11)
+    return top
 
-    arm('left', L_SHOULDER, L_ELBOW, L_WRIST, STAFF_GRIP, STAFF_UP, thumb=1)
+
+# His clips (../clips.py): the Istari's idle and run, as Gandalf's (gandalf.py), his staff planted
+# beside him in his left hand (fit(pole='l')) and carried upright as he runs, the bird on his fist held
+# up before him; the staff pointed at the foe for each shot; for his cast (Flock) the staff and the fist
+# flung up as the bird flies off to the foe and back; dazed, he leans on the staff; falling, he sinks
+# to his knees into his robe as it falls beside him; and he holds it up high as he wins. The robe
+# below his knees hangs plumb under him (robed()).
+CLIPS = robed(fit({
+    'idle': ('ready', {'hand': 'l', 'breath': 0.8, 'sway': 0.7, 'crouch': 0.02}),
+    'move': ('run', {'hand': 'l', 'heavy': 0.2, 'stride': 0.4, 'lift': 0.2, 'lean': 8.0, 'off': 'steady'}),
+    'attack': ('point', {'hand': 'l'}),
+    'cast': ('flock', {'hand': 'l'}),
+    'stun': ('dazed', {'hand': 'l'}),
+    'death': ('knees', {'hand': 'l', 'slump': 0.8, 'dropped': True, 'behind': -0.06}),
+    'victory': ('raise', {'hand': 'l', 'out': 0.45}),
+}, pole='l', free=('attack', 'cast', 'victory'), ahead=1.0))
+RIG = Rig(bones={'robe': ('root', 'robe_top', 'robe_foot'), 'bird': ('hand_r', 'bird_seat', 'bird_top')}, clips=CLIPS)
 
 
-def main():
+def build(badger=None):
+    """Makes him in a fresh scene, every part bound to its bone and his joints marked, and returns
+    the rig to finish() him with. His 2★ model (radagast-2.py) passes its badger as `badger`, a
+    function that makes it, last, on the ground at his heel."""
     reset()
     make_materials()
     boot('boot-right', RIGHT_ANKLE, RIGHT_YAW)
@@ -614,7 +741,14 @@ def main():
 
     staff()
     perch()
-    finish('radagast', budget=800)
+    if badger is not None:
+        badger()
+    return RIG
 
 
-main()
+def main():
+    finish('radagast', rig=build())
+
+
+if __name__ == '__main__':
+    main()

@@ -14,12 +14,17 @@ Forms are built from hand-placed vertices: rings of points (`ellipse()`, `segmen
 `path_rings()` along a bent line) joined into bands of quads by `loft()`, and made into a mesh by
 `part()`, which winds every face to point outwards. `lean()`, `turn()` and `stoop()` pose parts
 built upright. Gimli (units/gimli.py) is the reference for how they are used.
+
+A rigged model (rig.py) binds each part to a bone as it is made, inside `with bone(name):`, which
+every helper here honours, since they all end in `part()` or `primitive()`; and it passes its `Rig`
+to `finish()`, which builds the armature and the clips and exports them with the mesh.
 """
 
 import math
 import os
 import random
 import sys
+from contextlib import contextmanager
 from itertools import pairwise
 
 import bpy
@@ -123,6 +128,38 @@ def team_material() -> bpy.types.Material:
     return material('team', TEAM_BLUE)
 
 
+# Binding parts to bones (rig.py): the bone parts made now follow, innermost last.
+_BINDING = []
+
+
+@contextmanager
+def bone(name: str, follows=None):
+    """Binds every part made inside it to the bone `name`, rigidly: each vertex follows that one bone
+    with weight 1, so the part moves as a solid piece (docs/viewer-spec.md section 4, Rigs and clips).
+    `follows`, for the rare vertex that should follow another bone on purpose (the middle of a
+    bowstring following the drawing hand), is a function of a vertex's position, as the part is
+    made, giving that bone's name, or None to stay on `name`."""
+    _BINDING.append((name, follows))
+    try:
+        yield
+    finally:
+        _BINDING.pop()
+
+
+def _bind(obj: bpy.types.Object) -> None:
+    """Puts a new part's vertices in the vertex group of the bone they follow, if one is bound."""
+    if not _BINDING:
+        return
+    name, follows = _BINDING[-1]
+    groups = {}
+    for v in obj.data.vertices:
+        chosen = follows(obj.matrix_basis @ v.co) if follows is not None else None
+        groups.setdefault(chosen or name, []).append(v.index)
+    for bone_name, indices in groups.items():
+        group = obj.vertex_groups.get(bone_name) or obj.vertex_groups.new(name=bone_name)
+        group.add(indices, 1.0, 'REPLACE')
+
+
 def trim_material() -> bpy.types.Material:
     """Fittings such as buckles, clasps, sword guards and bridle mounts, which the client colours
     iron, silver or gold by star level (docs/viewer-spec.md section 4, "Star levels"). Brass here,
@@ -139,6 +176,7 @@ def primitive(kind: str, mat: bpy.types.Material, scale=(1, 1, 1), **kwargs) -> 
     obj = bpy.context.active_object
     obj.scale = scale
     obj.data.materials.append(mat)
+    _bind(obj)
     return obj
 
 
@@ -191,6 +229,7 @@ def part(name, verts, faces, mats, face_mats=None, inside=None, outward=None):
         raise RuntimeError(f'{name}: invalid geometry')
     obj = bpy.data.objects.new(name, data)
     bpy.context.scene.collection.objects.link(obj)
+    _bind(obj)
     return obj
 
 
@@ -469,7 +508,7 @@ def stoop(objects, low, high, forward, drop=0.0):
 # Export ----------------------------------------------------------------------------------------
 
 
-def finish(name: str, budget: int = UNIT_BUDGET) -> bpy.types.Object:
+def finish(name: str, budget: int = UNIT_BUDGET, rig=None) -> bpy.types.Object:
     """Joins every mesh into one object called `name`, checks it and exports it as a .glb.
 
     Applies modifiers and transforms and shades every face flat. Fails over the triangle `budget`,
@@ -477,14 +516,26 @@ def finish(name: str, budget: int = UNIT_BUDGET) -> bpy.types.Object:
     MAX_METALLIC; warns when the model doesn't stand on the origin, reaches outside its hex or has no
     `trim` material for the client to colour by star level.
     Prints a summary line starting with MODEL.
+
+    With a `rig` (rig.Rig), it also reads the rig's joints, builds the armature and binds the mesh
+    to it, builds and checks the clips, and exports the skin and the clips with the mesh; see
+    rig.py. Without one, nothing may be bound to a bone.
     """
     out = output_path(name)
     scene = bpy.context.scene
     layer = bpy.context.view_layer
+    if rig is not None:
+        rig.read_joints()  # and removes their markers, which aren't part of the model
+    elif any(o.get('joint') for o in scene.objects):
+        raise RuntimeError(f'{name} places joints but has no rig')
     kinds = {'MESH', 'CURVE', 'SURFACE', 'META', 'FONT'}
     parts = [o for o in scene.objects if o.type in kinds]
     if not parts:
         raise RuntimeError('nothing to export')
+    if rig is None and any(o.type == 'MESH' and o.vertex_groups for o in parts):
+        raise RuntimeError(f'{name} binds parts to bones but has no rig')
+    if rig is not None:
+        rig.check_parts(parts)
     for o in scene.objects:
         o.select_set(o in parts)
     layer.objects.active = parts[0]
@@ -529,6 +580,12 @@ def finish(name: str, budget: int = UNIT_BUDGET) -> bpy.types.Object:
         print(f'WARNING {name}: reaches {radius:.2f} from the centre, outside its hex ({HEX_RADIUS})')
     if triangles > budget:
         raise RuntimeError(f'{name} has {triangles} triangles, over the budget of {budget}')
+
+    if rig is not None:
+        rig.build(model, height)
+        rig.export(model, out)
+        print(f'EXPORTED {out}')
+        return model
 
     for o in scene.objects:
         o.select_set(o is model)

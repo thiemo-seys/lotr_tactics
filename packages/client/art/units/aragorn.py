@@ -8,9 +8,22 @@ high boots. His cloak is the team colour, its hood thrown back over his shoulder
 is a Captain: he holds the reforged sword high to rally his allies, and in his other hand the
 standard Arwen made for him, the White Tree on black.
 
+He is Gondor's reference rig (../rig.py), which Boromir, Faramir and Beregond follow: every part is
+bound to the bone it moves with, his cloak hangs from a bone of its own, and his clips come from the
+library (../clips.py), fitted by fit() to the long blade and the standard he holds. Gondor's idle
+and run are his: standing as built, breathing, and a Man's light run, the sword carried high. The
+standard stays planted while he stands, fights and is stunned, is carried clear of the ground as he
+runs, tips over across his hex as he falls and is lifted as he wins. He chops with Andúril, cleaving
+down and out to his right so the blow shows past him from behind too; his cast (Andúril) is a
+Captain's rally, a great blow cleaving down and out to his right as the chop does, so the long blade
+stays clear of his body, and then the sword thrust high. To bend, his boots are a foot and a
+shaft at the ring round the ankle and his surcoat a skirt and a chest at the belt, both split at
+rings they already had, so they cost no triangles.
+
 His fittings, the belt buckle, Andúril's cross-guard and the standard's spear-point, use `trim`,
 which the client colours iron, silver or gold by star level (docs/viewer-spec.md section 4, "Star
-levels"). His 2★ model is aragorn-2.py and his 3★ model aragorn-3.py.
+levels"). His 2★ model is aragorn-2.py, which imports this script and builds him with its spaulders on
+his upper arms (build()), and his 3★ model aragorn-3.py.
 
     blender --background --factory-startup --python-exit-code 1 --python aragorn.py [-- <out.glb>]
 
@@ -33,6 +46,7 @@ from kit import (  # noqa: E402
     STEEL,
     V,
     WOOD,
+    bone,
     box,
     ellipse,
     finish,
@@ -46,6 +60,8 @@ from kit import (  # noqa: E402
     trim_material,
     tube,
 )
+from clips import fit  # noqa: E402
+from rig import Rig, hold, joint  # noqa: E402
 
 # Aragorn's own colours (sRGB); the rest come from the kit.
 SKIN = 0xCC9675  # weathered
@@ -125,9 +141,13 @@ FOOT = [
 # Then up the shin to the knee, round the leg: the height and the radius of each ring.
 SHAFT = [(0.27, 0.07), (0.39, 0.078)]
 CUFF = (0.352, 0.422, 1.22)  # the turned-down cuff: from and to (z), and how much wider than the boot
+# The knee, under the cuff, a little forward of the line from the hip to the ankle so the leg bends
+# forward; the boot bends at the ring round the ankle.
+KNEE_Z, KNEE_AHEAD = 0.385, 0.012
 
 
 def leg(side, hip, ankle, yaw):
+    s = side[0]
     turn = Matrix.Rotation(math.radians(yaw), 3, 'Z')
     at = V(ankle.x, ankle.y, 0)
     up = hip - ankle
@@ -136,24 +156,35 @@ def leg(side, hip, ankle, yaw):
         return ankle + up * ((z - ankle.z) / up.z) if z > ankle.z else V(at.x, at.y, z)
 
     rings = []
-    for z, (s, heel, toe) in FOOT:
-        outline = [s, heel, (-heel[0], heel[1]), (-s[0], s[1]), (-toe[0], toe[1]), toe]
+    for z, (side_, heel, toe) in FOOT:
+        outline = [side_, heel, (-heel[0], heel[1]), (-side_[0], side_[1]), (-toe[0], toe[1]), toe]
         rings.append([at + turn @ V(x, y, z) for x, y in outline])
     for z, r in SHAFT:
         c = axis(z)
         rings.append([c + turn @ V(r * math.cos(a), r * math.sin(a), 0)
                       for a in (math.radians(60 * i) for i in range(6))])
-    verts, faces, _ = loft(rings)
-    part(f'boot-{side}', verts, faces, M['boots'], inside=lambda c: axis(c.z))
-    # A turned-down cuff of paler leather, which makes it read as a high boot.
-    low, high, k = CUFF
-    r = SHAFT[-1][1] * k
-    cuff = [[axis(z) + turn @ V(r * math.cos(a), r * math.sin(a), 0) for a in (math.radians(60 * i) for i in range(6))]
-            for z in (low, high)]
-    verts, faces, _ = loft(cuff)
-    part(f'cuff-{side}', verts, faces, M['leather'], inside=lambda c: axis(c.z))
+    # The boot as it was built, in two at the ring round the ankle, which both keep: the foot below it
+    # and the shaft above it, so the foot can roll and the knee bend.
+    with bone(f'foot_{s}'):
+        verts, faces, _ = loft(rings[:3])
+        part(f'boot-{side}', verts, faces, M['boots'], inside=lambda c: axis(c.z))
+    with bone(f'shin_{s}'):
+        verts, faces, _ = loft(rings[2:])
+        part(f'shaft-{side}', verts, faces, M['boots'], inside=lambda c: axis(c.z))
+        # A turned-down cuff of paler leather, which makes it read as a high boot.
+        low, high, k = CUFF
+        r = SHAFT[-1][1] * k
+        cuff = [[axis(z) + turn @ V(r * math.cos(a), r * math.sin(a), 0)
+                 for a in (math.radians(60 * i) for i in range(6))] for z in (low, high)]
+        verts, faces, _ = loft(cuff)
+        part(f'cuff-{side}', verts, faces, M['leather'], inside=lambda c: axis(c.z))
     # The thigh, in dark breeches, from the hip into the boot.
-    tube(f'thigh-{side}', hip, axis(0.37), [(0, 0.094), (1, 0.072)], M['cloth'])
+    with bone(f'thigh_{s}'):
+        tube(f'thigh-{side}', hip, axis(0.37), [(0, 0.094), (1, 0.072)], M['cloth'])
+    joint(f'hip_{s}', hip)
+    joint(f'knee_{s}', axis(KNEE_Z) + KNEE_AHEAD * (turn @ V(0, -1, 0)))
+    joint(f'ankle_{s}', ankle)
+    joint(f'toe_{s}', at + turn @ V(0, -0.15, 0.03))
 
 
 def legs():
@@ -164,42 +195,56 @@ def legs():
 # Body --------------------------------------------------------------------------------------------
 
 # The surcoat over the mail as a barrel of octagons: z, half-width, half-depth and centre y. The mail
-# shows below the surcoat's hem, and the belt is the band between the fourth and fifth rings.
+# shows below the surcoat's hem, and the belt is the band between the fourth and fifth rings. It is in
+# two pieces, which bend at the belt: the skirt and the belt on his hips, and the chest on his spine
+# from a ring inside the belt (WAIST) up to his neck, in as many bands as it had, so the bend costs
+# no triangles.
 TORSO = [
     (0.475, 0.22, 0.188, 0.0),  # the mail's hem
     (0.53, 0.234, 0.2, 0.0),  # the surcoat's hem, flared over the thighs
     (0.645, 0.19, 0.146, 0.0),  # hips
     (0.70, 0.178, 0.133, -0.004),  # belt, lower edge
     (0.76, 0.182, 0.135, -0.004),  # belt, upper edge
+]
+TORSO_BANDS = [2, 0, 0, 1]  # the mail, then the surcoat, then the belt
+CHEST = [
+    (0.73, 0.17, 0.125, -0.004),  # inside the belt
     (0.89, 0.228, 0.158, -0.01),  # chest
     (0.985, 0.222, 0.138, 0.0),  # shoulders
     (1.0, 0.07, 0.066, 0.01),  # neck, under the collar
 ]
-TORSO_BANDS = [2, 0, 0, 1, 0, 0, 0]  # the mail, then the surcoat, except the belt
+PELVIS, WAIST = V(0, 0.0, 0.64), V(0, -0.004, 0.73)
 
 
 def torso():
     rings = [ellipse(0, cy, z, rx, ry, 8, 22.5) for z, rx, ry, cy in TORSO]
     verts, faces, bands = loft(rings)
     face_mats = [TORSO_BANDS[b] for b in bands]
-    part('torso', verts, faces, [M['sable'], M['leather'], M['mail']], face_mats, inside=lambda c: V(0, 0, c.z))
+    with bone('hips'):
+        part('skirt', verts, faces, [M['sable'], M['leather'], M['mail']], face_mats, inside=lambda c: V(0, 0, c.z))
+        # The belt buckle, its face smaller than its back so the edges read as a bevel.
+        axes = [V(0, -1, 0), V(1, 0, 0), V(0, 0, 1)]
+        box('buckle', V(0, -0.138, 0.73), axes, (0.014, 0.032, 0.03), M['trim'], 0.75)
 
-    # The White Tree on his breast, on the flat front of the surcoat between the belt and the chest.
-    front = [(rings[r][5], rings[r][6]) for r in (4, 5)]  # the front corners, right and left
-    plate = [(front[0][0], front[0][1], front[1][1]), (front[0][0], front[1][1], front[1][0])]
-    normal = (front[0][1] - front[0][0]).cross(front[1][0] - front[0][0])
-    if normal.y > 0:
-        normal = -normal
+    rings = [ellipse(0, cy, z, rx, ry, 8, 22.5) for z, rx, ry, cy in CHEST]
+    verts, faces, _ = loft(rings)
+    with bone('spine'):
+        part('chest', verts, faces, M['sable'], inside=lambda c: V(0, 0, c.z))
 
-    def place(u, v):
-        x, z = 0.1 * u, 0.768 + 0.1 * v
-        return V(x, on_surface(plate, x, z), z)
+        # The White Tree on his breast, on the flat front of the surcoat above the belt.
+        front = [(rings[r][5], rings[r][6]) for r in (0, 1)]  # the front corners, right and left
+        plate = [(front[0][0], front[0][1], front[1][1]), (front[0][0], front[1][1], front[1][0])]
+        normal = (front[0][1] - front[0][0]).cross(front[1][0] - front[0][0])
+        if normal.y > 0:
+            normal = -normal
 
-    flat('tree-breast', tree_points(place), TREE_FACES, M['mithril'], normal, 0.003)
+        def place(u, v):
+            x, z = 0.1 * u, 0.768 + 0.1 * v
+            return V(x, on_surface(plate, x, z), z)
 
-    # The belt buckle, its face smaller than its back so the edges read as a bevel.
-    axes = [V(0, -1, 0), V(1, 0, 0), V(0, 0, 1)]
-    box('buckle', V(0, -0.138, 0.73), axes, (0.014, 0.032, 0.03), M['trim'], 0.75)
+        flat('tree-breast', tree_points(place), TREE_FACES, M['mithril'], normal, 0.003)
+    joint('pelvis', PELVIS)
+    joint('waist', WAIST)
 
 
 # Head --------------------------------------------------------------------------------------------
@@ -227,7 +272,18 @@ def head_ring(z, side, back_corner, back_y, front_corner, front_y):
             V(0, front_y, z), V(fx, fy, z)]
 
 
+NECK = V(0, 0.01, 1.04)  # where the head turns on the neck, inside the collar
+
+
 def head():
+    with bone('head'):
+        features()
+        hair()
+    joint('neck', NECK)
+    joint('crown', CROWN)
+
+
+def features():
     rings = [head_ring(*r) for r in HEAD]
     verts, faces, bands = loft(rings)
     face_mats = [0 if i % 8 in SKIN_FACES[b] else 1 for i, b in zip(range(len(faces)), bands)]
@@ -321,6 +377,11 @@ def hair():
 
 
 def mantle():
+    with bone('spine'):
+        shoulders()
+
+
+def shoulders():
     # Eight points round the neck and the shoulders, starting at his left shoulder (+X); the front
     # dips to the clasp at his throat and the back rises where the hood gathers.
     neck_z = [1.065, 1.08, 1.095, 1.08, 1.065, 1.045, 1.03, 1.045]
@@ -342,6 +403,14 @@ def mantle():
 
 
 def cloak():
+    with bone('cape'):
+        folds()
+    # The cloak hangs from his upper back, so it can swing behind him.
+    joint('cape_top', V(0, 0.19, 0.94))
+    joint('cape_hem', V(0, 0.3, 0.41))
+
+
+def folds():
     # Down his back to the knees, in four folds, the hem lowest in the middle. Each level: z at the
     # middle and at the edges, half-width, half-depth, centre y, how far short of the sides it stops
     # (degrees) and how deep the folds are.
@@ -377,13 +446,21 @@ L_WRIST = L_FIST + (L_ELBOW - L_FIST).normalized() * 0.045
 
 def arm(side, shoulder, elbow, wrist, fist, grip):
     """A mail sleeve, a leather bracer and a fist closed round a grip running along `grip`."""
-    tube(f'sleeve-{side}', shoulder, elbow, [(0, 0.078), (1.1, 0.065)], M['mail'])
-    forearm = [(-0.15, 0.06), (0.35, 0.069), (1.0, 0.06)]
-    tube(f'forearm-{side}', elbow, wrist, forearm, [M['mail'], M['leather']], [0, 1])
+    s = side[0]
+    with bone(f'upper_arm_{s}'):
+        tube(f'sleeve-{side}', shoulder, elbow, [(0, 0.078), (1.1, 0.065)], M['mail'])
+    with bone(f'forearm_{s}'):
+        forearm = [(-0.15, 0.06), (0.35, 0.069), (1.0, 0.06)]
+        tube(f'forearm-{side}', elbow, wrist, forearm, [M['mail'], M['leather']], [0, 1])
     along = Vector(grip).normalized()
     ahead = wrist - elbow
     ahead = (ahead - ahead.dot(along) * along).normalized()
-    box(f'fist-{side}', fist, [ahead, along, ahead.cross(along)], (0.05, 0.057, 0.055), M['skin'], 0.88)
+    with bone(f'hand_{s}'):
+        box(f'fist-{side}', fist, [ahead, along, ahead.cross(along)], (0.05, 0.057, 0.055), M['skin'], 0.88)
+    joint(f'shoulder_{s}', shoulder)
+    joint(f'elbow_{s}', elbow)
+    joint(f'wrist_{s}', wrist)
+    joint(f'fist_{s}', fist)
 
 
 # Andúril, raised in his right hand -----------------------------------------------------------------
@@ -392,6 +469,15 @@ SWORD = V(-0.05, -0.08, 1.0).normalized()  # upright, a little forward and out
 
 
 def anduril():
+    with bone('hand_r'):
+        point, edge = blade()
+    arm('right', R_SHOULDER, R_ELBOW, R_WRIST, R_FIST, SWORD)
+    # Held by the grip in his fist, its point up the blade and an edge out to his right.
+    hold('r', R_FIST, point, point + 0.1 * edge)
+
+
+def blade():
+    """Builds Andúril and returns its point and the way one edge faces."""
     along = SWORD
     across = along.cross(V(0, 1, 0)).normalized()  # the edges, out to the sides
     thick = across.cross(along)  # the flats face forward and back
@@ -410,8 +496,7 @@ def anduril():
     # The cross-guard on top of his fist. The grip and pommel would be hidden in his fist and wrist,
     # since he holds the sword up along his forearm, so they are left out.
     box('guard', guard, [along, across, thick], (0.017, 0.112, 0.022), M['trim'], 0.8)
-
-    arm('right', R_SHOULDER, R_ELBOW, R_WRIST, R_FIST, along)
+    return guard + 0.64 * along, across
 
 
 # The standard of the White Tree, in his left hand --------------------------------------------------
@@ -426,6 +511,15 @@ FLAG_Y = POLE.y - 0.028
 
 
 def standard():
+    with bone('hand_l'):
+        banner()
+    arm('left', L_SHOULDER, L_ELBOW, L_WRIST, L_FIST, V(0, 0, 1))
+    # Held by the grip in his fist, up the pole to its top, the banner's face to the front.
+    top = POLE + V(0, 0, POLE_TOP)
+    hold('l', L_FIST, top, top + V(0, -0.1, 0))
+
+
+def banner():
     tube('pole', POLE, POLE + V(0, 0, POLE_TOP), [(0, 0.021), (1, 0.018)], M['wood'])
     # A silver spear-point on the top.
     top = POLE + V(0, 0, POLE_TOP)
@@ -447,21 +541,46 @@ def standard():
         points = tree_points(lambda u, v, y=FLAG_Y + lift: V(POLE.x + 0.21 * u, y, 1.5 + 0.27 * v))
         flat(name, points, TREE_FACES, M['mithril'], normal)
 
-    arm('left', L_SHOULDER, L_ELBOW, L_WRIST, L_FIST, V(0, 0, 1))
+
+# His clips (../clips.py), fitted to the long blade and the standard he holds, and kept in his hex
+# between frames too (between). The rally's sword is already turned down and out on the frame before
+# its blow (lead), so the long blade turns less in the frame it comes down in. On the frame before
+# each blow his elbow leads the blade forward and down (elbow) rather than staying up by his head, and
+# his chop's blade is already turned further down there (early), so his arm doesn't swing the sword
+# round out of his hex between that frame and the blow; the chop's sword is lifted back a frame later
+# (slow), so it doesn't swing out past level ahead between frames as it comes up.
+CLIPS = fit({
+    'idle': ('ready', {}),
+    'move': ('run', {'heavy': 0.3, 'lean': 10.0}),
+    'attack': ('chop', {'steep': 22.0, 'out': 40.0, 'elbow': 0.75, 'early': 15.0, 'slow': 1}),
+    'cast': ('rally', {'steep': 22.0, 'out': 40.0, 'lead': 1.0, 'elbow': 0.25}),
+    'stun': ('dazed', {'low': 1.0}),
+    'death': ('knees', {}),
+    'victory': ('raise', {}),
+}, pole='l', between=True)
 
 
-def main():
+def build(spaulders=None):
+    """Makes him in a fresh scene, every part bound to its bone and his joints marked, and returns
+    the rig to finish() him with. His 2★ model (aragorn-2.py) passes its spaulders as `spaulders`, a
+    function that makes them on his upper arms, once his arms are made."""
     reset()
     make_materials()
     legs()
     torso()
     head()
-    hair()
     mantle()
     cloak()
     anduril()
     standard()
-    finish('aragorn')
+    if spaulders is not None:
+        spaulders()
+    return Rig(bones={'cape': ('spine', 'cape_top', 'cape_hem')}, clips=CLIPS)
 
 
-main()
+def main():
+    finish('aragorn', rig=build())
+
+
+if __name__ == '__main__':
+    main()

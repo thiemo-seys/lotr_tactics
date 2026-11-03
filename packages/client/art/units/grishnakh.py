@@ -12,9 +12,19 @@ ragged hood, drawn to a point and pierced by his ears, and the short ragged cape
 and hump, seen from in front, from behind and from above; from behind, his ears, his arms and both
 blades show round it, and his jerkin and belt below it.
 
+He is rigged as Gorbag, the Orcs' reference (gorbag.py, ../rig.py), with the Orcs' idle and run: a
+restless low crouch and a low, scuttling run, both blades swinging. He stabs with the long knife,
+driven straight out from his hip; his cast (Sneak) is a lunging stab with his whole crooked body
+behind it, as he darts in on the weakest. Stunned, he sways and his blades droop; falling, he drops
+to his knees and the knife falls in front of him; winning, he brandishes it. His legs and arms are
+each one bent tube as they were built, now in two pieces that overlap at the knee and the elbow, the
+upper a little wider past the joint and the lower starting inside it, so they bend without a gap
+and cost no triangles; his body bends at the belt.
+
 His fittings, the blades' cross-guards and pommels, the belt buckle and the studs on the back of his
 belt and jerkin, use `trim`, which the client colours iron, silver or gold by star level
-(docs/viewer-spec.md section 4, "Star levels"). His 2★ model is grishnakh-2.py and his 3★ model
+(docs/viewer-spec.md section 4, "Star levels"). His 2★ model is grishnakh-2.py, which imports this
+script and builds him with its bandolier of knives slung over his cape (build()), and his 3★ model
 grishnakh-3.py.
 
     blender --background --factory-startup --python-exit-code 1 --python grishnakh.py [-- <out.glb>]
@@ -37,7 +47,7 @@ from kit import (  # noqa: E402
     LEATHER,
     STEEL,
     V,
-    bent_tube,
+    bone,
     box,
     cone,
     ellipse,
@@ -47,6 +57,7 @@ from kit import (  # noqa: E402
     nearest_on_polyline,
     on_surface,
     part,
+    path_rings,
     reset,
     segment,
     team_material,
@@ -54,6 +65,8 @@ from kit import (  # noqa: E402
     tube,
     wind,
 )
+from clips import fit  # noqa: E402
+from rig import Rig, hold, joint  # noqa: E402
 
 # Grishnákh's own colours (sRGB); the rest come from the kit. His skin, iron and bone are his
 # people's, as Gorbag has them.
@@ -117,6 +130,25 @@ def hunch(objects):
             v.co = hunched(v.co)
 
 
+def jointed(name, points, radii, mats, band_mats, bones, at=1, overlap=0.025, grow=1.08, shrink=0.94):
+    """A bent tube as bent_tube() builds it along `points`, open at both ends, but in two pieces on two
+    bones that overlap where it bends, at ring `at`: the upper piece reaches `overlap` past that ring,
+    a little wider (`grow`), and the lower starts `overlap` before it, a little narrower (`shrink`),
+    inside it. So the joint bends without a gap, and the pieces have as many bands as the tube had."""
+    points = [Vector(p) for p in points]
+    rings = path_rings(points, radii, 6)
+    line = nearest_on_polyline(points)
+    c = points[at]
+    ahead, behind = (points[at + 1] - c).normalized(), (c - points[at - 1]).normalized()
+    upper = rings[:at] + [[c + overlap * ahead + grow * (p - c) for p in rings[at]]]
+    lower = [[c - overlap * behind + shrink * (p - c) for p in rings[at]]] + rings[at + 1:]
+    for bone_name, piece, first in ((bones[0], upper, 0), (bones[1], lower, at)):
+        verts, faces, bands = loft(piece)
+        with bone(bone_name):
+            part(f'{name}-{bone_name}', verts, wind(verts, faces, inside=line), mats,
+                 [band_mats[first + b] for b in bands])
+
+
 def bend(root, end, upper, lower, pole):
     """The middle joint of a limb from root to end, its bones upper and lower long, bent towards pole."""
     root, end, pole = Vector(root), Vector(end), Vector(pole)
@@ -157,17 +189,26 @@ def boot(name, ankle, yaw):
 def legs():
     for side, hip, knee, ankle, yaw in (('right', R_HIP, R_KNEE, R_ANKLE, R_YAW),
                                         ('left', L_HIP, L_KNEE, L_ANKLE, L_YAW)):
-        # One bent tube from inside the hips through the knee into the boot, so the knee has no seam:
-        # breeches on the thigh, the bare shin below.
+        s = side[0]
+        # One bent tube from inside the hips through the knee into the boot, breeches on the thigh and
+        # the bare shin below, in two pieces that overlap at the knee.
         top, bottom = hip + 0.1 * (hip - knee), ankle + 0.3 * (ankle - knee)
-        bent_tube(f'leg-{side}', [top, knee, bottom], [0.1, 0.074, 0.056], [M['cloth'], M['skin']], [0, 1])
-        boot(f'boot-{side}', ankle, yaw)
-        # A crude iron cop over the knee, which hides the joint: it points out of the bend, and forward.
+        jointed(f'leg-{side}', [top, knee, bottom], [0.1, 0.074, 0.056], [M['cloth'], M['skin']], [0, 1],
+                (f'thigh_{s}', f'shin_{s}'))
+        with bone(f'foot_{s}'):
+            boot(f'boot-{side}', ankle, yaw)
+        # A crude iron cop over the knee, which hides the joint: it points out of the bend, and forward,
+        # and goes with the shin as a knee-cap does.
         forward = knee - (hip + ankle) / 2
         forward = V(forward.x, forward.y - 0.08, 0).normalized()
         base = segment(knee, knee + forward, [(0, 0.066)], 4, 45)[0]
         verts = base + [knee + 0.095 * forward + V(0, 0, 0.01)]
-        part(f'knee-{side}', verts, [(i, (i + 1) % 4, 4) for i in range(4)], M['iron'], inside=knee)
+        with bone(f'shin_{s}'):
+            part(f'knee-{side}', verts, [(i, (i + 1) % 4, 4) for i in range(4)], M['iron'], inside=knee)
+        joint(f'hip_{s}', hip)
+        joint(f'knee_{s}', knee)
+        joint(f'ankle_{s}', ankle)
+        joint(f'toe_{s}', V(ankle.x, ankle.y, 0) + Matrix.Rotation(math.radians(yaw), 3, 'Z') @ V(0, -0.15, 0.03))
 
 
 # Body --------------------------------------------------------------------------------------------
@@ -184,16 +225,30 @@ TORSO = [
 ]
 TORSO_BANDS = [0, 1, 2, 2, 2]  # breeches, belt, jerkin
 NECK = V(0, 0.01, 0.87)
+# It is in two pieces, which bend at the belt: the breeches and the belt on his hips, and the jerkin on
+# his spine from a ring inside the belt (the waist) up, in as many bands as it had.
+INSIDE_BELT = (0.46, 0.188, 0.142, 0.03)
 
 
 def torso():
     rings = [ellipse(0, cy, z, rx, ry, 8, 22.5) for z, rx, ry, cy in TORSO]
-    verts, faces, bands = loft(rings)
-    face_mats = [TORSO_BANDS[b] for b in bands]
-    faces.append(tuple(range(len(verts) - 8, len(verts))))  # the top of the neck
-    face_mats.append(3)
     mats = [M['cloth'], M['leather'], M['tunic'], M['skin']]
-    part('torso', verts, faces, mats, face_mats, inside=lambda c: V(0, 0.03, min(max(c.z, 0.4), 0.85)))
+
+    def inside(c):
+        return V(0, 0.03, min(max(c.z, 0.4), 0.85))
+
+    with bone('hips'):
+        verts, faces, bands = loft(rings[:3])
+        part('breeches', verts, faces, mats, [TORSO_BANDS[b] for b in bands], inside=inside)
+    z, rx, ry, cy = INSIDE_BELT
+    with bone('spine'):
+        verts, faces, _ = loft([ellipse(0, cy, z, rx, ry, 8, 22.5)] + rings[3:])
+        face_mats = [2] * len(faces)
+        faces.append(tuple(range(len(verts) - 8, len(verts))))  # the top of the neck
+        face_mats.append(3)
+        part('jerkin', verts, faces, mats, face_mats, inside=inside)
+    joint('pelvis', PIVOT)
+    joint('waist', V(0, cy, z))
 
 
 def on_torso(degrees, z):
@@ -227,12 +282,14 @@ def stud(name, degrees, z, size=0.017):
 def fittings():
     """The belt buckle in front, and studs on the back of his belt and of his jerkin below the cape,
     where they show from behind between its rags."""
-    at, out = on_torso(270, 0.46)
-    box('buckle', at + 0.006 * out, [out, V(1, 0, 0), V(0, 0, 1)], (0.01, 0.045, 0.036), M['trim'], 0.7)
-    for degrees in (45, 90, 135):
-        stud(f'belt-stud-{degrees}', degrees, 0.46)
-    for degrees in (67.5, 112.5):
-        stud(f'jerkin-stud-{degrees}', degrees, 0.56)
+    with bone('hips'):  # on the belt, which bends with the breeches
+        at, out = on_torso(270, 0.46)
+        box('buckle', at + 0.006 * out, [out, V(1, 0, 0), V(0, 0, 1)], (0.01, 0.045, 0.036), M['trim'], 0.7)
+        for degrees in (45, 90, 135):
+            stud(f'belt-stud-{degrees}', degrees, 0.46)
+    with bone('spine'):  # on the jerkin above it
+        for degrees in (67.5, 112.5):
+            stud(f'jerkin-stud-{degrees}', degrees, 0.56)
 
 
 # The cape over his hump: a ragged mantle round his neck and over his shoulders and the top of the hump,
@@ -256,7 +313,8 @@ def cape():
         out = V(mid.x, mid.y - 0.035, 0).normalized()
         verts.append(mid + 0.012 * out - V(0, 0, drop))
         faces.append((i, (i + 1) % n, len(verts) - 1))
-    part('cape', verts, faces, M['team'], inside=lambda c: V(0, 0.035, min(c.z, 0.8) - 0.12))
+    with bone('spine'):
+        part('cape', verts, faces, M['team'], inside=lambda c: V(0, 0.035, min(c.z, 0.8) - 0.12))
 
 
 # Head ----------------------------------------------------------------------------------------------
@@ -283,6 +341,14 @@ def h(x, y, z):
 
 
 def head():
+    with bone('head'):
+        features()
+        hood()
+    joint('neck', h(0, 0.065, 0.03))  # at the back of his jaw, on the end of his neck
+    joint('crown', h(*CROWN))
+
+
+def features():
     rings = []
     for z, side, corner, back, front_corner, front in SKULL:
         ring = [side, corner, (0, back), (-corner[0], corner[1]), (-side[0], side[1]),
@@ -393,18 +459,26 @@ L_FIST, L_BLADE, L_EDGE = V(0.44, -0.12, 0.19), V(0.65, -0.72, 0.25), V(-0.5, 0,
 def arm(side, shoulder, fist, pole, fist_up):
     """An arm from the shoulder to a fist at `fist`, its elbow bent towards `pole`; returns the way the
     fist's grip points."""
+    s = side[0]
     reach = (fist - shoulder).normalized()
     wrist_at = fist - 0.055 * reach
     elbow = bend(shoulder, wrist_at, UPPER_ARM, FOREARM, pole)
     ahead = (fist - elbow).normalized()
     wrist = fist - 0.05 * ahead
-    # One bent tube from inside the shoulder through the elbow into the fist, so the elbow has no seam:
-    # the bare arm, then an iron bracer from halfway down the forearm, its edge standing proud.
+    # One bent tube from inside the shoulder through the elbow into the fist, the bare arm and then an
+    # iron bracer from halfway down the forearm, its edge standing proud, in two pieces that overlap at
+    # the elbow.
     cuff = elbow.lerp(wrist, 0.45)
     points = [shoulder, elbow, cuff, cuff + 0.012 * ahead, wrist]
-    bent_tube(f'arm-{side}', points, [0.078, 0.064, 0.058, 0.072, 0.066], [M['skin'], M['iron']], [0, 0, 1, 1])
+    jointed(f'arm-{side}', points, [0.078, 0.064, 0.058, 0.072, 0.066], [M['skin'], M['iron']], [0, 0, 1, 1],
+            (f'upper_arm_{s}', f'forearm_{s}'))
     up = (Vector(fist_up) - Vector(fist_up).dot(ahead) * ahead).normalized()
-    box(f'fist-{side}', fist, [ahead, up, ahead.cross(up)], (0.056, 0.062, 0.062), M['skin'], 0.85)
+    with bone(f'hand_{s}'):
+        box(f'fist-{side}', fist, [ahead, up, ahead.cross(up)], (0.056, 0.062, 0.062), M['skin'], 0.85)
+    joint(f'shoulder_{s}', shoulder)
+    joint(f'elbow_{s}', elbow)
+    joint(f'wrist_{s}', wrist)
+    joint(f'fist_{s}', fist)
     return up
 
 
@@ -439,6 +513,7 @@ def blade(name, root, along, edge, stations, tip, curve=0.0):
     box(f'{name}-guard', root - 0.008 * along, [along, edge, flat], (0.012, 0.05, 0.024), M['trim'])
     tube(f'{name}-grip', root - 0.15 * along, root, [(0, 0.022), (1, 0.022)], M['leather'], n=5)
     cone(f'{name}-pommel', root - 0.14 * along, root - 0.19 * along, 0.03, M['trim'], n=5, back=root - 0.12 * along)
+    return centre(tip[0], tip[1]), edge
 
 
 # The long knife, straight and broad, its point clipped back to the spine; the dagger, curving up.
@@ -458,10 +533,30 @@ def arms():
         shoulder = hunched(V(sign * 0.25, 0.04, 0.72))
         pole = shoulder + V(sign * 0.35, 0.15, -0.15)
         grip = arm(side, shoulder, fist, pole, aim.normalized())
-        blade(f'blade-{side}', fist + 0.065 * grip, grip, edge, stations, tip, curve)
+        with bone(f'hand_{side[0]}'):
+            point, toward = blade(f'blade-{side}', fist + 0.065 * grip, grip, edge, stations, tip, curve)
+        # Held by the grip in his fist, its point along the blade and its edge turned down and out.
+        hold(side[0], fist, point, point + 0.1 * toward)
 
 
-def main():
+# His clips (../clips.py): the Orcs' idle and run, as Gorbag's (gorbag.py), both blades swinging as he
+# scuttles; a stab of the long knife, driven out from his hip, and for his cast (Sneak) a lunging stab
+# with his whole crooked body behind it.
+CLIPS = fit({
+    'idle': ('ready', {'seconds': 2.0, 'crouch': 0.06}),
+    'move': ('run', {'seconds': 0.43, 'heavy': 0.7, 'stride': 0.3, 'lift': 0.25, 'lean': 6.0, 'carry': 'pump'}),
+    'attack': ('thrust', {'out': 20.0, 'wide': 0.2}),
+    'cast': ('lunge', {'reach': 0.6, 'rise': 30.0, 'wide': 0.4}),
+    'stun': ('dazed', {}),
+    'death': ('knees', {'lay': 0.12}),
+    'victory': ('raise', {'out': 0.4}),
+})
+
+
+def build(bandolier=None):
+    """Makes him in a fresh scene, every part bound to its bone and his joints marked, and returns
+    the rig to finish() him with. His 2★ model (grishnakh-2.py) passes its bandolier as `bandolier`,
+    a function that makes it on his upright body over the cape, before he hunches."""
     reset()
     make_materials()
     legs()
@@ -469,17 +564,23 @@ def main():
     torso()
     fittings()
     cape()
+    if bandolier is not None:
+        bandolier()
     hunch(new_objects(before))
     before = set(bpy.context.scene.objects)
     head()
-    hood()
     # Built upright, then tipped back on his neck so that he peers up from his crouch.
     pivot = HEAD + V(0, 0.1, 0.05)
     tilt = Matrix.Translation(pivot) @ Matrix.Rotation(math.radians(-HEAD_TILT), 4, 'X') @ Matrix.Translation(-pivot)
     for obj in new_objects(before):
         obj.data.transform(tilt)
     arms()
-    finish('grishnakh')
+    return Rig(clips=CLIPS)
 
 
-main()
+def main():
+    finish('grishnakh', rig=build())
+
+
+if __name__ == '__main__':
+    main()

@@ -9,11 +9,26 @@ of them rides his back. The team colour is his ragged cowl, which hangs in rags 
 chest, and his loincloth, whose front flap bears the sign of Minas Morgul: a pale moon with a death's
 face.
 
+He is the Orcs' reference rig (../rig.py), which Grishnakh, Ugluk, Lurtz and Gothmog follow: every
+part is bound to the bone it moves with, the stoop is in the rest pose, and his clips come from the
+library (../clips.py), fitted by fit() to the bow he stands drawn with. The Orcs' idle and run are
+his: a restless, low crouch, breathing quick, and a low, scuttling run, the knees well bent and the
+body thrust forward over them. He is an archer at the draw (../README.md): the middle of the string
+and the nocked arrow follow bones of their own, so the string stays in his fingers as he stands and
+runs. He draws to under his chin, so his shot flies his hand out past his shoulder and fetches the
+next arrow over it from the quiver on his back (anchor 'chin'); his cast (Volley) is three arrows
+loosed as fast as he can nock them. Stunned or winning, he lets the string down and keeps the arrow
+in his fingers: dazed, his bow droops; as he wins, he holds it aloft. Falling, he goes down on his
+knees over his bow, held upright in his left hand, and reaches to the ground with his right, as
+Legolas does. His legs bend at the knee where the thigh and shin already met, his arms at the elbow, and
+his body at the belt, where the jerkin now starts inside it, so the rig costs no triangles.
+
 His fittings, the binding of the quiver's mouth and the band round its foot, the belt buckle, the
 bands at the top of his vambraces, the ferrules either side of the bow's grip and the ring that binds
 his scalp-lock, use `trim`, which the client colours iron, silver or gold by star level
-(docs/viewer-spec.md section 4, "Star levels"). His 2★ model is gorbag-2.py and his 3★ model
-gorbag-3.py.
+(docs/viewer-spec.md section 4, "Star levels"). His 2★ model is gorbag-2.py, which imports this
+script and builds him with its orc-helm on his head in place of the scalp-lock (build()), and his 3★
+model gorbag-3.py.
 
     blender --background --factory-startup --python-exit-code 1 --python gorbag.py [-- <out.glb>]
 
@@ -35,6 +50,7 @@ from kit import (  # noqa: E402
     LEATHER,
     WOOD,
     V,
+    bone,
     box,
     ellipse,
     finish,
@@ -48,6 +64,8 @@ from kit import (  # noqa: E402
     trim_material,
     tube,
 )
+from clips import fit  # noqa: E402
+from rig import Rig, hold, joint  # noqa: E402
 
 # Gorbag's own colours (sRGB); the rest come from the kit.
 SKIN = 0x7E7A5A  # sallow, olive-grey
@@ -170,15 +188,25 @@ def boot(name, ankle, yaw):
 def legs():
     for side, hip, knee, ankle, yaw in (('right', R_HIP, R_KNEE, R_ANKLE, R_YAW),
                                         ('left', L_HIP, L_KNEE, L_ANKLE, L_YAW)):
-        tube(f'thigh-{side}', hip, knee, [(-0.1, 0.09), (1.1, 0.072)], M['cloth'])
-        tube(f'shin-{side}', knee, ankle, [(-0.1, 0.064), (1.3, 0.056)], M['skin'])
-        boot(f'boot-{side}', ankle, yaw)
-        # A crude iron cop over the knee, which hides the joint: it points out of the bend, and forward.
-        forward = knee - (hip + ankle) / 2
-        forward = V(forward.x, forward.y - 0.08, 0).normalized()
-        base = segment(knee, knee + forward, [(0, 0.062)], 4, 45)[0]
-        verts = base + [knee + 0.09 * forward + V(0, 0, 0.01)]
-        part(f'knee-{side}', verts, [(i, (i + 1) % 4, 4) for i in range(4)], M['iron'], inside=knee)
+        s = side[0]
+        # The thigh and the shin already overlap at the knee, so the knee bends without a gap.
+        with bone(f'thigh_{s}'):
+            tube(f'thigh-{side}', hip, knee, [(-0.1, 0.09), (1.1, 0.072)], M['cloth'])
+        with bone(f'shin_{s}'):
+            tube(f'shin-{side}', knee, ankle, [(-0.1, 0.064), (1.3, 0.056)], M['skin'])
+            # A crude iron cop over the knee, which hides the joint: it points out of the bend, and
+            # forward, and goes with the shin as a knee-cap does.
+            forward = knee - (hip + ankle) / 2
+            forward = V(forward.x, forward.y - 0.08, 0).normalized()
+            base = segment(knee, knee + forward, [(0, 0.062)], 4, 45)[0]
+            verts = base + [knee + 0.09 * forward + V(0, 0, 0.01)]
+            part(f'knee-{side}', verts, [(i, (i + 1) % 4, 4) for i in range(4)], M['iron'], inside=knee)
+        with bone(f'foot_{s}'):
+            boot(f'boot-{side}', ankle, yaw)
+        joint(f'hip_{s}', hip)
+        joint(f'knee_{s}', knee)
+        joint(f'ankle_{s}', ankle)
+        joint(f'toe_{s}', V(ankle.x, ankle.y, 0) + Matrix.Rotation(math.radians(yaw), 3, 'Z') @ V(0, -0.14, 0.03))
 
 
 # Body --------------------------------------------------------------------------------------------
@@ -193,16 +221,30 @@ TORSO = [
     (0.94, 0.14, 0.125, 0.01),  # neck
 ]
 TORSO_BANDS = [0, 1, 2, 2, 2]  # breeches, belt, leather jerkin
+# It is in two pieces, which bend at the belt: the breeches and the belt on his hips, and the jerkin on
+# his spine from a ring inside the belt (the waist) up, in as many bands as it had.
+INSIDE_BELT = (0.49, 0.172, 0.134, 0.03)
 
 
 def torso():
     rings = [ellipse(0, cy, z, rx, ry, 8, 22.5) for z, rx, ry, cy in TORSO]
-    verts, faces, bands = loft(rings)
-    face_mats = [TORSO_BANDS[b] for b in bands]
-    faces.append(tuple(range(len(verts) - 8, len(verts))))  # the top of the neck
-    face_mats.append(3)
     mats = [M['cloth'], M['boots'], M['leather'], M['skin']]
-    part('torso', verts, faces, mats, face_mats, inside=lambda c: V(0, 0.03, min(max(c.z, 0.4), 0.9)))
+
+    def inside(c):
+        return V(0, 0.03, min(max(c.z, 0.4), 0.9))
+
+    with bone('hips'):
+        verts, faces, bands = loft(rings[:3])
+        part('breeches', verts, faces, mats, [TORSO_BANDS[b] for b in bands], inside=inside)
+    z, rx, ry, cy = INSIDE_BELT
+    with bone('spine'):
+        verts, faces, bands = loft([ellipse(0, cy, z, rx, ry, 8, 22.5)] + rings[3:])
+        face_mats = [2] * len(faces)
+        faces.append(tuple(range(len(verts) - 8, len(verts))))  # the top of the neck
+        face_mats.append(3)
+        part('jerkin', verts, faces, mats, face_mats, inside=inside)
+    joint('pelvis', PIVOT)
+    joint('waist', V(0, cy, z))
 
 
 def cowl():
@@ -283,6 +325,9 @@ def h(x, y, z):
     return HEAD + HEAD_SCALE * V(x, y, z)
 
 
+NECK = V(0, 0.065, 0.01)  # where his head turns on his bull neck, from HEAD: at the back of the jaw
+
+
 def lock_ring(root, tip):
     """The metal ring that binds a scalp-lock, from its four root points to its tip, near the root."""
     middle = sum(root, Vector()) / len(root)
@@ -297,8 +342,28 @@ def lock_ring(root, tip):
 LOCK_RING = (0.12, 0.3)  # where the ring starts and ends, from the root of the lock to its tip
 
 
-def head():
+def head(helm=None):
     before = set(bpy.context.scene.objects)
+    with bone('head'):
+        features(helm)
+    joint('neck', HEAD + NECK)
+    joint('crown', h(*CROWN))
+    # Built square to his body, then turned on his neck to look along the arrow.
+    turn = Matrix.Rotation(math.radians(HEAD_YAW), 4, 'Z')
+    turn = Matrix.Translation(HEAD) @ turn @ Matrix.Translation(-HEAD)
+    for obj in new_objects(before):
+        obj.data.transform(turn)
+
+
+def scalp_lock():
+    """A scalp-lock on his crown, bound at the root and swept back."""
+    root = [h(0.035, 0.0, 0.27), h(0, 0.06, 0.265), h(-0.035, 0.0, 0.27), h(0, -0.045, 0.265)]
+    verts = root + [h(0, 0.21, 0.36)]
+    part('scalp-lock', verts, [(i, (i + 1) % 4, 4) for i in range(4)], M['hair'], inside=h(0, 0.02, 0.25))
+    lock_ring(root, verts[4])
+
+
+def features(helm=None):
     rings = []
     for z, side, corner, back, front_corner, front in SKULL:
         ring = [side, corner, (0, back), (-corner[0], corner[1]), (-side[0], side[1]),
@@ -316,11 +381,9 @@ def head():
     face_mats.append(0)
     part('skull', verts, faces, [M['skin'], M['hair']], face_mats, inside=h(0, -0.03, 0.14))
 
-    # A scalp-lock on his crown, bound at the root and swept back.
-    root = [h(0.035, 0.0, 0.27), h(0, 0.06, 0.265), h(-0.035, 0.0, 0.27), h(0, -0.045, 0.265)]
-    verts = root + [h(0, 0.21, 0.36)]
-    part('scalp-lock', verts, [(i, (i + 1) % 4, 4) for i in range(4)], M['hair'], inside=h(0, 0.02, 0.25))
-    lock_ring(root, verts[4])
+    # His scalp-lock, or what his 2★ model wears on his head in its place (`helm`), with the lock coming
+    # out through its crown; the crown joint is where it is either way, so the rig is the same.
+    (helm or scalp_lock)()
 
     def front(band):
         tris = []
@@ -378,12 +441,6 @@ def head():
                  h(s * 0.33, 0.1, 0.31)]
         part(f'ear-{s}', verts, [(0, 2, 3), (2, 1, 3), (1, 0, 3)], M['skin'], inside=h(s * 0.1, 0.02, 0.15))
 
-    # Built square to his body, then turned on his neck to look along the arrow.
-    turn = Matrix.Rotation(math.radians(HEAD_YAW), 4, 'Z')
-    turn = Matrix.Translation(HEAD) @ turn @ Matrix.Translation(-HEAD)
-    for obj in new_objects(before):
-        obj.data.transform(turn)
-
 
 # Loincloth, hanging from the belt -------------------------------------------------------------------
 
@@ -393,6 +450,11 @@ FLAP_KNEE, FLAP_OUT = 0.34, 0.03  # the height where the flaps fall straight, an
 
 
 def loincloth():
+    with bone('hips'):
+        flaps()
+
+
+def flaps():
     # Front and back flaps, each a sheet of three columns with a ragged hem.
     columns = (-0.125, -0.042, 0.042, 0.125)
     hems = {'front': (0.17, 0.225, 0.16, 0.215), 'back': (0.24, 0.2, 0.25, 0.21)}
@@ -422,11 +484,12 @@ def loincloth():
 
 
 def belt_buckle():
-    # A crude square buckle on the front of the belt, over the top of the front flap. The belt leans
-    # forward with his body, so the buckle faces a little down.
+    # A crude square buckle on the front of the belt, over the top of the front flap, on his hips with
+    # the belt. The belt leans forward with his body, so the buckle faces a little down.
     out = V(0, -1, -0.17).normalized()
     up = V(0, -0.17, 1).normalized()
-    box('buckle', BUCKLE, [out, V(1, 0, 0), up], (0.014, 0.034, 0.028), M['trim'], 0.75)
+    with bone('hips'):
+        box('buckle', BUCKLE, [out, V(1, 0, 0), up], (0.014, 0.034, 0.028), M['trim'], 0.75)
 
 
 BUCKLE = V(0, -0.15, 0.478)  # the middle of the buckle
@@ -475,7 +538,28 @@ def grip():
     return NOCK + DRAW * aim - REST * up
 
 
+# The string's middle, at the nock, follows a bone of its own (`string`), from the nock at full draw to
+# where it rests let down (LOOSE), on the straight line between where the string leaves the limbs; the
+# nocked arrow follows another (`arrow`) on it. The bow's clips (../clips.py, Bow) let the string down,
+# put a loosed arrow away in the quiver and draw a fresh one from it.
+STRING_END = STAVE[3][1] - STAVE[3][2]  # how far back along the arrow the string leaves each limb
+
+
 def bow():
+    aim, up, _ = bow_axes()
+    with bone('hand_l', follows=lambda p: 'string' if (p - NOCK).length < 0.02 else None):
+        stave()
+    with bone('arrow'):
+        point = nocked()
+    top = grip() + BOW_SCALE * (STAVE[3][0] * up + STRING_END * aim)  # where the string leaves the upper limb
+    hold('l', grip(), top, grip() + aim)
+    joint('nock', NOCK)
+    joint('loose', grip() + REST * up + BOW_SCALE * STRING_END * aim)
+    joint('arrow_point', point)
+
+
+def stave():
+    """Builds the bow and its string."""
     aim, up, side = bow_axes()
     middle = grip()
 
@@ -520,7 +604,10 @@ def bow():
     for name, end in (('upper', at(u, w - t)), ('lower', at(-u, w - t))):
         tube(f'string-{name}', end, NOCK, [(0, 0.006), (1, 0.006)], M['horn'], n=3)
 
-    # The arrow: a shaft, a black-feathered end and a crude iron head.
+
+def nocked():
+    """The arrow: a shaft, a black-feathered end and a crude iron head. Returns its point."""
+    aim, up, side = bow_axes()
     head = NOCK + (DRAW + 0.12) * aim
     tube('arrow', NOCK - 0.01 * aim, head, [(0, 0.009), (1, 0.009)], M['wood'], n=3)
     ring = [head + 0.026 * side, head + 0.012 * up, head - 0.026 * side, head - 0.012 * up]
@@ -532,6 +619,7 @@ def bow():
         verts = [a, b, b + 0.03 * across - 0.01 * aim, a + 0.032 * across, b - 0.03 * across - 0.01 * aim,
                  a - 0.032 * across]
         part(f'feather-{k}', verts, [(0, 1, 2, 3), (0, 5, 4, 1)], M['feathers'])
+    return head + 0.075 * aim
 
 
 UPPER_ARM, FOREARM = 0.27, 0.28  # long arms, as orcs have
@@ -543,13 +631,22 @@ def arm(side, shoulder, fist, pole, fist_up):
     wrist_at = fist - 0.05 * reach
     elbow = bend(shoulder, wrist_at, UPPER_ARM, FOREARM, pole)
     wrist = fist - 0.05 * (fist - elbow).normalized()
-    tube(f'upper-arm-{side}', shoulder, elbow, [(-0.1, 0.072), (1.08, 0.06)], M['skin'])
-    tube(f'forearm-{side}', elbow, wrist, [(-0.12, 0.058), (0.4, 0.066), (1.0, 0.06)],
-         [M['skin'], M['iron']], [0, 1])
-    tube(f'vambrace-band-{side}', elbow, wrist, [(0.4, 0.073), (0.52, 0.072)], M['trim'])
+    s = side[0]
+    # The upper arm and the forearm already overlap at the elbow, so it bends without a gap.
+    with bone(f'upper_arm_{s}'):
+        tube(f'upper-arm-{side}', shoulder, elbow, [(-0.1, 0.072), (1.08, 0.06)], M['skin'])
+    with bone(f'forearm_{s}'):
+        tube(f'forearm-{side}', elbow, wrist, [(-0.12, 0.058), (0.4, 0.066), (1.0, 0.06)],
+             [M['skin'], M['iron']], [0, 1])
+        tube(f'vambrace-band-{side}', elbow, wrist, [(0.4, 0.073), (0.52, 0.072)], M['trim'])
     ahead = (fist - elbow).normalized()
     up = (Vector(fist_up) - Vector(fist_up).dot(ahead) * ahead).normalized()
-    box(f'fist-{side}', fist, [ahead, up, ahead.cross(up)], (0.046, 0.05, 0.05), M['skin'], 0.85)
+    with bone(f'hand_{s}'):
+        box(f'fist-{side}', fist, [ahead, up, ahead.cross(up)], (0.046, 0.05, 0.05), M['skin'], 0.85)
+    joint(f'shoulder_{s}', shoulder)
+    joint(f'elbow_{s}', elbow)
+    joint(f'wrist_{s}', wrist)
+    joint(f'fist_{s}', fist)
 
 
 def arms():
@@ -561,21 +658,55 @@ def arms():
     arm('right', right, NOCK - 0.02 * aim - 0.03 * up, right + V(-0.3, 0.12, 0.05), up)
 
 
-def main():
+# His clips (../clips.py), the Orcs' idle and run with the bow kept drawn: a restless low crouch,
+# breathing quick, and a low, scuttling run. His shot looses from the draw under his chin, so his hand
+# flies out past his shoulder and fetches the next arrow from his back well out from his head
+# (anchor 'chin'); his cast is a volley of three arrows, the hand snapping out and down to his side
+# from each, low enough that it comes back to the string under his jutting jaw rather than through it.
+# Stunned, the bow droops halfway to his hip; as he wins, he holds it aloft.
+CLIPS = fit({
+    'idle': ('ready', {'hand': 'l', 'seconds': 2.0, 'crouch': 0.06}),
+    'move': ('run', {'hand': 'l', 'seconds': 0.43, 'heavy': 0.7, 'stride': 0.3, 'lift': 0.25, 'lean': 6.0,
+                     'carry': 'steady'}),
+    'attack': ('shot', {'drawn': True, 'anchor': 'chin', 'snap': (0.16, -0.04, 0.0), 'point': 35.0, 'gather': 0.3,
+                        'wide': 0.6}),
+    'cast': ('flurry', {'seconds': 0.7, 'shots': 3, 'every': 4, 'deeper': 0.1, 'snap': (0.14, -0.02, -0.03),
+                        'point': 35.0}),
+    'stun': ('dazed', {'hand': 'l', 'low': 0.45, 'droop': 0.8}),
+    'death': ('knees', {'hand': 'r', 'slump': 0.7}),
+    'victory': ('aloft', {}),
+}, bow='l', between=True)
+BONES = {'string': ('hand_l', 'nock', 'loose'), 'arrow': ('hand_l', 'nock', 'arrow_point')}
+
+
+def build(helm=None):
+    """Makes him in a fresh scene, every part bound to its bone and his joints marked, and returns
+    the rig to finish() him with. His 2★ model (gorbag-2.py) passes its orc-helm as `helm`, a function
+    that makes it, which he wears on his head in place of the scalp-lock, bound to his head as the
+    lock is, before the head turns on his neck."""
     reset()
     make_materials()
     legs()
     before = set(bpy.context.scene.objects)
     torso()
-    cowl()
-    quiver()
+    with bone('spine'):
+        cowl()
+        quiver()
+    # Where a fresh arrow is drawn from, and a loosed one put away (../clips.py, Bow).
+    joint('quiver_mouth', QUIVER_TOP)
+    joint('quiver_foot', QUIVER_BOTTOM)
     hunch(new_objects(before))
-    head()
+    head(helm)
     loincloth()
     belt_buckle()
     bow()
     arms()
-    finish('gorbag')
+    return Rig(bones=BONES, clips=CLIPS)
 
 
-main()
+def main():
+    finish('gorbag', rig=build())
+
+
+if __name__ == '__main__':
+    main()

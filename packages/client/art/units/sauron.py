@@ -8,11 +8,23 @@ breastplate and on his cape, the four-fingered Black Hand raised open at his sho
 flanged mace held upright in the other. The team colour is his great cape, which carries the Eye on
 its back, and the long tabard down his front.
 
+He is rigged (../rig.py) as a Large unit, robed to the ground as the Ringwraith is (ringwraith.py): the
+breastplate on the spine, from inside the belt; the belt, the tassets and the robe on the hips, down
+inside the robe below the knees; and the robe below the knees, with the foot of the tabard, on a bone
+of its own, `robe`, which hangs plumb under him, twists after his knees as he strides and rests on the
+ground as he sinks into it (../clips.py, robed()). His legs are hidden, but his sabatons step out under
+the hem. His great cape hangs from his shoulders on a bone of its own, `cape`, and swings less than a
+short one, never in under him nor out of his hex (draped()). He strikes overhand with the mace, sweeps
+it round in a great level arc for his cast (Sweep), and holds it high as he wins.
+
 His fittings use `trim`, which the client colours iron, silver or gold by star level
 (docs/viewer-spec.md section 4, "Star levels"): the stepped edges and rivets of his pauldrons, the
 two clasps that pin his cape to his back, the belt buckle, and the mace's collar, socket and pommel.
-The crown's band stays gold, for it is a crown and not a fitting. His 2★ model is sauron-2.py and his
-3★ model sauron-3.py.
+The crown's band stays gold, for it is a crown and not a fitting. The right pauldron has no rivet at
+the front of its outer side, where the mace comes down past it as he smashes: there, it would keep the
+blow from being drawn into his hex between frames. His 2★ model is sauron-2.py, which imports this
+script and builds him with its haute-pieces standing up from his pauldrons (build()), and his 3★
+model sauron-3.py.
 
     blender --background --factory-startup --python-exit-code 1 --python sauron.py [-- <out.glb>]
 
@@ -33,6 +45,7 @@ from kit import (  # noqa: E402
     LARGE_BUDGET,
     LEATHER,
     V,
+    bone,
     box,
     ellipse,
     finish,
@@ -50,6 +63,8 @@ from kit import (  # noqa: E402
     tube,
     wind,
 )
+from clips import draped, fit, robed  # noqa: E402
+from rig import Rig, hold, joint  # noqa: E402
 
 # Sauron's own colours (sRGB); the rest come from the kit. The iron is a dark grey rather than black,
 # so its facets still show, and the ember of the Eye is a pale gold, never red or orange, which would
@@ -128,50 +143,83 @@ SABATON = [
 ]
 
 
-def sabaton(name, at, yaw):
+# His legs are hidden under the robe: only their joints are marked, the hip, the knee a little forward
+# of the line from it to the ankle, so it bends forward, and the ankle over the back of the sabaton.
+HIP_Z, KNEE_Z, ANKLE_Z = 0.9, 0.5, 0.1
+
+
+def sabaton(side, at, yaw):
+    s = side[0]
     turn = Matrix.Rotation(math.radians(yaw), 3, 'Z')
-    outlines = [(z, [side, heel, (-heel[0], heel[1]), (-side[0], side[1]), (-toe[0], toe[1]), toe])
-                for z, (side, heel, toe) in SABATON]
+    outlines = [(z, [side_, heel, (-heel[0], heel[1]), (-side_[0], side_[1]), (-toe[0], toe[1]), toe])
+                for z, (side_, heel, toe) in SABATON]
     rings = [[at + turn @ V(x, y, z) for x, y in ring] for z, ring in outlines]
     verts, faces, _ = loft(rings)
-    part(name, verts, faces, M['iron'], inside=at + V(0, 0, 0.06))
+    with bone(f'foot_{s}'):
+        part(f'sabaton-{side}', verts, faces, M['iron'], inside=at + V(0, 0, 0.06))
+    ankle = at + turn @ V(0, 0.03, ANKLE_Z)
+    hip = V(0.12 if s == 'l' else -0.12, 0.0, HIP_Z)
+    joint(f'hip_{s}', hip)
+    joint(f'knee_{s}', hip.lerp(ankle, (HIP_Z - KNEE_Z) / (HIP_Z - ANKLE_Z)) + V(0, -0.04, 0))
+    joint(f'ankle_{s}', ankle)
+    joint(f'toe_{s}', at + turn @ V(0, -0.2, 0.02))
 
 
 # The robe from the hem to the waist, twelve facets round with a pleat at every other point: z,
 # half-width, half-depth, centre y and the depth of the pleats.
 ROBE_RINGS = [
-    (0.0, 0.46, 0.4, 0.03, 0.035),
-    (0.38, 0.385, 0.325, 0.025, 0.025),
+    (0.05, 0.455, 0.395, 0.03, 0.035),  # the hem, a little off the ground, so the sabatons show
+    (0.38, 0.385, 0.325, 0.025, 0.025),  # the knees
     (0.76, 0.305, 0.25, 0.012, 0.012),
     (1.0, 0.238, 0.18, 0.0, 0.0),
 ]
 ROBE_FRONT = []  # the front of the robe as triangles, for the tabard
+# It is in two pieces: the robe below the knees on a bone of its own, which hangs plumb under him
+# (../clips.py, robed()), from the middle of the knees' ring to the middle of the hem; and the robe above
+# on his hips, reaching down inside it to a ring a little inside it (KNEES_INSIDE), so no gap opens as he
+# sinks into it.
+KNEES_INSIDE = (0.27, 0.38, 0.32, 0.026, 0.02)
+ROBE_TOP, ROBE_FOOT = V(0, 0.025, 0.38), V(0, 0.03, 0.05)
+TABARD_SPLIT = 0.38  # the tabard's foot, below it, is on the robe's bone too
+
+
+def robe_ring(z, rx, ry, cy, pleat):
+    ring = []
+    for i in range(12):
+        a = math.radians(30 * i)
+        k = 1 + (pleat / ry if i % 2 else 0)
+        ring.append(V(k * rx * math.cos(a), cy + k * ry * math.sin(a), z))
+    return ring
 
 
 def robe():
-    rings = []
-    for z, rx, ry, cy, pleat in ROBE_RINGS:
-        ring = []
-        for i in range(12):
-            a = math.radians(30 * i)
-            k = 1 + (pleat / ry if i % 2 else 0)
-            ring.append(V(k * rx * math.cos(a), cy + k * ry * math.sin(a), z))
-        rings.append(ring)
+    rings = [robe_ring(*level) for level in ROBE_RINGS]
     verts, faces, _ = loft(rings)
-    part('robe', verts, faces, M['robe'], inside=lambda c: V(0, 0.02, c.z))
     ROBE_FRONT[:] = surface(verts, faces, lambda c: c.y < -0.1)
+    for name, bone_name, pieces in (('robe-hem', 'robe', rings[:2]),
+                                    ('robe', 'hips', [robe_ring(*KNEES_INSIDE)] + rings[1:])):
+        verts, faces, _ = loft(pieces)
+        with bone(bone_name):
+            part(name, verts, faces, M['robe'], inside=lambda c: V(0, 0.02, c.z))
+    joint('robe_top', ROBE_TOP)
+    joint('robe_foot', ROBE_FOOT)
 
 
 def tabard():
     # A long panel of the team colour down his front, from under the belt to a point above the hem:
-    # each row is z at the edges and in the middle, and the half-width.
-    rows = [(0.99, 0.99, 0.11), (0.64, 0.64, 0.125), (0.32, 0.32, 0.14), (0.15, 0.05, 0.15)]
-    verts = []
-    for edge, middle, w in rows:
-        verts += drape(ROBE_FRONT, [(-w, edge), (0, middle), (w, edge)], -0.014)
-    faces = [(3 * r + c, 3 * r + c + 1, 3 * r + c + 4, 3 * r + c + 3)
-             for r in range(len(rows) - 1) for c in range(2)]
-    part('tabard', verts, faces, M['team'], outward=V(0, -1, 0))
+    # each row is z at the edges and in the middle, and the half-width. It is in two pieces, which meet
+    # at the robe's knees: the panel on the hips, and its foot on the robe's bone.
+    for name, bone_name, rows in (
+        ('tabard', 'hips', [(0.99, 0.99, 0.11), (0.64, 0.64, 0.125), (0.36, 0.36, 0.138)]),
+        ('tabard-foot', 'robe', [(TABARD_SPLIT, TABARD_SPLIT, 0.137), (0.17, 0.08, 0.15)]),
+    ):
+        verts = []
+        for edge, middle, w in rows:
+            verts += drape(ROBE_FRONT, [(-w, edge), (0, middle), (w, edge)], -0.014)
+        faces = [(3 * r + c, 3 * r + c + 1, 3 * r + c + 4, 3 * r + c + 3)
+                 for r in range(len(rows) - 1) for c in range(2)]
+        with bone(bone_name):
+            part(name, verts, faces, M['team'], outward=V(0, -1, 0))
 
 
 # Torso -------------------------------------------------------------------------------------------
@@ -181,25 +229,32 @@ def tabard():
 TORSO = [
     (0.93, 0.252, 0.2, 0.0),  # belt, lower edge
     (1.06, 0.258, 0.205, 0.0),  # belt, upper edge
-    (1.08, 0.25, 0.192, 0.0),  # the breastplate's lower edge, inside the belt
+    (0.98, 0.225, 0.18, 0.0),  # the breastplate's lower edge, deep inside the belt
     (1.24, 0.31, 0.225, -0.005),  # ribs
     (1.40, 0.352, 0.245, 0.0),  # chest
     (1.52, 0.33, 0.215, 0.015),  # shoulders
     (1.60, 0.15, 0.135, 0.02),  # neck
 ]
-TORSO_BANDS = [0, 1, 1, 1, 1, 1]  # the leather belt, then iron
+# He bends at the waist, inside the belt: the belt on the hips, and the breastplate on the spine, from a
+# ring deep inside the belt.
+PELVIS, WAIST = V(0, 0.0, 0.92), V(0, 0.04, 1.03)
 
 
 def torso():
     rings = [ellipse(0, cy, z, rx, ry, 10, 0) for z, rx, ry, cy in TORSO]
-    verts, faces, bands = loft(rings)
-    part('torso', verts, faces, [M['leather'], M['iron']], [TORSO_BANDS[b] for b in bands],
-         inside=lambda c: V(0, 0, c.z))
-    chest = surface(verts, faces, lambda c: c.y < -0.15 and 1.1 < c.z < 1.5)
-    eye('eye-chest', chest, 0.0, 1.33, 0.2, 0.11, -0.008)
-    # A plate where the belt closes, over the top of the tabard.
-    axes = [V(0, -1, 0), V(1, 0, 0), V(0, 0, 1)]
-    box('buckle', V(0, -0.205, 0.995), axes, (0.02, 0.06, 0.06), M['trim'], 0.8)
+    verts, faces, _ = loft(rings[:2])
+    with bone('hips'):
+        part('belt', verts, faces, M['leather'], inside=lambda c: V(0, 0, c.z))
+        # A plate where the belt closes, over the top of the tabard.
+        axes = [V(0, -1, 0), V(1, 0, 0), V(0, 0, 1)]
+        box('buckle', V(0, -0.205, 0.995), axes, (0.02, 0.06, 0.06), M['trim'], 0.8)
+    verts, faces, _ = loft(rings[2:])
+    with bone('spine'):
+        part('breastplate', verts, faces, M['iron'], inside=lambda c: V(0, 0, c.z))
+        chest = surface(verts, faces, lambda c: c.y < -0.15 and 1.1 < c.z < 1.5)
+        eye('eye-chest', chest, 0.0, 1.33, 0.2, 0.11, -0.008)
+    joint('pelvis', PELVIS)
+    joint('waist', WAIST)
 
 
 # The Lidless Eye, "yellow as a cat's" with "the black slit of its pupil" (The Mirror of Galadriel):
@@ -230,7 +285,8 @@ def tassets():
         angles = [math.radians(start + (end - start) * k / 4) for k in range(5)]
         rings = [[V(rx * math.cos(a), ry * math.sin(a), z) for a in angles] for z, rx, ry in lames]
         verts, faces, _ = loft(rings, closed=False)
-        part(f'tasset-{side}', verts, faces, M['iron'], inside=lambda c: V(0, 0, c.z))
+        with bone('hips'):
+            part(f'tasset-{side}', verts, faces, M['iron'], inside=lambda c: V(0, 0, c.z))
 
 
 # Arms --------------------------------------------------------------------------------------------
@@ -241,15 +297,23 @@ L_SHOULDER, L_ELBOW = V(0.39, 0.03, 1.45), V(0.6, 0.0, 1.17)
 L_WRIST = V(0.7, -0.27, 1.38)
 
 
-def arm(side, shoulder, elbow, wrist):
-    # A sleeve of the robe, then a vambrace of iron flaring into the gauntlet's cuff at the wrist.
-    tube(f'sleeve-{side}', shoulder, elbow, [(0, 0.11), (1.1, 0.095)], M['robe'])
-    stations = [(-0.15, 0.085), (0.72, 0.095), (0.75, 0.115), (1.0, 0.105)]
-    capped_tube(f'vambrace-{side}', elbow, wrist, stations, [M['iron'], M['gauntlet']], [0, 1, 1])
-    # A pointed couter on the elbow.
-    out = (elbow - shoulder).normalized().cross(wrist - elbow).normalized()
-    back = (elbow - wrist).normalized()
-    cone(f'couter-{side}', elbow, elbow + 0.11 * (back + 0.3 * out).normalized(), 0.075, 4, M['iron'])
+def arm(side, shoulder, elbow, wrist, fist):
+    # A sleeve of the robe, then a vambrace of iron flaring into the gauntlet's cuff at the wrist, which
+    # starts inside the sleeve, so the arm bends at the elbow without a gap.
+    s = side[0]
+    with bone(f'upper_arm_{s}'):
+        tube(f'sleeve-{side}', shoulder, elbow, [(0, 0.11), (1.1, 0.095)], M['robe'])
+    with bone(f'forearm_{s}'):
+        stations = [(-0.15, 0.085), (0.72, 0.095), (0.75, 0.115), (1.0, 0.105)]
+        capped_tube(f'vambrace-{side}', elbow, wrist, stations, [M['iron'], M['gauntlet']], [0, 1, 1])
+        # A pointed couter on the elbow.
+        out = (elbow - shoulder).normalized().cross(wrist - elbow).normalized()
+        back = (elbow - wrist).normalized()
+        cone(f'couter-{side}', elbow, elbow + 0.11 * (back + 0.3 * out).normalized(), 0.075, 4, M['iron'])
+    joint(f'shoulder_{s}', shoulder)
+    joint(f'elbow_{s}', elbow)
+    joint(f'wrist_{s}', wrist)
+    joint(f'fist_{s}', fist)
 
 
 def black_hand():
@@ -262,6 +326,12 @@ def black_hand():
     palm_out = (palm_out - palm_out.dot(fingers) * fingers).normalized()  # the way the palm faces
     inward = palm_out.cross(fingers)  # across the palm towards the thumb and his middle (-x)
     palm = L_WRIST + 0.075 * fingers
+    arm('left', L_SHOULDER, L_ELBOW, L_WRIST, palm + 0.08 * fingers)
+    with bone('hand_l'):
+        hand_parts(palm, fingers, palm_out, inward)
+
+
+def hand_parts(palm, fingers, palm_out, inward):
     box('palm', palm, [fingers, palm_out, inward], (0.08, 0.036, 0.078), M['gauntlet'], 0.92)
     for k, spread in enumerate((-10, 6, 22)):  # from the thumb's side outwards
         a = math.radians(spread)
@@ -297,6 +367,17 @@ HELM = [
 ]
 HELM_TOP = 1.995
 SLIT_BAND = 3
+
+
+NECK = V(0, 0.02, 1.59)  # where the head turns, inside the neck of the breastplate
+
+
+def head():
+    with bone('head'):
+        helm()
+        crown()
+    joint('neck', NECK)
+    joint('crown', V(0, 0.01, HELM_TOP))
 
 
 def helm():
@@ -355,6 +436,10 @@ PAULDRON = [(-0.07, 0.24), (0.015, 0.236), (0.03, 0.208), (0.085, 0.198), (0.1, 
 PAULDRON_BANDS = [0, 1, 0, 1, 0]  # iron lames, trim edges
 PAULDRON_TOP = 0.19
 RIVETS = (0, 1, 2, 3, 7)  # the lowest lame's faces that get a rivet: its outer side, front to back
+# But not the front of the right one's outer side (its face 2), where the mace comes down past his
+# shoulder as he smashes: a rivet there, on his spine, keeps fit() from drawing the blow into his hex
+# between frames.
+MACE_PASS = 2
 
 
 def pauldron(side, s):
@@ -367,15 +452,18 @@ def pauldron(side, s):
     verts.append(centre + PAULDRON_TOP * axis)
     faces += [(last + i, last + (i + 1) % 8, apex) for i in range(8)]
     face_mats += [0] * 8
-    part(f'pauldron-{side}', verts, faces, [M['iron'], M['trim']], face_mats, inside=centre)
-    # A rivet in the middle of each outer face of the lowest lame.
-    for k in RIVETS:
-        corners = [verts[i] for i in faces[k]]
-        middle = sum(corners, Vector()) / 4
-        out = newell(corners).normalized()
-        if out.dot(middle - centre) < 0:
-            out = -out
-        cone(f'rivet-{side}-{k}', middle - 0.004 * out, middle + 0.016 * out, 0.02, 4, M['trim'], 45)
+    with bone('spine'):
+        part(f'pauldron-{side}', verts, faces, [M['iron'], M['trim']], face_mats, inside=centre)
+        # A rivet in the middle of each outer face of the lowest lame.
+        for k in RIVETS:
+            if s < 0 and k == MACE_PASS:
+                continue
+            corners = [verts[i] for i in faces[k]]
+            middle = sum(corners, Vector()) / 4
+            out = newell(corners).normalized()
+            if out.dot(middle - centre) < 0:
+                out = -out
+            cone(f'rivet-{side}-{k}', middle - 0.004 * out, middle + 0.016 * out, 0.02, 4, M['trim'], 45)
 
 
 # Cape --------------------------------------------------------------------------------------------
@@ -394,9 +482,18 @@ CAPE = [
 ]
 CAPE_POINTS = 15
 CLASP = (0.2, 1.36)  # where the clasps pin the cape to his back: x out from his spine, and z
+# The cape hangs from the back of the neck on a bone of its own, down to the middle of its hem.
+CAPE_TOP, CAPE_HEM = V(0, 0.17, 1.58), V(0, 0.48, 0.3)
 
 
 def cape():
+    with bone('cape'):
+        cape_parts()
+    joint('cape_top', CAPE_TOP)
+    joint('cape_hem', CAPE_HEM)
+
+
+def cape_parts():
     rings = []
     for middle, edge, rx, ry, cy, spread, fold, dag in CAPE:
         ring = []
@@ -434,6 +531,18 @@ FLANGE = [(-0.16, 0.05), (-0.07, 0.2), (0.11, 0.2), (0.17, 0.05)]
 
 
 def mace():
+    d = HAFT
+    grip = R_FIST
+    ahead = (R_WRIST - R_ELBOW).normalized()
+    arm('right', R_SHOULDER, R_ELBOW, R_WRIST, R_FIST + 0.07 * ahead)
+    with bone('hand_r'):
+        mace_parts()
+    # Held from the fist up the haft to the spike on its head, facing the front.
+    tip = grip + 0.96 * d
+    hold('r', grip, tip, tip + V(0, -0.1, 0))
+
+
+def mace_parts():
     d = HAFT
     grip = R_FIST
     tube('haft', grip - 0.17 * d, grip + HEAD * d, [(0, 0.036), (1, 0.036)], M['iron'])
@@ -478,27 +587,58 @@ def mace():
     box('thumb-right', centre, [ahead, up, across], (0.06, 0.03, 0.026), M['gauntlet'], 0.7)
 
 
-def main():
+# His clips (../clips.py): slow and heavy. He stands breathing slow, the mace upright and the Black
+# Hand raised; strides heavily, the hand held up; strikes overhand with the mace, over the top and
+# dropped steep past his right side before the fist drives it down before him (drop), so it doesn't
+# sweep level out of his hex between frames, his body still turned to his right as it drops so it
+# uncoils into the blow (coil), and lifts it back a frame later (slow), so neither the blow nor the
+# lift swings the mace out of his hex between frames; sweeps it round in a great level arc for his
+# cast (Sweep); sways, dazed, the mace sagging; sinks to his knees into his robe as he falls, the mace
+# laid before him and the hand dropping by his knee; and holds the mace high as he wins. fit() keeps
+# the mace in his hex between frames too (between). The robe below his knees hangs plumb under him
+# (robed()), and his cape swings less than a short one would, never in under him nor out of his hex
+# (draped()).
+CLIPS = robed(draped(fit({
+    'idle': ('ready', {'seconds': 2.8, 'breath': 0.8, 'sway': 0.6, 'crouch': 0.02}),
+    'move': ('run', {'heavy': 0.6, 'stride': 0.4, 'lift': 0.2, 'lean': 8.0, 'off': 'high'}),
+    'attack': ('smash', {'drop': 1.0, 'coil': 8.0, 'slow': 1}),
+    'cast': ('reap', {'turn': 55.0}),
+    'stun': ('dazed', {'seconds': 1.4, 'low': 0.3, 'off_low': 0.7}),
+    'death': ('knees', {'dropped': True, 'behind': 0.0, 'slump': 0.8, 'back': 0.15}),
+    'victory': ('raise', {'out': 0.3, 'lean': 10.0}),
+}, between=True)))
+RIG = Rig(kind='large', bones={'robe': ('root', 'robe_top', 'robe_foot'), 'cape': ('spine', 'cape_top', 'cape_hem')},
+          clips=CLIPS)
+
+
+def build(haute=None):
+    """Makes him in a fresh scene, every part bound to its bone and his joints marked, and returns
+    the rig to finish() him with. His 2★ model (sauron-2.py) passes its haute-pieces as `haute`, a
+    function that makes them standing up from his pauldrons, before he leans."""
     reset()
     make_materials()
-    sabaton('sabaton-right', R_FOOT, R_YAW)
-    sabaton('sabaton-left', L_FOOT, L_YAW)
+    sabaton('right', R_FOOT, R_YAW)
+    sabaton('left', L_FOOT, L_YAW)
     robe()
     tabard()
     lower = set(bpy.context.scene.objects)
     torso()
     tassets()
-    arm('right', R_SHOULDER, R_ELBOW, R_WRIST)
-    arm('left', L_SHOULDER, L_ELBOW, L_WRIST)
     black_hand()
-    helm()
-    crown()
+    head()
     pauldron('right', -1)
     pauldron('left', 1)
     cape()
     mace()
+    if haute is not None:
+        haute()
     lean([o for o in bpy.context.scene.objects if o not in lower], V(0, 0, 1.0), 3)
-    finish('sauron', budget=LARGE_BUDGET)
+    return RIG
 
 
-main()
+def main():
+    finish('sauron', budget=LARGE_BUDGET, rig=build())
+
+
+if __name__ == '__main__':
+    main()

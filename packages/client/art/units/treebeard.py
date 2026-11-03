@@ -10,11 +10,18 @@ his head and inside his hex.
 Team colour is on what grows on him: the leaves on his head, the moss over his shoulders and the
 mossy ends of his beard.
 
+He is rigged (../rig.py) as a Large unit, with three bones of his own: his beard, which hangs from his
+chin and sways after him, the leaves on his head, which sway after it, and the boulder, which leaves
+his hand when he hurls it and is torn up again from the ground (../clips.py, swaying() and heave). His
+legs bend at the knee and his trunk at the waist, where each runs on inside the next, and his arms at
+the elbow; slow and heavy, he strides long and low on his root-like feet.
+
 An Ent wears no buckles or clasps, so his trim grows on him: patches of lichen on his bark, on the
 plates of his trunk and legs and the back of his head, seen from the front and from behind. They
 use `trim`, which the client colours iron, silver or gold by star level (docs/viewer-spec.md
 section 4, "Star levels"), as lichen grows grey, silver or gold on an old tree. His 2★ model is
-treebeard-2.py and his 3★ model treebeard-3.py.
+treebeard-2.py, which imports this script and builds him with its young branches (build()), and his
+3★ model treebeard-3.py.
 
     blender --background --factory-startup --python-exit-code 1 --python treebeard.py [-- <out.glb>]
 
@@ -35,6 +42,7 @@ sys.path.insert(0, os.path.join(os.path.dirname(os.path.abspath(__file__)), '..'
 from kit import (  # noqa: E402
     LARGE_BUDGET,
     V,
+    bone,
     box,
     ellipse,
     finish,
@@ -48,6 +56,8 @@ from kit import (  # noqa: E402
     team_material,
     trim_material,
 )
+from clips import fit, swaying  # noqa: E402
+from rig import Rig, hold, joint  # noqa: E402
 
 # Treebeard's colours (sRGB). Nothing here may read as blue or red: the team colour is the only
 # saturated part.
@@ -223,12 +233,19 @@ def lump(name, centre, radii, mat, seed, rough=0.1, subdivisions=0, turn=(0, 0, 
 # Feet and legs -----------------------------------------------------------------------------------
 
 # Planted wide, the left foot forward and the right back, under the weight of the boulder. Each leg
-# is a short trunk from the hip through the knee, flaring at the foot like the foot of a tree.
+# is a short trunk from the hip through the knee, flaring at the foot like the foot of a tree. The knees
+# are a little forward of the line from hip to ankle, so they bend forward.
 LEGS = [  # side, hip, knee, ankle, the foot's yaw (degrees, toes turned out)
-    ('right', V(-0.16, 0.03, 0.98), V(-0.265, 0.07, 0.56), V(-0.31, 0.1, 0.07), -16),
-    ('left', V(0.16, -0.01, 0.98), V(0.275, -0.06, 0.56), V(0.31, -0.1, 0.07), 14),
+    ('right', V(-0.16, 0.03, 0.98), V(-0.255, 0.01, 0.56), V(-0.31, 0.1, 0.07), -16),
+    ('left', V(0.16, -0.01, 0.98), V(0.265, -0.11, 0.56), V(0.31, -0.1, 0.07), 14),
 ]
 LEG_RADII = [0.18, 0.145, 0.165, 0.175]  # hip, knee, low on the shin, ankle
+# The thigh runs on this far past the knee, and the shin starts this far above it, inside the thigh and
+# this much narrower, so the leg bends at the knee without a gap, in the three bands it had.
+KNEE_OVERLAP, KNEE_INSIDE = 0.06, 0.9
+# The shin's flare ends this high over the foot, above the ankle, so it stays out of the ground as the
+# shin tilts over the planted foot.
+FLARE = 0.13
 
 # The foot, round its own centre under the ankle (toes towards -y): z, centre y, half-width and
 # half-length. Its top is narrower than the furrows of the leg, which hides its open edge.
@@ -240,6 +257,7 @@ TOES = [(-58, 0.13), (-39, 0.17), (-19, 0.19), (0, 0.2), (19, 0.18), (39, 0.16),
 def foot(side, ankle, yaw):
     turn = Matrix.Rotation(math.radians(yaw), 3, 'Z')
     at = V(ankle.x, ankle.y, 0)
+    joint(f'toe_{side[0]}', at + turn @ V(0, -0.3, 0.03))
     rings = [[at + turn @ p for p in ellipse(0, cy, z, rx, ry, 8, 22.5)] for z, cy, rx, ry in FOOT]
     verts, faces, _ = loft(rings)
     part(f'foot-{side}', verts, faces, M['root'], inside=at + V(0, 0, 0.1))
@@ -256,12 +274,25 @@ def foot(side, ankle, yaw):
 
 def legs():
     for side, hip, knee, ankle, yaw in LEGS:
+        s = side[0]
         low = knee.lerp(ankle, 0.55)
-        rings = path_rings([hip, knee, low, ankle], LEG_RADII, bark(5, 0.2), phase=10)
-        verts, faces, _ = loft(rings)
-        part(f'leg-{side}', verts, faces, [M['bark'], M['furrows']], furrow_mats(faces, len(rings[0])),
-             inside=nearest_on_path([hip, knee, low, ankle]))
-        foot(side, ankle, yaw)
+        path = [hip, knee, low, V(ankle.x, ankle.y, FLARE)]
+        top, bend, shin, foot_ring = path_rings(path, LEG_RADII, bark(5, 0.2), phase=10)
+        past = [k.lerp(q, KNEE_OVERLAP / (low - knee).length) for k, q in zip(bend, shin)]
+        above = knee.lerp(hip, KNEE_OVERLAP / (hip - knee).length)
+        inside = [above + KNEE_INSIDE * (k.lerp(q, KNEE_OVERLAP / (hip - knee).length) - above)
+                  for k, q in zip(bend, top)]
+        for name, bone_name, rings in ((f'thigh-{side}', f'thigh_{s}', [top, past]),
+                                       (f'shin-{side}', f'shin_{s}', [inside, shin, foot_ring])):
+            verts, faces, _ = loft(rings)
+            with bone(bone_name):
+                part(name, verts, faces, [M['bark'], M['furrows']], furrow_mats(faces, len(rings[0])),
+                     inside=nearest_on_path(path))
+        with bone(f'foot_{s}'):
+            foot(side, ankle, yaw)
+        joint(f'hip_{s}', hip)
+        joint(f'knee_{s}', knee)
+        joint(f'ankle_{s}', ankle)
 
 
 # Trunk -------------------------------------------------------------------------------------------
@@ -279,21 +310,43 @@ TRUNK = [
 ]
 TRUNK_BARK = bark(7, 0.18)
 TWIST = 40  # degrees the ridges wind round for each unit they rise
+# It bends at the waist, in two pieces of the bands it had: the lower trunk on the hips, from the fork up
+# past the belly to WAIST_TOP, and the upper trunk on the spine, from a ring inside it (WAIST_INSIDE) to
+# the shoulders. The ridges wind alike in both, so they line up where one runs inside the other. The
+# spine bends about the back of the waist, so the back stays closed as he bows.
+WAIST_TOP = 1.26
+WAIST_INSIDE = (1.12, 0.355, 0.27, 0.0)
+PELVIS, WAIST = V(0, 0.0, 0.95), V(0, 0.12, 1.19)
+# Where the boulder waits inside his chest once he has hurled it, until he tears up another (heave).
+BOULDER_INSIDE = V(0, 0.03, 1.36)
+
+
+def trunk_ring(z, rx, ry, cy):
+    turn = math.radians(TWIST * (z - TRUNK[0][0]))
+    return [V(k * rx * math.cos(turn + math.tau * f), cy + k * ry * math.sin(turn + math.tau * f), z)
+            for f, k in TRUNK_BARK]
 
 
 def trunk():
-    rings = []
-    for z, rx, ry, cy in TRUNK:
-        turn = math.radians(TWIST * (z - TRUNK[0][0]))
-        rings.append([V(k * rx * math.cos(turn + math.tau * f), cy + k * ry * math.sin(turn + math.tau * f), z)
-                      for f, k in TRUNK_BARK])
     n = len(TRUNK_BARK)
-    verts, faces, _ = loft(rings)
+    (z0, *below), (z1, *above) = TRUNK[2], TRUNK[3]
+    u = (WAIST_TOP - z0) / (z1 - z0)
+    top = trunk_ring(WAIST_TOP, *(p + (q - p) * u for p, q in zip(below, above)))
+    verts, faces, _ = loft([trunk_ring(*TRUNK[0]), trunk_ring(*TRUNK[1]), top])
     face_mats = furrow_mats(faces, n) + [0] * n
     # Closed underneath, between the legs.
     verts.append(V(0, 0, 0.84))
     faces += [(i, (i + 1) % n, len(verts) - 1) for i in range(n)]
-    part('trunk', verts, faces, [M['bark'], M['furrows']], face_mats, inside=lambda c: V(0, 0, min(max(c.z, 0.9), 1.6)))
+    with bone('hips'):
+        part('trunk-lower', verts, faces, [M['bark'], M['furrows']], face_mats,
+             inside=lambda c: V(0, 0, min(max(c.z, 0.9), 1.6)))
+    verts, faces, _ = loft([trunk_ring(*WAIST_INSIDE)] + [trunk_ring(*level) for level in TRUNK[3:]])
+    with bone('spine'):
+        part('trunk-upper', verts, faces, [M['bark'], M['furrows']], furrow_mats(faces, n),
+             inside=lambda c: V(0, 0, min(max(c.z, 0.9), 1.6)))
+    joint('pelvis', PELVIS)
+    joint('waist', WAIST)
+    joint('boulder_inside', BOULDER_INSIDE)
 
 
 # Moss over the shoulders -------------------------------------------------------------------------
@@ -314,8 +367,9 @@ MOSS = [
 
 
 def moss():
-    for k, (centre, size, seed) in enumerate(MOSS):
-        lump(f'moss-{k}', centre, size, M['team'], seed, rough=0.15, turn=(0, 0, 25 if centre.x > 0 else -25))
+    with bone('spine'):
+        for k, (centre, size, seed) in enumerate(MOSS):
+            lump(f'moss-{k}', centre, size, M['team'], seed, rough=0.15, turn=(0, 0, 25 if centre.x > 0 else -25))
 
 
 # Head --------------------------------------------------------------------------------------------
@@ -345,7 +399,17 @@ def head_point(level, i):
     return V((rx + out) * math.cos(a), cy + (ry + out) * math.sin(a), z)
 
 
+NECK, CROWN_TOP = V(0, 0.01, 1.66), V(0, 0.02, 2.18)  # where the head turns, low in the shoulders, and its top
+
+
 def head():
+    with bone('head'):
+        face()
+    joint('neck', NECK)
+    joint('crown', CROWN_TOP)
+
+
+def face():
     rings = [[head_point(level, i) for i in range(12)] for level in range(len(HEAD))]
     verts, faces, bands = loft(rings)
     face_mats = [1 if 1 <= b <= 4 and f[0] % 12 in FACE_POINTS else 0 for f, b in zip(faces, bands)]
@@ -376,7 +440,21 @@ def head():
     part('nose', verts, faces, M['skin'], inside=V(0, -0.15, 1.82))
 
 
+# The beard hangs from his chin on a bone of its own, which sways after him; its top, along his cheeks,
+# follows his head.
+BEARD_ROOT, BEARD_TIP = V(0, -0.2, 1.72), V(0, -0.4, 0.95)
+
+
 def beard():
+    with bone('beard', follows=lambda p: 'head' if p.z > 1.7 else None):
+        beard_locks()
+    joint('beard_root', BEARD_ROOT)
+    joint('beard_tip', BEARD_TIP)
+    with bone('head'):
+        moustache()
+
+
+def beard_locks():
     # A sweeping beard in three locks (a W in section), from the cheeks down over the chest. Each
     # level runs from his right side across the front to his left: the right side's back, the lock's
     # ridge, the valley, then the middle ridge. The ends are thin and mossy.
@@ -396,6 +474,8 @@ def beard():
     face_mats = [1 if b == 3 else 0 for b in bands]
     part('beard', verts, faces, [M['beard'], M['team']], face_mats, inside=lambda c: V(0, -0.1, c.z))
 
+
+def moustache():
     # A moustache in two sweeps from under the nose out over the beard.
     for s in (-1, 1):
         root = [V(s * 0.01, -0.245, 1.74), V(s * 0.01, -0.275, 1.72), V(s * 0.01, -0.245, 1.705)]
@@ -422,13 +502,19 @@ CROWN = [  # centre, half-sizes, seed
 # twig, off to the side, so that it reads as a branch rather than a pair of antlers.
 TWIG = [V(0.06, 0.1, 2.31), V(0.15, 0.2, 2.46), V(0.2, 0.33, 2.56)]
 TWIG_FORK = V(0.28, 0.18, 2.51)
+# The leaves and the twig are on a bone of their own, from the top of his skull up through the canopy,
+# which sways after his head.
+LEAVES_ROOT, LEAVES_TIP = V(0, 0.03, 2.12), V(0, 0.06, 2.4)
 
 
 def leaves():
-    for k, (centre, size, seed) in enumerate(CROWN):
-        lump(f'leaves-{k}', centre, size, M['team'], seed, rough=0.14, turn=(0, 0, 30 * k))
-    limb('twig', TWIG, [0.04, 0.028], M['bark'], n=4)
-    limb('twig-fork', [TWIG[1], TWIG_FORK], [0.022], M['bark'], n=4)
+    with bone('leaves'):
+        for k, (centre, size, seed) in enumerate(CROWN):
+            lump(f'leaves-{k}', centre, size, M['team'], seed, rough=0.14, turn=(0, 0, 30 * k))
+        limb('twig', TWIG, [0.04, 0.028], M['bark'], n=4)
+        limb('twig-fork', [TWIG[1], TWIG_FORK], [0.022], M['bark'], n=4)
+    joint('leaves_root', LEAVES_ROOT)
+    joint('leaves_tip', LEAVES_TIP)
 
 
 # Arms and hands ----------------------------------------------------------------------------------
@@ -438,11 +524,25 @@ R_SHOULDER, R_ELBOW = V(-0.45, 0.03, 1.5), V(-0.6, 0.10, 1.12)
 L_SHOULDER, L_ELBOW, L_WRIST = V(0.45, 0.03, 1.5), V(0.63, 0.1, 1.14), V(0.67, -0.15, 0.96)
 
 
-def arm(side, shoulder, elbow, wrist):
-    # Bark at the shoulder, then smooth brown skin.
+ELBOW_OVERLAP = 0.04  # how far the upper arm runs on past the elbow, and the forearm starts above it
+
+
+def arm(side, shoulder, elbow, wrist, fist):
+    # Bark at the shoulder, then smooth brown skin: the upper arm runs on a little past the elbow, and
+    # the forearm, a little narrower, starts a little above it, so the arm bends without a gap.
+    s = side[0]
     below = shoulder.lerp(elbow, 0.3)
-    limb(f'arm-{side}', [shoulder, below, elbow, wrist], [0.135, 0.125, 0.11, 0.095],
-         [M['bark'], M['skin']], [0, 1, 1], n=6)
+    past = elbow + ELBOW_OVERLAP * (wrist - elbow).normalized()
+    above = elbow + ELBOW_OVERLAP * (shoulder - elbow).normalized()
+    with bone(f'upper_arm_{s}'):
+        limb(f'upper-arm-{side}', [shoulder, below, past], [0.135, 0.125, 0.11], [M['bark'], M['skin']], [0, 1],
+             n=6)
+    with bone(f'forearm_{s}'):
+        limb(f'forearm-{side}', [above, wrist], [0.104, 0.095], M['skin'], n=6)
+    joint(f'shoulder_{s}', shoulder)
+    joint(f'elbow_{s}', elbow)
+    joint(f'wrist_{s}', wrist)
+    joint(f'fist_{s}', fist)
 
 
 def finger(name, points, radius=0.042):
@@ -454,12 +554,24 @@ def finger(name, points, radius=0.042):
 
 
 def boulder():
-    lump('boulder', BOULDER, (BOULDER_RADIUS, BOULDER_RADIUS * 0.95, BOULDER_RADIUS * 0.85), M['stone'],
-         7, rough=0.08, subdivisions=1, turn=(20, 10, 35))
+    # The boulder is on a bone of its own, which hangs from the hand, from the boulder's middle up.
+    with bone('boulder'):
+        lump('boulder', BOULDER, (BOULDER_RADIUS, BOULDER_RADIUS * 0.95, BOULDER_RADIUS * 0.85), M['stone'],
+             7, rough=0.08, subdivisions=1, turn=(20, 10, 35))
+    joint('boulder_middle', BOULDER)
+    joint('boulder_top', BOULDER + V(0, 0, BOULDER_RADIUS))
     # Held up on the flat of his right hand, the fingers round its front, the thumb round its side.
     ahead = V(-0.05, -1, -0.08).normalized()
     palm = BOULDER - V(0, 0, BOULDER_RADIUS * 0.85 + 0.04)
     wrist = palm - 0.085 * ahead
+    with bone('hand_r'):
+        boulder_hand(palm, ahead)
+    # Held from the palm up to the boulder's middle, facing the front.
+    hold('r', palm, BOULDER, BOULDER + V(0, -0.1, 0))
+    arm('right', R_SHOULDER, R_ELBOW, wrist, palm + 0.085 * ahead)
+
+
+def boulder_hand(palm, ahead):
     across = ahead.cross(V(0, 0, -1)).normalized()
     box('palm-right', palm, [ahead, V(0, 0, -1), across], (0.11, 0.05, 0.1), M['skin'], 0.85)
     r = BOULDER_RADIUS + 0.02  # the fingers press into the rock a little
@@ -472,7 +584,6 @@ def boulder():
         finger(f'finger-right-{k}', path)
     thumb = [BOULDER + V(r * math.sin(math.radians(a)), 0.03, -r * 0.88 * math.cos(math.radians(a))) for a in (45, 80)]
     finger('thumb-right', [palm + 0.05 * across + 0.02 * ahead] + thumb, 0.045)
-    arm('right', R_SHOULDER, R_ELBOW, wrist)
 
 
 def open_hand():
@@ -484,16 +595,39 @@ def open_hand():
     back = (back - back.dot(ahead) * ahead).normalized()
     across = ahead.cross(back)
     palm = L_WRIST + 0.085 * ahead
-    box('palm-left', palm, [ahead, back, across], (0.11, 0.05, 0.1), M['skin'], 0.85)
-    for k, spread in enumerate((-0.065, 0.0, 0.065)):
-        base = palm + 0.085 * ahead + spread * across
-        bend = base + 0.09 * ahead + 0.8 * spread * across - 0.035 * back
-        tip = bend + 0.06 * ahead + 0.3 * spread * across - 0.07 * back
-        finger(f'finger-left-{k}', [base, bend, tip])
-    base = palm + 0.02 * ahead + 0.08 * across
-    thumb = [base, base + 0.07 * ahead + 0.07 * across, base + 0.12 * ahead + 0.07 * across - 0.06 * back]
-    finger('thumb-left', thumb, 0.045)
-    arm('left', L_SHOULDER, L_ELBOW, L_WRIST)
+    with bone('hand_l'):
+        box('palm-left', palm, [ahead, back, across], (0.11, 0.05, 0.1), M['skin'], 0.85)
+        for k, spread in enumerate((-0.065, 0.0, 0.065)):
+            base = palm + 0.085 * ahead + spread * across
+            bend = base + 0.09 * ahead + 0.8 * spread * across - 0.035 * back
+            tip = bend + 0.06 * ahead + 0.3 * spread * across - 0.07 * back
+            finger(f'finger-left-{k}', [base, bend, tip])
+        base = palm + 0.02 * ahead + 0.08 * across
+        thumb = [base, base + 0.07 * ahead + 0.07 * across, base + 0.12 * ahead + 0.07 * across - 0.06 * back]
+        finger('thumb-left', thumb, 0.045)
+    arm('left', L_SHOULDER, L_ELBOW, L_WRIST, palm + 0.17 * ahead)
+
+
+# His clips (../clips.py): slow and heavy. He stands breathing slow, the boulder held ready; strides
+# long and low, the boulder carried up and his free arm swinging; swats with his open left hand; hurls
+# the boulder for his cast and tears up another from the ground (heave); sways, dazed, the boulder
+# sagging; sinks to his knees as he falls, the boulder rolled out before him; and holds it up high as
+# he wins. His beard hangs from his chin as he bows and rears, and it and his leaves sway after him
+# (swaying()).
+CLIPS = swaying(swaying(fit({
+    'idle': ('ready', {'seconds': 3.0, 'breath': 0.7, 'sway': 0.6, 'crouch': 0.03}),
+    'move': ('run', {'seconds': 0.6, 'heavy': 1.0, 'stride': 0.45, 'lift': 0.18, 'lean': 6.0}),
+    'attack': ('swing', {'hand': 'l', 'ahead': 0.35}),
+    'cast': ('heave', {}),
+    'stun': ('dazed', {'seconds': 1.5, 'low': 0.5}),
+    'death': ('knees', {'slump': 0.8, 'back': 0.15}),
+    'victory': ('raise', {'out': 0.45}),
+}, between=True), 'beard', share=0.6, lag=2, drag=0.5), 'leaves', lag=2, drag=0.5)
+RIG = Rig(kind='large', bones={
+    'beard': ('head', 'beard_root', 'beard_tip'),
+    'leaves': ('head', 'leaves_root', 'leaves_tip'),
+    'boulder': ('hand_r', 'boulder_middle', 'boulder_top'),
+}, clips=CLIPS)
 
 
 # Lichen: his trim ----------------------------------------------------------------------------------
@@ -502,19 +636,26 @@ def open_hand():
 # a rosette and a smaller one grown into its side, which make an irregular blotch. It lies in the
 # plane of the plate, a little off it, bridging the furrows beside it as lichen crusts over a crack,
 # and rises with the bark only where the bark rises above that plane, so no ridge pokes through it.
+# Each rosette is one flat facet, not a shallow dome of them: the model is shaded flat, so every facet
+# has vertices of its own, and with the rig's weights on each the domes would take his .glb past
+# its 300,000 bytes.
 LICHEN_LIFT = 0.006  # how far it stands off the plate
-LICHEN_DOME = 0.008  # how much higher its middle is: enough to break the light, not a point
 # Each rosette: where its middle is, from the patch's middle (in sizes, along and across), its own
 # size (in sizes), how many points round its edge, and how much lower it lies, so the two never
 # fight. Its edge is irregular and only gently lobed: deep notches would read as a star.
-ROSETTES = [((0.0, 0.0), 1.0, 9, 0.0), ((0.8, 0.0), 0.6, 6, 0.002)]
+ROSETTES = [((0.0, 0.0), 1.0, 7, 0.0), ((0.8, 0.0), 0.6, 5, 0.002)]
 LOBES = (1.0, 0.86)  # how far out the points of an edge reach, in turn
 
 
-def surface(name):
-    """A part's faces, for finding the bark under a patch."""
-    data = bpy.data.objects[name].data
-    return BVHTree.FromPolygons([v.co.copy() for v in data.vertices], [tuple(p.vertices) for p in data.polygons])
+def surface(*names):
+    """Parts' faces, for finding the bark under a patch: a leg's thigh and shin, or the trunk's two
+    pieces, so a patch lies on the outer of them where one runs on inside the other."""
+    verts, polys = [], []
+    for name in names:
+        data = bpy.data.objects[name].data
+        polys += [tuple(len(verts) + i for i in p.vertices) for p in data.polygons]
+        verts += [v.co.copy() for v in data.vertices]
+    return BVHTree.FromPolygons(verts, polys)
 
 
 def lichen_patch(name, tree, target, axis, along, size, seed):
@@ -541,13 +682,12 @@ def lichen_patch(name, tree, target, axis, along, size, seed):
     for (du, dv), k, points, sink in ROSETTES:
         centre = hit + spin @ (du * size[0] * u + dv * size[1] * v)
         first = len(verts)
-        verts.append(on_bark(centre, LICHEN_LIFT + LICHEN_DOME - sink))
         for i in range(points):
             a = math.tau * (i + jitter.uniform(-0.2, 0.2)) / points
             reach = k * LOBES[i % 2] * jitter.uniform(0.8, 1.06)
             verts.append(on_bark(centre + reach * (size[0] * math.cos(a) * u + size[1] * math.sin(a) * v),
                                  LICHEN_LIFT - sink))
-        faces += [(first, first + 1 + i, first + 1 + (i + 1) % points) for i in range(points)]
+        faces.append(tuple(range(first, first + points)))
     part(name, verts, faces, M['trim'], outward=n)
 
 
@@ -593,40 +733,52 @@ def leg_plate(side, t, near):
 
 # Where the lichen grows: on which part, where on it, how big (half its length and width) and its
 # seed. From the front it shows beside his beard and on his legs; from behind on his back, his legs
-# and the back of his head.
+# and the back of his head. Each patch lies wholly on one piece of the bark, clear of the knee and of
+# the waist, where one piece runs on inside the next, so it rides the bone that piece is on.
 LEG_LICHEN = [
     ('leg-left', 0.22, 260, (0.1, 0.065), 31),  # the front of his left thigh
-    ('leg-right', 0.8, 255, (0.09, 0.06), 32),  # the front of his right shin
-    ('leg-right', 0.3, 110, (0.1, 0.065), 33),  # the back of his right thigh
+    ('leg-right', 0.74, 255, (0.09, 0.06), 32),  # the front of his right shin, above the flare
+    ('leg-right', 0.27, 110, (0.1, 0.065), 33),  # the back of his right thigh, clear of the knee
     ('leg-left', 0.75, 70, (0.09, 0.06), 34),  # the back of his left calf
 ]
 TRUNK_LICHEN = [
     (1.1, 330, (0.15, 0.1), 41),  # his left side, in front
     (0.98, 228, (0.13, 0.09), 42),  # his right hip, in front, under the boulder
-    (1.08, 76, (0.15, 0.1), 43),  # the small of his back
-    (1.33, 138, (0.14, 0.095), 44),  # his right shoulder blade
+    (1.05, 76, (0.15, 0.1), 43),  # the small of his back
+    (1.43, 138, (0.14, 0.095), 44),  # his right shoulder blade, clear of the waist
 ]
 HEAD_LICHEN = [(V(-0.04, 0.0, 1.87), 100, (0.08, 0.065), 51)]  # the back of his head, under the leaves
 
 
 def leg_lichen():
+    # Each patch rides the piece of the leg it grows on: the thigh above the knee, a third of the way
+    # down, and the shin below it.
     for k, (name, t, near, size, seed) in enumerate(LEG_LICHEN):
-        point, axis, along = leg_plate(name.split('-')[1], t, near)
-        lichen_patch(f'lichen-leg-{k}', surface(name), point, axis, along, size, seed)
+        side = name.split('-')[1]
+        point, axis, along = leg_plate(side, t, near)
+        with bone(f'thigh_{side[0]}' if t < 1 / 3 else f'shin_{side[0]}'):
+            lichen_patch(f'lichen-leg-{k}', surface(f'thigh-{side}', f'shin-{side}'), point, axis, along, size, seed)
 
 
 def body_lichen():
-    trunk = surface('trunk')
+    # On the lower trunk below its top (WAIST_TOP), on the hips, and on the upper trunk above it, on
+    # the spine; on his head, with it.
+    trunk = surface('trunk-lower', 'trunk-upper')
     for k, (z, near, size, seed) in enumerate(TRUNK_LICHEN):
         point, axis, along = trunk_plate(z, near)
-        lichen_patch(f'lichen-trunk-{k}', trunk, point, axis, along, size, seed)
+        with bone('hips' if z < WAIST_TOP else 'spine'):
+            lichen_patch(f'lichen-trunk-{k}', trunk, point, axis, along, size, seed)
     head = surface('head')
     for k, (axis, near, size, seed) in enumerate(HEAD_LICHEN):
         out = V(math.cos(math.radians(near)), math.sin(math.radians(near)), 0)
-        lichen_patch(f'lichen-head-{k}', head, axis + 0.2 * out, axis, V(0, 0, 1), size, seed)
+        with bone('head'):
+            lichen_patch(f'lichen-head-{k}', head, axis + 0.2 * out, axis, V(0, 0, 1), size, seed)
 
 
-def main():
+def build(branches=None):
+    """Makes him in a fresh scene, every part bound to its bone and his joints marked, and returns
+    the rig to finish() him with. His 2★ model (treebeard-2.py) passes its young branches as
+    `branches`, a function that makes them, before he stoops and is scaled."""
     reset()
     make_materials()
     legs()
@@ -640,10 +792,17 @@ def main():
     boulder()
     open_hand()
     body_lichen()
+    if branches is not None:
+        branches()
     lean([o for o in bpy.context.scene.objects if o not in lower], HIPS, LEAN)
     for o in bpy.context.scene.objects:
         o.data.transform(Matrix.Scale(SCALE, 4))
-    finish('treebeard', budget=LARGE_BUDGET)
+    return RIG
 
 
-main()
+def main():
+    finish('treebeard', budget=LARGE_BUDGET, rig=build())
+
+
+if __name__ == '__main__':
+    main()
