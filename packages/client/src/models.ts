@@ -1,6 +1,6 @@
 // The units' models (docs/viewer-spec.md section 4, "Models", "Star levels" and "In the viewer"). Each
-// file is loaded once, and every unit drawn with one gets its own copy on a base that shows its star
-// level: the geometry and clips are shared, the materials are its own, with `team` in its side's
+// file is loaded once, and every unit drawn with one gets its own copy, drawn for its star level:
+// the geometry and clips are shared, the materials are its own, with `team` in its side's
 // colour, `trim` in its star level's, and every one able to fade. Until a unit's model has loaded,
 // or if it has none, the scene draws the unit as a pawn.
 
@@ -10,7 +10,7 @@ import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
 import { clone as cloneSkinned } from 'three/addons/utils/SkeletonUtils.js';
 import MODEL_FILES from 'virtual:models';
 import { CLIPS, type ClipLengths, type ClipName } from './animation.js';
-import { BASE, STAND_COLOUR, labelHeight, pickModel, pipOffsets, starColour, starScale, victoryRise } from './stars.js';
+import { labelHeight, pickModel, starColour, starScale, victoryRise } from './stars.js';
 import { isLarge } from './units.js';
 
 /** The material every model has that takes its side's colour (section 4, Team colour). */
@@ -109,7 +109,7 @@ export function modelShader(unitId: UnitState['unitId'], star: Star): ModelShade
 }
 
 /**
- * A copy of the model for a unit at a star level, on its base, with `team` in `teamColour` and `trim`
+ * A copy of the model for a unit at a star level, with `team` in `teamColour` and `trim`
  * in the star level's colour; null if it has none or it hasn't loaded yet.
  */
 export function copyModel(unitId: UnitState['unitId'], star: Star, teamColour: number): ModelCopy | null {
@@ -118,7 +118,7 @@ export function copyModel(unitId: UnitState['unitId'], star: Star, teamColour: n
 }
 
 /**
- * A copy of the first model to load that needs a shader, on a base. The scene compiles the shader
+ * A copy of the first model to load that needs a shader. The scene compiles the shader
  * from it before it draws any model that needs it.
  */
 export function shaderSample(shader: ModelShader, teamColour: number): ModelCopy {
@@ -397,17 +397,12 @@ function lengthsOf(clips: Readonly<Record<ClipName, THREE.AnimationClip>>): Clip
   return lengths;
 }
 
-/** One unit's copy of its model, standing on its base. */
+/** One unit's copy of its model. */
 export class ModelCopy {
-  /** The model on its base, which the scene adds to the unit's group. */
+  /** What the scene adds to the unit's group: the model. */
   readonly object = new THREE.Group();
-  /**
-   * The model, standing on the base and scaled for its star level, which turns to face; its clips
-   * play on it.
-   */
+  /** The model, standing on its tile and scaled for its star level, which turns to face; its clips play on it. */
   readonly model: THREE.Object3D;
-  /** The base, lined up with its tile, its pips towards the other team's half: turn it half round for team B. */
-  readonly base: THREE.Object3D;
   /** Its seven clips, shared with the other copies; null for a static model. */
   readonly clips: Readonly<Record<ClipName, THREE.AnimationClip>> | null;
   readonly lengths: ClipLengths | null;
@@ -417,9 +412,9 @@ export class ModelCopy {
   readonly labelHeight: number;
   /** How much higher its label goes once `victory` has faded in (stars.ts, victoryRise). */
   readonly labelRise: number;
-  /** The height of its chest as it stands on its base, which projectiles leave from and strike. */
+  /** The height of its chest as it stands, which projectiles leave from and strike. */
   readonly chest: number;
-  /** Every material of the copy and its base, all its own. */
+  /** Every material of the copy, all its own. */
   private readonly materials: readonly THREE.MeshStandardMaterial[];
   private readonly skeletons: readonly THREE.Skeleton[];
   private opacity = 1;
@@ -430,10 +425,9 @@ export class ModelCopy {
     this.scale = starScale(star, model.reach);
     this.labelHeight = labelHeight(this.scale, model.top, model.large, model.strike);
     this.labelRise = victoryRise(this.scale, model.top, model.large, model.strike, model.raised);
-    this.chest = BASE.height + this.scale * chestOf(model);
+    this.chest = this.scale * chestOf(model);
     this.model = model.shader === 'skinned' ? cloneRig(model.scene) : model.scene.clone();
     this.model.scale.setScalar(this.scale);
-    this.model.position.y = BASE.height;
     const materials = new Map<THREE.Material, THREE.MeshStandardMaterial>();
     const skeletons = new Set<THREE.Skeleton>();
     const own = (material: THREE.Material) => {
@@ -456,14 +450,12 @@ export class ModelCopy {
         node.frustumCulled = false;
       }
     });
-    const base = createBase(star);
-    this.base = base.object;
-    this.object.add(this.base, this.model);
-    this.materials = [...materials.values(), ...base.materials];
+    this.object.add(this.model);
+    this.materials = [...materials.values()];
     this.skeletons = [...skeletons];
   }
 
-  /** Fades every material together, the base's too, for untargetable and dying units. */
+  /** Fades every material together, for untargetable and dying units. */
   fade(opacity: number): void {
     if (opacity === this.opacity) return;
     this.opacity = opacity;
@@ -508,44 +500,4 @@ function cloneRig(source: THREE.Object3D): THREE.Object3D {
 function pair(a: THREE.Object3D, b: THREE.Object3D, visit: (a: THREE.Object3D, b: THREE.Object3D) => void): void {
   visit(a, b);
   for (let i = 0; i < a.children.length; i++) pair(a.children[i]!, b.children[i]!, visit);
-}
-
-const baseGeometry = {
-  stand: new THREE.CylinderGeometry(BASE.radius, BASE.radius + 0.03, BASE.height, 6),
-  rim: new THREE.CylinderGeometry(BASE.radius + 0.035, BASE.radius + 0.06, BASE.height * 0.8, 6, 1, true),
-  pip: new THREE.OctahedronGeometry(0.075, 0),
-};
-
-/**
- * The low hexagonal stand a unit with a model stands on, lined up with its tile, with its rim and
- * pips in the star's colours. The pips are on the edge towards the other team's half as team A has
- * it, at −z, since team A's half is at +z; turned half round, the base is team B's. Returns the base
- * and the materials it owns, which fade with the unit.
- */
-function createBase(star: Star): { object: THREE.Group; materials: THREE.MeshStandardMaterial[] } {
-  const stone = new THREE.MeshStandardMaterial({ color: STAND_COLOUR, roughness: 0.9, flatShading: true });
-  const rimMaterial = new THREE.MeshStandardMaterial({
-    color: starColour('rim', star),
-    roughness: 0.5,
-    metalness: 0.1,
-    flatShading: true,
-    side: THREE.DoubleSide,
-  });
-  const pipMaterial = new THREE.MeshStandardMaterial({ color: starColour('pip', star), roughness: 0.5, metalness: 0.1, flatShading: true });
-  const materials = [stone, rimMaterial, pipMaterial];
-  for (const material of materials) fadeable(material);
-  const group = new THREE.Group();
-  const stand = new THREE.Mesh(baseGeometry.stand, stone);
-  stand.position.y = BASE.height / 2;
-  const rim = new THREE.Mesh(baseGeometry.rim, rimMaterial);
-  rim.position.y = BASE.height * 0.4;
-  group.add(stand, rim);
-  const edge = -BASE.radius * 0.84;
-  for (const offset of pipOffsets(star)) {
-    const pip = new THREE.Mesh(baseGeometry.pip, pipMaterial);
-    pip.scale.set(1, 0.6, 1);
-    pip.position.set(-offset, BASE.height + 0.02, edge);
-    group.add(pip);
-  }
-  return { object: group, materials };
 }

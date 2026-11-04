@@ -1,7 +1,7 @@
 // The Three.js scene: board, units, overlays and effects (docs/viewer-spec.md sections 3–5), the
 // marker that shows where a dragged unit or item would go while planning, and which unit is under
 // the pointer, for its hover card and for dragging. Units are drawn as the model for their star
-// level on its base once loaded (models.ts), playing the clips animation.ts picks if it is rigged,
+// level once loaded (models.ts), playing the clips animation.ts picks if it is rigged,
 // and as pawns until then.
 
 import {
@@ -86,13 +86,12 @@ export interface PlanningBoard {
 
 interface UnitView {
   /**
-   * Placed and sunk by the scene; holds the body and the label. Only the body's model or pawn turns,
-   * so a base stays lined up with its tile.
+   * Placed and sunk by the scene; holds the body and the label. Only the body's model or pawn turns.
    */
   readonly group: THREE.Group;
   readonly unitId: UnitState['unitId'];
   readonly star: Star;
-  /** The team whose half it faces from, which its base's pips point away from. */
+  /** The team whose half it faces from. */
   readonly team: Team;
   readonly look: Team;
   /** Summons, which have no models. */
@@ -133,16 +132,14 @@ interface TextView extends EffectView {
 }
 
 /**
- * What draws a unit: its model on its base, or a pawn for monsters, summons and units whose model
+ * What draws a unit: its model, or a pawn for monsters, summons and units whose model
  * isn't there.
  */
 interface Body {
-  /** What the unit's group holds: the model on its base, or the pawn. */
+  /** What the unit's group holds: the model or the pawn. */
   readonly object: THREE.Object3D;
   /** What turns to face: the model or the pawn. */
   readonly turn: THREE.Object3D;
-  /** The base under a model, lined up with its tile; null for a pawn. */
-  readonly base: THREE.Object3D | null;
   /** Whether it is the unit's model rather than a pawn. */
   readonly model: boolean;
   /**
@@ -154,7 +151,7 @@ interface Body {
   readonly look: Team;
   /**
    * Where the bottom edge of the unit's label goes, holding still through planning and fights: 1.8
-   * above the base, times the model's scale, clear of what it reaches in its attacks and casts
+   * above the ground, times the model's scale, clear of what it reaches in its attacks and casts
    * (stars.ts, labelHeight).
    */
   readonly labelHeight: number;
@@ -503,8 +500,8 @@ export class FightScene {
   }
 
   /**
-   * The unit under a screen position, in the fight or on the planning board and bench: its model, its
-   * base or its pawn as the last frame drew them, or its label when `target`, the element under the
+   * The unit under a screen position, in the fight or on the planning board and bench: its model or its
+   * pawn as the last frame drew them, or its label when `target`, the element under the
    * pointer, is in one, as an item chip on it is. Null if there is none, or it is dead or dying.
    */
   unitAt(clientX: number, clientY: number, target: EventTarget | null = null): UnitPick | null {
@@ -523,7 +520,7 @@ export class FightScene {
     return hit === null ? null : { x: hit.x, z: hit.z };
   }
 
-  /** The id of the person's own unit (on the planning board, or on the bench) whose model, base or pawn is under a screen position, if any. */
+  /** The id of the person's own unit (on the planning board, or on the bench) whose model or pawn is under a screen position, if any. */
   planningUnitAt(clientX: number, clientY: number): number | null {
     return this.viewAt(clientX, clientY, (view) => (this.isOwn(view) ? view.key : null));
   }
@@ -548,7 +545,7 @@ export class FightScene {
 
   /**
    * What `pick` makes of the nearest unit on screen under a screen position that it takes: the ray
-   * hits its model, base or pawn as the last frame drew them, a rigged model in its pose then. A
+   * hits its model or pawn as the last frame drew them, a rigged model in its pose then. A
    * unit `pick` passes over, such as a dying one, lets the ray go on to the units behind it.
    */
   private viewAt<T>(clientX: number, clientY: number, pick: (view: UnitView) => T | null): T | null {
@@ -737,7 +734,7 @@ export class FightScene {
       const lunge = playback.lungeInto(this.lunge, id);
       view.group.position.set(position.x + lunge.x, -DEATH_SINK * death, position.z + lunge.z);
       // The way it goes while it steps or dashes, otherwise towards its target; with nowhere to face,
-      // and once dead, the way it last faced. Its base stays lined up with the tiles.
+      // and once dead, the way it last faced.
       const angle = fightFacing(playback, id, unit.target);
       if (angle !== null) body.turn.rotation.y = angle;
       body.fade((unit.statuses.has('untargetable') ? UNTARGETABLE_OPACITY : 1) * (1 - death));
@@ -787,11 +784,10 @@ export class FightScene {
 
   /**
    * Starts setting up each shader the models loaded so far need, once, from a copy of the first model
-   * to need it, on a base, so that models can be drawn without a frame stalling to compile it. Every
+   * to need it, so that models can be drawn without a frame stalling to compile it. Every
    * unit whose model needs it is a pawn until it is done: in the background where the browser can
    * (KHR_parallel_shader_compile), for up to COMPILE_WAIT_MS, and otherwise a frame ahead, which gives
-   * the GPU a start on it. One shader serves every rigged model and one every static one (models.ts),
-   * and their bases' come with the first.
+   * the GPU a start on it. One shader serves every rigged model and one every static one (models.ts).
    */
   private compileShaders(): void {
     const needed = modelShaders();
@@ -878,7 +874,7 @@ export class FightScene {
   }
 
   /**
-   * A unit's model for its star level on its base, or a pawn until it has loaded, with its label
+   * A unit's model for its star level, or a pawn until it has loaded, with its label
    * above it, facing the other team, coloured as the near (`look` A) or far team. Summons have no
    * model and are smaller pawns, unnamed apart from the Eye's Nazgûl. `bars` adds health, mana and
    * statuses for fights.
@@ -1029,12 +1025,10 @@ function ringMaterial(look: Team): THREE.MeshBasicMaterial {
 }
 
 /**
- * Turns a body to face the other team's half from `team`'s, and its base, if it has one, to point
- * its pips that way. Team A's half is at +z, so it faces −z.
+ * Turns a body to face the other team's half from `team`'s. Team A's half is at +z, so it faces −z.
  */
 function stand(body: Body, team: Team): void {
   body.turn.rotation.y = team === 'A' ? Math.PI : 0;
-  if (body.base !== null) body.base.rotation.y = team === 'A' ? 0 : Math.PI;
 }
 
 /** A low-poly pawn in the look's colour, `scale` times its usual size, with a nose where it faces. */
@@ -1054,7 +1048,6 @@ function pawnBody(look: Team, scale: number): Body {
   return {
     object,
     turn: object,
-    base: null,
     model: false,
     unitId: null,
     star: null,
@@ -1071,7 +1064,7 @@ function pawnBody(look: Team, scale: number): Body {
 }
 
 /**
- * A unit's own copy of its model for its star level, on its base, playing its clips if it is
+ * A unit's own copy of its model for its star level, playing its clips if it is
  * rigged. Its label holds still above it, and rises in `victory` if it has to, so it doesn't cover
  * the weapon the unit raises.
  */
@@ -1080,7 +1073,6 @@ function modelBody(copy: ModelCopy, unitId: UnitState['unitId'], star: Star, loo
   return {
     object: copy.object,
     turn: copy.model,
-    base: copy.base,
     model: true,
     unitId,
     star,

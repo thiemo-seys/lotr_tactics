@@ -7,6 +7,6 @@
  "grow": [100, 110, 110],
  "riderGrow": [100, 110, 110],
  "fit": true,
- "base": "rim+pips",
+ "base": null,
  "trim": true
 }
