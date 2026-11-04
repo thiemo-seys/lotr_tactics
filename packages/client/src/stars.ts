@@ -1,4 +1,4 @@
-// How a unit's model and star level are drawn: which file, how big, the base and the label
+// How a unit's model and star level are drawn: which file, how big, its trim and the label
 // (docs/viewer-spec.md section 4, "Models" and "Star levels"). No Three.js, no DOM.
 
 import type { Star } from '@lotr-tactics/sim';
@@ -12,11 +12,8 @@ export const STAR_GROW = 1.1;
 /** The scale of a Large unit's pawn. Large models are drawn unscaled. */
 export const LARGE_PAWN_SCALE = 1.35;
 
-/** The stand under a unit with a model. */
-export const BASE = { height: 0.05, radius: 0.8 } as const;
-
 /**
- * Where the label sits above the base, before scaling; how far above a Large model's top; and how far
+ * Where the label sits above the ground, before scaling; how far above a Large model's top; and how far
  * above the highest point a model reaches in its attack, cast and victory clips.
  */
 export const LABEL = { height: 1.8, aboveLarge: 0.3, clear: 0.15 } as const;
@@ -24,12 +21,7 @@ export const LABEL = { height: 1.8, aboveLarge: 0.3, clear: 0.15 } as const;
 /** Colours per star level, 1★ first. */
 export const STAR_COLOURS = {
   trim: [0x6b6f74, 0xc9ced4, 0xc4a04a],
-  rim: [0x4b4f55, 0xc9ced4, 0xc4a04a],
-  pip: [0xb8b2a6, 0xc9ced4, 0xc4a04a],
 } as const satisfies Record<string, readonly [number, number, number]>;
-
-/** The stand's stone. */
-export const STAND_COLOUR = 0x3d3a35;
 
 /** The colour of a star-level part. */
 export function starColour(part: keyof typeof STAR_COLOURS, star: Star): number {
@@ -61,11 +53,11 @@ export function starScale(star: Star, reach: number): number {
 
 /**
  * The label's height above the ground for a model with the given scale and top (its height at
- * scale 1): 1.8 above the base, times the scale, or 0.3 above a Large model's top if that is higher.
+ * scale 1): 1.8 above the ground, times the scale, or 0.3 above a Large model's top if that is higher.
  */
 export function modelLabelHeight(scale: number, top: number, large: boolean): number {
   const height = LABEL.height * scale;
-  return BASE.height + (large ? Math.max(height, top * scale + LABEL.aboveLarge) : height);
+  return large ? Math.max(height, top * scale + LABEL.aboveLarge) : height;
 }
 
 /**
@@ -85,13 +77,7 @@ export function victoryRise(scale: number, top: number, large: boolean, strike: 
   return Math.max(0, clearOf(scale, raised) - labelHeight(scale, top, large, strike));
 }
 
-/** Where a label's bottom edge goes to clear a point `height` up a model at scale 1, standing on its base. */
+/** Where a label's bottom edge goes to clear a point `height` up a model at scale 1. */
 function clearOf(scale: number, height: number): number {
-  return BASE.height + scale * height + LABEL.clear;
-}
-
-/** The pips' offsets along the base's edge, centred, one per star. */
-export function pipOffsets(star: Star): number[] {
-  const spacing = 0.2;
-  return Array.from({ length: star }, (_, i) => (i - (star - 1) / 2) * spacing);
+  return scale * height + LABEL.clear;
 }

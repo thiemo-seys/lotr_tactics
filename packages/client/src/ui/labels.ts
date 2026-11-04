@@ -1,6 +1,6 @@
 // The overlay above each unit (docs/viewer-spec.md section 4): a name plate with star pips, the
-// unit's items and the One Ring, and in fights a health bar with ticks for chunks of health and the
-// shield after it, a mana bar and status icons. `update` runs every frame, so it only writes to the
+// unit's items and the One Ring, and in fights a health bar framed in its star level's colour, with
+// ticks for chunks of health and the shield after it, a mana bar and status icons. `update` runs every frame, so it only writes to the
 // DOM when a value has changed, and allocates nothing otherwise.
 
 import type { ItemId, Star, Team, UnitState } from '@lotr-tactics/sim';
@@ -57,7 +57,8 @@ export class UnitLabel {
     if (options.bars) {
       this.health = el('i', 'fill');
       this.shield = el('i', 'shield');
-      this.bar = el('div', 'bar health', this.health, this.shield);
+      // Framed bronze, silver or gold for its star level; a summon's is plain.
+      this.bar = el('div', options.star === null ? 'bar health' : `bar health star-${options.star}`, this.health, this.shield);
       this.element.append(this.bar);
       if (options.mana) {
         this.manaFill = el('i', 'fill');

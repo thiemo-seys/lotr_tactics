@@ -2,7 +2,7 @@
 
 How a unit's star level (1★, 2★, 3★) shows on its model, tried on Frodo (small), Aragorn (standard) and Éomer (mounted) on the game's board. `docs/design.md` section 12, item 2, leaves this open. The task and its background are in [`HANDOFF.md`](HANDOFF.md).
 
-**Chosen** on 1 November 2026: every option but the aura (`options/chosen.json`). A 2★ unit wears its gear and a 3★ is its book model, both drawn 10% bigger as far as the hex allows, on a base with a plain, silver or gold rim and pips, with its trim coloured to match. The rules are in `docs/viewer-spec.md` section 4; the roll-out to every unit, now done, is in [`ROLLOUT.md`](ROLLOUT.md). The comparison page is [`results/index.html`](results/index.html) (open it in a browser).
+**Chosen** on 1 November 2026: every option but the aura (`options/chosen.json`). A 2★ unit wears its gear and a 3★ is its book model, both drawn 10% bigger as far as the hex allows, on a base with a plain, silver or gold rim and pips, with its trim coloured to match. The base was dropped on 4 November 2026: the label's health bar is framed bronze, silver or gold instead. The rules are in `docs/viewer-spec.md` section 4; the roll-out to every unit, now done, is in [`ROLLOUT.md`](ROLLOUT.md). The comparison page is [`results/index.html`](results/index.html) (open it in a browser).
 
 ## The options
 

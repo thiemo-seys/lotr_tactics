@@ -677,7 +677,7 @@ node packages/client/art/board.mjs /tmp/board/gimli packages/client/public/model
 node packages/client/art/board.mjs /tmp/board/stars --stars <study.json> --unit=0
 ```
 
-`board.mjs` renders models on the game's board with three.js in headless Chromium, with the client's camera, lights and team colours, so a model can be judged at the size it is played at. `--lineup` puts several side by side, and `--stars` lays a unit out at 1★, 2★ and 3★ with the base, growth and trim the client gives it, and a label 1.8 above the base, times the scale, which the client sets higher for a Large model or to clear a model's clips (`docs/viewer-spec.md` section 4, Star levels); `star-study/options/chosen.json` is an example. Its header lists the options.
+`board.mjs` renders models on the game's board with three.js in headless Chromium, with the client's camera, lights and team colours, so a model can be judged at the size it is played at. `--lineup` puts several side by side, and `--stars` lays a unit out at 1★, 2★ and 3★ with the growth and trim the client gives it (a base too, if the options ask for one, though the client no longer draws one), and a label 1.8 above the ground, times the scale, which the client sets higher for a Large model or to clear a model's clips (`docs/viewer-spec.md` section 4, Star levels); `star-study/options/chosen.json` is an example. Its header lists the options.
 
 ## Arenas
 

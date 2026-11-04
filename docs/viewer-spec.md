@@ -9,7 +9,7 @@ A browser tool that runs one fight with `packages/sim` and plays it back in 3D. 
 - Pick both boards from presets, plus seed and stage, and run the fight.
 - Play it back at 30 ticks per second with pause, single-step and speed control.
 - Show the board, units, health, shields, mana, attacks, projectiles, abilities, statuses, deaths and the result.
-- Each unit as its own model for its star level, on a base (section 4), playing its clips from the fight's events if it is rigged (section 5).
+- Each unit as its own model for its star level (section 4), playing its clips from the fight's events if it is rigged (section 5).
 - A readable event log.
 - A damage meter (section 8).
 
@@ -46,13 +46,13 @@ packages/client/
     playback.ts    stepping the fight, what to draw at a moment, and what each unit has done, for animation.ts (no Three.js, no DOM)
     animation.ts   which clip each unit plays at a display time, and how far into it (no Three.js, no DOM)
     drawing.ts     when the scene draws a frame, and when pawns swap for their models (no Three.js, no DOM)
-    models.ts      loading the models, each file once, and a copy for each unit with its own materials and clips, standing on its base
+    models.ts      loading the models, each file once, and a copy for each unit with its own materials and clips
     stars.ts       which model, scale, label height and colours a star level gets (no Three.js, no DOM)
     look.ts        the camera's views and limits, the arena, lights, fog, blur, grade and the tiles' stone pattern (no Three.js, no DOM)
     arena.ts       loading the arena
     post.ts        the blur, grade and vignette laid over each frame
     tiles.ts       the stone pattern on the board's hexes, in their shader
-    scene.ts       Three.js scene, units as models on their bases or pawns, playing their clips, the planning view, the marker where a drag would drop, and the unit under the pointer
+    scene.ts       Three.js scene, units as models or pawns, playing their clips, the planning view, the marker where a drag would drop, and the unit under the pointer
     units.ts       names and sizes of units, monsters and summons
     items.ts       item and Ring of Power colours, and what each item is and does, from the item data
     gifts.ts       Gift tiers and effects from the Gift data
@@ -120,19 +120,19 @@ The board stands in an arena, as a lens with a shallow focus would see it: the b
 
 ## 4. Units
 
-- **Body:** the unit's model for its star level (Models and Star levels below), standing on its base, with its `team` material in its team's colour. `public/models/` is listed when the client is built, so a missing model is never requested. Monsters and summons, which have no models yet, and any unit whose model is missing or still loading, are low-poly pawns in their team's colour, without a base. Large pawns are drawn bigger; summons other than the Eye's Nazgûl are smaller and have no name.
+- **Body:** the unit's model for its star level (Models and Star levels below), standing on its tile, with its `team` material in its team's colour. `public/models/` is listed when the client is built, so a missing model is never requested. Monsters and summons, which have no models yet, and any unit whose model is missing or still loading, are low-poly pawns in their team's colour. Large pawns are drawn bigger; summons other than the Eye's Nazgûl are smaller and have no name.
 - **Overlay** above each unit (ui/labels.ts):
   - a name plate with star pips: one bronze pip at 1★, two silver at 2★ and three gold at 3★; summons have no pips, and those without a name no plate
   - its items as chips, each naming its effect when hovered, and the One Ring with its Corruption on the Ring's bearer
-  - a health bar with a tick for every 250 Health and a heavier one for every 1000, and the shield drawn after it
+  - a health bar framed in its star level's colour, bronze at 1★, silver at 2★ and gold with a soft glow at 3★ (a summon's frame is plain), with a tick for every 250 Health and a heavier one for every 1000, and the shield drawn after it
   - a mana bar
   - icons for stun, stun immunity and untargetable, in a row on top, so the name and bars don't move when one comes or goes
   - Its bottom edge sits at the label height (Star levels below), so it grows upwards, and it holds still through planning and fights. A winner's rises as `victory` fades in, if it has to, to clear its victory pose.
   - It only writes to the page when a value has changed, and allocates nothing otherwise.
-- **Hovering** a unit, its model, its base or its pawn as the last frame drew them (a rigged model in its pose then), or an item chip on its label, shows its card above its label (ui/unit-hover.ts, from scene.ts's `unitAt`): its name, star level, cost and traits, its current Health, shield and mana, its current stats, and its ability with the mana it costs and what it does, written from the ability's steps with the numbers the sim's `abilityValue` gives at its star level and Ability Power (abilities.ts). The card follows the fight a few times a second. Monsters are named as monsters and summons as summons. A dying unit can't be hovered, so the pointer finds the unit behind it. Hovering changes nothing in the 3D scene, so it draws no frame.
-- **Facing:** each unit faces its target, except while a step or dash moves it, when it faces the way it is going. It turns from one to the other over 3 ticks (section 5, Animation). Only the model or pawn turns; a base stays lined up with its tile.
-- **Untargetable:** the unit is drawn faded, its base with it.
-- **Death:** the unit plays its `death` clip, if its model has one, and halfway through it starts to sink and fade out, over half a second of fight time, its base sinking and fading with it.
+- **Hovering** a unit, its model or its pawn as the last frame drew them (a rigged model in its pose then), or an item chip on its label, shows its card above its label (ui/unit-hover.ts, from scene.ts's `unitAt`): its name, star level, cost and traits, its current Health, shield and mana, its current stats, and its ability with the mana it costs and what it does, written from the ability's steps with the numbers the sim's `abilityValue` gives at its star level and Ability Power (abilities.ts). The card follows the fight a few times a second. Monsters are named as monsters and summons as summons. A dying unit can't be hovered, so the pointer finds the unit behind it. Hovering changes nothing in the 3D scene, so it draws no frame.
+- **Facing:** each unit faces its target, except while a step or dash moves it, when it faces the way it is going. It turns from one to the other over 3 ticks (section 5, Animation). Only the model or pawn turns.
+- **Untargetable:** the unit is drawn faded.
+- **Death:** the unit plays its `death` clip, if its model has one, and halfway through it starts to sink and fade out, over half a second of fight time.
 
 ### Models
 
@@ -148,15 +148,15 @@ Each unit, monster and summon gets its own model in the **Faceted** art style, c
 - **Team colour:** on parts every model has, seen from the front, from behind and from above, in a material named `team` that the viewer recolours. Gimli's are his hood, cape and shield face.
 - **Role:** shows in the silhouette: shields for Guardians, bows for Archers, staffs for Sorcerers, mounts for Riders, hoods and daggers for Burglars, banners or capes for Captains.
 - **Budget** *(placeholder)*: about 800 triangles for a unit, 1,200 for a mounted unit and 2,000 for a Large unit or monster.
-- **Build:** Blender 4.5 LTS, one Python script per model in `packages/client/art/`, exported as glTF binary. 1 Blender unit is 1 game unit, the origin is the centre of the model's base on the ground, and a model faces +Z in the game (−Y in Blender). One mesh per model, with colour from materials named after what they are; a rigged model adds its armature (Rigs and clips below). No model shows the One Ring or a Ring of Power, since any unit can carry them.
+- **Build:** Blender 4.5 LTS, one Python script per model in `packages/client/art/`, exported as glTF binary. 1 Blender unit is 1 game unit, the origin is the centre of the model's footprint on the ground, and a model faces +Z in the game (−Y in Blender). One mesh per model, with colour from materials named after what they are; a rigged model adds its armature (Rigs and clips below). No model shows the One Ring or a Ring of Power, since any unit can carry them.
 - **In the viewer** (models.ts), in fights and on the planning board and bench:
   - Both pages load every unit's 1★ model once, in the background. A unit's 2★ and 3★ models load once the unit is drawn: its own level's and the next one's, so a unit that is upgraded has its model sooner. Each file loads once.
   - Until a unit's model has loaded, or if it is missing, the unit is a pawn, so a model never breaks a fight. A unit that died as a pawn stays one, so it sinks and fades once.
   - Rigged or static, at any star level: a model with a rig and all seven clips plays them (section 5, Animation). Any other is drawn still, a rigged model without all seven included. Today the 1★ and 2★ models are rigged and the 3★ static; the client assumes neither.
   - Models that load together, or that waited together for their shader, replace pawns at most 3 units a frame, so no frame stalls setting them all up.
-  - Before a model is drawn, the scene compiles the shader it needs from a copy of the first model to load that needs it, standing on a base, for the texture the scene is drawn into (section 3, Arena), since three.js builds a different program for it than for the canvas. One shader serves every rigged model, skinned on the GPU, and one every static model, while their materials are all of one kind; the bases' shaders are compiled with the first. It compiles in the background where the browser can, for up to 3 seconds, or else a frame ahead. Until its shader is ready a unit is a pawn, even if its model has loaded; then the pawns swap for their models as they do when models load.
-  - Each unit gets its own copy, which shares geometry and clips with the other copies but has its own materials: `team` recoloured for its side, `trim` for its star level, and every material, its base's included, able to fade without a new shader, for untargetable and dying units.
-  - When the views are rebuilt (planning gives way to a fight, a fight to planning, a restart, a drop), each copy taken off goes to the next view of the same unit at the same star level in the same colour, unfaded, posed afresh and with its base turned for its team, rather than being copied again. Copies not taken up are disposed of once the next frame is drawn.
+  - Before a model is drawn, the scene compiles the shader it needs from a copy of the first model to load that needs it, for the texture the scene is drawn into (section 3, Arena), since three.js builds a different program for it than for the canvas. One shader serves every rigged model, skinned on the GPU, and one every static model, while their materials are all of one kind. It compiles in the background where the browser can, for up to 3 seconds, or else a frame ahead. Until its shader is ready a unit is a pawn, even if its model has loaded; then the pawns swap for their models as they do when models load.
+  - Each unit gets its own copy, which shares geometry and clips with the other copies but has its own materials: `team` recoloured for its side, `trim` for its star level, and every material able to fade without a new shader, for untargetable and dying units.
+  - When the views are rebuilt (planning gives way to a fight, a fight to planning, a restart, a drop), each copy taken off goes to the next view of the same unit at the same star level in the same colour, unfaded and posed afresh, rather than being copied again. Copies not taken up are disposed of once the next frame is drawn.
   - A rigged model's meshes get bounds that hold every pose of its clips: a sphere round the column `reach` from its centre and as high as its `attack`, `cast` and `victory` reach, with 10% to spare, so hovering finds a part in any pose.
   - A full board, 9 units a side plus summons, stays smooth:
     - A frame is drawn only when something on screen changes: the fight's display time, planning units idling (not under reduced motion, when `idle` holds still), the camera, the size, the units, a dragged unit or the marker. A WebGL context restored after it was lost clears the canvas, as a resize does, so the frame is drawn again.
@@ -202,7 +202,7 @@ Every unit's 1★ model is rigged and carries its own animations, which the view
 
 A unit's star level shows four ways at once, chosen from a study of Frodo, Aragorn and Éomer on the board (`packages/client/art/star-study/`, with the comparison in its `results/`). Each is for units with a model; a unit drawn as a pawn shows its stars in its label only.
 
-- **Label:** the name plate keeps its star pips (section 4, overlay).
+- **Label:** the name plate keeps its star pips, and in fights the health bar is framed bronze, silver or gold for the star level (section 4, overlay). This is where the board shows star level at a glance; there is no stand under the model.
 - **Model:** a 2★ unit uses its gear model and a 3★ unit its book model, falling back to the level below when one doesn't exist yet. A gear or book model with a rig and all seven clips plays them as a 1★ model does; today the gear models are rigged and the book models static.
   - **Gear** (`<id>-2.glb`): the 1★ model with one piece added that reads at game size, such as shoulder plates, a helm or a mantle. Aragorn's is steel shoulder plates. It is the rigged 1★ model with the piece on, each part of the piece bound to the bone it moves with. It keeps the 1★ model's rig, so it has the same bones and clips and moves as the 1★ model does (`art/README.md`, Gear models).
   - **Book moment** (`<id>-3.glb`): the unit as itself at its height in the books, drawn from the books and not the films, and still recognisably the same unit: Frodo in the mithril coat, Aragorn as King Elessar with the winged crown and Arwen's standard, Éomer as Éomer King with the royal banner. It need not keep the 2★ piece.
@@ -210,13 +210,10 @@ A unit's star level shows four ways at once, chosen from a study of Frodo, Arago
 - **Size:** 2★ and 3★ models are drawn 10% bigger *(placeholder)*, but never past the hex: the scale is the smaller of 1.1 and 0.94 divided by the model's reach from its centre, and never below 1. A model that plays its clips takes its reach from its armature's glTF extras: `reach`, the furthest any frame of any clip takes it from its centre, on frames or between them, which the rig kit writes (`art/rig.py`), so its clips stay in the hex. A static model's reach is measured as it stands. Large models start from 1, not the pawns' 1.35.
   - So a rigged gear model grows only as far as its clips leave room. Most clips come near the hex's edge, so 28 of the 36 gear models hardly grow: by about 2% at most, and the Riders and Large units by under 1%. The other 8 have clips that reach less, and grow the full 10%: Bilbo's, Frodo's, Gollum's, Pippin's and Sam's, and Elrond's, Galadriel's and Gandalf's (`art/README.md`, Gear models).
   - A Rider's book model, which is static, grows 4 to 10%, since its horse already reaches 0.85 to 0.91 as it stands.
-- **Base:** each unit with a model stands on a low hexagonal stand, 0.05 tall with a radius of 0.8, in dark stone, lined up with its tile. The model stands on top of it, and the base sinks and fades with its unit but doesn't turn with it.
-  - Its rim is plain stone at 1★, silver at 2★ and muted gold at 3★.
-  - Pips on the edge towards the other team's half count the stars: one, two or three small diamonds in pale stone, silver and gold.
-  - Summons and monsters have no base.
+- **No base:** a model stands straight on its tile, as a pawn does. The star study's stand with a coloured rim and pips was dropped on 4 November 2026 for the label's framed health bar, which reads better from the camera.
 - **Trim:** buckles, clasps, sword fittings and similar parts use a material named `trim`, which the viewer colours iron at 1★, silver at 2★ and muted gold at 3★, whatever its colour in the model.
-- **Colours** *(placeholder)*: iron `#6b6f74`; silver `#c9ced4`; gold `#c4a04a`; plain stone rim `#4b4f55`, stand `#3d3a35` and pale pips `#b8b2a6`. Gold stays muted, so the team colour is still the only saturated part.
-- **Label height:** the label's bottom edge rises with the model: 1.8 above the base, times the model's scale, or 0.3 above a Large model's top if that is higher. It sits higher still if it must, to clear by 0.15 *(placeholder)* the highest point the model reaches as it stands or in its `attack` and `cast` clips, times its scale; for a static model, that is its top.
+- **Colours** *(placeholder)*: iron `#6b6f74`; silver `#c9ced4`; gold `#c4a04a`, for the trim. Gold stays muted, so the team colour is still the only saturated part.
+- **Label height:** the label's bottom edge rises with the model: 1.8 above the ground, times the model's scale, or 0.3 above a Large model's top if that is higher. It sits higher still if it must, to clear by 0.15 *(placeholder)* the highest point the model reaches as it stands or in its `attack` and `cast` clips, times its scale; for a static model, that is its top.
   - The height is worked out once, as the model loads, with each clip posed on every frame and halfway to the next. The label holds still at it through planning and fights.
   - A winner's rises as `victory` fades in, to clear the highest point of its victory pose the same way, if it doesn't already.
   - A pawn's label sits 1.8 above the ground, times the pawn's scale.
@@ -231,7 +228,7 @@ A unit's star level shows four ways at once, chosen from a study of Frodo, Arago
 - **What is drawn at a display time:**
   - **Positions:** a `move` is interpolated from `from` to `to` between its tick and `arriveTick`. A `dash` takes 4 ticks.
   - **Projectiles:** a ranged `attack` fires from the attacker's position at that moment. Its projectile leaves 3 ticks later, as the shooter's `attack` clip looses the shot (section 4), or a tick before it lands if that is sooner, and flies to the target, landing on `hitTick`.
-    - It flies from the shooter's chest to the target's, so it strikes a Hobbit and an Ent alike. A model's chest is 0.85 of the height of its `head` bone as it stands, which sits at the neck. A model without one, such as a static one, takes its unit's 1★ model's, since a gear or book model keeps its build, or else 0.69 of its height. Either is times the model's scale, above its base. A pawn's is 0.9, scaled with the pawn.
+    - It flies from the shooter's chest to the target's, so it strikes a Hobbit and an Ent alike. A model's chest is 0.85 of the height of its `head` bone as it stands, which sits at the neck. A model without one, such as a static one, takes its unit's 1★ model's, since a gear or book model keeps its build, or else 0.69 of its height. Either is times the model's scale, above the ground. A pawn's is 0.9, scaled with the pawn.
   - **Melee attacks:** a short lunge towards the target.
   - **Numbers:** `damage` and `heal` rise from just above the target's label and fade over 24 ticks.
     - Physical damage is orange, magic blue, true white; heals are green.
@@ -357,7 +354,7 @@ The parts without Three.js are tested with Vitest:
 - the icons: every trait, item component, Gift tier, round type and label status has one, each trait and component its own;
 - trait text and the trait tracker's rows;
 - tooltip content, the HUD's values, the players list's rows, a round's results and the timer, and what the HUD, the players list and the trait tracker show while the person's fight plays;
-- the model a star level uses, falling back to the level below, its scale within the hex, and its label height: 1.8 above the base, clear of the attack and cast clips, and a winner's rise to clear its victory pose (stars.ts);
+- the model a star level uses, falling back to the level below, its scale within the hex, and its label height: 1.8 above the ground, clear of the attack and cast clips, and a winner's rise to clear its victory pose (stars.ts);
 - what an ability does in words (abilities.ts), how a shop card marks a unit the person has (shop.ts), the stage tracker's rounds (hud.ts), and that a round's result reaches the stage tracker only once its results have been shown (flow.ts).
 
 The Three.js scene and the pages are checked by building them and looking at them in a browser.

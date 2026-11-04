@@ -1835,6 +1835,33 @@ kbd {
   height: 100%;
 }
 
+/* A unit's star level frames its health bar: bronze at 1, silver at 2 and gold at 3, with a dark
+   edge outside so it reads on any ground. Summons have no star level and keep the plain frame. */
+.unit-label .bar.health[class*='star-'] {
+  height: 11px;
+  border: 2px solid var(--pip);
+  border-radius: 3px;
+  box-shadow:
+    0 0 0 1px rgba(0, 0, 0, 0.75),
+    0 1px 2px rgba(0, 0, 0, 0.55);
+}
+
+.unit-label .bar.health.star-1 {
+  border-color: #9a6a45;
+}
+
+.unit-label .bar.health.star-2 {
+  box-shadow:
+    0 0 0 1px rgba(0, 0, 0, 0.75),
+    0 0 4px rgba(211, 219, 229, 0.6);
+}
+
+.unit-label .bar.health.star-3 {
+  box-shadow:
+    0 0 0 1px rgba(0, 0, 0, 0.75),
+    0 0 7px 1px rgba(243, 210, 122, 0.9);
+}
+
 .unit-label .bar.health .fill {
   background: linear-gradient(180deg, #8af0b1, #34b46a);
 }
