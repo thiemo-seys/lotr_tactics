@@ -163,8 +163,8 @@ function unitCard(id: UnitId, owned: readonly Star[], buy: ActionResult, onBuy: 
   const ownedText = owned.length === 0 ? '' : `, you have ${owned.length}${mark === 'completes' ? ', buying it makes a 2★' : ''}`;
   card.setAttribute('aria-label', `${def.name}, ${def.cost} gold${ownedText}${buy.ok ? '' : `: ${buy.reason}`}`);
   setEnabled(card, buy.ok);
-  const hint = mark === 'completes' ? 'Click to buy: it combines into a 2★.' : owned.length > 0 ? `Click to buy. You have ${owned.length}.` : 'Click to buy.';
-  setTip(card, unitTip(id, buy.ok ? { text: hint, reason: false } : { text: buy.reason, reason: true }));
+  // The card already shows the copies owned and why it can't be bought; the tip only adds what a buy would make.
+  setTip(card, unitTip(id, buy.ok ? (mark === 'completes' ? { text: 'Buying it makes a 2★.', reason: false } : undefined) : { text: buy.reason, reason: true }));
   card.addEventListener('click', onBuy);
   return card;
 }
