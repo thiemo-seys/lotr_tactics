@@ -25,7 +25,7 @@ Status: early design. Numbers marked *(placeholder)* are starting points for tun
 | Roster | Sandbox: good and evil characters can share a board; 36 units in the first set |
 | Platform | Browser |
 | Rendering | Three.js |
-| Art style | Low-poly 3D models in the Faceted style: flat-shaded facets, grounded heroic proportions, and a muted palette in which the livery is the only saturated part; units look the same on both sides, and their health bars, green for the person's and red for the opponent's, tell the sides apart ([`viewer-spec.md`](viewer-spec.md) section 4) |
+| Art style | Low-poly 3D models in the Faceted style: flat-shaded facets, grounded heroic proportions, and a muted palette in which the livery, in each faction's colour, is the only saturated part; units look the same on both sides, and their health bars, green for the person's and red for the opponent's, tell the sides apart ([`viewer-spec.md`](viewer-spec.md) section 4) |
 | Lobby size | 8 players |
 | Game length | About 30 minutes |
 | Max level | 9 |
