@@ -508,7 +508,7 @@ The play page, `play.html` in `packages/client`, next to the fight viewer (`view
 - **Keys:** D rerolls and F buys XP, in planning and while the fights play; Space is Ready, and Escape goes back to the person's own board from another player's.
 - **Players list:** every player in standings order, with an HP bar coloured by how much HP is left, their level, their streak, whether they are a bot or away and whether they hold the One Ring. The person's row is marked, and players who are out are dimmed with their place.
 - **Other players' boards:** in a Council and in planning, clicking a player still in the game in the players list, or pressing Enter on their row, shows their board and bench in place of the person's, from `MatchView.players` (`server-spec.md` section 6), so it follows their changes as they make them.
-  - Their units stand where they placed them, in their own perspective, in the far team's red, with their items and, on the One Ring's bearer, the Ring.
+  - Their units stand where they placed them, in their own perspective, in their liveries as their units always are, with their items and, on the One Ring's bearer, the Ring.
   - The trait tracker counts their board and their crest Gifts, and its title and tooltips name them.
   - A bar at the top names them and shows their HP, level and units on the board, gold, and the items not on a unit, with the One Ring while they hold it unworn.
   - Their row in the players list is marked in red.
