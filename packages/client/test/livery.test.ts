@@ -1,19 +1,37 @@
-import { UNITS, UNIT_IDS } from '@lotr-tactics/sim';
+import { TRAITS, UNITS, UNIT_IDS, type OriginId } from '@lotr-tactics/sim';
 import { describe, expect, it } from 'vitest';
-import { DEFAULT_LIVERY, FACTION_LIVERY, UNIT_LIVERY, liveryOf } from '../src/livery.js';
+import { DEFAULT_LIVERY, LIVERY, liveryOf } from '../src/livery.js';
 
-describe('liveryOf (viewer-spec.md section 4, Livery)', () => {
-  it("gives a unit without a colour of its own its faction's", () => {
-    const plain = UNIT_IDS.filter((id) => UNIT_LIVERY[id] === undefined);
-    expect(plain.length).toBeGreaterThan(0);
-    for (const id of plain) expect(liveryOf(id), id).toBe(FACTION_LIVERY[UNITS[id].origin]);
+const COLOUR = /^#[0-9a-f]{6}$/;
+const origins = Object.keys(TRAITS).filter((id) => TRAITS[id as keyof typeof TRAITS].kind === 'origin') as OriginId[];
+
+describe('livery.json (viewer-spec.md section 4, Livery)', () => {
+  it('gives every faction a colour', () => {
+    expect(Object.keys(LIVERY.factions).sort()).toEqual([...origins].sort());
+    for (const colour of Object.values(LIVERY.factions)) expect(colour).toMatch(COLOUR);
+    expect(LIVERY.default).toMatch(COLOUR);
   });
 
-  it("gives a unit with a colour of its own that colour, not its faction's", () => {
-    const own = UNIT_IDS.filter((id) => UNIT_LIVERY[id] !== undefined);
-    expect(own).toContain('gandalf');
-    for (const id of own) expect(liveryOf(id), id).toBe(UNIT_LIVERY[id]);
-    expect(liveryOf('saruman')).not.toBe(FACTION_LIVERY[UNITS.saruman.origin]);
+  it('gives every roster unit, and nothing else, its faction or a colour of its own', () => {
+    expect(Object.keys(LIVERY.units).sort()).toEqual([...UNIT_IDS].sort());
+    for (const id of UNIT_IDS) {
+      const livery = LIVERY.units[id];
+      // A faction named here is the unit's own, so the art tools, which can't read the sim, agree with the game.
+      if (livery.startsWith('#')) expect(livery, id).toMatch(COLOUR);
+      else expect(livery, id).toBe(UNITS[id].origin);
+    }
+  });
+});
+
+describe('liveryOf', () => {
+  it("gives a unit named with its faction the faction's colour", () => {
+    expect(liveryOf('merry')).toBe(0xa35a33);
+    expect(liveryOf('treebeard')).toBe(Number.parseInt(LIVERY.factions.ent.slice(1), 16));
+  });
+
+  it('gives a unit with a colour of its own that colour', () => {
+    expect(liveryOf('saruman')).toBe(0xc9c6be);
+    expect(liveryOf('sam')).toBe(0x844929);
   });
 
   it('gives summons the default', () => {

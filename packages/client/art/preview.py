@@ -5,12 +5,15 @@
 
 Writes one PNG per view and sheet.png, a 4 x 2 grid of them:
 
-    hero (blue)   hero (red)   game-back (blue)   game-front (red)
-    front         left         back               right
+    hero    hero-right    game-back    game-front
+    front   left          back         right
 
-`hero` is three-quarters on the model's left; `game-back` and `game-front` look down at the game
-camera's 45 degrees, from behind (how the near side is seen) and in front (the far side); the bottom
-row turns the model round. Every model is framed the same, so sizes compare, unless --fit frames the
+`hero` is three-quarters on the model's left and `hero-right` on its right; `game-back` and
+`game-front` look down at the game camera's 45 degrees, from behind (how the near side is seen) and
+in front (the far side); the bottom row turns the model round. The `team` material is drawn in the
+unit's livery (livery.py, from packages/client/src/livery.json), as the client draws it on both
+sides; the unit is the file's name without `.glb` and a star level's `-2` or `-3`, and a file named
+after no unit gets the default livery. Every model is framed the same, so sizes compare, unless --fit frames the
 model alone for a closer look at a small one. --quick renders only hero.png, smaller and with fewer
 samples. Single-sided materials draw as three.js draws them. --culled draws every material
 single-sided, as three.js would if the client culled back faces, so a face wound inside out, which
@@ -18,8 +21,8 @@ the double-sided export hides, shows as a hole (and the model casts no shadow).
 
 A rigged model is drawn in its rest pose. With --clips it renders its clips instead, all of them or
 those named: <clip>.png for each, a contact sheet of the clip's frames, numbered, in three rows
-seen as the game's camera sees them, from 45 degrees up: from the front (red, as the far side is
-seen), from its right and from behind (blue, as the near side is seen). Short clips show every
+seen as the game's camera sees them, from 45 degrees up: from the front (as the far side is seen),
+from its right and from behind (as the near side is seen). Short clips show every
 frame, longer ones a dozen spread over them, with every frame of the first 0.2 s of an attack or a
 cast, where the blow lands. --frames picks the frames instead, and --size sets the size of each
 frame in pixels (224 by default), for a closer look.
@@ -32,6 +35,9 @@ import sys
 import bpy
 import numpy as np
 from mathutils import Vector
+
+sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+from livery import livery  # noqa: E402
 
 args = sys.argv[sys.argv.index('--') + 1 :]
 quick = '--quick' in args
@@ -48,7 +54,7 @@ picked = option('frames')
 model_path, out_dir = [a for a in args if not a.startswith('--')][:2]
 os.makedirs(out_dir, exist_ok=True)
 
-TEAM = {'blue': 0x4A90D9, 'red': 0xD9534F}
+LIVERY = livery(model_path)
 TILE = 0x31465F  # team A's half of the board, from scene.ts
 GROUND = 0x12161C  # the game's background
 BACKDROP = 0x2A3039
@@ -201,10 +207,10 @@ if clips:  # closer, on the hex
 distance = reach / math.tan(camera.data.angle / 2)
 
 
-def shoot(name, turn, elevation, colour):
-    """Renders the model turned by `turn` degrees, from `elevation` degrees above, in a team colour."""
+def shoot(name, turn, elevation):
+    """Renders the model turned by `turn` degrees, from `elevation` degrees above, in its livery."""
     pivot.rotation_euler = (0, 0, math.radians(turn))
-    team.node_tree.nodes['Principled BSDF'].inputs['Base Color'].default_value = linear(TEAM[colour])
+    team.node_tree.nodes['Principled BSDF'].inputs['Base Color'].default_value = linear(LIVERY)
     up = math.radians(elevation)
     camera.location = target + distance * Vector((0, -math.cos(up), math.sin(up)))
     camera.rotation_euler = (target - camera.location).to_track_quat('-Z', 'Y').to_euler()
@@ -241,17 +247,17 @@ def save_sheet(paths, columns, name):
 
 # The model faces -Y, towards the camera; turning it by -90 degrees shows its left side.
 VIEWS = [
-    ('hero', -35, 12, 'blue'),
-    ('hero-red', -35, 12, 'red'),
-    ('game-back', 180, 45, 'blue'),
-    ('game-front', 0, 45, 'red'),
-    ('front', 0, 5, 'blue'),
-    ('left', -90, 5, 'blue'),
-    ('back', 180, 5, 'blue'),
-    ('right', 90, 5, 'blue'),
+    ('hero', -35, 12),
+    ('hero-right', 35, 12),
+    ('game-back', 180, 45),
+    ('game-front', 0, 45),
+    ('front', 0, 5),
+    ('left', -90, 5),
+    ('back', 180, 5),
+    ('right', 90, 5),
 ]
 # A clip's rows: from the front, its right and behind, at the game camera's 45 degrees.
-CLIP_VIEWS = [('front', 0, 45, 'red'), ('right', 90, 45, 'blue'), ('back', 180, 45, 'blue')]
+CLIP_VIEWS = [('front', 0, 45), ('right', 90, 45), ('back', 180, 45)]
 ONE_SHOT_DETAIL = 7  # every frame of an attack or cast up to 0.2 s, where it strikes
 
 
@@ -287,11 +293,11 @@ if clips:
         last = round(action.frame_range[1])
         frames = [int(f) for f in picked.split(',') if int(f) <= last] if picked else clip_frames(name, last)
         paths = []
-        for view, turn, elevation, colour in CLIP_VIEWS:
+        for view, turn, elevation in CLIP_VIEWS:
             for f in frames:
                 scene.frame_set(f)
                 stamp(f'{name} {f}  {f / FPS:.2f} s')
-                paths.append(shoot(f'{name}-{view}-{f:02d}', turn, elevation, colour))
+                paths.append(shoot(f'{name}-{view}-{f:02d}', turn, elevation))
         save_sheet(paths, len(frames), name)
     stamp('')
 else:
