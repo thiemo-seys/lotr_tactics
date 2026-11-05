@@ -184,7 +184,7 @@ class GameImpl implements Game, GameState {
         this.pick(player, action.option);
         return OK;
       case 'buy':
-        return player.buy(action.slot);
+        return player.buy(action.slot, this.phase === 'fight');
       case 'sell':
         return player.sell(action.from);
       case 'move':
@@ -245,10 +245,12 @@ class GameImpl implements Game, GameState {
   }
 
   /**
-   * Ends the fight phase: the fights' gold and loot are paid, the players they knocked out are
-   * placed, and the next round starts, unless the game is over.
+   * Ends the fight phase: the merges that waited for the board are made, the fights' gold and loot
+   * are paid, the players they knocked out are placed, and the next round starts, unless the game
+   * is over.
    */
   private endFights(): void {
+    for (const player of this.players) player.mergeWaiting();
     this.payEarnings();
     this.eliminate();
     if (!this.isOver()) this.goToNextRound();

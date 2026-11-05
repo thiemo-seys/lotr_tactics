@@ -138,13 +138,14 @@ export class Player implements PlayerView {
   // Actions (section 9.3). Each checks its rules in rules.ts, and returns ok: false and changes
   // nothing when it isn't allowed.
 
-  buy(slot: number): ActionResult {
-    const check = checkBuy(this, slot);
+  /** `fighting` is true while the fights play, when copies on the board don't merge (section 9.4). */
+  buy(slot: number, fighting = false): ActionResult {
+    const check = checkBuy(this, slot, fighting);
     if (!check.ok) return check;
     const unitId = this.shop[slot]!;
     this.gold -= UNITS[unitId].cost;
     this.shop[slot] = null;
-    this.gain(unitId);
+    this.gain(unitId, fighting);
     return OK;
   }
 
@@ -241,19 +242,44 @@ export class Player implements PlayerView {
 
   /**
    * Gains a 1★ unit already taken from the pool (section 7.2): it merges with two copies the
-   * player owns, or goes to the lowest free bench slot. Returns false, changing nothing, if
-   * neither is possible.
+   * player owns, or goes to the lowest free bench slot. While the fights play (`fighting`), only
+   * copies on the bench merge; the rest wait for `mergeWaiting`. Returns false, changing nothing,
+   * if neither is possible.
    */
-  gain(unitId: UnitId): boolean {
-    const pair = this.find(unitId, 1);
+  gain(unitId: UnitId, fighting = false): boolean {
+    const pair = this.find(unitId, 1, fighting);
     if (pair.length >= 2) {
-      this.merge(unitId, 1, pair);
+      this.merge(unitId, 1, pair.slice(0, 2), fighting);
       return true;
     }
     const free = this.bench.indexOf(null);
     if (free < 0) return false;
     this.bench[free] = { id: this.context.nextUnitId(), unitId, star: 1, items: [] };
     return true;
+  }
+
+  /**
+   * Makes the merges that waited for the fights to end (section 7.3): while any unit has three
+   * copies at 1★ or 2★, the first three found merge, 1★ before 2★, units in the order `find` lists
+   * their copies.
+   */
+  mergeWaiting(): void {
+    for (;;) {
+      const triple = this.firstTriple();
+      if (triple === null) return;
+      this.merge(triple.unitId, triple.star, triple.places);
+    }
+  }
+
+  private firstTriple(): { unitId: UnitId; star: Star; places: Place[] } | null {
+    for (const star of [1, 2] as const) {
+      for (const unit of [...this.board, ...this.bench]) {
+        if (unit === null || unit.star !== star) continue;
+        const places = this.find(unit.unitId, star);
+        if (places.length >= 3) return { unitId: unit.unitId, star, places: places.slice(0, 3) };
+      }
+    }
+    return null;
   }
 
   /** Puts the unbought shop units back in the pool. */
@@ -453,12 +479,17 @@ export class Player implements PlayerView {
     this.context.pool.put(unit.unitId, copiesIn(unit.star));
   }
 
-  /** The places of the copies of a unit at a star level: board places first, then bench slots, each in order. */
-  private find(unitId: UnitId, star: Star): Place[] {
+  /**
+   * The places of the copies of a unit at a star level: board places first, then bench slots, each
+   * in order. Only bench slots if `benchOnly`.
+   */
+  private find(unitId: UnitId, star: Star, benchOnly = false): Place[] {
     const places: Place[] = [];
-    this.board.forEach((u, i) => {
-      if (u?.unitId === unitId && u.star === star) places.push(boardPlace(i));
-    });
+    if (!benchOnly) {
+      this.board.forEach((u, i) => {
+        if (u?.unitId === unitId && u.star === star) places.push(boardPlace(i));
+      });
+    }
     this.bench.forEach((u, i) => {
       if (u?.unitId === unitId && u.star === star) places.push({ bench: i });
     });
@@ -469,9 +500,10 @@ export class Player implements PlayerView {
    * Merges copies at `star` into one a star higher (section 7.3). `places` are the owned copies
    * taking part; a merge from a new 1★ copy passes the two it already owns. The merged unit
    * stays in the first place, which `find` lists board first, and keeps that copy's id and items.
-   * The other copies' items are given to it in turn, and any it can't take go to the player.
+   * The other copies' items are given to it in turn, and any it can't take go to the player. If
+   * that makes three copies at the new star level, they merge too, only on the bench if `benchOnly`.
    */
-  private merge(unitId: UnitId, star: Star, places: readonly Place[]): void {
+  private merge(unitId: UnitId, star: Star, places: readonly Place[], benchOnly = false): void {
     const [keep, ...others] = places;
     const kept = unitAt(this, keep!)!;
     let items: readonly ItemId[] = kept.items;
@@ -487,7 +519,7 @@ export class Player implements PlayerView {
     }
     const merged = (star + 1) as Star;
     this.setAt(keep!, { id: kept.id, unitId, star: merged, items });
-    const same = this.find(unitId, merged);
-    if (merged < 3 && same.length >= 3) this.merge(unitId, merged, same);
+    const same = this.find(unitId, merged, benchOnly);
+    if (merged < 3 && same.length >= 3) this.merge(unitId, merged, same.slice(0, 3), benchOnly);
   }
 }
