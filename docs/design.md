@@ -353,7 +353,7 @@ All numbers are *(placeholder)*.
 - 5 units per shop. It refreshes for free each round and can be locked to carry over to the next round.
 - A reroll costs 2 gold.
 - Buying a third copy merges it immediately, even if the bench is full.
-- **During fights**, as in TFT, players can still buy, reroll, buy XP, lock the shop, and use their bench and items: move and sell bench units, give items to them and combine components. The board stays as it fought: board units can't be moved, sold or given items until the fight ends. A purchase that completes a merge with a copy on the board merges at once; the fight already under way is unchanged, and the merged unit shows once it ends. Gifts and the One Ring wait for planning. A player the fight knocks out can shop too, and is out once it ends.
+- **During fights**, as in TFT, players can still buy, reroll, buy XP, lock the shop, and use their bench and items: move and sell bench units, give items to them and combine components. The board stays as it fought: board units can't be moved, sold or given items until the fight ends. Copies on the bench still merge at once, but copies on the board wait: a purchase that would merge with a copy on the board stays on the bench until the fight ends, and the merge happens then. With a full bench, such a purchase isn't allowed. Gifts and the One Ring wait for planning. A player the fight knocks out can shop too, and is out once it ends.
 - The gold a fight earns (win and streak gold, PvE loot and the Seven's gold) and PvE loot items arrive when the fights end, so they can't be spent during the fight that earns them, and they count towards the next round's interest.
 
 ### Levels

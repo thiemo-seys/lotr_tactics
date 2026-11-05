@@ -3,6 +3,7 @@
 
 import { describe, expect, it } from 'vitest';
 import { UNITS } from '../src/data/units.js';
+import { UNIT_IDS } from '../src/game/pool.js';
 import { createGame, type Action, type Game } from '../src/game/game.js';
 import type { OwnedUnit } from '../src/game/places.js';
 import { field, giveItems, playerOf, skipTo } from './fixtures.js';
@@ -123,17 +124,80 @@ describe('the fight phase', () => {
     expect(playerOf(game, 0).board).toEqual(board);
   });
 
-  it('merges a bought copy with copies on the board, where the board copy stands', () => {
+  it('keeps a bought copy on the bench until the fights end, then merges it with the board copy, where that stands', () => {
     const game = pvpGame(27);
     const p = playerOf(game, 0);
     p.gold = 50;
+    // A full board, so the fights don't fill it from the bench.
+    p.level = 1;
     const unitId = p.shop.find((id) => id !== null)!;
     const id = field(game, 0, unitId, { col: 2, row: 3 });
     field(game, 0, unitId, { bench: 4 });
     game.fight();
+    const board = [...p.board];
     expect(game.act(0, { type: 'buy', slot: p.shop.indexOf(unitId) })).toEqual({ ok: true });
+    expect(p.board).toEqual(board);
+    expect(p.bench[0]).toMatchObject({ unitId, star: 1 });
+    expect(p.bench[4]).toMatchObject({ unitId, star: 1 });
+    game.advance();
     expect(p.board.find((u) => u?.id === id)).toMatchObject({ unitId, star: 2 });
+    expect(p.bench[0]).toBeNull();
     expect(p.bench[4]).toBeNull();
+  });
+
+  it('merges copies on the bench at once while the fights play, and with the board copies once they end', () => {
+    const game = pvpGame(30);
+    const p = playerOf(game, 0);
+    p.gold = 50;
+    // A full board, so the fights don't fill it from the bench.
+    p.level = 1;
+    const unitId = p.shop.find((id) => id !== null)!;
+    const id = field(game, 0, unitId, { col: 2, row: 3 }, { star: 2 });
+    field(game, 0, unitId, { bench: 1 }, { star: 2 });
+    field(game, 0, unitId, { bench: 2 });
+    field(game, 0, unitId, { bench: 5 });
+    game.fight();
+    expect(game.act(0, { type: 'buy', slot: p.shop.indexOf(unitId) })).toEqual({ ok: true });
+    // The three 1★ copies make a 2★ on the bench; the board's 2★ waits.
+    expect(p.bench.filter((u) => u !== null).map((u) => u!.star)).toEqual([2, 2]);
+    expect(p.board.find((u) => u?.id === id)).toMatchObject({ star: 2 });
+    game.advance();
+    expect(p.board.find((u) => u?.id === id)).toMatchObject({ unitId, star: 3 });
+    expect(p.bench.every((u) => u === null)).toBe(true);
+  });
+
+  it('merges only three of four waiting copies once the fights end, board copies first', () => {
+    const game = pvpGame(32);
+    const p = playerOf(game, 0);
+    p.gold = 50;
+    p.level = 2;
+    const unitId = p.shop.find((id) => id !== null)!;
+    const id = field(game, 0, unitId, { col: 2, row: 3 });
+    field(game, 0, unitId, { col: 4, row: 3 });
+    field(game, 0, unitId, { bench: 3 });
+    game.fight();
+    expect(game.act(0, { type: 'buy', slot: p.shop.indexOf(unitId) })).toEqual({ ok: true });
+    game.advance();
+    const copies = [...p.board, ...p.bench].filter((u) => u?.unitId === unitId);
+    expect(copies.map((u) => u!.star)).toEqual([2, 1]);
+    expect(p.board.find((u) => u?.id === id)).toMatchObject({ star: 2 });
+    expect(p.bench[0]).toBeNull();
+    expect(p.bench[3]).toMatchObject({ star: 1 });
+  });
+
+  it("doesn't let a full bench buy a copy that would merge only with a board copy while the fights play", () => {
+    const game = pvpGame(31);
+    const p = playerOf(game, 0);
+    p.gold = 50;
+    // A full board, so the fights don't fill it from the bench.
+    p.level = 1;
+    const unitId = p.shop.find((id) => id !== null)!;
+    const others = UNIT_IDS.filter((id) => id !== unitId);
+    field(game, 0, unitId, { col: 2, row: 3 });
+    field(game, 0, unitId, { bench: 0 });
+    for (let bench = 1; bench < p.bench.length; bench++) field(game, 0, others[bench]!, { bench });
+    game.fight();
+    expect(game.act(0, { type: 'buy', slot: p.shop.indexOf(unitId) })).toEqual({ ok: false, reason: 'The bench is full.' });
   });
 
   it('only starts from planning', () => {

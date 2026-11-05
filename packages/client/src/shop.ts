@@ -5,12 +5,12 @@ import type { Star } from '@lotr-tactics/sim';
 
 /**
  * How a shop card is marked, from the star levels of the person's copies of its unit on the bench
- * and the board: `none` without a copy, `owned` with one, and `completes` when buying it would make
- * a 2★ from two 1★ copies.
+ * and the board and whether buying it merges at once (the sim's `completesMerge`): `none` without
+ * a copy, `owned` with one, and `completes` when buying it makes a 2★ from two 1★ copies now.
  */
 export type ShopMark = 'none' | 'owned' | 'completes';
 
-export function shopMark(owned: readonly Star[]): ShopMark {
+export function shopMark(owned: readonly Star[], merges: boolean): ShopMark {
   if (owned.length === 0) return 'none';
-  return owned.filter((star) => star === 1).length >= 2 ? 'completes' : 'owned';
+  return merges ? 'completes' : 'owned';
 }
