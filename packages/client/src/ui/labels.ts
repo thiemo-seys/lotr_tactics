@@ -1,4 +1,4 @@
-// The overlay above each unit (docs/viewer-spec.md section 4): a name plate with star pips, the
+// The overlay above each unit (docs/viewer-spec.md section 4): a name plate with its star badge, the
 // unit's items and the One Ring, and in fights a health bar framed in its star level's colour, with
 // ticks for chunks of health and the shield after it, a mana bar and status icons. `update` runs every frame, so it only writes to the
 // DOM when a value has changed, and allocates nothing otherwise.
@@ -6,7 +6,7 @@
 import type { ItemId, Star, Team, UnitState } from '@lotr-tactics/sim';
 import { STATUS_ICONS } from '../icons.js';
 import { itemChip, ringChip } from './chips.js';
-import { el, icon } from './dom.js';
+import { el, icon, starBadge } from './dom.js';
 
 /** Health per tick mark on a health bar, and per heavier mark. */
 export const HEALTH_CHUNK = 250;
@@ -46,11 +46,10 @@ export class UnitLabel {
       const plate = el('div', 'plate');
       if (options.name !== null) plate.append(el('span', 'name', options.name));
       if (options.star !== null) {
-        const pips = el('span', `pips star-${options.star}`);
-        pips.setAttribute('role', 'img');
-        pips.setAttribute('aria-label', `${options.star} star`);
-        for (let i = 0; i < options.star; i++) pips.append(el('i'));
-        plate.append(pips);
+        const badge = el('span', `star-level star-${options.star}`, starBadge(options.star));
+        badge.setAttribute('role', 'img');
+        badge.setAttribute('aria-label', `${options.star} star`);
+        plate.append(badge);
       }
       this.element.append(plate);
     }

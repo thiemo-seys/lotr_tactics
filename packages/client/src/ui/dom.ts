@@ -1,7 +1,8 @@
 // Small DOM helpers shared by the viewer and the play page: building elements, icons as elements,
 // replacing children only when what they show changes, and buttons that say why they are disabled.
 
-import { iconSvg, type IconName } from '../icons.js';
+import type { Star } from '@lotr-tactics/sim';
+import { STAR_BADGE_DEFS, iconSvg, starBadgeSvg, type IconName } from '../icons.js';
 
 type Child = Node | string | null | undefined | false;
 
@@ -23,6 +24,26 @@ export function icon(name: IconName, className = ''): SVGSVGElement {
     template.innerHTML = iconSvg(name);
     svg = template.content.firstElementChild as SVGSVGElement;
     parsed.set(name, svg);
+  }
+  const copy = svg.cloneNode(true) as SVGSVGElement;
+  if (className !== '') copy.classList.add(...className.split(' '));
+  return copy;
+}
+
+const badges = new Map<Star, SVGSVGElement>();
+
+/**
+ * A star level's badge as an inline SVG, hidden from screen readers. The first adds the gradients the
+ * badges share to the page; each badge is parsed once and then cloned.
+ */
+export function starBadge(star: Star, className = ''): SVGSVGElement {
+  let svg = badges.get(star);
+  if (svg === undefined) {
+    if (badges.size === 0) document.body.insertAdjacentHTML('beforeend', STAR_BADGE_DEFS);
+    const template = document.createElement('template');
+    template.innerHTML = starBadgeSvg(star);
+    svg = template.content.firstElementChild as SVGSVGElement;
+    badges.set(star, svg);
   }
   const copy = svg.cloneNode(true) as SVGSVGElement;
   if (className !== '') copy.classList.add(...className.split(' '));

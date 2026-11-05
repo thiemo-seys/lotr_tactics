@@ -1,6 +1,6 @@
 import { COMPONENTS, GIFT_IDS, GIFTS, TRAITS, type TraitId } from '@lotr-tactics/sim';
 import { describe, expect, it } from 'vitest';
-import { COMPONENT_ICONS, GIFT_TIER_ICONS, ICONS, ROUND_ICONS, STATUS_ICONS, TRAIT_ICONS, iconSvg, type IconName } from '../src/icons.js';
+import { COMPONENT_ICONS, GIFT_TIER_ICONS, ICONS, ROUND_ICONS, STATUS_ICONS, STAR_BADGE_DEFS, TRAIT_ICONS, iconSvg, starBadgeSvg, type IconName } from '../src/icons.js';
 
 describe('icons', () => {
   it('give every trait its own icon', () => {
@@ -33,5 +33,22 @@ describe('icons', () => {
       expect(svg).not.toMatch(/#[0-9a-f]{3,6}|rgb\(/i);
       expect(ICONS[name].length).toBeGreaterThan(20);
     }
+  });
+});
+
+describe('star badges', () => {
+  it('draw each star level differently, from gradients the page holds', () => {
+    const badges = ([1, 2, 3] as const).map(starBadgeSvg);
+    expect(new Set(badges).size).toBe(3);
+    badges.forEach((svg, i) => {
+      expect(svg).toContain(`star-badge star-${i + 1}`);
+      for (const [, id] of svg.matchAll(/url\(#([\w-]+)\)/g)) expect(STAR_BADGE_DEFS).toContain(`id="${id}"`);
+    });
+  });
+
+  it('are gold with a gem only at 3★', () => {
+    expect(starBadgeSvg(3)).toContain('url(#star-badge-gem)');
+    expect(starBadgeSvg(2)).not.toContain('url(#star-badge-gem)');
+    expect(starBadgeSvg(1)).not.toContain('url(#star-badge-gem)');
   });
 });

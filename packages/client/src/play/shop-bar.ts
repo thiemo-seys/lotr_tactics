@@ -9,7 +9,7 @@ import { TRAIT_ICONS } from '../icons.js';
 import { actionTip, unitTip } from '../tips.js';
 import { shopMark } from '../shop.js';
 import { goldCost, itemChip, ringChip, traitTag } from '../ui/chips.js';
-import { el, icon, rebuild, setEnabled, setText, toggle } from '../ui/dom.js';
+import { el, icon, rebuild, setEnabled, setText, starBadge, toggle } from '../ui/dom.js';
 import { setTip } from '../ui/tooltip.js';
 
 const element = (id: string) => document.getElementById(id) as HTMLElement;
@@ -169,9 +169,9 @@ function unitCard(id: UnitId, owned: readonly Star[], buy: ActionResult, onBuy: 
   return card;
 }
 
-/** One pip per copy of the unit the person owns, coloured by its star level. */
+/** A star badge per copy of the unit the person owns, at its star level. */
 function ownedBadge(stars: readonly Star[]): HTMLElement {
-  const badge = el('span', 'owned', ...[...stars].sort((a, b) => b - a).map((star) => el('i', `star-${star}`)));
+  const badge = el('span', 'owned', ...[...stars].sort((a, b) => b - a).map((star) => starBadge(star)));
   badge.setAttribute('role', 'img');
   badge.setAttribute('aria-label', `You own ${stars.length}`);
   return badge;

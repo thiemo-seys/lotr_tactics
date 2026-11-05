@@ -122,7 +122,7 @@ The board stands in an arena, as a lens with a shallow focus would see it: the b
 
 - **Body:** the unit's model for its star level (Models and Star levels below), standing on its tile, with its `team` material in its team's colour. `public/models/` is listed when the client is built, so a missing model is never requested. Monsters and summons, which have no models yet, and any unit whose model is missing or still loading, are low-poly pawns in their team's colour. Large pawns are drawn bigger; summons other than the Eye's Nazgûl are smaller and have no name.
 - **Overlay** above each unit (ui/labels.ts):
-  - a name plate with star pips: one bronze pip at 1★, two silver at 2★ and three gold at 3★; summons have no pips, and those without a name no plate
+  - a name plate with its star badge, one icon for the star level (icons.ts): the Star of Elendil, a four-pointed bronze star at 1★, an eight-pointed silver star round a dark setting at 2★, and a gold sunburst of sixteen points with a white gem and a soft glow at 3★; summons have no badge, and those without a name no plate. The same badge, one per copy, marks the copies a person owns on the shop's cards and in a trait's tooltip
   - its items as chips, each naming its effect when hovered, and the One Ring with its Corruption on the Ring's bearer
   - a health bar framed in its star level's colour, bronze at 1★, silver at 2★ and gold with a soft glow at 3★ (a summon's frame is plain), with a tick for every 250 Health and a heavier one for every 1000, and the shield drawn after it
   - a mana bar
@@ -202,7 +202,7 @@ Every unit's 1★ model is rigged and carries its own animations, which the view
 
 A unit's star level shows four ways at once, chosen from a study of Frodo, Aragorn and Éomer on the board (`packages/client/art/star-study/`, with the comparison in its `results/`). Each is for units with a model; a unit drawn as a pawn shows its stars in its label only.
 
-- **Label:** the name plate keeps its star pips, and in fights the health bar is framed bronze, silver or gold for the star level (section 4, overlay). This is where the board shows star level at a glance; there is no stand under the model.
+- **Label:** the name plate shows the star badge, and in fights the health bar is framed bronze, silver or gold for the star level (section 4, overlay). This is where the board shows star level at a glance; there is no stand under the model.
 - **Model:** a 2★ unit uses its gear model and a 3★ unit its book model, falling back to the level below when one doesn't exist yet. A gear or book model with a rig and all seven clips plays them as a 1★ model does; today the gear models are rigged and the book models static.
   - **Gear** (`<id>-2.glb`): the 1★ model with one piece added that reads at game size, such as shoulder plates, a helm or a mantle. Aragorn's is steel shoulder plates. It is the rigged 1★ model with the piece on, each part of the piece bound to the bone it moves with. It keeps the 1★ model's rig, so it has the same bones and clips and moves as the 1★ model does (`art/README.md`, Gear models).
   - **Book moment** (`<id>-3.glb`): the unit as itself at its height in the books, drawn from the books and not the films, and still recognisably the same unit: Frodo in the mithril coat, Aragorn as King Elessar with the winged crown and Arwen's standard, Éomer as Éomer King with the royal banner. It need not keep the 2★ piece.

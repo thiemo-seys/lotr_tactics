@@ -1783,22 +1783,28 @@ kbd {
   box-shadow: 0 0 0 1px var(--gold-bright), 0 0 12px rgba(243, 210, 122, 0.8);
 }
 
-/* Star pips: bronze at 1, silver at 2 and gold at 3. */
-.pips {
+/* Star badges (icons.ts): the Star of Elendil in bronze, silver and gold, with a dark edge so it reads
+   on any ground, and a soft glow at 3. */
+.star-level {
   display: inline-flex;
   flex: none;
-  gap: 2px;
-  align-items: center;
 }
 
-.pips i,
-.owned i {
+.star-badge {
   display: block;
-  width: 5px;
-  height: 5px;
-  background: var(--pip, var(--bronze));
-  box-shadow: 0 0 0 1px rgba(0, 0, 0, 0.55);
-  transform: rotate(45deg);
+  flex: none;
+  width: 13px;
+  height: 13px;
+  filter: drop-shadow(0 0 1px rgba(0, 0, 0, 0.9));
+}
+
+.star-badge.star-3 {
+  filter: drop-shadow(0 0 1px rgba(0, 0, 0, 0.9)) drop-shadow(0 0 2.5px rgba(243, 210, 122, 0.75));
+}
+
+.owned .star-badge {
+  width: 11px;
+  height: 11px;
 }
 
 .star-1 {
@@ -1811,10 +1817,6 @@ kbd {
 
 .star-3 {
   --pip: var(--star-gold);
-}
-
-.pips.star-3 i {
-  box-shadow: 0 0 0 1px rgba(0, 0, 0, 0.55), 0 0 4px rgba(243, 210, 122, 0.9);
 }
 
 .unit-label .bar {
