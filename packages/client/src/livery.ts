@@ -32,6 +32,10 @@ export const UNIT_LIVERY: Readonly<Partial<Record<UnitId, number>>> = {
   faramir: 0x4a5e3a, // Ranger green
   boromir: 0x4c5665, // darker steel blue-grey
   aragorn: 0x6a5536, // Strider brown
+  // Rohan
+  eomer: 0x2f512c, // darker Rohan green
+  eowyn: 0xc8c4bc, // shieldmaiden white
+  theoden: 0xb8922e, // royal gold
   // Istari
   radagast: 0x7a5530, // brown
   saruman: 0xc9c6be, // white
