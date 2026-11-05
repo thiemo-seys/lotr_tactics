@@ -46,6 +46,7 @@ packages/client/
     playback.ts    stepping the fight, what to draw at a moment, and what each unit has done, for animation.ts (no Three.js, no DOM)
     animation.ts   which clip each unit plays at a display time, and how far into it (no Three.js, no DOM)
     drawing.ts     when the scene draws a frame, and when pawns swap for their models (no Three.js, no DOM)
+    frame-cap.ts   which of the browser's frames run while the frame rate is capped (no Three.js, no DOM)
     models.ts      loading the models, each file once, and a copy for each unit with its own materials and clips
     stars.ts       which model, scale, label height and colours a star level gets (no Three.js, no DOM)
     look.ts        the camera's views and limits, the arena, lights, fog, blur, grade and the tiles' stone pattern (no Three.js, no DOM)
@@ -73,6 +74,7 @@ packages/client/
       chips.ts     item and ring chips, trait badges and costs
       labels.ts    the overlay above each unit
       unit-hover.ts  the card for the unit under the pointer in the 3D view
+      frame-cap.ts   the button that caps the frame rate, and remembering the choice
     play/          the play page's parts
       hud-bar.ts      the HUD
       shop-bar.ts     Buy XP, Reroll and Lock, the shop's unit cards, the items, Ready, and selling
@@ -84,7 +86,7 @@ packages/client/
   test/
 ```
 
-- flow.ts, playback.ts, animation.ts, drawing.ts, stars.ts, look.ts and the modules from units.ts to log.ts use neither Three.js nor the DOM, so they are tested (section 7). models.ts and arena.ts, which load the models and the arena, post.ts and tiles.ts, and scene.ts and the modules in ui/ and play/, which draw what those work out, are checked in a browser.
+- flow.ts, playback.ts, animation.ts, drawing.ts, frame-cap.ts, stars.ts, look.ts and the modules from units.ts to log.ts use neither Three.js nor the DOM, so they are tested (section 7). models.ts and arena.ts, which load the models and the arena, post.ts and tiles.ts, and scene.ts and the modules in ui/ and play/, which draw what those work out, are checked in a browser.
 - **Look:** both pages share one design system in style.css: a deep slate background with gold accents; tokens for colours, spacing, radii, shadows and motion; buttons (primary, secondary, ghost, danger and icon-only), fields, panels and chips. Headings use Cinzel and everything else Inter, both bundled from `@fontsource` packages, so the built client needs nothing from the network. Text has a contrast of at least 4.5:1, focus shows a gold ring, and motion stops when the system asks for reduced motion.
 - **Icons:** inline SVGs from icons.ts, all drawn on one 24-unit grid with a rounded stroke in `currentColor`. Each trait and item component has its own icon, keyed by its id, so a new one fails the typecheck until it has an icon. Icons next to text are hidden from screen readers; buttons with only an icon have a label.
 - **Tooltips:** hovering or focusing anything with a tip shows one card for it (ui/tooltip.ts), laid out from tips.ts: an icon, name and subtitle, a recipe, stats, effects, a trait's breakpoints, a key, and a hint or the reason a button can't be used. It stays on screen, follows chips on moving units, never takes the mouse, and hides while something is dragged. Buttons that can't be used now are marked `aria-disabled` rather than disabled, so they can still say why.
@@ -334,6 +336,7 @@ export function sinkDelay(lengths: ClipLengths | null): number;
   - The current tick, time and overtime.
 - **URL:** the fight settings are kept in the URL hash, for example `#a=full&b=traits&seed=3&stage=2`, so a fight can be shared and reloaded.
 - **Damage meter:** a Damage button next to Log opens and closes the meter (section 8), with a switch between teams A and B, since the viewer takes no side.
+- **Frame rate:** both pages run a frame whenever the browser offers one, as many a second as the screen shows. A 30 fps toggle (an icon button in the play page's top bar, next to Log in the viewer) caps them at 30 a second (frame-cap.ts), to spare the GPU and the battery; the browser remembers the choice, for both pages. The cap skips whole frames and the next frame run counts their time, so display time still follows the clock: fights play at the same speed and timers run the same either way. Frames come on a steady grid, a little early allowed, so a 60 Hz screen gets every other frame, and after a long gap the grid starts afresh rather than catching up. It is off by default.
 - **Event log:** one line per event except moves, with unit names, newest last, coloured by the kind of event, with casts, deaths and the end marked.
 
 ---
@@ -344,6 +347,7 @@ The parts without Three.js are tested with Vitest:
 - the hex layout;
 - random boards, which are valid and the same for the same seed;
 - playback timing, interpolated positions and projectiles, and that frames between ticks keep the same lists of effects and events, so they allocate nothing;
+- the frame rate cap: every frame while off; 30 a second while on at 60, 120 and 144 Hz, with frames a little early or late; every frame of a slower screen; no burst after a long gap; switching on and off from the next frame;
 - when the scene draws a frame (a fight as its display time moves, planning while a unit idles and motion isn't reduced, otherwise only after a change), and that pawns swap for their models only once a shader is ready, at most 3 a frame, and again as more load;
 - which clip each unit plays at a display time and how far into it, fades and cuts, an action before a stun on the same tick, reduced motion, planning's `idle`, dying units' fade from halfway through their clip (`sinkDelay`), and which way units face as they step, dash and turn back (section 5, Animation);
 - the 1★ model files: every unit has one, a single mesh with a `team` material on it, and every one is rigged: one skinned mesh with the 16 bones within the budget, `root` at the origin with every bone below it, exactly the seven clips at their lengths keyed on whole frames, loops that end where they start, one bone per vertex, under its size (section 4, Rigs and clips), and its `reach` in its armature's extras (section 4, Star levels);
