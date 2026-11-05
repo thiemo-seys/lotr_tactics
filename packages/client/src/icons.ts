@@ -4,7 +4,7 @@
 // The mappings are keyed by the sim's ids, so a new trait or component fails the typecheck until it
 // has an icon. No Three.js or DOM, so it can be tested.
 
-import type { ComponentId, GiftTier, RoundType, TraitId } from '@lotr-tactics/sim';
+import type { ComponentId, GiftTier, RoundType, Star, TraitId } from '@lotr-tactics/sim';
 
 // Shapes with class "f" get a light fill and shapes with class "s" a solid one (style.css).
 const HEART = 'M12 20.3C6.9 17 3.5 13.6 3.5 9.6 3.5 6.8 5.6 4.7 8.2 4.7c1.6 0 3 .8 3.8 2.1.8-1.3 2.2-2.1 3.8-2.1 2.6 0 4.7 2.1 4.7 4.9 0 4-3.4 7.4-8.5 10.7z';
@@ -160,4 +160,39 @@ export const STATUS_ICONS = { stun: 'stun', stunImmune: 'stun-immune', untargeta
 /** An icon as SVG markup, hidden from screen readers: the text next to it says what it means. */
 export function iconSvg(name: IconName): string {
   return `<svg class="icon icon-${name}" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false">${ICONS[name]}</svg>`;
+}
+
+// The star level's badge (docs/viewer-spec.md section 4, overlay): the Star of Elendil, one icon that
+// gains points and metal as the unit rises. Unlike the icons above it is drawn in its own colours,
+// from gradients that every badge shares (STAR_BADGE_DEFS, added to the page once).
+const BADGE_EDGE = 'stroke="#140e08" stroke-width="1.1" stroke-linejoin="round"';
+const STAR_BADGE_SHAPES: Readonly<Record<Star, string>> = {
+  // Four points in bronze, with a cross engraved along them.
+  1:
+    `<path d="M12 1.5l2.55 7.95L22.5 12l-7.95 2.55L12 22.5l-2.55-7.95L1.5 12l7.95-2.55z" fill="url(#star-badge-1)" ${BADGE_EDGE}/>` +
+    '<path d="M12 4v16M4 12h16" fill="none" stroke="rgba(20,14,8,.55)" stroke-width=".6" stroke-linecap="round"/>',
+  // Eight points in silver, round a dark setting.
+  2:
+    `<path d="M17.37 6.63L14.8 12l2.57 5.37L12 14.8l-5.37 2.57L9.2 12 6.63 6.63 12 9.2z" fill="url(#star-badge-2)" ${BADGE_EDGE}/>` +
+    `<path d="M12 1.2l2.4 8.4 8.4 2.4-8.4 2.4-2.4 8.4-2.4-8.4L1.2 12l8.4-2.4z" fill="url(#star-badge-2)" ${BADGE_EDGE}/>` +
+    `<circle cx="12" cy="12" r="2.3" fill="#5d6878" ${BADGE_EDGE}/><circle cx="11.4" cy="11.4" r=".7" fill="#fff"/>`,
+  // A gold sunburst of sixteen points with a white gem, like the Elendilmir.
+  3:
+    `<path d="M12 .6l1.21 5.32 3.15-4.45-.92 5.37 4.62-2.9-2.9 4.62 5.37-.92-4.45 3.15L23.4 12l-5.32 1.21 4.45 3.15-5.37-.92 2.9 4.62-4.62-2.9.92 5.37-3.15-4.45L12 23.4l-1.21-5.32-3.15 4.45.92-5.37-4.62 2.9 2.9-4.62-5.37.92 4.45-3.15L.6 12l5.32-1.21-4.45-3.15 5.37.92-2.9-4.62 4.62 2.9-.92-5.37 3.15 4.45z" fill="url(#star-badge-3)" ${BADGE_EDGE}/>` +
+    '<path d="M12 3.6l2.26 6.14L20.4 12l-6.14 2.26L12 20.4l-2.26-6.14L3.6 12l6.14-2.26z" fill="#fff6d2" stroke="#a8761a" stroke-width=".7" stroke-linejoin="round"/>' +
+    `<circle cx="12" cy="12" r="2.9" fill="url(#star-badge-gem)" ${BADGE_EDGE}/>`,
+};
+
+/** The gradients the star badges are filled with, in an SVG of no size for the page to hold once. */
+export const STAR_BADGE_DEFS =
+  '<svg width="0" height="0" style="position:absolute" aria-hidden="true" focusable="false"><defs>' +
+  '<linearGradient id="star-badge-1" x1="0" y1="0" x2=".3" y2="1"><stop offset="0" stop-color="#f2c08f"/><stop offset=".55" stop-color="#c47f4c"/><stop offset="1" stop-color="#7d4826"/></linearGradient>' +
+  '<linearGradient id="star-badge-2" x1="0" y1="0" x2=".3" y2="1"><stop offset="0" stop-color="#fff"/><stop offset=".5" stop-color="#c9d2de"/><stop offset="1" stop-color="#7b8798"/></linearGradient>' +
+  '<linearGradient id="star-badge-3" x1="0" y1="0" x2=".3" y2="1"><stop offset="0" stop-color="#fff2b8"/><stop offset=".5" stop-color="#f0c450"/><stop offset="1" stop-color="#a8761a"/></linearGradient>' +
+  '<radialGradient id="star-badge-gem" cx=".35" cy=".3" r=".8"><stop offset="0" stop-color="#fff"/><stop offset=".45" stop-color="#bfe9ff"/><stop offset="1" stop-color="#3f86c4"/></radialGradient>' +
+  '</defs></svg>';
+
+/** A star level's badge as SVG markup, hidden from screen readers: its holder says what it means. */
+export function starBadgeSvg(star: Star): string {
+  return `<svg class="star-badge star-${star}" viewBox="0 0 24 24" aria-hidden="true" focusable="false">${STAR_BADGE_SHAPES[star]}</svg>`;
 }

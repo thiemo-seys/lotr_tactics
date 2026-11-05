@@ -7,7 +7,7 @@ import { TRAIT_ICONS } from '../icons.js';
 import type { Tip, TipIcon } from '../tips.js';
 import type { TraitUnit } from '../traits.js';
 import { itemChip, ringChip, traitBadge } from './chips.js';
-import { el, icon, kbd } from './dom.js';
+import { el, icon, kbd, starBadge } from './dom.js';
 
 function headerIcon(tipIcon: TipIcon): HTMLElement {
   switch (tipIcon.kind) {
@@ -96,7 +96,7 @@ export function tipCard(tip: Tip): Node[] {
 
 /**
  * One of a trait's units: framed by cost with its origin's icon, lit when a copy is on the board,
- * half lit when copies are only on the bench, greyed when none are owned, with a pip per copy. A
+ * half lit when copies are only on the bench, greyed when none are owned, with a star badge per copy. A
  * unit that is a Nazgûl through a Ring of the Nine shows the ring.
  */
 function traitUnitTile(unit: TraitUnit): HTMLElement {
@@ -107,7 +107,7 @@ function traitUnitTile(unit: TraitUnit): HTMLElement {
     icon(TRAIT_ICONS[UNITS[unit.id].origin], 'emblem'),
     el('span', 'tip-unit-name', unit.name),
     el('span', 'tip-unit-cost', String(unit.cost)),
-    owned ? el('span', 'owned', ...unit.stars.map((star) => el('i', `star-${star}`))) : null,
+    owned ? el('span', 'owned', ...unit.stars.map((star) => starBadge(star))) : null,
     unit.nine ? itemChip('ring-of-the-nine', 'sm', false) : null,
   );
 }
