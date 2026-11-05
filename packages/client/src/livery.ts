@@ -28,6 +28,10 @@ export const UNIT_LIVERY: Readonly<Partial<Record<UnitId, number>>> = {
   frodo: 0x844929, // darker hearth red
   bilbo: 0xb8902f, // golden yellow
   gollum: 0x844929, // darker hearth red
+  // Gondor
+  faramir: 0x4a5e3a, // Ranger green
+  boromir: 0x4c5665, // darker steel blue-grey
+  aragorn: 0x6a5536, // Strider brown
   // Istari
   radagast: 0x7a5530, // brown
   saruman: 0xc9c6be, // white
