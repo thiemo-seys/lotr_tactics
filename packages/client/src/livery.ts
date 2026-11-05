@@ -9,7 +9,7 @@ import { isRosterUnit } from './units.js';
 /** Each faction's (origin's) livery colour. */
 export const FACTION_LIVERY: Readonly<Record<OriginId, number>> = {
   hobbit: 0xa35a33, // hearth red
-  gondor: 0x2f3440, // sable black
+  gondor: 0x5d6a7c, // steel blue-grey
   rohan: 0x3f6b3a, // Rohan green
   orc: 0x6b6a2c, // bile olive
   elf: 0x8c9590, // Lórien silver
@@ -17,7 +17,7 @@ export const FACTION_LIVERY: Readonly<Record<OriginId, number>> = {
   istari: 0x8a8c8e, // grey, though each of the Istari has his own below
   nazgul: 0x25252a, // black
   ent: 0x4f6b3a, // moss green
-  'dark-lord': 0x25252a, // black iron
+  'dark-lord': 0x7a2a1e, // ember red
 };
 
 /** Units whose livery isn't their faction's. */
