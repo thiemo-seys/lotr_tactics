@@ -28,7 +28,7 @@ import { ModelSwaps, Redraws } from './drawing.js';
 import type { PlanningRing } from './flow.js';
 import { copyModel, loadModels, modelShader, modelShaders, modelsLoaded, shaderSample, type ModelCopy, type ModelShader } from './models.js';
 import { EFFECT_TICKS, type CastRing, type FloatingText, type MutablePoint, type Playback, type Projectile } from './playback.js';
-import { ATMOSPHERE, CAMERA, CAMERA_LIMITS, LIGHTS, UNIT_COLOURS, type Framing } from './look.js';
+import { ATMOSPHERE, CAMERA, CAMERA_LIMITS, LIGHTS, PAWN_COLOUR, type Framing } from './look.js';
 import { Post } from './post.js';
 import { stoneTiles } from './tiles.js';
 import { LABEL, LARGE_PAWN_SCALE } from './stars.js';
@@ -1035,7 +1035,7 @@ function stand(body: Body, team: Team): void {
 
 /** A low-poly pawn, the same on both sides, `scale` times its usual size, with a nose where it faces. */
 function pawnBody(scale: number): Body {
-  const material = new THREE.MeshStandardMaterial({ color: UNIT_COLOURS.pawn, flatShading: true, transparent: true });
+  const material = new THREE.MeshStandardMaterial({ color: PAWN_COLOUR, flatShading: true, transparent: true });
   const body = new THREE.Mesh(geometry.body, material);
   body.position.y = 0.45;
   const head = new THREE.Mesh(geometry.head, material);

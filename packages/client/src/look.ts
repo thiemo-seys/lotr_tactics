@@ -38,11 +38,11 @@ export const ARENA = 'ruins';
 export const ATMOSPHERE = { colour: 0x2a2018, fogNear: 39, fogFar: 85 } as const;
 
 /**
- * The colour of every unit's `livery` (the parts of its model in the material named `team`) and of
- * the pawns, on both sides alike: a unit looks the same whichever side it fights for, and only the
- * colour of its health bar tells the sides apart (docs/viewer-spec.md section 4).
+ * The colour of the pawns, on both sides alike: a unit looks the same whichever side it fights for,
+ * and only the colour of its health bar tells the sides apart (docs/viewer-spec.md section 4). The
+ * models' livery colours are in livery.ts.
  */
-export const UNIT_COLOURS = { livery: 0x6a5a86, pawn: 0x8a8378 } as const;
+export const PAWN_COLOUR = 0x8a8378;
 
 /** Warm, low sunlight from the near left, and a warm sky over a brown ground. */
 export const LIGHTS = {
