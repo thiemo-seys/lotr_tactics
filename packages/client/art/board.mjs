@@ -1,9 +1,12 @@
 /* global console, process, URL, window */
 // Renders .glb models on the game's board with three.js in headless Chromium, with the camera,
-// lights, board and team colours of packages/client/src/scene.ts and look.ts (without the arena, the
-// blur or the grade), so a model can be judged at the size it is played at. Each model is recoloured
-// blue (near side) and red (far side) through its `team` material, the way the client will, and
-// stands next to today's pawn for scale.
+// lights and board of packages/client/src/scene.ts and look.ts (without the arena, the blur or the
+// grade), so a model can be judged at the size it is played at. Each model's `team` material is
+// recoloured to its unit's livery from packages/client/src/livery.json, the same on both sides, the
+// way the client does it: the unit is the file's name without `.glb` and a star level's `-2` or `-3`,
+// and a file named after no unit (a study's, say) gets the default livery. The models stand next to
+// today's pawn, in its stone colour, for scale. With --stars, the labels' health bars tell the sides
+// apart, as in the game.
 //
 //   node packages/client/art/board.mjs <out dir> <model.glb> [--toon] [--scale=2]
 //   node packages/client/art/board.mjs <out dir> --lineup <a.glb> <b.glb> ... [--scale=2]
@@ -11,13 +14,13 @@
 //
 // Writes board.png (the game's default camera, 1600x900), board-zoom.png (the same angle, closer)
 // and labels.json (where each model is in both pictures). --lineup puts each model, up to 7, in its
-// own column, blue from behind and red from the front; otherwise one model stands in a small fight.
+// own column, seen from behind on the near side and from the front on the far side; otherwise one model stands in a small fight.
 // --toon draws three-step toon shading, and any material named `outline` unlit, as a client could.
 // --scale=2 renders at twice the pixel density.
 //
 // --stars lays out a star-level study (star-study/README.md): three units in rows, at 1, 2 and 3
-// stars from left to right, blue in rows 1 to 3 seen from behind and red in rows 4 to 6 seen from the
-// front, each with the game's label (name, stars and a health bar). The JSON file says how each star
+// stars from left to right, the near side in rows 1 to 3 seen from behind and the far side in rows 4
+// to 6 seen from the front, each with the game's label (name, stars and a health bar). The JSON file says how each star
 // shows; model paths in it are relative to the file. --unit=N shows only the Nth unit, close up, in
 // rows 2 and 5. Also writes board-far.png, from behind the red side, and the scale, reach and
 // height of each model in labels.json:
@@ -62,8 +65,17 @@ if (!outDir || models.length === 0) {
 }
 fs.mkdirSync(outDir, { recursive: true });
 const scale = Number(args.find((a) => a.startsWith('--scale='))?.slice('--scale='.length) ?? 1);
+// Each model's livery, from its file name (livery.ts, liveryOf).
+const LIVERY = JSON.parse(fs.readFileSync(path.join(import.meta.dirname, '../src/livery.json'), 'utf8'));
+function livery(file) {
+  const unit = path.basename(file, '.glb').replace(/-[23]$/, '');
+  const value = LIVERY.units[unit];
+  const colour = value === undefined ? LIVERY.default : value.startsWith('#') ? value : LIVERY.factions[value];
+  return Number.parseInt(colour.slice(1), 16);
+}
 const config = {
   scale,
+  liveries: models.map(livery),
   width: 1600,
   height: 900,
   models: models.map((_, i) => `${ORIGIN}/models/${i}.glb`),
@@ -93,8 +105,9 @@ renderer.setPixelRatio(config.scale);
 renderer.setSize(config.width, config.height);
 document.body.append(renderer.domElement);
 
-// From scene.ts.
+// From scene.ts and look.ts. The sides' old colours are left only for the star study's \`team\` base.
 const TEAM_COLOURS = { A: 0x4a90d9, B: 0xd9534f };
+const PAWN_COLOUR = 0x8a8378;
 const BOARD_COLOURS = { A: [0xc9ac84, 0xbfa17a], B: [0x9e7a62, 0x94705a] };
 const scene = new THREE.Scene();
 scene.background = new THREE.Color(0x2a2018);
@@ -128,8 +141,8 @@ const pawnGeometry = {
   nose: new THREE.ConeGeometry(0.09, 0.28, 4),
 };
 const noseMaterial = new THREE.MeshStandardMaterial({ color: 0xf5f5f5, flatShading: true });
-function pawn(team) {
-  const material = new THREE.MeshStandardMaterial({ color: TEAM_COLOURS[team], flatShading: true });
+function pawn() {
+  const material = new THREE.MeshStandardMaterial({ color: PAWN_COLOUR, flatShading: true });
   const body = new THREE.Mesh(pawnGeometry.body, material);
   body.position.y = 0.45;
   const head = new THREE.Mesh(pawnGeometry.head, material);
@@ -146,15 +159,15 @@ const gradient = new THREE.DataTexture(new Uint8Array([90, 175, 255]), 3, 1, THR
 gradient.minFilter = gradient.magFilter = THREE.NearestFilter;
 gradient.needsUpdate = true;
 
-// Each copy gets its own materials, as the client will give it, with the team part recoloured.
-function dress(material, team) {
+// Each copy gets its own materials, as the client gives it, with the team part in its unit's livery.
+function dress(material, index) {
   let m = material.clone();
   if (config.toon) {
     m = m.name === 'outline'
       ? new THREE.MeshBasicMaterial({ name: m.name, color: m.color, side: m.side })
       : new THREE.MeshToonMaterial({ name: m.name, color: m.color, gradientMap: gradient, side: m.side });
   }
-  if (m.name === 'team') m.color.setHex(TEAM_COLOURS[team]);
+  if (m.name === 'team') m.color.setHex(config.liveries[index]);
   return m;
 }
 
@@ -177,7 +190,7 @@ function model(index, team, col, row, face) {
   // the original's, drawn where they are rather than on its tile. A static model copies as before.
   const copy = cloneSkinned(gltfs[index].scene);
   copy.traverse((o) => {
-    if (o.isMesh) o.material = Array.isArray(o.material) ? o.material.map((m) => dress(m, team)) : dress(o.material, team);
+    if (o.isMesh) o.material = Array.isArray(o.material) ? o.material.map((m) => dress(m, index)) : dress(o.material, index);
   });
   place(copy, col, row, face);
   return copy;
@@ -345,7 +358,7 @@ if (config.study) {
     view(target.clone().add(new THREE.Vector3(0, 12.5, -12.9).multiplyScalar(0.42)), target);
   };
 } else if (config.lineup) {
-  // One column per model: blue in row 2 facing up the board, red in row 5 facing down it.
+  // One column per model: the near side in row 2 facing up the board, the far side in row 5 facing down it.
   gltfs.forEach((_, i) => {
     const col = i + Math.floor((7 - gltfs.length) / 2);
     model(i, 'A', col, 2, at(col, 5));
@@ -363,8 +376,8 @@ if (config.study) {
   model(0, 'B', 1, 5, at(2, 2));
   model(0, 'B', 5, 5, at(4, 2));
   model(0, 'B', 4, 6, middle);
-  place(pawn('A'), 4, 1, middle);
-  place(pawn('B'), 2, 6, middle);
+  place(pawn(), 4, 1, middle);
+  place(pawn(), 2, 6, middle);
   zoomTarget = new THREE.Vector3(0, 0.5, 0);
 }
 

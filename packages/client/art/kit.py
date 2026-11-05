@@ -30,11 +30,10 @@ from itertools import pairwise
 import bpy
 from mathutils import Matrix, Vector
 
-# The client gives the `team` material one livery colour on both sides (docs/viewer-spec.md
-# section 4, Livery; UNIT_COLOURS in packages/client/src/look.ts). Models are built and previewed in
-# these two colours, the sides' old colours, which still show that the material is where it should be.
+# The `team` material is built in TEAM_BLUE, the authoring colour the .glb files keep. The client,
+# board.mjs and preview.py all recolour it to the unit's livery from packages/client/src/livery.json
+# (docs/viewer-spec.md section 4, Livery), the same on both sides.
 TEAM_BLUE = 0x4A90D9
-TEAM_RED = 0xD9534F
 
 # The pawn the models replace is 1.35 tall, and a hex is drawn with a circumradius of 0.94.
 PAWN_HEIGHT = 1.35
