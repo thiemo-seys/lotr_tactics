@@ -36,6 +36,11 @@ export const UNIT_LIVERY: Readonly<Partial<Record<UnitId, number>>> = {
   eomer: 0x2f512c, // darker Rohan green
   eowyn: 0xc8c4bc, // shieldmaiden white
   theoden: 0xb8922e, // royal gold
+  // Orcs
+  grishnakh: 0x8f8e3b, // lighter bile olive
+  sharku: 0x9c8f74, // bone
+  gorbag: 0x7f9a86, // Morgul pallid green
+  gothmog: 0x7a2e22, // Mordor red
   // Istari
   radagast: 0x7a5530, // brown
   saruman: 0xc9c6be, // white
