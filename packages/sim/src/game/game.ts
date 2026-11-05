@@ -6,7 +6,7 @@ import { COMBINED_ITEM_IDS, isBoundToTheOne, isRingOfPower } from '../combat/ite
 import { GIFT_ROUNDS } from '../data/gifts.js';
 import { RING } from '../data/ring.js';
 import { COMPONENTS, type ItemId } from '../data/items.js';
-import { COUNCIL, MATCHMAKING, type RoundType } from '../data/rounds.js';
+import { COUNCIL, MATCHMAKING, STARTING_KIT, type RoundType } from '../data/rounds.js';
 import { UNITS, type Cost, type UnitId } from '../data/units.js';
 import { createRng, deriveSeed, randomInt, randomSeed, shuffle, type Rng } from '../rng.js';
 import { pickGroups, rollCouncilOptions, type CouncilOption } from './council.js';
@@ -139,8 +139,8 @@ const GIFT_STREAM = 20;
 class GameImpl implements Game, GameState {
   stage = 1;
   round = 1;
-  type: RoundType = 'council';
-  phase: Phase = 'council';
+  type: RoundType = 'start';
+  phase: Phase = 'planning';
   turn = 0;
   council: { options: CouncilOption[]; groups: number[][]; group: number } | null = null;
   readonly pool = new Pool();
@@ -163,6 +163,7 @@ class GameImpl implements Game, GameState {
       (_, seat) =>
         new Player(seat, context, createRng(deriveSeed(config.seed, SHOP_STREAM + seat)), createRng(deriveSeed(config.seed, GIFT_STREAM + seat))),
     );
+    this.giveStartingKits();
     this.startRound();
   }
 
@@ -286,12 +287,14 @@ class GameImpl implements Game, GameState {
       this.phase = 'council';
       this.council = {
         options: this.offerRingsOfPower(this.offerRing(rollCouncilOptions(this.pool, this.stage, this.rng))),
-        groups: pickGroups(this.living(), this.stage === 1 && this.round === 1, this.rng),
+        groups: pickGroups(this.living(), this.rng),
         group: 0,
       };
       return;
     }
     this.phase = 'planning';
+    // The start round is for placing the starting kits: no income, XP or shop.
+    if (this.type === 'start') return;
     this.corruptRing();
     for (const player of this.living()) {
       for (const auto of XP.automatic) if (auto.stage === this.stage && auto.round === this.round) player.reachLevel(auto.level);
@@ -304,6 +307,15 @@ class GameImpl implements Game, GameState {
     for (const player of refreshing) player.rollShop();
     const tier = GIFT_ROUNDS[`${this.stage}-${this.round}`];
     if (tier !== undefined) for (const player of this.living()) player.offerGifts(tier);
+  }
+
+  /** Each player, in seat order, gets a random 1★ unit and component (section 9.1). */
+  private giveStartingKits(): void {
+    for (const player of this.players) {
+      const costs = STARTING_KIT.costs.filter((cost) => this.pool.countOfCost(cost) > 0);
+      if (costs.length > 0) player.gain(this.pool.takeOfCost(costs[randomInt(this.rng, costs.length)]!, this.rng));
+      for (let i = 0; i < STARTING_KIT.components; i++) player.items.push(COMPONENTS[randomInt(this.rng, COMPONENTS.length)]!);
+    }
   }
 
   private goToNextRound(): void {
@@ -415,6 +427,8 @@ class GameImpl implements Game, GameState {
     const living = this.living();
     for (const player of living) player.fillBoard();
     this.equipRing();
+    // The start round has no fight.
+    if (this.type === 'start') return { stage: this.stage, round: this.round, fights: [], damage: [], eliminated: [], places: [] };
     const fights: FightReport[] = [];
     const run = (kind: FightReport['kind'], home: Player, away: Player | null, B: readonly PlacedUnit[]) => {
       const input: CombatInput = {

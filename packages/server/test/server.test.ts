@@ -65,7 +65,7 @@ describe('the Node server', () => {
     expect((await fetch(`${base()}/..%2F..%2Fpackage.json`)).status).toBe(404);
   });
 
-  it('lets two people join one lobby, start, and see the same Council', async () => {
+  it('lets two people join one lobby, start, and see the same game', async () => {
     const frodo = await connect();
     const sam = await connect();
     frodo.send({ type: 'create', name: 'Frodo' });
@@ -74,8 +74,8 @@ describe('the Node server', () => {
     expect((await sam.next('joined')).seat).toBe(1);
     frodo.send({ type: 'start' });
     const [a, b] = await Promise.all([frodo.next('state'), sam.next('state')]);
-    expect(a.state.step.kind).toBe('council');
-    expect(a.state.council).toEqual(b.state.council);
+    expect(a.state.step.kind).toBe('planning');
+    expect(a.state.players).toEqual(b.state.players);
     sam.close();
     const away = await frodo.next('lobby', (m) => !m.lobby.seats[1]!.connected);
     expect(away.lobby.seats[1]).toEqual({ kind: 'person', name: 'Sam', connected: false });

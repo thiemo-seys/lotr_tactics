@@ -5,7 +5,7 @@ import { UNITS } from '../src/data/units.js';
 import { createGame, type Game } from '../src/game/game.js';
 import { boardPlace } from '../src/game/places.js';
 import { copiesIn } from '../src/game/pool.js';
-import { playerOf, poolOf } from './fixtures.js';
+import { playerOf, poolOf, skipTo } from './fixtures.js';
 
 /** Plays bots until the given round's planning starts, without letting them plan it. */
 function botsUntil(seed: number, stage: number, round: number, players = 8): { game: Game; bots: readonly Bot[] } {
@@ -131,6 +131,8 @@ describe('bots', () => {
 
   it('pick the Council option that completes a merge', () => {
     const game = createGame({ seed: 8, players: 2 });
+    skipTo(game, 2, 4);
+    playerOf(game, 0).returnEverything();
     const option = game.state.council!.options[4]!;
     const me = playerOf(game, 0);
     const pool = poolOf(game);

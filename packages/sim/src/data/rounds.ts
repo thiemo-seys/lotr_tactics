@@ -3,10 +3,11 @@
 
 import type { Cost } from './units.js';
 
-export type RoundType = 'council' | 'pvp' | 'pve';
+/** `start` is 1-1: planning with the starting kits, and no fight. */
+export type RoundType = 'start' | 'council' | 'pvp' | 'pve';
 
 export const SCHEDULE: { readonly firstStage: readonly RoundType[]; readonly laterStages: readonly RoundType[] } = {
-  firstStage: ['council', 'pve', 'pve', 'pve'],
+  firstStage: ['start', 'pve', 'pve', 'pve'],
   laterStages: ['pvp', 'pvp', 'pvp', 'council', 'pvp', 'pvp', 'pve'],
 };
 
@@ -16,9 +17,15 @@ export const STAGE_DAMAGE: readonly number[] = [0, 2, 5, 8, 10, 12, 17];
 /** Damage for each surviving enemy unit at 1★, 2★ and 3★. */
 export const SURVIVOR_DAMAGE = [1, 2, 3] as const;
 
+/** What each player starts the game with: a random 1★ unit of one of these costs and random item components (game-spec.md section 9.1). */
+export const STARTING_KIT = {
+  costs: [1] as readonly Cost[],
+  components: 1,
+} as const;
+
 export const COUNCIL = {
   options: 9,
-  /** Players pick in groups of this size, lowest HP first, after the first Council. */
+  /** Players pick in groups of this size, lowest HP first. */
   groupSize: 2,
   /** The unit costs offered, from stage 1. The last entry holds for every later stage. */
   costs: [[1], [1, 2], [2, 3], [3, 4], [3, 4, 5]] as readonly (readonly Cost[])[],

@@ -32,12 +32,8 @@ export function rollCouncilOptions(pool: Pool, stage: number, rng: Rng): Council
   return options;
 }
 
-/**
- * The groups that pick in turn. The first Council is one group of everyone; later ones go by HP,
- * lowest first, ties in a seeded order, in groups of two.
- */
-export function pickGroups(players: readonly { readonly seat: number; readonly hp: number }[], first: boolean, rng: Rng): number[][] {
-  if (first) return [players.map((p) => p.seat)];
+/** The groups that pick in turn: by HP, lowest first, ties in a seeded order, in groups of two. */
+export function pickGroups(players: readonly { readonly seat: number; readonly hp: number }[], rng: Rng): number[][] {
   // The shuffle settles ties; the sort is stable.
   const order = shuffle(rng, players).sort((a, b) => a.hp - b.hp);
   const groups: number[][] = [];
