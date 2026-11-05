@@ -319,14 +319,11 @@ class GameImpl implements Game, GameState {
     if (council.groups[council.group]!.every((seat) => council.options.some((o) => o.pickedBy === seat))) this.nextCouncilGroup();
   }
 
-  /** Gives a player a Council option. A unit with no room is sold at once (section 7.2). */
+  /** Gives a player a Council option. A unit with no room waits for it (section 7.2). */
   private give(player: Player, option: CouncilOption): void {
     option.pickedBy = player.seat;
     if (option.item !== null) player.items.push(option.item);
-    if (!player.gain(option.unitId)) {
-      player.gold += UNITS[option.unitId].cost;
-      this.pool.put(option.unitId);
-    }
+    player.gain(option.unitId);
     // Bilbo brings the Ring: he bears it if the player now owns him.
     if (option.ring) this.ring.take(player.seat, player.firstOwned('bilbo')?.id ?? null);
   }

@@ -77,7 +77,7 @@ describe('wearing Rings of Power', () => {
     expect(game.act(0, { type: 'equip', item: 0, to: { bench: 0 } })).toEqual({ ok: false, reason: 'A unit can wear only one Ring of Power.' });
     // A third Gimli merges the two: the Nine goes back to the player.
     poolOf(game).take('gimli');
-    expect(p.gain('gimli')).toBe(true);
+    p.gain('gimli');
     expect(p.bench[0]!.items).toEqual(['narya', 'blade']);
     expect(p.items).toEqual(['ring-of-the-seven', 'ring-of-the-nine']);
   });

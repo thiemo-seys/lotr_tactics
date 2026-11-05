@@ -14,6 +14,7 @@ function player(over: Partial<PlayerView>): PlayerView {
     streak: 0,
     bench: new Array<OwnedUnit | null>(PLAYER.benchSize).fill(null),
     board: new Array<OwnedUnit | null>(28).fill(null),
+    waiting: [],
     shop: [],
     shopLocked: false,
     items: [],
@@ -49,6 +50,11 @@ describe('the HUD', () => {
     const bench = [unit, unit, ...new Array<OwnedUnit | null>(PLAYER.benchSize - 2).fill(null)];
     const fighting = [unit, { unitId: 'gimli', items: [] }] as const;
     expect(hudStats(player({ level: 3, board, bench }), fighting).board).toEqual({ fielded: 2, max: 3, room: false });
+  });
+
+  it('names the units waiting for a bench slot, oldest first', () => {
+    expect(hudStats(player({})).waiting).toEqual([]);
+    expect(hudStats(player({ waiting: ['aragorn', 'sam'] })).waiting).toEqual(['Aragorn', 'Sam']);
   });
 
   it('never shows HP below 0', () => {

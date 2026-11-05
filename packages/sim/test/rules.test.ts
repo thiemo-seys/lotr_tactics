@@ -28,6 +28,7 @@ function view(changes: Partial<PlayerView> = {}): PlayerView {
     streak: 0,
     bench: new Array<OwnedUnit | null>(PLAYER.benchSize).fill(null),
     board: new Array<OwnedUnit | null>(BOARD_COLS * TEAM_ROWS).fill(null),
+    waiting: [],
     shop: ['sam', null, null, null, null],
     shopLocked: false,
     items: [],

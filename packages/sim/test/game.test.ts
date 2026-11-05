@@ -20,6 +20,7 @@ function copies(game: Game): Map<UnitId, number> {
   for (const p of game.state.players) {
     for (const id of p.shop) if (id !== null) add(id, 1);
     for (const unit of [...p.bench, ...p.board]) if (unit !== null) add(unit.unitId, copiesIn(unit.star));
+    for (const id of p.waiting) add(id, 1);
   }
   for (const option of game.state.council?.options ?? []) if (option.pickedBy === null) add(option.unitId, 1);
   return total;
@@ -322,7 +323,7 @@ describe('later Councils', () => {
     expect(copies(game)).toEqual(STARTING_COPIES);
   });
 
-  it('sell a picked unit that has no room', () => {
+  it('hold a picked unit that has no room until a bench slot frees up', () => {
     const game = createGame({ seed: 15, players: 2 });
     skipTo(game, 2, 3);
     game.advance();
@@ -338,8 +339,14 @@ describe('later Councils', () => {
     // Let the other player pick first if they are ahead in the order.
     if (groups[0]!.includes(1) && !groups[0]!.includes(0)) game.act(1, { type: 'pick', option: 1 });
     expect(game.act(0, { type: 'pick', option: 0 }).ok).toBe(true);
-    expect(playerOf(game, 0).gold).toBe(before + UNITS[option.unitId].cost);
+    expect(playerOf(game, 0).gold).toBe(before);
     expect(playerOf(game, 0).items).toContain(option.item);
+    expect(playerOf(game, 0).waiting).toEqual([option.unitId]);
+    expect(copies(game)).toEqual(STARTING_COPIES);
+    // Selling a bench unit when the Council is over makes room: the waiting unit takes its slot.
+    expect(playerOf(game, 0).sell({ bench: 4 }).ok).toBe(true);
+    expect(playerOf(game, 0).waiting).toEqual([]);
+    expect(playerOf(game, 0).bench[4]!.unitId).toBe(option.unitId);
     expect(copies(game)).toEqual(STARTING_COPIES);
   });
 });

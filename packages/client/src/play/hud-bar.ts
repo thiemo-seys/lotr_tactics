@@ -58,6 +58,12 @@ export class HudBar {
       const { board } = this.shownStats();
       return textTip('Board', `${board.fielded} of ${board.max} units fielded.`, ...(board.room ? ['There is room for a unit from your bench.'] : []));
     });
+    setTip(this.pill('waiting'), () => {
+      const { waiting } = this.shownStats();
+      return waiting.length === 0
+        ? null
+        : textTip('Waiting for the bench', `No room on your bench for ${waiting.join(', ')}.`, 'Each goes to the bench as soon as a slot frees up, or merges once you own two copies. Sell a unit or move one to the board to make room.');
+    });
     setTip(this.pill('streak'), () => {
       const streak = this.shownStats().streak;
       return streak === null ? null : textTip(streak.kind === 'win' ? 'Win streak' : 'Loss streak', `${plural(streak.length, streak.kind === 'win' ? 'win' : 'loss', streak.kind === 'win' ? 'wins' : 'losses')} in a row against players.`);
@@ -131,6 +137,8 @@ export class HudBar {
     }
     setText(this.value('board'), `${s.board.fielded}/${s.board.max}`);
     toggle(this.pill('board'), 'attention', s.board.room && flow.show.kind === 'planning');
+    show(this.pill('waiting'), s.waiting.length > 0);
+    setText(this.value('waiting'), `${s.waiting.length}`);
     const streak = this.pill('streak');
     show(streak, s.streak !== null);
     if (s.streak !== null) {
