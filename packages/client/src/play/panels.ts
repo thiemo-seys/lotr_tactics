@@ -15,7 +15,7 @@ import { setTip } from '../ui/tooltip.js';
 
 const element = (id: string) => document.getElementById(id) as HTMLElement;
 
-const ROUND_NAMES = { council: 'Council of Elrond', pvp: 'PvP', pve: 'PvE' } as const;
+const ROUND_NAMES = { start: 'Start', council: 'Council of Elrond', pvp: 'PvP', pve: 'PvE' } as const;
 const OUTCOME_ICONS: Readonly<Record<RoundResults['outcome'], IconName>> = { Victory: 'trophy', Defeat: 'knockout', Draw: 'pvp', 'No fight': 'council' };
 
 // The Council of Elrond

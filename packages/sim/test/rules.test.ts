@@ -13,7 +13,7 @@ import type { RingView } from '../src/game/ring.js';
 import { checkAction, type ActionContext } from '../src/game/rules.js';
 
 const NO_RING: RingView = { state: 'waiting', holder: null, bearer: null, corruption: 0, hobbitFights: 0 };
-const PLANNING: ActionContext = { phase: 'planning', council: null, ring: NO_RING };
+const PLANNING: ActionContext = { type: 'pvp', phase: 'planning', council: null, ring: NO_RING };
 
 const owned = (id: number, unitId: UnitId, items: ItemId[] = []): OwnedUnit => ({ id, unitId, star: 1, items });
 
@@ -136,9 +136,20 @@ describe('checking actions', () => {
     expect(reason(p, { type: 'ring', to: { bench: 1 } }, held(1))).toBe('There is no unit there.');
   });
 
+  it('keeps the shop shut in the start round, but lets the starting kit be placed and equipped', () => {
+    const START: ActionContext = { ...PLANNING, type: 'start' };
+    const p = view({ gold: 10, bench: [owned(1, 'gimli'), ...view().bench.slice(1)], items: ['blade'] });
+    for (const action of [{ type: 'buy', slot: 0 }, { type: 'reroll' }, { type: 'buyXp' }, { type: 'lock', locked: true }] as const) {
+      expect(reason(p, action, START)).toBe('The shop opens next round.');
+    }
+    expect(reason(p, { type: 'move', from: { bench: 0 }, to: { col: 0, row: 0 } }, START)).toBe('ok');
+    expect(reason(p, { type: 'equip', item: 0, to: { bench: 0 } }, START)).toBe('ok');
+  });
+
   it('picks at the Council in the player’s group’s turn, once, an option still there', () => {
     const option = (pickedBy: number | null) => ({ unitId: 'sam' as const, item: 'blade' as const, ring: false, pickedBy });
     const council = (options: CouncilState['options'], group = 0): ActionContext => ({
+      type: 'council',
       phase: 'council',
       council: { options, groups: [[0, 1], [2, 3]], group },
       ring: NO_RING,

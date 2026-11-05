@@ -39,11 +39,11 @@ describe('views', () => {
 
   it("are copies that don't change as the game goes on", () => {
     const t = testMatch(22, [0]);
-    const council = t.match.view(0);
+    const start = t.match.view(0);
     timeOut(t);
-    expect(council.council!.options.some((o) => o.pickedBy === 0)).toBe(false);
-    expect(council.me.bench.every((u) => u === null)).toBe(true);
-    expect(t.match.view(0).me.bench.some((u) => u !== null)).toBe(true);
+    expect([start.round, t.match.view(0).round]).toEqual([1, 2]);
+    expect(start.me.shop.every((id) => id === null)).toBe(true);
+    expect(t.match.view(0).me.shop.every((id) => id !== null)).toBe(true);
   });
 
   it('send rounds without events, and replaying a fight gives the recorded result', () => {

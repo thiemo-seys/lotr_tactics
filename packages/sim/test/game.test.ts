@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { POOL_COPIES } from '../src/data/economy.js';
+import { COMPONENTS } from '../src/data/items.js';
 import { PVE_ROUNDS } from '../src/data/pve.js';
 import { UNITS, type UnitId } from '../src/data/units.js';
 import { createGame, type Action, type Game, type RoundReport } from '../src/game/game.js';
@@ -69,52 +70,54 @@ describe('createGame', () => {
     expect(() => createGame({ seed: 1, players: 9 })).toThrow();
   });
 
-  it('starts at 1-1 with the Council, everyone at 100 HP with nothing', () => {
+  it('starts at 1-1 with planning and a starting kit, everyone at 100 HP and no gold', () => {
     const game = createGame({ seed: 1, players: 8 });
-    expect([game.state.stage, game.state.round, game.state.type, game.state.phase]).toEqual([1, 1, 'council', 'council']);
-    expect(game.state.council!.groups).toEqual([[0, 1, 2, 3, 4, 5, 6, 7]]);
-    expect(game.state.council!.options).toHaveLength(9);
+    expect([game.state.stage, game.state.round, game.state.type, game.state.phase]).toEqual([1, 1, 'start', 'planning']);
+    expect(game.state.council).toBeNull();
     for (const p of game.state.players) {
       expect([p.hp, p.gold, p.level, p.xp, p.streak]).toEqual([100, 0, 1, 0, 0]);
       expect(p.shop.every((id) => id === null)).toBe(true);
+      const units = p.bench.filter((u) => u !== null);
+      expect(units).toHaveLength(1);
+      expect(units[0]).toMatchObject({ star: 1, items: [] });
+      expect(UNITS[units[0]!.unitId].cost).toBe(1);
+      expect(p.items).toHaveLength(1);
+      expect(COMPONENTS).toContain(p.items[0]);
     }
     expect(copies(game)).toEqual(STARTING_COPIES);
   });
+
+  it('draws the starting kits from the seed', () => {
+    const kits = (seed: number) => createGame({ seed, players: 8 }).state.players.map((p) => [p.bench[0]!.unitId, p.items[0]]);
+    expect(kits(7)).toEqual(kits(7));
+    expect(new Set(Array.from({ length: 10 }, (_, seed) => JSON.stringify(kits(seed)))).size).toBeGreaterThan(1);
+  });
 });
 
-describe('the first Council', () => {
-  it('lets anyone pick an option still there, once', () => {
+describe('the start round', () => {
+  it('lets players place and equip their starting kit, but not shop or pick', () => {
     const game = createGame({ seed: 2, players: 8 });
-    const option = game.state.council!.options[0]!;
-    expect(game.act(0, { type: 'pick', option: 0 })).toEqual({ ok: true });
-    expect(game.act(0, { type: 'pick', option: 1 }).ok).toBe(false);
-    expect(game.act(1, { type: 'pick', option: 0 }).ok).toBe(false);
-    expect(game.act(1, { type: 'pick', option: 9 }).ok).toBe(false);
-    expect(game.act(1, { type: 'buy', slot: 0 }).ok).toBe(false);
-    expect(playerOf(game, 0).bench[0]).toMatchObject({ unitId: option.unitId, star: 1 });
-    expect(playerOf(game, 0).items).toEqual([option.item]);
+    expect(game.act(0, { type: 'pick', option: 0 }).ok).toBe(false);
+    expect(game.act(0, { type: 'buy', slot: 0 }).ok).toBe(false);
+    expect(game.act(0, { type: 'lock', locked: true }).ok).toBe(false);
+    expect(game.act(0, { type: 'equip', item: 0, to: { bench: 0 } })).toEqual({ ok: true });
+    expect(game.act(0, { type: 'move', from: { bench: 0 }, to: { col: 3, row: 0 } })).toEqual({ ok: true });
+    expect(playerOf(game, 0).board.filter((u) => u !== null)).toHaveLength(1);
+    expect(playerOf(game, 0).items).toEqual([]);
   });
 
-  it('gives random options to those who haven, t picked when time is up, then starts 1-2', () => {
+  it('has no fight, damage or income, then starts 1-2 with a shop', () => {
     const game = createGame({ seed: 3, players: 8 });
-    game.act(5, { type: 'pick', option: 4 });
-    expect(game.advance()).toBeNull();
-    expect([game.state.stage, game.state.round, game.state.phase]).toEqual([1, 2, 'planning']);
-    expect(game.state.council).toBeNull();
+    const report = game.advance()!;
+    expect(report).toEqual({ stage: 1, round: 1, fights: [], damage: [], eliminated: [], places: [] });
+    expect([game.state.stage, game.state.round, game.state.type, game.state.phase]).toEqual([1, 2, 'pve', 'planning']);
     for (const p of game.state.players) {
-      expect(p.bench.filter((u) => u !== null)).toHaveLength(1);
+      expect(p.hp).toBe(100);
       expect(p.items).toHaveLength(1);
       expect([p.level, p.gold]).toEqual([2, 2]);
       expect(p.shop.every((id) => id !== null && UNITS[id].cost === 1)).toBe(true);
     }
     expect(copies(game)).toEqual(STARTING_COPIES);
-  });
-
-  it('ends as soon as everyone has picked', () => {
-    const game = createGame({ seed: 4, players: 2 });
-    game.act(0, { type: 'pick', option: 0 });
-    game.act(1, { type: 'pick', option: 1 });
-    expect([game.state.round, game.state.phase]).toEqual([2, 'planning']);
   });
 });
 
@@ -128,7 +131,7 @@ describe('stage 1', () => {
     for (const [seat, fight] of report.fights.entries()) {
       expect(fight).toMatchObject({ kind: 'pve', home: seat, away: null });
       expect(fight.input.teams.B.map((u) => u.unitId)).toEqual(PVE_ROUNDS['1-2'].monsters.map((m) => m.unitId));
-      // The Council unit was moved to the board before the fight.
+      // The starting unit was moved to the board before the fight.
       expect(fight.input.teams.A).toHaveLength(1);
     }
     for (const p of game.state.players) expect(p.items).toHaveLength(2);
@@ -150,16 +153,12 @@ describe('stage 1', () => {
     expect(game.act(0, { type: 'combine', item: 1, with: 0 })).toEqual({ ok: false, reason: 'Only two components combine.' });
   });
 
-  it('lets players give items to their units during planning only, and fights with them', () => {
+  it('lets players give items to their units, and fights with them', () => {
     const game = createGame({ seed: 5, players: 2 });
-    expect(game.act(0, { type: 'pick', option: 0 }).ok).toBe(true);
-    expect(game.state.players[0]!.items).toHaveLength(1);
-    const unit = { bench: 0 };
-    expect(game.act(0, { type: 'equip', item: 0, to: unit })).toEqual({ ok: false, reason: 'Units can only be bought and moved during planning.' });
-    game.advance();
     const item = game.state.players[0]!.items[0]!;
-    expect(game.act(0, { type: 'equip', item: 0, to: unit })).toEqual({ ok: true });
+    expect(game.act(0, { type: 'equip', item: 0, to: { bench: 0 } })).toEqual({ ok: true });
     expect(game.state.players[0]!.bench[0]!.items).toEqual([item]);
+    game.advance();
     const report = game.advance()!;
     expect(report.fights.find((f) => f.home === 0)!.input.teams.A[0]!.items).toEqual([item]);
   });

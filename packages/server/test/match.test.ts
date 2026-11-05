@@ -7,26 +7,45 @@ function freeOption(t: TestMatch): number {
   return t.match.game.state.council!.options.findIndex((o) => o.pickedBy === null);
 }
 
-/** Picks for the person in seat 0 and returns the match at 1-2 planning. */
+/** Lets the start round run out and returns the match at 1-2 planning. */
 function toPlanning(seed: number, people = [0]): TestMatch {
   const t = testMatch(seed, people);
-  for (const seat of people) expect(t.match.act(seat, { type: 'pick', option: freeOption(t) }).ok).toBe(true);
-  expect(t.match.stepKind).toBe('planning');
+  timeOut(t);
+  expect([t.match.game.state.round, t.match.stepKind]).toEqual([2, 'planning']);
+  return t;
+}
+
+/** Plays on with the timers to the first Council, at 2-4, until it is seat 0's group's turn. */
+function toCouncilTurn(seed: number): TestMatch {
+  const t = testMatch(seed, [0]);
+  const turn = () => t.match.stepKind === 'council' && t.match.game.state.council!.groups[t.match.game.state.council!.group]!.includes(0);
+  while (!turn()) timeOut(t);
+  expect([t.match.game.state.stage, t.match.game.state.round]).toEqual([2, 4]);
   return t;
 }
 
 describe('Match steps', () => {
-  it('starts at the first Council with the bots picked and a timer for the people', () => {
+  it('starts at 1-1 planning with the starting kits, the bots having planned, and a timer for the people', () => {
     const t = testMatch(1, [0]);
     const view = last(t.inbox[0]!, 'state')!.state;
-    expect(view.step).toEqual({ kind: 'council', ms: TIMERS.councilPick * 1000 });
-    expect(view.council!.options.filter((o) => o.pickedBy !== null)).toHaveLength(7);
-    expect(view.council!.options.some((o) => o.pickedBy === 0)).toBe(false);
+    expect([view.stage, view.round, view.type, view.step]).toEqual([1, 1, 'start', { kind: 'planning', ms: TIMERS.planning * 1000 }]);
+    expect(view.council).toBeNull();
+    expect(view.me.bench.filter((u) => u !== null)).toHaveLength(1);
+    expect(view.me.items).toHaveLength(1);
+    // The bots have put their units on the board.
+    for (const p of t.match.game.state.players.slice(1)) expect(p.board.filter((u) => u !== null)).toHaveLength(1);
     // Bots get no messages.
     expect(t.inbox[1]).toEqual([]);
   });
 
-  it('moves on to planning once the people pick, with the bots having planned', () => {
+  it('goes from the start round straight to 1-2, with no fight step', () => {
+    const t = testMatch(15, [0]);
+    expect(t.match.ready(0).ok).toBe(true);
+    expect([t.match.game.state.round, t.match.stepKind]).toEqual([2, 'planning']);
+    expect(last(t.inbox[0]!, 'round')).toBeUndefined();
+  });
+
+  it('moves on to 1-2 planning, with the bots having planned', () => {
     const t = toPlanning(2);
     const view = last(t.inbox[0]!, 'state')!.state;
     expect([view.stage, view.round, view.step]).toEqual([1, 2, { kind: 'planning', ms: TIMERS.planning * 1000 }]);
@@ -36,14 +55,24 @@ describe('Match steps', () => {
   });
 
   it('picks for a person whose Council time runs out', () => {
-    const t = testMatch(3, [0]);
+    const t = toCouncilTurn(3);
+    const { options, group } = t.match.game.state.council!;
+    expect(t.match.view(0).step).toEqual({ kind: 'council', ms: TIMERS.councilPick * 1000 });
     t.host.wait(TIMERS.councilPick - 1);
     t.match.update();
-    expect(t.match.stepKind).toBe('council');
+    expect(t.match.game.state.council?.group).toBe(group);
+    expect(options.some((o) => o.pickedBy === 0)).toBe(false);
     t.host.wait(1);
     t.match.update();
-    expect(t.match.stepKind).toBe('planning');
-    expect(t.match.game.state.players[0]!.items).toHaveLength(1);
+    expect(options.some((o) => o.pickedBy === 0)).toBe(true);
+  });
+
+  it("lets a person pick in their group's turn", () => {
+    const t = toCouncilTurn(16);
+    const { options } = t.match.game.state.council!;
+    const option = freeOption(t);
+    expect(t.match.act(0, { type: 'pick', option }).ok).toBe(true);
+    expect(options[option]!.pickedBy).toBe(0);
   });
 
   it('runs the fights when planning ends, then waits for the longest fight and the results', () => {
@@ -88,7 +117,7 @@ describe('Match steps', () => {
   });
 
   it('refuses Ready in a Council', () => {
-    const t = testMatch(6, [0]);
+    const t = toCouncilTurn(6);
     expect(t.match.ready(0).ok).toBe(false);
   });
 });
@@ -159,13 +188,13 @@ describe('Seats', () => {
   });
 
   it('lets the bot pick for a person who disconnects in their Council turn', () => {
-    const t = testMatch(11, [0]);
+    const t = toCouncilTurn(11);
+    const { options } = t.match.game.state.council!;
+    const time = t.host.time;
     t.match.setConnected(0, false);
-    expect(t.match.stepKind).toBe('planning');
-    // The bot picked, then planned at once, which can give the component to the unit.
-    const p = t.match.game.state.players[0]!;
-    const held = [...p.bench, ...p.board].flatMap((u) => u?.items ?? []);
-    expect([...p.items, ...held]).toHaveLength(1);
+    // The bot picked at once, without waiting for the timer.
+    expect(t.host.time).toBe(time);
+    expect(options.some((o) => o.pickedBy === 0)).toBe(true);
   });
 
   it('plays the rest of the game at once when the last person leaves', () => {

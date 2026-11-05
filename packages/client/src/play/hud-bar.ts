@@ -12,8 +12,9 @@ import { actionTip, ringTip, textTip } from '../tips.js';
 import { el, icon, rebuild, setText, show, toggle } from '../ui/dom.js';
 import { setTip } from '../ui/tooltip.js';
 
-const ROUND_NAMES = { council: 'Council of Elrond', pvp: 'PvP', pve: 'PvE' } as const;
+const ROUND_NAMES = { start: 'Start', council: 'Council of Elrond', pvp: 'PvP', pve: 'PvE' } as const;
 const ROUND_HINTS = {
+  start: 'Place your starting unit and give it its item. The shop opens next round.',
   council: 'Pick a unit and the item it brings, the lowest HP first.',
   pvp: 'Fight another player. The loser takes damage.',
   pve: 'Fight monsters for loot.',

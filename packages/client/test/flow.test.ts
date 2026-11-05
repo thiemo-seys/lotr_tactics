@@ -98,7 +98,7 @@ describe('the play flow', () => {
     };
     connection = new LocalConnection(5, { message, closed: () => {} }, { host, autoUpdate: false });
     await flush();
-    expect([flow.show.kind, flow.you, flow.inGame]).toEqual(['council', 0, true]);
+    expect([flow.show.kind, flow.you, flow.inGame]).toEqual(['planning', 0, true]);
     expect(flow.secondsLeft(host.time)).toBe(Math.ceil(flow.state!.step.ms! / 1000));
 
     let rounds = 0;

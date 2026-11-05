@@ -11,7 +11,7 @@ import { createRng } from '../src/rng.js';
 
 describe('schedule', () => {
   it('follows docs/design.md section 9', () => {
-    expect([1, 2, 3, 4].map((round) => roundType(1, round))).toEqual(['council', 'pve', 'pve', 'pve']);
+    expect([1, 2, 3, 4].map((round) => roundType(1, round))).toEqual(['start', 'pve', 'pve', 'pve']);
     for (const stage of [2, 3, 7]) {
       expect([1, 2, 3, 4, 5, 6, 7].map((round) => roundType(stage, round))).toEqual(['pvp', 'pvp', 'pvp', 'council', 'pvp', 'pvp', 'pve']);
     }
@@ -126,7 +126,7 @@ describe('Council', () => {
     for (const option of rollCouncilOptions(pool, 2, createRng(4))) expect(UNITS[option.unitId].cost).toBe(1);
   });
 
-  it('lets everyone pick at once at the first Council, then pairs by HP, lowest first', () => {
+  it('pairs Council pickers by HP, lowest first', () => {
     const players = [
       { seat: 0, hp: 50 },
       { seat: 1, hp: 20 },
@@ -134,8 +134,7 @@ describe('Council', () => {
       { seat: 3, hp: 20 },
       { seat: 4, hp: 65 },
     ];
-    expect(pickGroups(players, true, createRng(1))).toEqual([[0, 1, 2, 3, 4]]);
-    const groups = pickGroups(players, false, createRng(1));
+    const groups = pickGroups(players, createRng(1));
     expect(groups.map((g) => g.length)).toEqual([2, 2, 1]);
     expect([...groups[0]!].sort()).toEqual([1, 3]);
     expect(groups.slice(1)).toEqual([[0, 4], [2]]);
@@ -143,7 +142,7 @@ describe('Council', () => {
 
   it('breaks HP ties with the seed', () => {
     const tied = [0, 1, 2, 3, 4, 5].map((seat) => ({ seat, hp: 40 }));
-    const firsts = new Set(Array.from({ length: 30 }, (_, seed) => pickGroups(tied, false, createRng(seed))[0]![0]));
+    const firsts = new Set(Array.from({ length: 30 }, (_, seed) => pickGroups(tied, createRng(seed))[0]![0]));
     expect(firsts.size).toBeGreaterThan(2);
   });
 });

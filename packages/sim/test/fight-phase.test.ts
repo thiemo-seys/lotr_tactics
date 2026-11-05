@@ -138,9 +138,10 @@ describe('the fight phase', () => {
 
   it('only starts from planning', () => {
     const game = createGame({ seed: 28, players: 2 });
+    skipTo(game, 2, 4);
     expect(game.state.phase).toBe('council');
     expect(() => game.fight()).toThrow();
-    skipTo(game, 1, 2);
+    while (game.state.phase === 'council') game.advance();
     game.fight();
     expect(() => game.fight()).toThrow();
   });
