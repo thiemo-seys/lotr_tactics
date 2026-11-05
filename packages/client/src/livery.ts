@@ -17,7 +17,7 @@ export const FACTION_LIVERY: Readonly<Record<OriginId, number>> = {
   istari: 0x8a8c8e, // grey, though each of the Istari has his own below
   nazgul: 0x25252a, // black
   ent: 0x4f6b3a, // moss green
-  'dark-lord': 0x7a2a1e, // ember red
+  'dark-lord': 0x591f16, // dark ember red
 };
 
 /** Units whose livery isn't their faction's. */
