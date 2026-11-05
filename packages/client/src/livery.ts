@@ -48,6 +48,9 @@ export const UNIT_LIVERY: Readonly<Partial<Record<UnitId, number>>> = {
   // Dwarves
   gimli: 0x8a3b2a, // iron red
   dain: 0x5a5f66, // Iron Hills steel
+  // Nazgûl
+  khamul: 0x6e1f26, // Rhûn crimson
+  'witch-king': 0x383840, // lighter black
   // Istari
   radagast: 0x7a5530, // brown
   saruman: 0xc9c6be, // white
