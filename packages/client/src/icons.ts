@@ -48,6 +48,7 @@ export const ICONS = {
   restart: '<path d="M4.5 12a7.5 7.5 0 1 0 2.2-5.3L4.5 9"/><path d="M4.5 4.5V9H9"/>',
   log: '<path d="M9 6.5h11M9 12h11M9 17.5h11"/><circle class="s" cx="4.8" cy="6.5" r="1.1"/><circle class="s" cx="4.8" cy="12" r="1.1"/><circle class="s" cx="4.8" cy="17.5" r="1.1"/>',
   viewer: `<path d="${EYE}"/><circle class="f" cx="12" cy="12" r="3"/>`,
+  gauge: '<path class="f" d="M3.5 17.5a8.5 8.5 0 0 1 17 0z"/><path d="M12 17.5l4-5.5M6.5 13.5l1 .6M12 9v1.2M17.5 13.5l-1 .6"/><circle class="s" cx="12" cy="17.5" r="1.4"/>',
   // Results
   knockout:
     '<path class="f" d="M12 3c-4.7 0-8 3.3-8 7.6 0 2.6 1.2 4.5 3 5.6V19a1.5 1.5 0 0 0 1.5 1.5h7A1.5 1.5 0 0 0 17 19v-2.8c1.8-1.1 3-3 3-5.6C20 6.3 16.7 3 12 3z"/><circle class="s" cx="9" cy="11.5" r="1.8"/><circle class="s" cx="15" cy="11.5" r="1.8"/><path d="M10.5 20.5V18M13.5 20.5V18"/>',

@@ -7,6 +7,7 @@ import { Playback } from './playback.js';
 import { FightScene } from './scene.js';
 import { el, fillIcons, icon, rebuild, setText, show, toggle } from './ui/dom.js';
 import { fighterTip } from './tips.js';
+import { frameCapButton } from './ui/frame-cap.js';
 import { MeterPanel } from './ui/meter.js';
 import { tipCard } from './ui/tip-card.js';
 import { hoverUnits } from './ui/unit-hover.js';
@@ -44,6 +45,7 @@ const log = element('log');
 const logButton = element('toggle-log');
 // The viewer takes no side, so the meter has its own switch between the teams.
 const meter = new MeterPanel(element('meter'), element('toggle-meter'), true);
+const frameCap = frameCapButton(element('frame-cap'));
 
 for (const select of [boardA, boardB]) {
   for (const choice of BOARD_CHOICES) select.add(new Option(choice, choice));
@@ -93,6 +95,11 @@ window.addEventListener('keydown', (event) => {
 
 let last = performance.now();
 requestAnimationFrame(function frame(now) {
+  // With the cap on, the frames in between are skipped, and the next one run counts their time.
+  if (!frameCap.due(now)) {
+    requestAnimationFrame(frame);
+    return;
+  }
   // A long pause, such as a background tab, shouldn't fast-forward the fight.
   const seconds = Math.min((now - last) / 1000, 0.1);
   last = now;
