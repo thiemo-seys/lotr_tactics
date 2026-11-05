@@ -41,6 +41,10 @@ export const UNIT_LIVERY: Readonly<Partial<Record<UnitId, number>>> = {
   sharku: 0x9c8f74, // bone
   gorbag: 0x7f9a86, // Morgul pallid green
   gothmog: 0x7a2e22, // Mordor red
+  // Elves
+  legolas: 0x4f6b3a, // Mirkwood green
+  elrond: 0x7a2f3a, // Rivendell burgundy
+  galadriel: 0xa7adaa, // lighter Lórien silver
   // Istari
   radagast: 0x7a5530, // brown
   saruman: 0xc9c6be, // white
