@@ -65,7 +65,7 @@ function councilCard(flow: PlayFlow, option: CouncilOptionView, corruption: numb
   );
   card.setAttribute('aria-label', `${def.name} with ${option.item === null ? 'the One Ring' : ITEMS[option.item].name}${taken ? `, taken by ${flow.seatName(option.pickedBy!)}` : ''}`);
   setEnabled(card, pick !== null);
-  setTip(card, unitTip(option.unitId, taken ? { text: `Taken by ${flow.seatName(option.pickedBy!)}.`, reason: true } : pick === null ? undefined : { text: 'Click to take this unit and what it brings.', reason: false }));
+  setTip(card, unitTip(option.unitId));
   if (pick !== null) card.addEventListener('click', pick);
   return card;
 }
