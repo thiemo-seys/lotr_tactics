@@ -61,9 +61,11 @@ You make the game look like Middle-earth in low-poly 3D (`docs/design.md` sectio
 
 ## What the art has to do
 
-- **Team first.**
-  - The near side is always blue and the far side red, and the person's units are always blue (`game-spec.md` section 12).
-  - Team colour stays the strongest cue, on the `team` part every model has, such as a base, cloak or tabard.
+- **Livery, not team colour.**
+  - A unit looks the same on both sides. Only its health bar tells the sides apart: green for the near side, the person's, and red for the far side (`viewer-spec.md` section 4).
+  - Every model has a `team` part, such as a cloak, hood, tabard or shield face, that the client draws in the unit's livery: its faction's colour or its own, from `packages/client/src/livery.json` (`viewer-spec.md` section 4, Livery). Keep building it in `kit.py`'s `TEAM_BLUE`; the client, `board.mjs` and `preview.py` recolour it.
+  - Check a model in its livery, which `board.mjs` and `preview.py` draw, and make sure the livery stands out from the rest of the model: a near-black livery on dark robes disappears.
+  - A new unit, monster or summon with a model needs a livery in `livery.json` (monsters and summons get its default for now). Choosing or changing a colour is the user's call: propose options, rendered, before changing it.
   - Character colours go on the rest.
 - **Role from silhouette.** A player should tell a unit's class from its shape: shields for Guardians, bows for Archers, staffs for Sorcerers, mounts or spears for Riders, hoods and daggers for Burglars, banners or capes for Captains.
 - **Origin from proportions.** Hobbits short, Dwarves stocky, Elves tall and slim, Orcs hunched, Nazgûl hooded and faceless, Istari robed. Treebeard and Sauron are Large and should look it.
