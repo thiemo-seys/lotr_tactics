@@ -6,7 +6,7 @@ import { combine, isComponent, isRingOfPower } from '../combat/items.js';
 import { PLAYER, SHOP, XP } from '../data/economy.js';
 import { MAX_ITEMS, type ComponentId, type ItemId } from '../data/items.js';
 import { RING } from '../data/ring.js';
-import { UNITS } from '../data/units.js';
+import { UNITS, type UnitId } from '../data/units.js';
 import type { Action, CouncilState, Phase } from './game.js';
 import { isIndex, isPlace, ownedUnits, unitAt, type Place } from './places.js';
 import type { PlayerView } from './player.js';
@@ -71,7 +71,7 @@ export function checkAction(player: PlayerView, context: ActionContext, action: 
 function checkDuringFights(player: PlayerView, action: Action): ActionResult {
   switch (action.type) {
     case 'buy':
-      return checkBuy(player, action.slot);
+      return checkBuy(player, action.slot, true);
     case 'sell':
       return onBench(action.from) ?? checkSell(player, action.from);
     case 'move':
@@ -113,14 +113,26 @@ export function checkPick(player: PlayerView, { phase, council }: ActionContext,
   return OK;
 }
 
-/** Buying needs the gold, and a free bench slot unless the unit merges with two 1★ copies (section 7.2). */
-export function checkBuy(player: PlayerView, slot: number): ActionResult {
+/**
+ * Whether a new 1★ copy of a unit merges at once (section 7.2): with two 1★ copies the player
+ * owns, or, while the fights play, two on the bench, since copies on the board merge only once the
+ * fights end.
+ */
+export function completesMerge(player: PlayerView, unitId: UnitId, fighting: boolean): boolean {
+  const copies = fighting ? player.bench.filter((u) => u !== null) : ownedUnits(player).map(({ unit }) => unit);
+  return copies.filter((u) => u.unitId === unitId && u.star === 1).length >= 2;
+}
+
+/**
+ * Buying needs the gold, and a free bench slot unless the unit merges at once (section 7.2).
+ * `fighting` is true while the fights play.
+ */
+export function checkBuy(player: PlayerView, slot: number, fighting = false): ActionResult {
   if (!isIndex(slot, SHOP.size)) return fail('There is no such shop slot.');
   const unitId = player.shop[slot];
   if (unitId === null || unitId === undefined) return fail('That shop slot is empty.');
   if (player.gold < UNITS[unitId].cost) return fail('Not enough gold.');
-  const merges = ownedUnits(player).filter(({ unit }) => unit.unitId === unitId && unit.star === 1).length >= 2;
-  if (!player.bench.includes(null) && !merges) return fail('The bench is full.');
+  if (!player.bench.includes(null) && !completesMerge(player, unitId, fighting)) return fail('The bench is full.');
   return OK;
 }
 

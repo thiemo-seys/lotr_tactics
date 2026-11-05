@@ -2,7 +2,7 @@
 // unit cards, the person's items and the One Ring to drag onto units, and Ready. Dropping a dragged
 // unit on the bar sells it.
 
-import { SHOP, UNITS, XP, isComponent, ownedUnits, type ActionResult, type PlayerView, type Star, type UnitId } from '@lotr-tactics/sim';
+import { SHOP, UNITS, XP, completesMerge, isComponent, ownedUnits, type ActionResult, type PlayerView, type Star, type UnitId } from '@lotr-tactics/sim';
 import type { PlayFlow } from '../flow.js';
 import { shopOddsView } from '../hud.js';
 import { TRAIT_ICONS } from '../icons.js';
@@ -68,11 +68,14 @@ export class ShopBar {
     const buys = p.shop.map((_, slot) => flow.check({ type: 'buy', slot }));
     const mine = ownedUnits(p);
     const owned = p.shop.map((id) => mine.flatMap(({ unit }) => (unit.unitId === id ? [unit.star] : [])));
-    rebuild(this.shop, JSON.stringify([p.shop, buys, owned]), () =>
+    // While the fights play, copies on the board merge only once they end.
+    const fighting = flow.state!.phase === 'fight';
+    const merges = p.shop.map((id) => id !== null && completesMerge(p, id, fighting));
+    rebuild(this.shop, JSON.stringify([p.shop, buys, owned, merges]), () =>
       p.shop.map((id, slot) => {
         if (id === null) return el('div', 'unit-card empty', icon('board'));
         const buy = buys[slot]!;
-        return unitCard(id, owned[slot]!, buy, () => flow.act({ type: 'buy', slot }));
+        return unitCard(id, owned[slot]!, merges[slot]!, buy, () => flow.act({ type: 'buy', slot }));
       }),
     );
 
@@ -143,9 +146,9 @@ export class ShopBar {
  * if it can't be bought, why. A unit the person already has on the bench or the board gets a gold
  * border, which glows when buying it would make a 2★ from two 1★ copies.
  */
-function unitCard(id: UnitId, owned: readonly Star[], buy: ActionResult, onBuy: () => void): HTMLElement {
+function unitCard(id: UnitId, owned: readonly Star[], merges: boolean, buy: ActionResult, onBuy: () => void): HTMLElement {
   const def = UNITS[id];
-  const mark = shopMark(owned);
+  const mark = shopMark(owned, merges);
   const card = el(
     'button',
     `unit-card cost-${def.cost}${mark === 'none' ? '' : ' has-copy'}${mark === 'completes' ? ' completes-star' : ''}`,
