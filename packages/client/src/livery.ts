@@ -22,6 +22,13 @@ export const FACTION_LIVERY: Readonly<Record<OriginId, number>> = {
 
 /** Units whose livery isn't their faction's. */
 export const UNIT_LIVERY: Readonly<Partial<Record<UnitId, number>>> = {
+  // Hobbits
+  sam: 0x844929, // darker hearth red
+  pippin: 0xc57144, // lighter hearth red
+  frodo: 0x844929, // darker hearth red
+  bilbo: 0xb8902f, // golden yellow
+  gollum: 0x844929, // darker hearth red
+  // Istari
   radagast: 0x7a5530, // brown
   saruman: 0xc9c6be, // white
   gandalf: 0x8a8c8e, // grey
