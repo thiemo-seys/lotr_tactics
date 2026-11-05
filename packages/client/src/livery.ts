@@ -45,6 +45,9 @@ export const UNIT_LIVERY: Readonly<Partial<Record<UnitId, number>>> = {
   legolas: 0x4f6b3a, // Mirkwood green
   elrond: 0x7a2f3a, // Rivendell burgundy
   galadriel: 0xa7adaa, // lighter Lórien silver
+  // Dwarves
+  gimli: 0x8a3b2a, // iron red
+  dain: 0x5a5f66, // Iron Hills steel
   // Istari
   radagast: 0x7a5530, // brown
   saruman: 0xc9c6be, // white
