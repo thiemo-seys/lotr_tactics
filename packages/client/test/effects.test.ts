@@ -3,7 +3,7 @@
 import { MONSTERS, TICKS_PER_SECOND, UNITS, createCombat, type CastEvent, type Combat, type CombatEvent, type DamageEvent } from '@lotr-tactics/sim';
 import { describe, expect, it } from 'vitest';
 import { fightBoards, type BoardChoice } from '../src/boards.js';
-import { Effects, HIT_STOP_TICKS, abilityLook, type HitState, type MarkState, type MissileState, type ScreenState, type StunState, type Vec3Out } from '../src/effects.js';
+import { Effects, HIT_STOP_TICKS, abilityLook, type HitState, type StatusRing, type MarkState, type MissileState, type ScreenState, type StunState, type Vec3Out } from '../src/effects.js';
 import { hexToWorld } from '../src/layout.js';
 import { ABILITY_LOOKS, EFFECTS } from '../src/look.js';
 import { Playback } from '../src/playback.js';
@@ -11,8 +11,8 @@ import { Playback } from '../src/playback.js';
 const T = TICKS_PER_SECOND;
 
 /** A fight between two boards, with its effects, stepped by hand. */
-function fight(a: BoardChoice, b: BoardChoice, seed: number, wrap: (combat: Combat) => Combat = (c) => c): { p: Playback; fx: Effects } {
-  const p = new Playback(wrap(createCombat({ seed, stage: 2, teams: fightBoards(a, b, seed) })));
+function fight(a: BoardChoice, b: BoardChoice, seed: number, wrap: (combat: Combat) => Combat = (c) => c, stage = 2): { p: Playback; fx: Effects } {
+  const p = new Playback(wrap(createCombat({ seed, stage, teams: fightBoards(a, b, seed) })));
   p.playing = false;
   return { p, fx: new Effects(p) };
 }
@@ -239,11 +239,32 @@ describe('impact', () => {
     expect(fx.rings.some((r) => r.x === centre.x && r.z === centre.z && r.start === cast.releaseTick && r.to > 3)).toBe(true);
   });
 
-  it('sends a wave over the ground from the caster for an ally aim, and a glow at each ally reached', () => {
+  it('sweeps a ring over each of a cone’s hexes, out from the caster, rather than a circle round it', () => {
+    // Sauron's Sweep, random against random, seed 3, stage 3.
+    const { p, fx } = fight('random', 'random', 3, undefined, 3);
+    const cast = toCast(p, fx, 'Sweep');
+    const aim = cast.aims[0]!;
+    expect(aim.select).toBe('cone');
+    const rings = fx.rings.filter((r) => r.colour === ABILITY_LOOKS.Sweep!.colour);
+    expect(rings.map((r) => ({ x: r.x, z: r.z }))).toEqual(aim.hexes.map((h) => hexToWorld(h.hex)));
+    // None reaches past its own hex.
+    expect(rings.every((r) => r.to <= 1.1)).toBe(true);
+    // The nearest first, from its landing; further ones after.
+    const caster = p.position(cast.unit, cast.tick);
+    const away = rings.map((r) => Math.hypot(r.x - caster.x, r.z - caster.z));
+    const near = Math.min(...away);
+    for (const [i, r] of rings.entries()) {
+      if (away[i]! < near + 0.1) expect(r.start).toBe(aim.hexes[i]!.landTick);
+      else expect(r.start).toBeGreaterThan(aim.hexes[i]!.landTick);
+    }
+  });
+
+  it('sends a wave over the ground from the caster for an ally aim, dimmer than a shockwave, and a glow at each ally reached', () => {
     const { p, fx } = fight('tanks', 'mixed', 1);
     const cast = toCast(p, fx, 'Horn of Gondor');
     const centre = hexToWorld(cast.aims[0]!.centre!);
-    expect(fx.rings.filter((r) => r.colour === ABILITY_LOOKS['Horn of Gondor']!.colour)).toEqual([expect.objectContaining({ x: centre.x, z: centre.z, start: cast.releaseTick })]);
+    expect(fx.rings.filter((r) => r.colour === ABILITY_LOOKS['Horn of Gondor']!.colour)).toEqual([expect.objectContaining({ x: centre.x, z: centre.z, start: cast.releaseTick, strength: EFFECTS.wave.strength })]);
+    expect(EFFECTS.wave.strength).toBeLessThan(1);
     const events = stepTo(p, fx, cast.releaseTick);
     const buffed = new Set(events.filter((e) => e.type === 'status' && e.source === cast.unit).map((e) => (e.type === 'status' ? e.target : -1)));
     expect(new Set(fx.glows.filter((g) => g.start === cast.releaseTick && g.colour === ABILITY_LOOKS['Horn of Gondor']!.colour).map((g) => g.unit))).toEqual(buffed);
@@ -282,6 +303,40 @@ describe('hits', () => {
     expect(fx.drain(target, tick + 0.2 * T)).toBe(lost);
     expect(fx.drain(target, tick + (0.25 + 0.175) * T)).toBeCloseTo(lost / 2, 6);
     expect(fx.drain(target, tick + 0.6 * T)).toBe(0);
+  });
+
+  it('flashes a unit hit again while it still flashes only part of the way, so a volley doesn’t keep it white', () => {
+    // Legolas's Flurry: 5 arrows into one unit, hitGap ticks apart.
+    const { p, fx } = fight('tanks', 'archers', 1);
+    const cast = toCast(p, fx, 'Flurry');
+    const aim = cast.aims[0]!;
+    const target = aim.units[0]!.unit;
+    const first = aim.units[0]!.landTick;
+    const last = first + (aim.hits - 1) * aim.hitGap;
+    stepTo(p, fx, last + 1);
+    const hits = fx.hits.filter((h) => h.target === target && h.source === cast.unit);
+    expect(hits.length).toBe(aim.hits);
+    // Each arrow after the first flashes it only as far as the share of the recovery time since the last hit.
+    for (const h of hits.slice(1)) expect(h.flash).toBeLessThanOrEqual(aim.hitGap / (EFFECTS.hit.flashRecover * T) + 1e-9);
+    // Through the volley, after the first arrow's flash, it never sits at the peak: the strongest of the flashes, not their sum.
+    let most = 0;
+    let total = 0;
+    let samples = 0;
+    for (let t = first + EFFECTS.hit.flashSeconds * T; t <= last + EFFECTS.hit.flashSeconds * T; t += 0.25) {
+      const flash = fx.hitInto(hitState(), target, t).flash;
+      most = Math.max(most, flash);
+      total += flash;
+      samples++;
+    }
+    expect(most).toBeLessThan(0.5);
+    expect(total / samples).toBeLessThan(0.2);
+    // A hit once the unit has recovered flashes it fully again.
+    expect(fx.hitInto(hitState(), target, first).flash).toBe(1);
+  });
+
+  it('flashes white at most at an intensity that leaves the model’s shading and livery showing', () => {
+    expect(EFFECTS.hit.flashIntensity).toBeGreaterThanOrEqual(0.4);
+    expect(EFFECTS.hit.flashIntensity).toBeLessThanOrEqual(0.6);
   });
 
   it('pops numbers in from 1.7 times their size to their size over 4 ticks', () => {
@@ -397,6 +452,37 @@ describe('statuses', () => {
     const slow = events.find((e) => e.type === 'status' && e.status === 'slow' && e.source === cast.unit);
     if (slow?.type !== 'status') throw new Error('Sharku should slow');
     expect(fx.statusRings).toContainEqual(expect.objectContaining({ unit: slow.target, kind: 'slow', start: slow.tick, end: slow.expiresTick }));
+  });
+
+  it('ends every status mark of a unit as it dies: buff, slow and reduction rings, and chevrons', () => {
+    // Legolas dies at 161 under Merry's reduction (full against traits, seed 1), which lasts to about 279.
+    const { p, fx } = fight('full', 'traits', 1);
+    const shrink = EFFECTS.rings.grow * T;
+    const cut: StatusRing[] = [];
+    while (!p.combat.isOver()) {
+      const events = p.step();
+      fx.update();
+      for (const e of events) {
+        if (e.type !== 'death') continue;
+        for (const r of fx.statusRings) {
+          if (r.unit !== e.unit) continue;
+          expect(r.end).toBeLessThanOrEqual(e.tick + shrink);
+          // Still there as the unit dies, then shrinking away as it would at its end.
+          if (r.start < e.tick) expect(fx.grow(r, EFFECTS.rings.grow, e.tick)).toBeGreaterThan(0);
+          expect(fx.grow(r, EFFECTS.rings.grow, e.tick + shrink)).toBe(0);
+          cut.push(r);
+        }
+        for (const c of fx.chevrons) if (c.unit === e.unit) expect(c.end).toBeLessThanOrEqual(e.tick);
+      }
+      // Nothing new comes for a dead unit either.
+      for (const r of fx.statusRings) {
+        const { death } = p.history(r.unit);
+        if (death !== null) expect(r.end).toBeLessThanOrEqual(death + shrink);
+      }
+    }
+    const legolas = p.combat.state.units.findIndex((u) => u.unitId === 'legolas' && u.team === 'A');
+    expect(p.history(legolas).death).toBe(161);
+    expect(cut).toContainEqual(expect.objectContaining({ unit: legolas, kind: 'reduce', end: 161 + shrink }));
   });
 
   it('puts a shell round a shielded unit until its shield expires, popping as it comes', () => {

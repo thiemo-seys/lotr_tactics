@@ -143,6 +143,12 @@ export interface Hit extends Timed {
   readonly lost: number;
   /** What a shield absorbed, which ripples the shell. */
   readonly absorbed: number;
+  /**
+   * How white it flashes at first, from 0 to 1: all the way, unless the unit was hit less than
+   * EFFECTS.hit.flashRecover before, when it flashes as far as that share of it, so a volley doesn't
+   * keep it white.
+   */
+  readonly flash: number;
 }
 
 /** Chevrons rising round a unit as a buff starts. `phase` sets apart the buffs that start together. */
@@ -296,6 +302,9 @@ interface CastFx {
 /** How far a shockwave reaches past the centre of the furthest hex: about half a hex. */
 const HEX_REACH = 0.9;
 
+/** How far apart neighbouring hexes' centres are: a cone's sweep starts at the nearest. */
+const HEX_WIDTH = Math.sqrt(3);
+
 /** Scratch points, so the queries allocate nothing. */
 const at: MutablePoint = { x: 0, z: 0 };
 const other: MutablePoint = { x: 0, z: 0 };
@@ -327,6 +336,8 @@ export class Effects {
   private readonly casting: (CastFx | undefined)[] = [];
   /** Counts bursts, to scatter each one's sparks its own way. */
   private bursted = 0;
+  /** The tick each unit was last hit on, by unit id, for how far a new hit flashes it. */
+  private readonly lastHit: number[] = [];
 
   constructor(readonly playback: Playback) {
     this.update();
@@ -432,7 +443,8 @@ export class Effects {
       if (h.target !== unit) continue;
       const age = time - h.start;
       if (age < 0) continue;
-      if (age < flashTicks) out.flash = Math.max(out.flash, (1 - age / flashTicks) ** 2);
+      // The strongest flash, not their sum: a hit that comes while the unit still flashes flashes less (Hit, flash).
+      if (age < flashTicks) out.flash = Math.max(out.flash, h.flash * (1 - age / flashTicks) ** 2);
       if (!this.still) out.squash = Math.max(out.squash, kick(age, squashTicks, 0.25));
       if (h.absorbed > 0) out.ripple = Math.max(out.ripple, kick(age, rippleTicks, 0.1));
       const push = kick(age, pushTicks, 0.18);
@@ -594,7 +606,10 @@ export class Effects {
       case 'damage': {
         const { hit, drain, shield } = EFFECTS;
         const lasts = ticks(Math.max(hit.pushSeconds, hit.squashSeconds, hit.flashSeconds, drain.hold + drain.seconds, shield.ripple));
-        this.hits.push({ start: e.tick, end: e.tick + lasts, target: e.target, source: e.source, lost: e.amount - e.absorbed, absorbed: e.absorbed });
+        const since = e.tick - (this.lastHit[e.target] ?? -Infinity);
+        this.lastHit[e.target] = e.tick;
+        const flash = clamp01(since / ticks(hit.flashRecover));
+        this.hits.push({ start: e.tick, end: e.tick + lasts, target: e.target, source: e.source, lost: e.amount - e.absorbed, absorbed: e.absorbed, flash });
         if (e.kind === 'ability') this.reach(e.source, e.target, e.tick, e.damageType);
         break;
       }
@@ -613,6 +628,8 @@ export class Effects {
       }
       case 'status':
         this.reach(e.source, e.target, e.tick, null);
+        // A dead unit shows no status (and the sim gives it none); its marks ended as it died.
+        if (this.dead(e.target, e.tick)) break;
         if (e.status === 'buff' && e.stat !== null) {
           const colour = EFFECTS.buff.colours[e.stat as BuffStat];
           const phase = this.chevrons.filter((c) => c.unit === e.target && c.start === e.tick).length;
@@ -628,11 +645,30 @@ export class Effects {
       case 'death': {
         const cast = this.casting[e.unit];
         if (cast !== undefined) this.cancel(cast, e.tick);
+        this.endStatuses(e.unit, e.tick);
         break;
       }
       default:
         break;
     }
+  }
+
+  /** Whether a unit has died by `tick`. */
+  private dead(unit: number, tick: number): boolean {
+    const { death } = this.playback.history(unit);
+    return death !== null && death <= tick;
+  }
+
+  /**
+   * A unit died on `tick`: its status marks end with it, rather than on its empty hex until the
+   * status would have expired. Its rings shrink away over EFFECTS.rings.grow from the death, as they
+   * would at their end; its chevrons stop. Stun stars and shells read the unit's state and history
+   * (`stunInto`, and the scene's `shielded`), so they are gone already.
+   */
+  private endStatuses(unit: number, tick: number): void {
+    const shrink = ticks(EFFECTS.rings.grow);
+    for (const ring of this.statusRings) if (ring.unit === unit) ring.end = Math.max(ring.start, Math.min(ring.end, tick + shrink));
+    for (const chevrons of this.chevrons) if (chevrons.unit === unit) chevrons.end = Math.max(chevrons.start, Math.min(chevrons.end, tick));
   }
 
   /** A ring under a unit, or the one it has of that kind lasting longer. */
@@ -677,7 +713,8 @@ export class Effects {
         if (aim.hexes.length > 0) {
           const centre = aim.centre === null ? caster : hexToWorld(aim.centre);
           const land = aim.hexes[0]!.landTick;
-          own(this.rings, { start: land, end: land + ticks(EFFECTS.wave.seconds), x: centre.x, z: centre.z, from: 0.3, to: reach(centre, aim.hexes), colour: look.colour, strength: 1 }, land);
+          const { wave } = EFFECTS;
+          own(this.rings, { start: land, end: land + ticks(wave.seconds), x: centre.x, z: centre.z, from: 0.3, to: reach(centre, aim.hexes), colour: look.colour, strength: wave.strength }, land);
         }
         continue;
       }
@@ -702,14 +739,17 @@ export class Effects {
         own(this.scorches, { start: land, end: land + ticks(scorch.seconds), x: centre.x, z: centre.z }, e.releaseTick);
       }
 
-      // Impact: a shockwave out to the hexes, from the centre, or at each hex of a line or charge as it lands.
+      // Impact: a shockwave out to the hexes, from the centre; or at each hex of a line or charge as it
+      // lands, and of a cone in a sweep out from the caster, so a cone shows its hexes, not a circle.
       if (aim.hexes.length === 0) continue;
       const { shockwave } = EFFECTS;
       const needs = flies ? e.releaseTick : 0;
-      if (aim.select === 'line') {
+      if (aim.select === 'line' || aim.select === 'cone') {
+        const cone = aim.select === 'cone';
         for (const h of aim.hexes) {
           const { x, z } = hexToWorld(h.hex);
-          own(this.rings, { start: h.landTick, end: h.landTick + ticks(shockwave.seconds) * 0.7, x, z, from: 0.2, to: 1.1, colour: look.colour, strength: 1 }, needs || h.landTick);
+          const start = h.landTick + (cone ? ticks(shockwave.sweep) * Math.max(0, Math.hypot(x - caster.x, z - caster.z) - HEX_WIDTH) : 0);
+          own(this.rings, { start, end: start + ticks(shockwave.seconds) * 0.7, x, z, from: 0.2, to: 1.1, colour: look.colour, strength: 1 }, needs || h.landTick);
         }
       } else {
         const centre = aim.centre === null ? caster : hexToWorld(aim.centre);

@@ -14,6 +14,12 @@ const SQRT3 = Math.sqrt(3);
 const HALF = { x: (SQRT3 * (BOARD_COLS - 0.5)) / 2, z: (1.5 * (BOARD_ROWS - 1)) / 2 };
 
 /**
+ * How far the board reaches from its centre, to the outer edges of its outermost hexes, along x and z:
+ * effects on the ground fade out past it (fx.ts).
+ */
+export const BOARD_EXTENT: Point = { x: HALF.x + SQRT3 / 2, z: HALF.z + 1 };
+
+/**
  * The centre of a hex. Pointy-top hexes with a circumradius of 1, odd rows shifted right. Team A's
  * rows (0–3) are nearest the camera, which looks along −z, so columns run left to right on screen.
  */
