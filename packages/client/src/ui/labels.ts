@@ -35,10 +35,12 @@ export class UnitLabel {
   private readonly bar: HTMLElement | null = null;
   private readonly health: HTMLElement | null = null;
   private readonly shield: HTMLElement | null = null;
+  /** The pale chunk after the bar for health just lost, which holds and drains (viewer-spec section 5, Effects). */
+  private readonly drain: HTMLElement | null = null;
   private readonly manaFill: HTMLElement | null = null;
   private readonly statusIcons: HTMLElement[] = [];
   /** What the DOM shows now. */
-  private shown = { health: -1, shield: -1, total: -1, mana: -1, statuses: -1 };
+  private shown = { health: -1, shield: -1, total: -1, mana: -1, statuses: -1, drain: -1 };
 
   constructor(options: LabelOptions) {
     this.element = el('div', `unit-label team-${options.look}`);
@@ -56,8 +58,9 @@ export class UnitLabel {
     if (options.bars) {
       this.health = el('i', 'fill');
       this.shield = el('i', 'shield');
+      this.drain = el('i', 'drain');
       // Framed bronze, silver or gold for its star level; a summon's is plain.
-      this.bar = el('div', options.star === null ? 'bar health' : `bar health star-${options.star}`, this.health, this.shield);
+      this.bar = el('div', options.star === null ? 'bar health' : `bar health star-${options.star}`, this.health, this.shield, this.drain);
       this.element.append(this.bar);
       if (options.mana) {
         this.manaFill = el('i', 'fill');
@@ -82,8 +85,11 @@ export class UnitLabel {
     }
   }
 
-  /** Shows a fighting unit's health, shield, mana and statuses. */
-  update(unit: UnitState): void {
+  /**
+   * Shows a fighting unit's health, shield, mana and statuses, and `drain`, the health it has just
+   * lost that its draining chunk shows (effects.ts).
+   */
+  update(unit: UnitState, drain = 0): void {
     if (this.bar === null) return;
     const shield = unit.statuses.shield;
     const total = Math.max(unit.stats.maxHealth, unit.health + shield);
@@ -95,6 +101,13 @@ export class UnitLabel {
     }
     if (unit.health !== shown.health || total !== shown.total) this.health!.style.width = `${(100 * unit.health) / total}%`;
     if (shield !== shown.shield || total !== shown.total) this.shield!.style.width = `${(100 * shield) / total}%`;
+    // The chunk fits in what is left of the bar, in steps of a tenth of a percent, so a draining
+    // chunk writes to the page only as often as it visibly changes.
+    const chunk = Math.round((1000 * Math.min(drain, total - unit.health - shield)) / total) / 10;
+    if (chunk !== shown.drain) {
+      shown.drain = chunk;
+      this.drain!.style.width = `${Math.max(0, chunk)}%`;
+    }
     shown.health = unit.health;
     shown.shield = shield;
     shown.total = total;

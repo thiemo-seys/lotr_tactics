@@ -1,4 +1,5 @@
-// The Three.js scene: board, units, overlays and effects (docs/viewer-spec.md sections 3–5), the
+// The Three.js scene: board, units, overlays and effects (docs/viewer-spec.md sections 3–5; the
+// effects are worked out in effects.ts and drawn by fx.ts), the
 // marker that shows where a dragged unit or item would go while planning, and which unit is under
 // the pointer, for its hover card and for dragging. Units are drawn as the model for their star
 // level once loaded (models.ts), playing the clips animation.ts picks if it is rigged,
@@ -27,19 +28,16 @@ import { benchToWorld, hexToWorld, type Point } from './layout.js';
 import { ModelSwaps, Redraws } from './drawing.js';
 import type { PlanningRing } from './flow.js';
 import { copyModel, loadModels, modelShader, modelShaders, modelsLoaded, shaderSample, type ModelCopy, type ModelShader } from './models.js';
-import { EFFECT_TICKS, type CastRing, type FloatingText, type MutablePoint, type Playback, type Projectile } from './playback.js';
-import { ATMOSPHERE, CAMERA, CAMERA_LIMITS, LIGHTS, PAWN_COLOUR, type Framing } from './look.js';
+import { Effects, type HitState, type ScreenState, type Vec3Out } from './effects.js';
+import { FxView, type FxUnits } from './fx.js';
+import { liveryOf } from './livery.js';
+import { EFFECT_TICKS, type FloatingText, type MutablePoint, type Playback, type Projectile } from './playback.js';
+import { ATMOSPHERE, CAMERA, CAMERA_LIMITS, EFFECTS, LIGHTS, PAWN_COLOUR, type Framing } from './look.js';
 import { Post } from './post.js';
 import { stoneTiles } from './tiles.js';
 import { LABEL, LARGE_PAWN_SCALE } from './stars.js';
 import { UnitLabel } from './ui/labels.js';
 import { displayName, isLarge } from './units.js';
-
-/**
- * The sides' colours, for their cast rings: the side the camera looks from is drawn as team A, blue.
- * Units look the same on both sides; their health bars tell them apart (ui/labels.ts).
- */
-const TEAM_COLOURS: Record<Team, number> = { A: 0x4a90d9, B: 0xd9534f };
 
 /**
  * Each half of the board in two shades of stone, alternating by column: the near side's half as A,
@@ -75,8 +73,8 @@ const MARKER_COLOURS = { ok: 0xf3d27a, no: 0xe35d5b } as const;
 /** How high a pawn's chest is, before the pawn is scaled: where projectiles leave it and strike it. */
 const PAWN_CHEST = 0.9;
 
-/** How far a unit sinks as it fades out after its death. */
-const DEATH_SINK = 0.6;
+/** The colour a hit flashes a unit with (effects.ts, hitInto). */
+const FLASH_COLOUR = new THREE.Color(0xffffff);
 
 /** The longest the models wait for a shader to compile in the background, in milliseconds. */
 const COMPILE_WAIT_MS = 3000;
@@ -89,9 +87,12 @@ export interface PlanningBoard {
 
 interface UnitView {
   /**
-   * Placed and sunk by the scene; holds the body and the label. Only the body's model or pawn turns.
+   * Placed and pushed by the scene; holds the body, in `squash`, and the label. Only the body's
+   * model or pawn turns.
    */
   readonly group: THREE.Group;
+  /** Holds the body, and squashes it as a hit lands. */
+  readonly squash: THREE.Group;
   readonly unitId: UnitState['unitId'];
   readonly star: Star;
   /** The team whose half it faces from. */
@@ -117,12 +118,6 @@ interface ProjectileView extends EffectView {
   readonly mesh: THREE.Mesh;
 }
 
-interface CastRingView extends EffectView {
-  readonly mesh: THREE.Mesh;
-  readonly material: THREE.MeshBasicMaterial;
-  readonly look: Team;
-}
-
 /** A floating number or cast name. */
 interface TextView extends EffectView {
   readonly object: CSS2DObject;
@@ -132,6 +127,8 @@ interface TextView extends EffectView {
   lift: number;
   /** The opacity it was last given, so a paused fight doesn't write it again. */
   opacity: number;
+  /** The size it was last given, as it pops in, likewise. */
+  scale: number;
 }
 
 /**
@@ -165,6 +162,8 @@ interface Body {
   readonly animator: Animator | null;
   /** Fades the whole body, for untargetable and dying units. */
   fade(opacity: number): void;
+  /** Lights the whole body up white by `amount`, for a hit's flash. */
+  flash(amount: number): void;
   /** Makes a body taken off the scene ready to show again, unfaded and posed afresh. */
   reset(): void;
   dispose(): void;
@@ -196,7 +195,6 @@ const geometry = {
   head: new THREE.IcosahedronGeometry(0.25, 0),
   nose: new THREE.ConeGeometry(0.09, 0.28, 4),
   projectile: new THREE.IcosahedronGeometry(0.11, 0),
-  ring: new THREE.RingGeometry(0.5, 0.62, 24),
   // Drop markers: a hex outline and fill matching the board's pointy-top hexes, and a square for bench tiles.
   hexOutline: new THREE.RingGeometry(0.78, 0.94, 6, 1, Math.PI / 2),
   hexFill: new THREE.CircleGeometry(0.78, 6, Math.PI / 2),
@@ -235,12 +233,35 @@ export class FightScene {
   private readonly labelSizes = new ResizeObserver((entries) => {
     for (const entry of entries) this.labelHeights.set(entry.target, entry.borderBoxSize[0]?.blockSize ?? entry.contentRect.height);
   });
-  private readonly rings = new Map<CastRing, CastRingView>();
-  /**
-   * Cast ring materials not in use, by look. They are kept for the next cast rather than disposed
-   * of, so a cast doesn't set up a shader again once the last ring has gone.
-   */
-  private readonly spareRings: Record<Team, THREE.MeshBasicMaterial[]> = { A: [], B: [] };
+  /** What the fight's abilities, hits and statuses show (effects.ts), and what draws it (fx.ts). */
+  private effects: Effects | null = null;
+  private readonly fx = new FxView();
+  /** How a hit leaves the unit being drawn, written afresh for each, and each unit's shell's ripple. */
+  private readonly hit: HitState = { flash: 0, x: 0, z: 0, squash: 0, ripple: 0 };
+  private readonly ripples: number[] = [];
+  /** The camera's shake this frame, and the screen's flash. */
+  private readonly shake: Vec3Out = { x: 0, y: 0, z: 0 };
+  private readonly screen: ScreenState = { colour: 0xffffff, strength: 0 };
+  /** The flash over the whole view, and what it last showed, so a frame without a change writes nothing. */
+  private readonly flashOverlay = document.createElement('div');
+  private readonly flashShown = { strength: -1, colour: -1 };
+  /** What the effects need of the units, by id. */
+  private readonly fxUnits: FxUnits = {
+    count: () => this.units.length,
+    chest: (unit) => this.units[unit]?.body.chest ?? PAWN_CHEST,
+    facing: (unit) => this.units[unit]?.body.turn.rotation.y ?? 0,
+    livery: (unit) => {
+      const view = this.units[unit];
+      return view?.body.model === true ? liveryOf(view.unitId) : PAWN_COLOUR;
+    },
+    team: (unit) => this.playback!.combat.state.units[unit]!.team,
+    breakDelay: (unit) => sinkDelay(this.units[unit]?.body.animator?.lengths ?? null),
+    shielded: (unit) => {
+      const state = this.playback?.combat.state.units[unit];
+      return state !== undefined && state.alive && state.statuses.shield > 0;
+    },
+    ripple: (unit) => this.ripples[unit] ?? 0,
+  };
   /** The team drawn as the near side. */
   private side: Team = 'A';
   /** The board's hexes, the near half in the near stone and the far half in the far one, by `tintBoard`. */
@@ -322,7 +343,9 @@ export class FightScene {
     loadModels();
     this.renderer.setPixelRatio(window.devicePixelRatio);
     this.labels.domElement.className = 'labels';
-    container.append(this.renderer.domElement, this.labels.domElement);
+    // A big moment's flash over the whole view (effects.ts), under the labels.
+    this.flashOverlay.className = 'screen-flash';
+    container.append(this.renderer.domElement, this.flashOverlay, this.labels.domElement);
 
     // The label layer sits on top of the canvas, so it takes the mouse.
     this.controls = new OrbitControls(this.camera, this.labels.domElement);
@@ -351,6 +374,9 @@ export class FightScene {
     const sun = new THREE.DirectionalLight(LIGHTS.sun, LIGHTS.sunIntensity);
     sun.position.set(...LIGHTS.sunFrom);
     this.scene.add(sun);
+    // The effects' lights are in the scene from the start, unlit, so every shader is built with them
+    // and the first effect that lights the ground compiles nothing (section 5, Effects, Cost).
+    this.scene.add(this.fx.group, ...this.fx.lights);
     void loadArena().then((arena) => {
       if (arena === null) return;
       this.scene.add(arena);
@@ -360,6 +386,7 @@ export class FightScene {
     this.buildBench();
     this.buildMarker();
     this.scene.add(this.fightLayer, this.benchLayer);
+    this.compileEffects();
     this.resize();
     // Panels such as the shop bar change the container's size without resizing the window.
     new ResizeObserver(() => this.resize()).observe(container);
@@ -393,8 +420,11 @@ export class FightScene {
   show(playback: Playback, side: Team = 'A'): void {
     this.clear();
     this.playback = playback;
+    this.effects = new Effects(playback);
     this.side = side;
     this.fightLayer.rotation.y = side === 'B' ? Math.PI : 0;
+    this.fx.group.rotation.y = this.fightLayer.rotation.y;
+    this.fx.side = side;
   }
 
   /**
@@ -607,16 +637,16 @@ export class FightScene {
   private clear(): void {
     for (const view of this.units) this.retired.push(view.body);
     for (const view of this.planning.values()) this.retired.push(view.body);
-    for (const ring of this.rings.values()) this.spareRings[ring.look].push(ring.material);
     this.fightLayer = this.replaceLayer(this.fightLayer);
     this.benchLayer = this.replaceLayer(this.benchLayer);
     this.benchKey = '';
     this.labelSizes.disconnect();
     this.playback = null;
+    this.effects = null;
+    this.ripples.length = 0;
     this.units = [];
     this.projectiles.clear();
     this.texts.clear();
-    this.rings.clear();
     this.planning = new Map();
     this.planningKey = '';
     this.marked = null;
@@ -643,22 +673,65 @@ export class FightScene {
     this.swapInModels();
     if (!this.redraws.due(this.playback, this.idlers, this.reducedMotion.matches)) return;
     this.frame++;
-    if (this.playback !== null) {
-      this.updateUnits(this.playback);
-      this.updateProjectiles(this.playback);
-      this.updateTexts(this.playback);
-      this.updateRings(this.playback);
+    // The camera first, as the effects' billboards face it.
+    this.controls.update();
+    const { playback, effects } = this;
+    if (playback !== null && effects !== null) {
+      effects.still = this.reducedMotion.matches;
+      effects.update();
+      this.updateUnits(playback, effects);
+      this.updateProjectiles(playback);
+      this.updateTexts(playback, effects);
+      this.fx.draw(effects, playback, this.fxUnits, this.camera);
+      effects.shakeInto(this.shake);
+      effects.screenInto(this.screen);
+    } else {
+      this.fx.hide();
+      this.shake.x = this.shake.y = this.shake.z = 0;
+      this.screen.strength = 0;
     }
+    this.showScreenFlash();
     // The planning board and bench, or the bench during a fight.
     this.updatePlanning();
-    this.controls.update();
+    // A big moment shakes the camera for this frame only, never the controls' state.
+    const { position } = this.camera;
+    position.x += this.shake.x;
+    position.y += this.shake.y;
+    position.z += this.shake.z;
     this.post.render(this.renderer, this.scene, this.camera, this.controls.target);
     // The renderer has just brought every matrix up to date, so the labels needn't do it again.
     this.scene.matrixWorldAutoUpdate = false;
     this.labels.render(this.scene, this.camera);
     this.scene.matrixWorldAutoUpdate = true;
+    position.x -= this.shake.x;
+    position.y -= this.shake.y;
+    position.z -= this.shake.z;
+    this.camera.updateMatrixWorld();
     for (const body of this.retired) body.dispose();
     this.retired.length = 0;
+  }
+
+  /**
+   * Compiles the effects' shaders as the scene starts, for the texture it is drawn into (post.ts),
+   * so the first effect of each kind compiles nothing (section 5, Effects, Cost).
+   */
+  private compileEffects(): void {
+    this.renderer.setRenderTarget(this.post.target);
+    this.renderer.compile(this.fx.group, this.camera, this.scene);
+    this.renderer.setRenderTarget(null);
+  }
+
+  /** Shows a big moment's flash over the view, writing to the page only when it changes. */
+  private showScreenFlash(): void {
+    const strength = Math.round(this.screen.strength * 100) / 100;
+    const shown = this.flashShown;
+    if (strength === shown.strength && (strength === 0 || this.screen.colour === shown.colour)) return;
+    shown.strength = strength;
+    this.flashOverlay.style.opacity = String(strength);
+    if (strength > 0 && this.screen.colour !== shown.colour) {
+      shown.colour = this.screen.colour;
+      this.flashOverlay.style.background = `#${this.screen.colour.toString(16).padStart(6, '0')}`;
+    }
   }
 
   private buildBoard(): void {
@@ -717,7 +790,7 @@ export class FightScene {
     this.scene.add(this.marker);
   }
 
-  private updateUnits(playback: Playback): void {
+  private updateUnits(playback: Playback, effects: Effects): void {
     const units = playback.combat.state.units;
     // Summons appear during the fight.
     while (this.units.length < units.length) this.units.push(this.createUnit(units[this.units.length]!));
@@ -727,22 +800,28 @@ export class FightScene {
       const view = this.units[id]!;
       const { body } = view;
       const { animator } = body;
-      // A unit with a death clip starts to sink and fade halfway through it.
-      const death = playback.deathProgress(id, playback.time, sinkDelay(animator?.lengths ?? null));
-      view.group.visible = death < 1;
+      // A unit with a death clip breaks into shards halfway through it, where it stands (fx.ts).
+      view.group.visible = effects.shardsShare(id, sinkDelay(animator?.lengths ?? null)) < 0;
       if (!view.group.visible) continue;
 
       const position = playback.positionInto(this.at, id);
       const lunge = playback.lungeInto(this.lunge, id);
-      view.group.position.set(position.x + lunge.x, -DEATH_SINK * death, position.z + lunge.z);
+      // A hit flashes it, pushes it away from the source and squashes it (effects.ts).
+      const hit = effects.hitInto(this.hit, id);
+      this.ripples[id] = hit.ripple;
+      view.group.position.set(position.x + lunge.x + hit.x, 0, position.z + lunge.z + hit.z);
+      const squash = EFFECTS.hit.squash * hit.squash;
+      view.squash.scale.set(1 + squash / 2, 1 - squash, 1 + squash / 2);
+      body.flash(EFFECTS.hit.flashIntensity * hit.flash);
       // The way it goes while it steps or dashes, otherwise towards its target; with nowhere to face,
       // and once dead, the way it last faced.
       const angle = fightFacing(playback, id, unit.target);
       if (angle !== null) body.turn.rotation.y = angle;
-      body.fade((unit.statuses.has('untargetable') ? UNTARGETABLE_OPACITY : 1) * (1 - death));
+      body.fade(unit.statuses.has('untargetable') ? UNTARGETABLE_OPACITY : 1);
       let labelHeight = body.labelHeight;
       if (animator !== null) {
-        const pose = fightPoseInto(this.pose, playback, id, animator.lengths, playback.time, still);
+        // A big moment's hit-stop holds its pose, then catches it up.
+        const pose = fightPoseInto(this.pose, playback, id, animator.lengths, effects.poseTime(id), still);
         animator.pose(pose);
         // A winner's label rises as `victory` fades in, ahead of the weapon it raises, if it doesn't
         // clear it already.
@@ -751,7 +830,7 @@ export class FightScene {
       view.label.position.y = labelHeight;
 
       view.label.visible = unit.alive;
-      if (unit.alive) view.overlay.update(unit);
+      if (unit.alive) view.overlay.update(unit, effects.drain(id));
     }
   }
 
@@ -829,7 +908,7 @@ export class FightScene {
 
   /**
    * Swaps a unit's pawn for its model, if it has loaded and its shader is ready. Whether it did. A
-   * unit that has died keeps the body it died as, so it sinks and fades once: a model swapped in then
+   * unit that has died keeps the body it died as, so it breaks up once: a model swapped in then
    * would start again, after its death clip.
    */
   private readonly swapInModel = (view: UnitView): boolean => {
@@ -839,12 +918,12 @@ export class FightScene {
     const copy = copyModel(view.unitId, view.star);
     if (copy === null) return false;
     const facing = view.body.turn.rotation.y;
-    view.group.remove(view.body.object);
+    view.squash.remove(view.body.object);
     this.retired.push(view.body);
     view.body = modelBody(copy, view.unitId, view.star);
     stand(view.body, view.team);
     view.body.turn.rotation.y = facing;
-    view.group.add(view.body.object);
+    view.squash.add(view.body.object);
     view.label.position.y = view.body.labelHeight;
     return true;
   };
@@ -912,9 +991,11 @@ export class FightScene {
     if (bars) this.labelSizes.observe(overlay.element);
 
     const group = new THREE.Group();
-    group.add(body.object, label);
+    const squash = new THREE.Group();
+    squash.add(body.object);
+    group.add(squash, label);
     stand(body, team);
-    const view: UnitView = { group, unitId, star, team, look, summon, minor, key, body, label, overlay };
+    const view: UnitView = { group, squash, unitId, star, team, look, summon, minor, key, body, label, overlay };
     this.viewOf.set(group, view);
     return view;
   }
@@ -945,7 +1026,7 @@ export class FightScene {
     this.fightLayer.remove(mesh);
   };
 
-  private updateTexts(playback: Playback): void {
+  private updateTexts(playback: Playback, effects: Effects): void {
     const { texts } = playback;
     sync(this.texts, texts, this.frame, this.addText, this.removeText);
     for (let i = 0; i < texts.length; i++) {
@@ -969,6 +1050,12 @@ export class FightScene {
         view.opacity = opacity;
         object.element.style.opacity = String(opacity);
       }
+      // Numbers pop in; the ability's name in its pill doesn't.
+      const scale = text.kind === 'cast' ? 1 : effects.numberScale(text.startTick);
+      if (scale !== view.scale) {
+        view.scale = scale;
+        object.element.style.scale = String(scale);
+      }
     }
   }
 
@@ -982,48 +1069,12 @@ export class FightScene {
     this.fightLayer.add(object);
     // Numbers that start together stack upwards instead of overlapping.
     const stack = [...this.texts.keys()].filter((t) => t.unit === text.unit && Math.abs(t.startTick - text.startTick) < 3).length;
-    return { object, stack, lift: 0, opacity: -1, seen: 0 };
+    return { object, stack, lift: 0, opacity: -1, scale: 1, seen: 0 };
   };
 
   private readonly removeText = ({ object }: TextView): void => {
     this.fightLayer.remove(object);
   };
-
-  private updateRings(playback: Playback): void {
-    const { casts } = playback;
-    sync(this.rings, casts, this.frame, this.addRing, this.removeRing);
-    for (let i = 0; i < casts.length; i++) {
-      const cast = casts[i]!;
-      const { mesh, material } = this.rings.get(cast)!;
-      const progress = playback.progress(cast.startTick, EFFECT_TICKS.castRing);
-      const { x, z } = playback.positionInto(this.at, cast.unit);
-      mesh.position.set(x, 0.02, z);
-      mesh.scale.setScalar(1 + 1.5 * progress);
-      material.opacity = 1 - progress;
-    }
-  }
-
-  private readonly addRing = (cast: CastRing): CastRingView => {
-    const team = this.playback!.combat.state.units[cast.unit]!.team;
-    const look: Team = team === this.side ? 'A' : 'B';
-    const material = this.spareRings[look].pop() ?? ringMaterial(look);
-    const mesh = new THREE.Mesh(geometry.ring, material);
-    mesh.rotation.x = -Math.PI / 2;
-    this.fightLayer.add(mesh);
-    return { mesh, material, look, seen: 0 };
-  };
-
-  private readonly removeRing = (ring: CastRingView): void => {
-    this.fightLayer.remove(ring.mesh);
-    this.spareRings[ring.look].push(ring.material);
-  };
-}
-
-/** A cast ring's material: flat, so drawn in one pass from either side. */
-function ringMaterial(look: Team): THREE.MeshBasicMaterial {
-  const material = new THREE.MeshBasicMaterial({ color: TEAM_COLOURS[look], transparent: true, side: THREE.DoubleSide });
-  material.forceSinglePass = true;
-  return material;
 }
 
 /**
@@ -1059,7 +1110,13 @@ function pawnBody(scale: number): Body {
     chest: PAWN_CHEST * scale,
     animator: null,
     fade: (opacity) => (material.opacity = opacity),
-    reset: () => (material.opacity = 1),
+    flash: (amount) => {
+      if (material.emissive.r !== amount) material.emissive.setScalar(amount);
+    },
+    reset: () => {
+      material.opacity = 1;
+      material.emissive.setScalar(0);
+    },
     dispose: () => material.dispose(),
   };
 }
@@ -1082,8 +1139,10 @@ function modelBody(copy: ModelCopy, unitId: UnitState['unitId'], star: Star): Bo
     chest: copy.chest,
     animator,
     fade: (opacity) => copy.fade(opacity),
+    flash: (amount) => copy.flash(amount, FLASH_COLOUR),
     reset: () => {
       copy.fade(1);
+      copy.flash(0, FLASH_COLOUR);
       animator?.reset();
     },
     dispose: () => {

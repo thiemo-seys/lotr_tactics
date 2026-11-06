@@ -188,9 +188,17 @@ main {
 }
 
 #view canvas,
-#view .labels {
+#view .labels,
+#view .screen-flash {
   position: absolute;
   inset: 0;
+}
+
+/* A big moment's faint flash over the whole view (effects.ts); scene.ts sets its colour and opacity. */
+#view .screen-flash {
+  pointer-events: none;
+  opacity: 0;
+  mix-blend-mode: screen;
 }
 
 #view.can-grab .labels {
@@ -1874,6 +1882,11 @@ kbd {
 
 .unit-label .bar.health .shield {
   background: linear-gradient(180deg, #ffffff, #c9d1dc);
+}
+
+/* Health just lost: a pale chunk after the bar, which holds, then drains (effects.ts). */
+.unit-label .bar.health .drain {
+  background: linear-gradient(180deg, #fffaf0, #f1dfc4);
 }
 
 /* Tick marks every chunk of health, heavier every block (labels.ts sets both as shares of the bar). */
