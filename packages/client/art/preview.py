@@ -23,8 +23,9 @@ A rigged model is drawn in its rest pose. With --clips it renders its clips inst
 those named: <clip>.png for each, a contact sheet of the clip's frames, numbered, in three rows
 seen as the game's camera sees them, from 45 degrees up: from the front (as the far side is seen),
 from its right and from behind (as the near side is seen). Short clips show every
-frame, longer ones a dozen spread over them, with every frame of the first 0.2 s of an attack or a
-cast, where the blow lands. --frames picks the frames instead, and --size sets the size of each
+frame, longer ones a dozen spread over them, with every frame of an attack or a cast from 0.13 s before
+it strikes, or is at its height, to a frame after, and each of a cast's later hits, which the rig
+writes in the armature's extras (`strike` and `hits`). --frames picks the frames instead, and --size sets the size of each
 frame in pixels (224 by default), for a closer look.
 """
 
@@ -258,17 +259,19 @@ VIEWS = [
 ]
 # A clip's rows: from the front, its right and behind, at the game camera's 45 degrees.
 CLIP_VIEWS = [('front', 0, 45), ('right', 90, 45), ('back', 180, 45)]
-ONE_SHOT_DETAIL = 7  # every frame of an attack or cast up to 0.2 s, where it strikes
+DETAIL = (4, 1)  # every frame of an attack or cast from 4 before it strikes, or is at its height, to 1 after
 
 
 def clip_frames(name, last):
-    """The frames a clip's sheet shows: all of a short clip, else a dozen spread over it."""
+    """The frames a clip's sheet shows: all of a short clip, else a dozen spread over it, and for an
+    attack or a cast every frame round its strike or its height, and its later hits."""
     if last <= 12:
         return list(range(last + 1))
     step = -(-last // 11)
     frames = set(range(0, last + 1, step)) | {last}
-    if name in ('attack', 'cast'):
-        frames |= set(range(ONE_SHOT_DETAIL))
+    marks = {'attack': [armature.get('strike', 3)], 'cast': list(armature.get('hits', [4]))}.get(name, [])
+    for i, mark in enumerate(marks):
+        frames |= set(range(max(0, mark - (DETAIL[0] if i == 0 else 0)), min(last, mark + DETAIL[1]) + 1))
     return sorted(frames)
 
 

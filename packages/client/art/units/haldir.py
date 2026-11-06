@@ -675,16 +675,18 @@ def marks(s, shoulder, elbow, wrist, fist):
 
 
 # His clips (../clips.py): the Elves' idle and run, as Legolas's (legolas.py), with the bow kept drawn;
-# the shot from the draw he stands at, a fresh arrow drawn from the quiver at his hip; for his cast a
-# volley, three arrows loosed one after another as he turns from one foe to the next, his hand snapping
-# out from the side of his face, which his turned head brings round to the front of his chest; and an
+# the shot from the draw he stands at, a fresh arrow drawn from the quiver at his hip; for his cast,
+# Lórien volley, whose three arrows leave together at its release (the sim's nearestEnemies(3)), a
+# heavy shot: the bow raised high for a long volley and held, loosed with a harder kick, and a fresh
+# arrow fetched from his hip (once a flurry of three, one after another, which the sim no longer has);
+# and an
 # archer's victory, the bow held aloft, his drawing hand clenched out in front of his chest, which is
 # turned under it. Stunned, the bow droops towards his hip and his drawing hand hangs at his side.
 CLIPS = fit({
     'idle': ('ready', {'hand': 'l', 'breath': 0.8, 'sway': 0.7, 'crouch': 0.02}),
     'move': ('run', {'hand': 'l', 'heavy': 0.1, 'stride': 0.42, 'lift': 0.32, 'lean': 6.0, 'carry': 'steady'}),
     'attack': ('shot', {'drawn': True, 'quiver': 'hip'}),
-    'cast': ('flurry', {'shots': 3, 'every': 4, 'sweep': 24.0, 'deeper': 0.1, 'snap': (0.05, -0.16, 0.0)}),
+    'cast': ('shot', {'quiver': 'hip', 'rise': 10.0}),
     'stun': ('dazed', {'hand': 'l', 'low': 0.6, 'off_low': 0.6}),
     'death': ('knees', {'hand': 'l', 'dropped': True}),
     'victory': ('aloft', {'clench': (0.35, -0.1, -0.3)}),

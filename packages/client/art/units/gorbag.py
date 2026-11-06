@@ -670,7 +670,7 @@ CLIPS = fit({
                      'carry': 'steady'}),
     'attack': ('shot', {'drawn': True, 'anchor': 'chin', 'snap': (0.16, -0.04, 0.0), 'point': 35.0, 'gather': 0.3,
                         'wide': 0.6}),
-    'cast': ('flurry', {'seconds': 0.7, 'shots': 3, 'every': 4, 'deeper': 0.1, 'snap': (0.14, -0.02, -0.03),
+    'cast': ('flurry', {'seconds': 0.7, 'shots': 3, 'every': 3, 'deeper': 0.1, 'snap': (0.14, -0.02, -0.03),
                         'point': 35.0}),
     'stun': ('dazed', {'hand': 'l', 'low': 0.45, 'droop': 0.8}),
     'death': ('knees', {'hand': 'r', 'slump': 0.7}),

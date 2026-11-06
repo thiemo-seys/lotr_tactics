@@ -1,6 +1,7 @@
 import { existsSync, readFileSync } from 'node:fs';
-import { UNITS, type UnitId } from '@lotr-tactics/sim';
+import { ABILITIES, ATTACKS, CLASS_TEMPLATE, TEMPLATES, TICKS_PER_SECOND, UNITS, toTicks, type UnitId } from '@lotr-tactics/sim';
 import { describe, expect, it } from 'vitest';
+import { SHOT_DELAY_TICKS } from '../src/playback.js';
 
 // The committed model files in public/models (docs/viewer-spec.md section 4, Models and Rigs and clips; section 7).
 // CI has no Blender to rebuild them, so this reads the .glb files themselves, without a glTF library.
@@ -44,7 +45,7 @@ const CLIPS = {
   idle: { min: 1.5, max: 3, loops: true },
   move: { min: 0.4, max: 1, loops: true },
   attack: { min: 0.4, max: 0.9, loops: false },
-  cast: { min: 0.3, max: 0.8, loops: false },
+  cast: { min: 0.55, max: 1, loops: false },
   stun: { min: 0.5, max: 1.5, loops: true },
   death: { min: 0.3, max: 0.5, loops: false },
   victory: { min: 0.5, max: 1, loops: false },
@@ -81,7 +82,7 @@ function gearMaxBytes(id: UnitId): number {
 
 interface GltfNode {
   readonly name?: string;
-  readonly extras?: { readonly reach?: unknown };
+  readonly extras?: { readonly reach?: unknown; readonly strike?: unknown; readonly hits?: unknown };
   readonly children?: readonly number[];
   readonly mesh?: number;
   readonly skin?: number;
@@ -270,6 +271,34 @@ function keyTimes(model: Glb, animation: GltfAnimation): number[] {
   return animation.samplers.flatMap((sampler) => values(model, sampler.input).map((row) => row[0]!));
 }
 
+/** The armature, the node above the root bone, whose extras the rig kit writes (art/rig.py). */
+function armatureOf(model: Glb): GltfNode {
+  const root = skinOf(model).joints[boneNames(model).indexOf('root')];
+  const armature = root === undefined ? undefined : parentsOf(model).get(root);
+  const node = armature === undefined ? undefined : model.json.nodes?.[armature];
+  if (!node) throw new Error(`${model.id} has no armature above root.`);
+  return node;
+}
+
+/**
+ * When a unit's attack strikes and its cast is at its height, in ticks, each a frame of its clip (section 4, Rigs and
+ * clips): a melee blow lands 7 ticks after the attack (the sim's hitTick) and a ranged attack's shot leaves when the
+ * viewer looses it; an ability's hits are struck or loosed at its release, its wind-up after the cast, and every 3
+ * ticks after for several hits (sim-spec section 10.6). A unit uses the template of its first class.
+ */
+function timingOf(id: UnitId): { strike: number; hits: number[] } {
+  const unit = UNITS[id];
+  const melee = TEMPLATES[CLASS_TEMPLATE[unit.classes[0]!]].range === 1;
+  const release = toTicks(unit.ability.windupSeconds);
+  const counts = [...JSON.stringify(unit.ability.steps).matchAll(/"hits":(\d+)/g)].map((match) => Number(match[1]));
+  const hits = Math.max(1, ...counts);
+  const gap = toTicks(ABILITIES.multiHitSeconds);
+  return {
+    strike: melee ? toTicks(ATTACKS.meleeHitSeconds) : SHOT_DELAY_TICKS,
+    hits: Array.from({ length: hits }, (_, k) => release + k * gap),
+  };
+}
+
 /** A model's clip by name. */
 function clipOf(model: Glb, name: Clip): GltfAnimation {
   const animation = model.json.animations?.find((a) => a.name === name);
@@ -330,13 +359,23 @@ function checkRigged(name: string, id: UnitId, limit: number, what: string): voi
   // Section 4, Star levels: a rigged 2★ or 3★ model is scaled by how far its clips reach, which the
   // rig kit works out and writes on the armature, the node above root.
   it('carries its reach in its armature’s extras', () => {
-    const model = glb(name);
-    const root = skinOf(model).joints[boneNames(model).indexOf('root')];
-    const armature = root === undefined ? undefined : parentsOf(model).get(root);
-    if (armature === undefined) throw new Error(`${name} has no armature above root.`);
-    const reach = model.json.nodes?.[armature]?.extras?.reach;
+    const reach = armatureOf(glb(name)).extras?.reach;
     expect(typeof reach, 'a number').toBe('number');
     expect(reach as number).toBeGreaterThan(0);
+  });
+
+  // Section 4, Rigs and clips: the attack's blow lands 7 ticks in, or its shot leaves 3 ticks in, and the cast is at
+  // its height at the end of its wind-up and strikes or looses again every 3 ticks for several hits. The rig kit
+  // writes the frames it keys them on into the armature's extras.
+  it('strikes and casts on the ticks the sim and the viewer have them, and plays on past them', () => {
+    const model = glb(name);
+    const { extras } = armatureOf(model);
+    const { strike, hits } = timingOf(id);
+    expect(extras?.strike, 'the frame its attack strikes on').toBe(strike);
+    expect(extras?.hits, 'the frames its cast strikes or looses on').toEqual(hits);
+    const length = (clip: Clip) => Math.max(...keyTimes(model, clipOf(model, clip))) * TICKS_PER_SECOND;
+    expect(length('attack'), 'the attack recovers after its strike').toBeGreaterThan(strike + 3);
+    expect(length('cast'), 'the cast follows through after its last hit').toBeGreaterThan(hits[hits.length - 1]! + 3);
   });
 
   it('has root on the ground at the origin, and every other bone below it', () => {

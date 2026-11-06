@@ -8,6 +8,7 @@ How the units get rigs and animations, who does what, and in what order. The rul
 - [x] The user reviews Gimli, and decides six things (Review below).
 - [x] Workflow 2: the other 35 units, in three runs: 2a, 2b and 2c.
 - [x] The 2★ gear models: Gimli's, Éomer's and Treebeard's as the pattern, then the other 33 in five batches, and a play-test.
+- [x] The `attack` and `cast` clips retimed to the sim's wind-ups and melee blows (Retiming below).
 
 All 36 units are rigged at 1★: Gimli; in run 2a, Éomer and Sharku on their mounts, Frodo, Sam and Merry, Aragorn, Boromir, Faramir and Beregond, and Balin and Dáin; in run 2b, the Ringwraith, Éowyn and Háma, Legolas, Haldir, Elrond and Galadriel, Gandalf, Saruman and Radagast, Gorbag, Grishnákh, Uglúk, Lurtz and Gothmog, Gamling, Théoden, Khamûl and the Witch-king on their horses, Pippin, Bilbo and Gollum, and Treebeard and Sauron. Run 2c checked them with full boards, a clash check and a play-test, and fixed what it found (Run 2c below). After it, Dáin's two-handed blows were redesigned, Faramir's stun was fixed, and the last blows that swung out of the hex between frames were brought in, so no 1★ model warns now (`art/README.md`, Fitting clips to what a model holds, and Checking clashes).
 
@@ -22,8 +23,9 @@ Then the 2★ gear models were rigged, so every unit is rigged at 2★ too. Each
 Still open (Later below):
 - how smooth full boards are on a real GPU, since run 2c and the 2★ play-test only had software WebGL;
 - whether a rigged 2★ model should grow more, which is the user's call;
-- rigging the 3★ book models, which stay static for now;
-- retiming the `attack` and `cast` clips to the wind-ups and melee blows now designed, once the sim has them (Risks below).
+- rigging the 3★ book models, which stay static for now.
+
+Then the sim gave abilities their wind-ups and melee blows their delay, and the `attack` and `cast` clips of every rigged model, 1★ and 2★, were retimed to them (Retiming below).
 
 ---
 
@@ -31,7 +33,7 @@ Still open (Later below):
 
 - **Models:** the 36 units' models are static: one mesh each, exported without a rig or animations (`art/kit.py`, `finish()`).
 - **Client:** it draws pawns, which turn to face their targets, slide from hex to hex, lunge to strike, fade when untargetable, and sink and fade when they die (`playback.ts`, `scene.ts`).
-- **Sim:** its events already say everything animation needs: `move`, `dash`, `attack`, `cast`, `status` (for stuns), `death` and `end`. Nothing changes in the sim, so every fight plays out exactly as before. The design has moved on since: blows and abilities will land after a wind-up, with new event fields (`sim-spec.md` sections 9, 10.6 and 14), and the sim and the clips will follow.
+- **Sim:** its events already say everything animation needs: `move`, `dash`, `attack`, `cast`, `status` (for stuns), `death` and `end`. Nothing changes in the sim, so every fight plays out exactly as before. The sim has moved on since: blows and abilities land after a wind-up, with new event fields (`sim-spec.md` sections 9, 10.6 and 14), and the clips followed (Retiming below).
 - **Blender:** 4.5.15 LTS, whose glTF add-on (4.5.51) matches the one the committed models were exported with, and which rebuilds them byte for byte. It is installed in the cloud session's container at `/usr/local/bin/blender`. CI has no Blender, so the `.glb` files stay committed.
 
 ## Approach
@@ -154,10 +156,20 @@ The kit and the library stay as they are for models already rigged. A batch may 
 
 ---
 
+## Retiming
+
+The sim now lands a melee blow 0.22 s after its attack and an ability at the end of its wind-up, 0.35 to 0.6 s after its cast, striking or loosing again every 0.1 s for several hits, and a dash or charge sets off then (`sim-spec.md` sections 9 and 10.6). Every rigged model's `attack` and `cast`, 1★ and 2★, were retimed to them (`art/README.md`, The clip library, Timing):
+
+- **The kit.** The styles keep their keys, and `made()` fits each style's attack and cast to the unit's timing, which `rig.timing()` reads from the sim's data. A melee attack draws back over its first 4 frames and lands the blow on frame 7; a shot still leaves on frame 3. A cast gathers slowly through its wind-up and strikes, looses or stamps at its own pace into its height, on frame 11, 12, 15 or 18; a dash or charge springs then, and `move` carries it on. `finish()` fails a clip that is off, and the models test checks the frames, written into each armature's extras, against the sim.
+- **As built.** Melee attacks are 0.67 or 0.73 s, the blow on frame 7; ranged attacks as before, 0.6 s (Pippin's 0.67), the shot on frame 3. Casts are 0.97 or 1 s: at their height on frame 12 for the 0.4 s wind-ups, 11 for the four dashes (Grishnákh, Khamûl, Théoden, the Witch-king), 15 for Elrond, Radagast, Saruman, the Ringwraith, Treebeard and Sauron, and 18 for Gandalf and Galadriel; Legolas's Flurry looses again on 15, 18, 21 and 24, and Gorbag's Volley and Gollum's My precious strike again on 15 and 18.
+- **Units that changed.** Gorbag's and Gollum's hits come every 3 frames, as the sim's do, where they had 4 and 5. Haldir's Lórien volley looses its three arrows together, so his cast is a heavy shot from the draw rather than three in a row. Sauron's `reap` and Treebeard's `heave` begin drawn back (`begin` 1), since easing in from rest put the mace and the boulder through their bodies. Treebeard's idle is 2.6 s rather than 3.0, to keep his longer clips within his size: 298,432 of 300,000 bytes, and his gear model 336,616 of 337,500.
+- **Limits.** Every model builds without a warning: inside the hex and out of the ground on every frame and between them, under its size (Radagast's 199,460 of 200,000 bytes is the closest on foot), with its death low. The 3★ book models and the arena rebuilt byte for byte. The label clears the new attack and cast poses as before, since it is worked out from the clips as a model loads.
+- **Clashes.** `clash.py` on the attack and cast of all 72, against the clips before the retime: the same clashes, as deep, on later frames, but for grazes of 4 to 7 mm as the clips ease in from rest (Gothmog's cast, Khamûl's and Sharku's attacks, Merry's cast), Gandalf's sword hand 7 mm deeper into his chest as he heaves the staff slowly up, and Radagast's bird 11 mm deeper into his head as it leaves his fist. Treebeard's hurled boulder still waits inside him until he tears up another.
+
 ## Risks
 
 - **Blender versions** export differently. Keep to 4.5 LTS. The models test checks the committed files, since CI can't rebuild them.
-- **Blows have no wind-up.** The sim's attack lands on its event, so clips strike 0.1 s in. A slower swing would land after its damage number. `attack` cuts in at full weight, so its first frame is the wind-up. The design has moved on: a melee blow will land 0.22 s after its attack, and an ability at the end of its wind-up, 0.35 to 0.6 s after its cast (`sim-spec.md` sections 9 and 10.6). Once the sim does, the clips are to strike then (`viewer-spec.md` section 4, Rigs and clips).
+- **Blows in step with the sim.** A melee blow lands 0.22 s after its attack and an ability at the end of its wind-up, 0.35 to 0.6 s after its cast (`sim-spec.md` sections 9 and 10.6), and the clips strike then (Retiming below). The kit reads the times from the sim's data, so a changed wind-up or blow delay needs only a rebuild, and `finish()` fails a clip that is off; the models test checks the committed files against the sim. A wind-up of more than 0.6 s, or a multi-hit ability with more hits, would leave a cast less room in its second (`LONGEST`).
 - **Fast attackers,** with stacks, attack up to about 2.5 times a second, faster than an attack clip lasts. Each attack restarts the clip, so every one still shows its strike.
 - **Room in a hex.** Death clips end low rather than lying full length. A fast blow can swing out of the hex between two frames that are both inside it, since the viewer turns each bone the short way round from one frame to the next. `finish()` checks between frames too, and `fit(between=True)` or `tweened()` draws such blows in, with options on the blows where that wasn't enough. No rigged model reaches outside the hex now, on frames or between them.
 - **Size and speed.** A rigged model stays under 200,000 bytes, or 300,000 for Riders and Large units, and a rigged gear model under 225,000 or 337,500, with one mixer per unit. Run 2c checked full boards with software WebGL only, so how smooth they are on a real GPU is still to check (Later).
