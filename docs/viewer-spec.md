@@ -246,7 +246,7 @@ A unit's star level shows four ways at once, chosen from a study of Frodo, Arago
 
 ### Animation
 
-Which clip (section 4, Rigs and clips) each unit's model plays, and how far into it, is worked out in animation.ts from the fight's events. It follows display time, so pausing, single steps and the speed control move animation as they move everything else, and the frame rate changes nothing. The sim needs no changes: the events already say all of it.
+Which clip (section 4, Rigs and clips) each unit's model plays, and how far into it, is worked out in animation.ts from the fight's events. It follows display time, so pausing, single steps and the speed control move animation as they move everything else, and the frame rate changes nothing. The events say all of it, including when a blow lands (`hitTick`), when a cast goes off (`releaseTick`) and when a dash sets off (`departTick`) (`sim-spec.md` section 14).
 
 - **What a unit plays** at display time `t`, in ticks: the first of these that applies.
   1. **Dead:** `death`, from its `death` event.
@@ -259,22 +259,22 @@ Which clip (section 4, Rigs and clips) each unit's model plays, and how far into
 - **How far into the clip,** in seconds, with a tick 1/30 s:
   - `death`, `victory`, `attack` and `cast`: the time since the event, held on the last frame once the clip ends.
   - `stun`: the time since the stun started, wrapped at the clip's length.
-  - `move`: the step's progress from its tick to `arriveTick` times the clip's length.
+  - `move`: the step's progress from its tick to `arriveTick` times the clip's length. For a dash or charge, its progress from `departTick` to `arriveTick` times the clip's length times the hexes it crosses.
   - `idle`: `t` / 30 + 0.37 × the unit's id in the fight (its index in `combat.state.units`), wrapped at the clip's length, so units don't breathe together and a unit going back to idle picks up where it would have been.
   - Between two of a clip's frames, Three.js turns each bone the short way round from its turn on one to its turn on the next, and moves a bone the clip moves in a straight line. A bone that turns far in one frame, as an arm does in a blow, swings what hangs from it round in an arc, so the art checks these poses too (section 4, Limits).
 - **Fades:** when the clip changes, the new one fades in over 3 ticks, its weight rising evenly from 0 to 1, while the one before carries on as it would have (a loop looping, a one-shot clip held on its last frame). Before the fight starts, every unit counts as playing `idle`.
-  - **Cuts:** `attack` and `cast` start at full weight on their event's tick, and so does a dash's held `move`, so their first frames are seen: an attack's wind-up, the leap. An action that comes back after a stun or step hid it fades in as usual.
+  - **Cuts:** `attack` and `cast` start at full weight on their event's tick, and so does a dash's or charge's `move` on its `departTick`, so their first frames are seen: an attack's wind-up, the dash setting off. An action that comes back after a stun or step hid it fades in as usual.
   - An action that restarts its own clip cuts back to the start without a fade, and a step that follows a step runs on without one.
-- **Death:** a unit with a `death` clip plays it, and halfway through the clip it starts to sink and fade out, over half a second, so it is fading by the time another unit can step into its hex. One without starts sinking at once, as before. A `death` clip lasts at most half a second (section 4), so a unit that dies on the last tick has finished its clip and its fade within the second of afterglow the viewer runs after the fight.
+- **Death:** a unit with a `death` clip plays it, and halfway through the clip it starts to sink and fade out, over half a second, so it is fading by the time another unit can step into its hex. One without starts sinking at once, as before. Where a unit would start to sink, it breaks into shards instead (Effects below). A `death` clip lasts at most half a second (section 4), so a unit that dies on the last tick has finished its clip and its fade within the second of afterglow the viewer runs after the fight.
 - **Melee attacks** still lunge, and the blow lands at the lunge's height, on `hitTick`.
 - **Facing,** for models and pawns alike, as an angle about the vertical like `facing()` in playback.ts gives:
-  - while a step or dash moves the unit, from its tick until it arrives, the way it goes, from its `from` hex to its `to` hex;
+  - while a step or dash moves the unit, from the step's tick or the dash's `departTick` until it arrives, the way it goes, from its `from` hex to its `to` hex;
   - otherwise towards its target in `combat.state`, from the unit's `position()` to the target's, without the lunge;
   - over the first 3 ticks of a step or dash it turns evenly, the shorter way round, from the way it faced: the way the step before went if one ended on that tick, or else towards its target. Over the first 3 ticks after one ends it turns the same way from the way it went to its target;
   - with nowhere to face (no target, or the target in the same place), and once dead, it keeps the way it last faced.
 - **Planning:** on the planning board and bench, units play `idle` in real time, staggered by 0.37 s × their id.
 - **Reduced motion:** when the system asks for it, `idle` and `stun` hold their first frame. `move`, `attack`, `cast`, `death` and `victory` still play, since they show what happens.
-- **Static models,** such as today's 3★ ones, **and pawns** have no clips, and are drawn as before: turning, lunging, fading and sinking.
+- **Static models,** such as today's 3★ ones, **and pawns** have no clips, and are drawn as before: turning, lunging and fading, and dying as above (Death).
 - **API,** which the tests use:
 
 ```ts
@@ -356,7 +356,7 @@ How abilities, hits and statuses look: the **punchy** style, chosen on 6 Novembe
   - **Slow** and **reduction:** a thin ring under the unit while it lasts, icy blue for a slow and dark red for a reduction.
   - **Shield:** a faceted shell round the unit, popping in when the shield starts and rippling when it absorbs damage, until it expires or is used up.
   - **Untargetable:** the fade, as before.
-- **Deaths:** at the point the unit would start to sink (section 5, Death), it breaks into faceted shards in its livery colour, which fall and fade.
+- **Deaths:** at the point the unit would start to sink (section 5, Death), it breaks into faceted shards in its livery colour, which fall and fade, instead of sinking.
 - **Reduced motion:** no shake, hit-stop, screen flash or squash. Telegraphs, flashes, projectiles, status marks and numbers stay, since they show what happens.
 - **Cost:** effects use meshes and materials made once and reused, and lights already in the scene, so the first of a kind compiles no new shader and a frame allocates nothing.
 

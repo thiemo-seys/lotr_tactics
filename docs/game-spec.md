@@ -331,7 +331,7 @@ During planning, living players act in any order: buy, sell, reroll, buy XP, loc
 | The Balrog | yes | 6000 | 180 | 0.70 | 2 | 60 | 60 | 0 / 70 |
 
 - **The Balrog** gains 25% Health and Attack Damage for each stage after 6.
-- Abilities use the building blocks of `sim-spec.md` section 10. Their values scale like a unit of the given cost:
+- Abilities use the building blocks of `sim-spec.md` section 10, with a wind-up and delivery as units' have (`sim-spec.md` section 7.6). Their values scale like a unit of the given cost:
 
   | Monster | Cost for scaling | Ability |
   |---|---|---|
