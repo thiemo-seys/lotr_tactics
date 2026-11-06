@@ -2,7 +2,7 @@
 
 How abilities, hits and statuses should look in fights, tried in two styles on five abilities with the game's arena, board, lights, grade and rigged models. Fights today feel flat: an ability's effects land on the tick it is cast, a dash takes 4 ticks, a cast shows only a ring and its name, and statuses other than stuns show only on the label. The user has agreed that abilities can get **wind-up and travel time in the sim**; this study is for choosing the **tone** of what is drawn. Audio comes later, once this is chosen.
 
-**Status:** open, for the user to choose a style, or a mix (below).
+**Chosen** on 6 November 2026: the **punchy** style, and the proposed timings below for now. Next, the timings go into `docs/design.md` and `docs/sim-spec.md`, and the effects into `docs/viewer-spec.md`, before the sim and the client change.
 
 The timelines here are scripted, not sim fights: they show the proposed timings before the sim has them.
 
