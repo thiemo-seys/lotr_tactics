@@ -74,6 +74,7 @@ packages/client/
       tip-card.ts  a tooltip's contents
       chips.ts     item and ring chips, trait badges and costs
       labels.ts    the overlay above each unit
+      float.ts     a floating number or cast name: the element CSS2DRenderer positions, and the one in it that pops in
       unit-hover.ts  the card for the unit under the pointer in the 3D view
     play/          the play page's parts
       hud-bar.ts      the HUD
@@ -237,6 +238,7 @@ A unit's star level shows four ways at once, chosen from a study of Frodo, Arago
     - It flies from the shooter's chest to the target's, so it strikes a Hobbit and an Ent alike. A model's chest is 0.85 of the height of its `head` bone as it stands, which sits at the neck. A model without one, such as a static one, takes its unit's 1★ model's, since a gear or book model keeps its build, or else 0.69 of its height. Either is times the model's scale, above the ground. A pawn's is 0.9, scaled with the pawn.
   - **Melee attacks:** a short lunge towards the target, at its height on `hitTick`, when the blow lands.
   - **Numbers:** `damage` and `heal` rise from just above the target's label and fade over 24 ticks.
+    - A text that starts on a unit while others of its texts show starts at the lowest height, from the bottom or just above one of them, at least 0.32 from where each of them is then. They all rise at the same pace, so they stay that far apart: texts that start together stack upwards, and so do a multi-hit's numbers a few ticks apart, rather than printing over each other (`textOffset` in playback.ts).
     - Physical damage is orange, magic blue, true white; heals are green.
     - Crits are bigger. Absorbed damage is shown separately.
   - **Casts:** the ability's name above the caster's label, in a gold pill, and its wind-up, travel and impact (Effects below).
@@ -345,7 +347,7 @@ How abilities, hits and statuses look: the **punchy** style, chosen on 6 Novembe
 - **Every hit,** from an attack or an ability, as its `damage` event comes:
   - The target flashes white, fading over 4 ticks, is pushed 0.22 away from the source and back over 6 ticks, and squashes 16% and springs back.
   - Its health bar shows the health lost as a pale chunk after the bar, which holds for 0.25 s and drains over 0.35 s.
-  - Numbers pop in, from 1.7 times their size to their size over 4 ticks, then rise and fade as before (Numbers above).
+  - Numbers pop in, from 1.7 times their size to their size over 4 ticks, about their bottom edge, then rise and fade as before (Numbers above). The pop scales an element inside the one `CSS2DRenderer` positions (`ui/float.ts`): CSS's `scale` on that one would multiply the screen offset the renderer writes into its `transform`, and the number would start far from its unit and fly in.
 - **Big moments:** an ability landing on 3 or more enemies at once, or with a wind-up of 0.5 s or more landing on at least one. Enemies, so a heal or a horn that reaches three allies, or a long wind-up that misses, doesn't shake the board.
   - The camera shakes, by up to 0.14, dying away over 0.5 s; big moments together shake it no further. It moves the camera for the frame only, never the controls' state.
   - **Hit-stop:** the caster and the units it reached hold their clip's pose for 0.08 s, then catch it up over the next 0.08 s at twice its speed, so they are back in step 0.16 s after the hit. Their positions don't hold, nor does anything else. The clock doesn't stop, so playback keeps the sim's pace and an online fight its timing (`server-spec.md` section 5.3).
@@ -384,7 +386,8 @@ How abilities, hits and statuses look: the **punchy** style, chosen on 6 Novembe
 The parts without Three.js are tested with Vitest:
 - the hex layout;
 - random boards, which are valid and the same for the same seed;
-- playback timing, interpolated positions and projectiles, a unit that dies mid-step or mid-dash staying where it died, and that frames between ticks keep the same lists of effects and events, so they allocate nothing;
+- playback timing, interpolated positions and projectiles, a unit that dies mid-step or mid-dash staying where it died, floating texts on a unit starting clear of each other, and that frames between ticks keep the same lists of effects and events, so they allocate nothing;
+- that a floating number pops in on its inner element, never the one `CSS2DRenderer` positions (ui/float.ts);
 - when the scene draws a frame (a fight as its display time moves, planning while a unit idles and motion isn't reduced, otherwise only after a change), and that pawns swap for their models only once a shader is ready, at most 3 a frame, and again as more load;
 - which effects are live at a display time and how far through (effects.ts): telegraphs and aim lines through a wind-up, a cast whose caster dies in its wind-up, projectiles (one a hit for several hits, and a bounce's hops) and lobs to their landings, a charge's ribbon between its ticks, impacts, hits (flash, push, squash, the draining chunk, popping numbers) and big moments (shake, hit-stop, the screen flash) and small abilities without them, status marks, shards, reduced motion, that every ability has a look, and that frames between ticks keep the same lists;
 - which clip each unit plays at a display time and how far into it, fades and cuts, an action before a stun on the same tick, reduced motion, planning's `idle`, dying units breaking up from halfway through their clip (`sinkDelay`), and which way units face as they step, dash and turn back (section 5, Animation);

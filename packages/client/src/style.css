@@ -1972,6 +1972,12 @@ kbd {
   -webkit-text-stroke: 0.5px rgba(0, 0, 0, 0.6);
 }
 
+/* What pops in: scaled here, about its bottom edge, not on the element CSS2DRenderer positions (ui/float.ts). */
+.float-pop {
+  display: inline-block;
+  transform-origin: 50% 100%;
+}
+
 .float.big {
   font-size: 19px;
   font-weight: 900;

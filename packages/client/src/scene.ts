@@ -31,11 +31,12 @@ import { copyModel, loadModels, modelShader, modelShaders, modelsLoaded, shaderS
 import { Effects, type HitState, type ScreenState, type Vec3Out } from './effects.js';
 import { FxView, type FxUnits } from './fx.js';
 import { liveryOf } from './livery.js';
-import { EFFECT_TICKS, type FloatingText, type MutablePoint, type Playback, type Projectile } from './playback.js';
+import { EFFECT_TICKS, FLOATING_TEXT, type FloatingText, type MutablePoint, type Playback, type Projectile } from './playback.js';
 import { ATMOSPHERE, CAMERA, CAMERA_LIMITS, EFFECTS, LIGHTS, PAWN_COLOUR, type Framing } from './look.js';
 import { Post } from './post.js';
 import { stoneTiles } from './tiles.js';
 import { LABEL, LARGE_PAWN_SCALE } from './stars.js';
+import { FloatView } from './ui/float.js';
 import { UnitLabel } from './ui/labels.js';
 import { displayName, isLarge } from './units.js';
 
@@ -57,9 +58,6 @@ const BENCH_COLOUR = 0x5f4c3b;
 /** How far a board hex and a bench tile stand, from the paving up to their tops at 0, and how much their top edges are bevelled. */
 const TILE_HEIGHT = 0.16;
 const TILE_BEVEL = 0.05;
-
-/** How high a floating number rises over its life, in world units. */
-const TEXT_RISE = 0.9;
 
 /** The space between a unit's label and the floating numbers above it, in pixels. */
 const TEXT_GAP = 2;
@@ -121,14 +119,10 @@ interface ProjectileView extends EffectView {
 /** A floating number or cast name. */
 interface TextView extends EffectView {
   readonly object: CSS2DObject;
-  /** How many of its unit's numbers that started with it are below it. */
-  readonly stack: number;
+  /** Its elements: the positioned one, and the one inside it that pops in (ui/float.ts). */
+  readonly float: FloatView<HTMLElement>;
   /** How far up it is moved, in pixels, to clear its unit's label. */
   lift: number;
-  /** The opacity it was last given, so a paused fight doesn't write it again. */
-  opacity: number;
-  /** The size it was last given, as it pops in, likewise. */
-  scale: number;
 }
 
 /**
@@ -1038,38 +1032,28 @@ export class FightScene {
       // They rise from the bottom of their unit's label, lifted by its height: above the label.
       const unit = this.units[text.unit];
       const base = unit === undefined ? LABEL.height : unit.label.position.y;
-      object.position.set(x, base + 0.32 * view.stack + TEXT_RISE * progress, z);
+      // Numbers that start close together stack upwards (playback.ts, textOffset), so each reads.
+      object.position.set(x, base + text.offset + FLOATING_TEXT.rise * progress, z);
       // Never lower again, so the killing blow's number stays put as its unit's label goes.
       const lift = unit === undefined ? 0 : (this.labelHeights.get(unit.label.element) ?? 0) + TEXT_GAP;
       if (lift > view.lift) {
         view.lift = lift;
-        object.element.style.translate = `0 ${-lift}px`;
+        view.float.lift(lift);
       }
-      const opacity = 1 - progress * progress;
-      if (opacity !== view.opacity) {
-        view.opacity = opacity;
-        object.element.style.opacity = String(opacity);
-      }
-      // Numbers pop in; the ability's name in its pill doesn't.
-      const scale = text.kind === 'cast' ? 1 : effects.numberScale(text.startTick);
-      if (scale !== view.scale) {
-        view.scale = scale;
-        object.element.style.scale = String(scale);
-      }
+      view.float.opacity(1 - progress * progress);
+      // Numbers pop in; the ability's name in its pill doesn't. On the inner element: scaling the one
+      // CSS2DRenderer positions would scale its offset on screen too (ui/float.ts).
+      view.float.scale(text.kind === 'cast' ? 1 : effects.numberScale(text.startTick));
     }
   }
 
   private readonly addText = (text: FloatingText): TextView => {
-    const element = document.createElement('div');
-    element.className = `float ${text.kind}${text.big ? ' big' : ''}`;
-    element.textContent = text.text;
-    const object = new CSS2DObject(element);
+    const float = FloatView.create(`float ${text.kind}${text.big ? ' big' : ''}`, text.text);
+    const object = new CSS2DObject(float.outer);
     // Its bottom edge on the point, which is moved up to clear its unit's label.
     object.center.set(0.5, 1);
     this.fightLayer.add(object);
-    // Numbers that start together stack upwards instead of overlapping.
-    const stack = [...this.texts.keys()].filter((t) => t.unit === text.unit && Math.abs(t.startTick - text.startTick) < 3).length;
-    return { object, stack, lift: 0, opacity: -1, scale: 1, seen: 0 };
+    return { object, float, lift: 0, seen: 0 };
   };
 
   private readonly removeText = ({ object }: TextView): void => {
