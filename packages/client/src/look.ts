@@ -191,22 +191,42 @@ export const EFFECTS = {
   telegraph: { linger: 0.35 },
   /** An aim line's width, from the start of the wind-up to its end. */
   aimLine: { from: 0.012, to: 0.032 },
-  /** A lob's arc above the line from caster to landing. */
-  lob: { arc: 3.2, trail: 1.1 },
-  /** An arrow's streak behind it. */
-  streak: { length: 3.2, width: 0.07 },
+  /**
+   * A lob's arc above the line from caster to landing: low enough that it stays below the name
+   * plates of the units between caster and target from the starting camera, rather than behind them.
+   */
+  lob: { arc: 1.3, trail: 1.1 },
+  /** How much bigger an arrow is drawn than its model, across and along: thick enough to read in a volley. */
+  arrow: { across: 1.9, along: 1.3 },
+  /**
+   * The streak behind an arrow or a thrown stone: a bright core in the ability's colour, light added
+   * to what is behind, over a wider edge painted at `edgeOpacity` in a deep, saturated cut of that
+   * colour (`edgeLightness`), so it reads on pale stone and shells too, where added light washes out.
+   */
+  streak: { length: 3.2, width: 0.08, edge: 0.15, edgeOpacity: 0.6, edgeLightness: 0.3, stoneLength: 1.6 },
+  /** A thrown stone's size (a lobbed one's is bigger) and colour, dark, to stand out from the sandstone. */
+  stone: { size: 0.28, lobSize: 0.34, colour: 0x5e5244 },
   /** A charge's ribbon: how far back it trails, in seconds of the charge, how wide, and its fade after. */
   ribbon: { seconds: 0.35, width: 1.1, fade: 0.35 },
-  /** A shockwave ring on landing, out to the aim's hexes, and its band as a share of its radius. */
-  shockwave: { seconds: 0.45, width: 0.22 },
+  /**
+   * A shockwave ring on landing, out to the aim's hexes; its band as a share of its radius; and for a
+   * cone, how long after its nearest hex's ring each further hex's comes, in seconds per world unit.
+   * Rings fade out over `edgeFade` world units across the board's edge, half inside it and half past it.
+   */
+  shockwave: { seconds: 0.45, width: 0.07, sweep: 0.025, edgeFade: 0.5 },
   /** A lob's scorch on the ground. */
   scorch: { colour: 0x1a1008, strength: 0.55, seconds: 2.2, radius: 1.5 },
-  /** A wave on the ground from the caster, for an ally aim. */
-  wave: { seconds: 0.5 },
+  /** A wave on the ground from the caster, for an ally aim: dimmer than a shockwave, as it threatens nothing. */
+  wave: { seconds: 0.5, strength: 0.4 },
   /** A glow at a unit an ability reaches. */
   impactGlow: { seconds: 0.18, size: 1, bigSize: 1.6 },
-  /** Every hit: a white flash, a push away from the source and back, a squash that springs back. */
-  hit: { flashSeconds: 4 / 30, flashIntensity: 1.4, push: 0.22, pushSeconds: 6 / 30, squash: 0.16, squashSeconds: 0.22 },
+  /**
+   * Every hit: a white flash, a push away from the source and back, a squash that springs back. The
+   * flash peaks at `flashIntensity`, light added over the model, so its shading and livery still show.
+   * A hit `flashRecover` or more after the unit's last one flashes it fully; a sooner one, only that
+   * share of the way, so a volley doesn't keep it white.
+   */
+  hit: { flashSeconds: 4 / 30, flashIntensity: 0.55, flashRecover: 0.3, push: 0.22, pushSeconds: 6 / 30, squash: 0.16, squashSeconds: 0.22 },
   /** The health bar's pale chunk for health just lost: it holds, then drains. */
   drain: { hold: 0.25, seconds: 0.35 },
   /** Floating numbers pop in from this many times their size over `seconds`. */
@@ -231,8 +251,12 @@ export const EFFECTS = {
   },
   /** Thin rings under slowed and reduced units, icy blue and dark red. */
   rings: { slow: 0x9fd8ff, reduce: 0x8a1f1a, grow: 0.15 },
-  /** The shell round a shielded unit: it pops in, and ripples when it absorbs damage. */
-  shield: { colour: 0x9fd8ff, fill: 0.1, edges: 0.7, pop: 0.35, popSeconds: 0.35, grow: 0.22, ripple: 0.25 },
+  /**
+   * The shell round a shielded unit: it pops in, and ripples when it absorbs damage. Faint, so the
+   * unit and its swing read through it: the faceted edges carry the look. Its radius is `size` times
+   * the unit's chest height, plus `pad`, at most `maxRadius`.
+   */
+  shield: { colour: 0x9fd8ff, fill: 0.035, edges: 0.4, size: 0.85, pad: 0.05, maxRadius: 0.82, pop: 0.35, popSeconds: 0.35, grow: 0.22, ripple: 0.25 },
   /** A dying unit breaks into shards in its livery colour, which fall and fade. */
   shards: { count: 16, seconds: 0.7, size: [0.06, 0.14], speed: [1.5, 3.5], gravity: 10 },
   /** Dust thrown up behind a charge, a puff every `every` seconds of it. */
