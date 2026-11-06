@@ -172,7 +172,7 @@ describe('travel', () => {
   });
 
   it('looses one projectile a hit, hitGap ticks apart, for a multi-hit ability', () => {
-    const { p, fx } = fight('duel', 'ring', 2);
+    const { p, fx } = fight('tanks', 'archers', 1);
     const cast = toCast(p, fx, 'Flurry');
     const aim = cast.aims[0]!;
     expect(aim.hits).toBe(5);

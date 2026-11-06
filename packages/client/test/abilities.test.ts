@@ -27,7 +27,8 @@ describe('ability text', () => {
   });
 
   it('leads with a dash', () => {
-    expect(at('grishnakh')).toEqual(['Dashes to the enemy with the least Health and deals 240 physical damage to it.']);
+    // Sneak is 1.4 D (design.md section 5).
+    expect(at('grishnakh')).toEqual(['Dashes to the enemy with the least Health and deals 280 physical damage to it.']);
     expect(at('khamul')).toEqual(['Dashes along a 3-hex line, dealing 270 magic damage to enemies on it and slowing their Attack Speed by 25% for 3s.']);
     expect(at('witch-king')[0]).toBe('Dashes to the enemy with the most Health, then deals 400 magic damage to adjacent enemies and slows their Attack Speed by 30% for 3s.');
   });

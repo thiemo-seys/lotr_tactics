@@ -127,14 +127,14 @@ describe('golden hashes', () => {
     };
     expect(hashes).toMatchInlineSnapshot(`
       {
-        "crests": "c5e2cbba",
-        "gifts": "24e8798c",
-        "itemsAgainstTraits": "173b4807",
-        "mirrors": "94317f7",
-        "monsters": "9f0d049b",
-        "oneRing": "ec727afa",
-        "ringsOfPower": "37928ade",
-        "stackedItems": "32fbad18",
+        "crests": "5f566124",
+        "gifts": "f35b6aea",
+        "itemsAgainstTraits": "b4402050",
+        "mirrors": "4514c73f",
+        "monsters": "193e089",
+        "oneRing": "af928f5c",
+        "ringsOfPower": "b588a7d9",
+        "stackedItems": "84b8e155",
       }
     `);
   });
@@ -165,9 +165,9 @@ describe('golden hashes', () => {
     });
     expect(games).toMatchInlineSnapshot(`
       [
-        "b3556904",
-        "c563ec47",
-        "b80dabd4",
+        "41569dd2",
+        "9ea787bc",
+        "d30288f5",
       ]
     `);
   });
