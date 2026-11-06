@@ -193,6 +193,7 @@ Every ability winds up before it goes off, and some then travel (section 7, Mana
 - **Lob:** a fireball, boulder or swooping flock that lands on the hexes it was aimed at 0.75 s after it leaves, however far it goes.
 - **Dash:** the unit moves at 6 hexes a second, and the rest of the ability lands when it arrives.
 - **Charge:** the unit rides its line at 6 hexes a second, striking each enemy on it as it reaches it.
+- **Several hits** (Volley, Flurry, My precious) come 0.1 s apart: one arrow after another, each flying on its own, or one stab after another. The caster keeps at it until the last has gone *(placeholder)*.
 - Shields, heals and buffs on the caster and its allies always land as the wind-up ends.
 
 ### Stat templates
@@ -637,12 +638,12 @@ Built from day one to:
 
 1. **PvE enemies:** stats and loot tables (placeholders in [`game-spec.md`](game-spec.md) section 9)
 2. **Unit models:** whether Riders stay mounted, as their models are, at a larger triangle budget ([`viewer-spec.md`](viewer-spec.md) section 4)
-3. **Leap speed:** leaps move at the charge speed of 6 hexes a second (section 7, Movement), so a Burglar leaping to the far back row at combat start, or Grishnákh or the Witch-king leaping across the board, is in the air for up to about 1.2 s and can't act until it lands. The options:
+3. **Leap speed:** *chosen on 6 November 2026: one speed for all, for now, to look at again once balance runs and the viewer show how long leaps feel.* Leaps move at the charge speed of 6 hexes a second (section 7, Movement), so a Burglar leaping to the far back row at combat start, or Grishnákh or the Witch-king leaping across the board, is in the air for up to about 1.2 s and can't act until it lands. The options were:
    - *one speed for all* (as now): simplest, and a leap is easy to follow, but Burglars and long leaps start their work later than before;
    - *leaps at 12 hexes a second*, the projectile speed, and charges at 6: leaps stay quick, for one more number;
    - *a fixed leap time*, such as 0.5 s whatever the distance, like a lob: every leap reads the same, but a short hop is as slow as a long one.
 
-   Recommendation: keep one speed until the balance runs and the viewer show whether long leaps feel sluggish, and then take the fixed leap time.
+   If long leaps feel sluggish, the fixed leap time is the one to try next.
 
 All numbers marked *(placeholder)* will be tuned during balancing.
 

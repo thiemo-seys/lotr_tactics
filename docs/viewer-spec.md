@@ -191,7 +191,7 @@ Every unit's 1★ model is rigged and carries its own animations, which the view
 | `idle` | when nothing else applies | loops | 1.5 to 3 s | breathing and a small shift of weight, weapon ready |
 | `move` | stepping or dashing | loops, one cycle per hex step | 0.4 to 1 s | a run, two footfalls a cycle, in the air with the legs apart a quarter of the way through |
 | `attack` | from each basic attack | once | 0.4 to 0.9 s | the blow lands 0.22 s (7 ticks) in, or the shot leaves 0.1 s (3 ticks) in, then it recovers |
-| `cast` | from each cast | once | 0.3 to 0.8 s | its ability, at its height at the end of its wind-up, 0.35 to 0.6 s in |
+| `cast` | from each cast | once | 0.55 to 1 s | its ability, at its height at the end of its wind-up, 0.35 to 0.6 s in, and for several hits each 0.1 s after the last |
 | `stun` | while stunned | loops | 0.5 to 1.5 s | dazed: swaying, weapon lowered |
 | `death` | from its death | once | 0.3 to 0.5 s | falls, ending low and still inside its hex |
 | `victory` | the winners, after the end | once, then holds | 0.5 to 1 s | weapon raised |
@@ -199,7 +199,7 @@ Every unit's 1★ model is rigged and carries its own animations, which the view
 - Each clip fits the unit: the attack swings, thrusts, shoots or throws its own weapon, and the cast fits its ability (`design.md` section 5). A looping clip ends where it starts.
 - A clip turns bones. It moves the hips, or a rider's `mount_body`, and the bones of a model's own that it places: `robe`, `string`, `arrow`, `stone`, `bird` and `boulder`. It has no track for a bone that stays at rest all through it, and none moves `root`, since the viewer places the model.
 - A melee blow lands 7 ticks (0.22 s) after its `attack` event, on its `hitTick` (`sim-spec.md` section 9), so the blow in `attack` falls 0.22 s into the clip, where the lunge (section 5) is at its height. A ranged attack's shot leaves 3 ticks in, as before.
-- An ability's effects leave or land at its release, `releaseTick`, its wind-up after the `cast` event (`sim-spec.md` section 10.6). The wind-up is the ability's own, from 0.35 to 0.6 s, and each unit has one ability, so its `cast` clip strikes, looses, throws or raises its horn at that time. For a dash or charge, that is when it sets off, and `move` carries it from there (section 5, Animation).
+- An ability's effects leave or land at its release, `releaseTick`, its wind-up after the `cast` event (`sim-spec.md` section 10.6). The wind-up is the ability's own, from 0.35 to 0.6 s, and each unit has one ability, so its `cast` clip strikes, looses, throws or raises its horn at that time. An ability with several hits (Volley, Flurry, My precious) strikes or looses again every 0.1 s after the release (`sim-spec.md` section 10.6, Multi-hit), so its clip does too. For a dash or charge, that is when it sets off, and `move` carries it from there (section 5, Animation).
 - The design has moved on from today's clips, which strike 0.1 s in and are at their height 0.1 to 0.2 s in, as the sim had blows and casts land at once. They will be retimed, with the checks in `finish()` (`art/README.md`), when the sim's timing is built.
 - `attack` and `cast` start at full weight, without a fade (section 5), so their first frame is seen: an attack's is its wind-up, the weapon drawn back.
 - **Limits** *(placeholders)*: a rigged unit's `.glb` stays under 200,000 bytes, or 300,000 for a Rider or a Large unit. A rigged gear model may have 12.5% more, as its triangle budget does (Star levels below): 225,000 bytes, or 337,500. The model should stay inside its hex (Size above) and above the ground in every frame, and end its `death` low. Between frames, as the viewer shows them (section 5), it should stay inside its hex too, and no more than 0.01 under the ground, since a foot rolling on the ground dips a few millimetres there, which the board hides. `finish()` warns when one doesn't.
@@ -254,7 +254,7 @@ Which clip (section 4, Rigs and clips) each unit's model plays, and how far into
   3. **Stunned:** `stun`, from the tick a stun starts until its `expiresTick`, from the `status` events. A stun that starts while another lasts, or on the tick it ends, carries it on without restarting. An `attack` or `cast` on a tick a stun starts on plays out first, and `stun` shows once its clip ends: a stunned unit can't act, so the action came before the stun on that tick.
   4. **Acting or moving,** whichever started last, or the action if they started on the same tick:
      - an action: `attack` from the unit's latest `attack` event, or `cast` from its latest `cast` event, until the clip ends. More attacks on the same tick, such as the Bow of the Galadhrim's, are one action: the clip plays once, from that tick, with a projectile for each ranged attack. A cast on the same tick as an attack would win, though the sim never has one, since a unit acts once a tick (`sim-spec.md` section 6.4).
-     - a step: `move` from the `move` event's tick to its `arriveTick`, one whole cycle per step, so a step that follows a step runs on without a seam. A dash or charge plays `move` from its `departTick` to its `arriveTick`, one whole cycle per hex it crosses; before it sets off, the unit plays its `cast`.
+     - a step: `move` from the `move` event's tick to its `arriveTick`, one whole cycle per step, so a step that follows a step runs on without a seam. A dash or charge plays `move` at twice its speed from its `departTick` to its `arriveTick`, from the start of the clip, since one cycle a hex would run it 2.4 to 6 times too fast at 5 ticks a hex; before it sets off, the unit plays its `cast`.
   5. **Otherwise:** `idle`.
 - **How far into the clip,** in seconds, with a tick 1/30 s:
   - `death`, `victory`, `attack` and `cast`: the time since the event, held on the last frame once the clip ends.
@@ -332,10 +332,10 @@ How abilities, hits and statuses look: the **punchy** style, chosen on 6 Novembe
 - **Each ability's look:** a colour, and for a projectile its kind (an arrow, a bolt, a stone, a fireball), from a table in the client by ability name, with a default by damage type: physical gold, magic blue-white.
 - **Wind-up,** from the `cast` event to its `releaseTick`, from the cast's `aims` (`sim-spec.md` section 14):
   - The caster's `cast` clip plays (section 5, Animation) and a glow gathers at it, in the ability's colour.
-  - **Telegraph:** for an enemy aim with hexes, those hexes light in the ability's colour, building and pulsing faster towards the release. For a charge, the hexes of its line. Each flashes on its own `landTick` and fades over 0.35 s.
-  - **Aim line:** for an enemy aim of units delivered by `projectile`, a thin line from the caster's chest to each target's, firming up through the wind-up.
+  - **Telegraph:** for an enemy aim with hexes, those hexes light in the ability's colour, edged in the caster's side's colour (blue for the near side and red for the far one, as the health bars), so a glance says whose it is, building and pulsing faster towards the release. For a charge, the hexes of its line. Each flashes on its own `landTick` and fades over 0.35 s.
+  - **Aim line:** for an enemy aim of units delivered by `projectile`, a thin line from the caster's chest to each target's, or for a `bounce` to its first unit only, firming up through the wind-up, in the ability's colour edged like the telegraph.
 - **Travel,** from `releaseTick` to each `landTick`:
-  - **Projectile:** one for each unit of the aim, flying from the caster's chest towards the unit's chest wherever it is, as a ranged attack's does (Projectiles above), with a long trail; a `bounce` hops from unit to unit, landing on each one's `landTick`; a line projectile flies along its hexes.
+  - **Projectile:** one for each unit of the aim, flying from the caster's chest towards the unit's chest wherever it is, as a ranged attack's does (Projectiles above), with a long trail; a `bounce` hops from unit to unit, landing on each one's `landTick`; a line projectile flies along its hexes. An aim with several hits looses one projectile a hit, each `hitGap` ticks after the one before, as the sim does.
   - **Lob:** in an arc from the caster's staff or hand to the aim's centre, or its first hex, with a thick trail, landing on its `landTick`.
   - **Dash and charge:** the unit moves from `departTick` to `arriveTick` (Positions above); a charge leaves a ribbon of light in the ability's colour behind it, and dust.
 - **Impact,** on each landing:
@@ -348,7 +348,7 @@ How abilities, hits and statuses look: the **punchy** style, chosen on 6 Novembe
   - Numbers pop in, from 1.7 times their size to their size over 4 ticks, then rise and fade as before (Numbers above).
 - **Big moments:** an ability landing on 3 or more units, or with a wind-up of 0.5 s or more.
   - The camera shakes, by up to 0.14, dying away over 0.5 s.
-  - **Hit-stop:** the caster and the units it reached hold their pose for 0.08 s. The clock doesn't stop, so playback keeps the sim's pace and an online fight its timing (`server-spec.md` section 5.3).
+  - **Hit-stop:** the caster and the units it reached hold their clip's pose for 0.08 s, then catch it up over the next 0.08 s at twice its speed, so they are back in step 0.16 s after the hit. Their positions don't hold, nor does anything else. The clock doesn't stop, so playback keeps the sim's pace and an online fight its timing (`server-spec.md` section 5.3).
   - An area of radius 2 or a lob flashes the screen, faintly, in the ability's colour.
 - **Statuses,** while they last, from their `status` events and `combat.state`:
   - **Stun:** gold stars circling the head, with the `stun` clip.
@@ -356,7 +356,7 @@ How abilities, hits and statuses look: the **punchy** style, chosen on 6 Novembe
   - **Slow** and **reduction:** a thin ring under the unit while it lasts, icy blue for a slow and dark red for a reduction.
   - **Shield:** a faceted shell round the unit, popping in when the shield starts and rippling when it absorbs damage, until it expires or is used up.
   - **Untargetable:** the fade, as before.
-- **Deaths:** at the point the unit would start to sink (section 5, Death), it breaks into faceted shards in its livery colour, which fall and fade, instead of sinking.
+- **Deaths:** at the point the unit would start to sink (section 5, Death), it breaks into faceted shards in its livery colour, which fall and fade, instead of sinking. It does under reduced motion too, since it shows the death.
 - **Reduced motion:** no shake, hit-stop, screen flash or squash. Telegraphs, flashes, projectiles, status marks and numbers stay, since they show what happens.
 - **Cost:** effects use meshes and materials made once and reused, and lights already in the scene, so the first of a kind compiles no new shader and a frame allocates nothing.
 
