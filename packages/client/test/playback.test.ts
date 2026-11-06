@@ -136,9 +136,33 @@ describe('what is drawn', () => {
       const from = hexToWorld(dash.from);
       const to = hexToWorld(dash.to);
       expect(p.position(0, 184)).toEqual(from);
-      expect(p.position(0, 210)).toEqual(sets ? to : from);
+      // One that dies on the way stops where it was when it died, a third of the way along.
+      const stopped = sets ? lerpPoint(from, to, 1 / 3) : from;
+      for (const time of [deathTick, 200, 210]) {
+        expect(p.position(0, time).x).toBeCloseTo(stopped.x, 10);
+        expect(p.position(0, time).z).toBeCloseTo(stopped.z, 10);
+      }
       expect(p.history(0).steps.length).toBe(sets ? 1 : 0);
     }
+  });
+
+  it('stops a unit that dies mid-step where it was when it died', () => {
+    // As in the test above, Sam (id 0) starts walking on tick 1; here he dies halfway through the step.
+    const fight = createCombat({ seed: 1, stage: 2, teams: { A: [placed('sam', 3, 0)], B: [placed('gimli', 3, 0)] } });
+    const p = new Playback(withDeath(fight, 0, 8));
+    p.playing = false;
+    const move = p.step().find((e) => e.type === 'move' && e.unit === 0);
+    if (move?.type !== 'move') throw new Error('Sam should move on tick 1.');
+    while (p.combat.tick < 30) p.step();
+    const from = hexToWorld(move.from);
+    const to = hexToWorld(move.to);
+    const share = (8 - move.tick) / (move.arriveTick - move.tick);
+    for (const time of [8, 12, move.arriveTick, 30]) {
+      expect(p.position(0, time).x).toBeCloseTo(lerpPoint(from, to, share).x, 10);
+      expect(p.position(0, time).z).toBeCloseTo(lerpPoint(from, to, share).z, 10);
+    }
+    // Before it died, it walked as usual.
+    expect(p.position(0, 4)).toEqual(lerpPoint(from, to, (4 - move.tick) / (move.arriveTick - move.tick)));
   });
 
   it('flies projectiles from the archer to the target, landing on the hit tick', () => {

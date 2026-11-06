@@ -174,7 +174,9 @@ export class Playback {
 
   /**
    * Where a unit is drawn at display time, part-way through a step or dash. Any time up to the
-   * playback's own works, from the unit's steps so far.
+   * playback's own works, from the unit's steps so far. A unit that dies stays where it was when it
+   * died, part-way through a step or dash too, so it sinks there (docs/viewer-spec.md section 4,
+   * Death).
    */
   position(unit: number, time = this.time): Point {
     return this.positionInto({ x: 0, z: 0 }, unit, time);
@@ -183,6 +185,8 @@ export class Playback {
   /** position(), written into `out`. */
   positionInto<T extends MutablePoint>(out: T, unit: number, time = this.time): T {
     const history = this.histories[unit];
+    const death = history?.death ?? null;
+    if (death !== null && time > death) time = death;
     const steps = history?.steps ?? NOTHING.steps;
     const step = lastStarted(steps, time);
     if (step !== undefined && time < step.endTick) {
@@ -207,7 +211,11 @@ export class Playback {
   lungeInto<T extends MutablePoint>(out: T, unit: number, time = this.time): T {
     out.x = 0;
     out.z = 0;
-    const lunge = lastStarted(this.histories[unit]?.lunges ?? NO_LUNGES, time);
+    const history = this.histories[unit];
+    // A unit that dies mid-lunge stops there, as it does mid-step.
+    const death = history?.death ?? null;
+    if (death !== null && time > death) time = death;
+    const lunge = lastStarted(history?.lunges ?? NO_LUNGES, time);
     if (lunge === undefined) return out;
     const progress = (time - lunge.tick) / EFFECT_TICKS.lunge;
     if (progress < 0 || progress >= 1) return out;
