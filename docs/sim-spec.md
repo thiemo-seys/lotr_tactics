@@ -254,7 +254,7 @@ Each definition holds:
 | Tank | Guardian | 650 | 45 | 0.60 | 1 | 40 | 40 | 30 / 90 |
 | Fighter | Rider, Captain | 600 | 55 | 0.70 | 1 | 30 | 30 | 0 / 60 |
 | Skirmisher | Burglar | 500 | 55 | 0.80 | 1 | 20 | 20 | 0 / 50 |
-| Archer | Archer | 450 | 50 | 0.75 | 4 | 15 | 15 | 0 / 60 |
+| Archer | Archer | 450 | 46 | 0.75 | 4 | 15 | 15 | 0 / 60 |
 | Caster | Sorcerer | 450 | 35 | 0.65 | 4 | 15 | 15 | 20 / 70 |
 
 Every unit also has Ability Power 100, Crit Chance 25%, Crit Damage 140% and Dodge 0%.
@@ -565,7 +565,7 @@ The same numbers as `design.md` section 5, written as selectors and effects. Win
 | **Pippin** | 0.4 s | projectile | `bounce(3, 3)` from target: damage 0.7 D physical each |
 | **Beregond** | 0.4 s | strike | `target`: damage 1.0 D physical; stun 1s |
 | **Háma** | 0.4 s | strike | `self`: shield 0.8 S; +30 Armor for 5s |
-| **Grishnákh** | 0.35 s | strike, dash | `lowestHealthEnemy`: dash next to it; damage 1.2 D physical |
+| **Grishnákh** | 0.35 s | strike, dash | `lowestHealthEnemy`: dash next to it; damage 1.4 D physical |
 | **Sharku** | 0.4 s | strike | `target`: damage 1.0 D physical; slow 30% for 3s |
 | **Gorbag** | 0.4 s | projectile | `target`: damage 0.4 D physical × 3 hits |
 | **Frodo** | 0.4 s | strike | `self`: untargetable 2s; after 2s, `target`: damage 1.3 D physical |
@@ -575,7 +575,7 @@ The same numbers as `design.md` section 5, written as selectors and effects. Win
 | **Balin** | 0.4 s | strike | `self` and `adjacentAllies`: shield 0.6 S each |
 | **Lurtz** | 0.4 s | projectile | `line(edge)` through target: damage 1.0 D physical to each enemy |
 | **Radagast** | 0.5 s | lob | `area(1)` around target: damage 0.8 D magic; slow 25% for 3s |
-| **Ringwraith** | 0.5 s | projectile | `target`: damage 1.0 D magic; stun 1.5s |
+| **Ringwraith** | 0.5 s | projectile | `target`: damage 1.2 D magic; stun 1.5s |
 | **Bilbo** | 0.4 s | strike | `target`: stun 2s; damage 1.0 D physical |
 | **Gollum** | 0.4 s | strike | `target`: damage 0.4 D physical × 3 hits; heal self for 50% of the damage dealt |
 | **Gimli** | 0.4 s | strike | `adjacentEnemies`: damage 0.9 D physical; `self`: shield 0.6 S |

@@ -293,7 +293,7 @@ export const UNITS: Readonly<Record<UnitId, UnitDef>> = {
     cost: 1,
     origin: 'orc',
     classes: ['burglar'],
-    ability: { name: 'Sneak', windupSeconds: 0.35, delivery: 'strike', steps: [step(LOWEST_HEALTH_ENEMY, DASH_ADJACENT, damage(120))] },
+    ability: { name: 'Sneak', windupSeconds: 0.35, delivery: 'strike', steps: [step(LOWEST_HEALTH_ENEMY, DASH_ADJACENT, damage(140))] },
   },
   sharku: {
     id: 'sharku',
@@ -376,7 +376,7 @@ export const UNITS: Readonly<Record<UnitId, UnitDef>> = {
     cost: 2,
     origin: 'nazgul',
     classes: ['burglar'],
-    ability: { name: 'Black Breath', windupSeconds: 0.5, delivery: 'projectile', steps: [step(TARGET, damage(100, 'magic'), stun(1.5))] },
+    ability: { name: 'Black Breath', windupSeconds: 0.5, delivery: 'projectile', steps: [step(TARGET, damage(120, 'magic'), stun(1.5))] },
   },
 
   // 3-cost

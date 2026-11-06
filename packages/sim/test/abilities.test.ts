@@ -451,7 +451,8 @@ describe('abilities', () => {
     ]);
     // The dash event comes right after the cast event.
     expect(c.events[1]!.type).toBe('dash');
-    expect(damages(c)).toEqual([[27, haldir.id, 200]]);
+    // Sneak is 1.4 D (design.md section 5): 280 at cost 1, against Armor 20.
+    expect(damages(c)).toEqual([[27, haldir.id, 233]]);
     expect(c.caster.target).toBe(haldir.id);
   });
 
@@ -548,7 +549,8 @@ describe('abilities', () => {
     // Release 16, and 1 hex of flight: 19. Ready on 16 + 3 = 19.
     const c = castBy([placed('ringwraith', 3, 3)], [placed('gimli', 3, 3)], { until: 19 });
     const gimli = c.at('B', 3, 3);
-    expect(damages(c)).toEqual([[19, gimli.id, 167]]);
+    // Black Breath is 1.2 D magic (design.md section 5): 300 at cost 2, against Magic Resist 50.
+    expect(damages(c)).toEqual([[19, gimli.id, 200]]);
     expect(statuses(c)).toEqual([[19, gimli.id, 'stun', null, null, 64]]);
   });
 

@@ -237,8 +237,8 @@ describe('release and ready', () => {
     const rest = stepTo(fight, 12);
     expect(grishnakh.hex).toEqual(at(3, 6));
     rest.push(...stepTo(fight, 30));
-    // 1.2 D at cost 1 is 240, against Armor 20.
-    expect(abilityHits([...windUp, ...rest], grishnakh)).toEqual([[27, haldir.id, 200]]);
+    // Sneak's 1.4 D (design.md section 5) at cost 1 is 280, against Armor 20.
+    expect(abilityHits([...windUp, ...rest], grishnakh)).toEqual([[27, haldir.id, 233]]);
     expect(actions([...tick1, ...windUp, ...rest], grishnakh)).toEqual([
       [1, 'cast'],
       [30, 'attack'],
@@ -516,7 +516,7 @@ describe('a caster interrupted', () => {
     events.push(...stepTo(fight, 12));
     expect(grishnakh.hex).toEqual(at(3, 6));
     events.push(...stepTo(fight, 35));
-    expect(abilityHits(events, grishnakh)).toEqual([[27, unitOf(fight, 'haldir', 'B').id, 200]]);
+    expect(abilityHits(events, grishnakh)).toEqual([[27, unitOf(fight, 'haldir', 'B').id, 233]]);
     expect(actions(events, grishnakh)).toEqual([
       [1, 'cast'],
       [35, 'attack'],

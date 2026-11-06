@@ -104,7 +104,7 @@ A unit tag for Treebeard, Sauron and the big PvE enemies (Cave Troll, Watcher in
 | Pippin | Hobbit | Archer | **Stone toss:** a stone that bounces between 3 enemies up to 3 hexes apart, 0.7 D each |
 | Beregond | Gondor | Guardian | **Shield bash:** damages the target for 1.0 D and stuns it for 1s |
 | Háma | Rohan | Guardian | **Doorward:** gains +30 Armor for 5s and a 0.8 S shield |
-| Grishnákh | Orc | Burglar | **Sneak:** dashes to the lowest-health enemy and stabs it for 1.2 D |
+| Grishnákh | Orc | Burglar | **Sneak:** dashes to the lowest-health enemy and stabs it for 1.4 D |
 | Sharku | Orc | Rider | **Warg bite:** damages the target for 1.0 D; it attacks 30% slower for 3s |
 | Gorbag | Orc | Archer | **Volley:** 3 quick arrows at the target, 0.4 D each |
 
@@ -119,7 +119,7 @@ A unit tag for Treebeard, Sauron and the big PvE enemies (Cave Troll, Watcher in
 | Balin | Dwarf | Captain | **Lord of Moria:** shields himself and adjacent allies for 0.6 S each |
 | Lurtz | Orc | Archer | **Piercing arrow:** 1.0 D to every enemy in a line through the target, up to the board edge |
 | Radagast | Istari | Sorcerer | **Flock:** 0.8 D magic damage to the target and enemies next to it; enemies hit attack 25% slower for 3s |
-| Ringwraith | Nazgûl | Burglar | **Black Breath:** 1.0 D magic damage to the target and a 1.5s stun |
+| Ringwraith | Nazgûl | Burglar | **Black Breath:** 1.2 D magic damage to the target and a 1.5s stun |
 
 ### 3-cost
 
@@ -205,7 +205,7 @@ Each unit uses the template of its first class. Values are for a 1★, 1-cost un
 | Tank | Guardian | 650 | 45 | 0.60 | 1 | 40 | 30/90 |
 | Fighter | Rider, Captain | 600 | 55 | 0.70 | 1 | 30 | 0/60 |
 | Skirmisher | Burglar | 500 | 55 | 0.80 | 1 | 20 | 0/50 |
-| Archer | Archer | 450 | 50 | 0.75 | 4 | 15 | 0/60 |
+| Archer | Archer | 450 | 46 | 0.75 | 4 | 15 | 0/60 |
 | Caster | Sorcerer | 450 | 35 | 0.65 | 4 | 15 | 20/70 |
 
 - Each cost step above 1 adds +15% Health and Attack Damage and +5 Armor and Magic Resist.
@@ -644,7 +644,7 @@ Built from day one to:
    - *leaps at 12 hexes a second*, the projectile speed, and charges at 6: leaps stay quick, for one more number;
    - *a fixed leap time*, such as 0.5 s whatever the distance, like a lob: every leap reads the same, but a short hop is as slow as a long one.
 
-   If long leaps feel sluggish, the fixed leap time is the one to try next.
+   If long leaps feel sluggish, the fixed leap time is the one to try next. For balance it matters little: in 1,200 bot games, leaps and charges at 8 hexes a second moved Burglars' and Riders' top-4 rates by about a point, within noise.
 
 All numbers marked *(placeholder)* will be tuned during balancing.
 
