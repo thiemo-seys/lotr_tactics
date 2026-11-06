@@ -19,6 +19,7 @@ import {
   type MissileState,
   type StunState,
 } from './effects.js';
+import { BOARD_EXTENT } from './layout.js';
 import { EFFECTS } from './look.js';
 import type { MutablePoint, Playback } from './playback.js';
 
@@ -132,6 +133,31 @@ function withInstanceAlpha(material: THREE.Material): void {
       .replace('#include <opaque_fragment>', 'diffuseColor.a *= vInstanceAlpha;\n#include <opaque_fragment>');
   };
   material.customProgramCacheKey = () => 'instance-alpha';
+}
+
+/**
+ * Fades a material out across the board's edge, over EFFECTS.shockwave.edgeFade, so a ring round an
+ * area near a corner stops at the board rather than running over the arena. Its instances are placed
+ * in the board's own frame (the group's), which is what the fade reads.
+ */
+function withBoardFade(material: THREE.Material): void {
+  const f = (n: number): string => n.toFixed(4);
+  const fade = EFFECTS.shockwave.edgeFade / 2;
+  material.onBeforeCompile = (shader) => {
+    shader.vertexShader = shader.vertexShader
+      .replace('#include <common>', '#include <common>\nvarying vec2 vBoard;')
+      .replace(
+        '#include <begin_vertex>',
+        '#include <begin_vertex>\nvec4 boardPosition = vec4(transformed, 1.0);\n#ifdef USE_INSTANCING\nboardPosition = instanceMatrix * boardPosition;\n#endif\nvBoard = boardPosition.xz;',
+      );
+    shader.fragmentShader = shader.fragmentShader
+      .replace('#include <common>', '#include <common>\nvarying vec2 vBoard;')
+      .replace(
+        '#include <opaque_fragment>',
+        `vec2 pastBoard = abs(vBoard) - vec2(${f(BOARD_EXTENT.x)}, ${f(BOARD_EXTENT.z)});\ndiffuseColor.a *= 1.0 - smoothstep(${f(-fade)}, ${f(fade)}, max(pastBoard.x, pastBoard.y));\n#include <opaque_fragment>`,
+      );
+  };
+  material.customProgramCacheKey = () => 'board-fade';
 }
 
 /** Painted over what is behind, faded by instance: unlit, not writing depth. */
@@ -293,6 +319,7 @@ export class FxView {
   private readonly scorches: Layer;
   private readonly lines: Layer;
   private readonly sideLines: Layer;
+  private readonly streakEdges: Layer;
   private readonly streaks: Layer;
   private readonly arrows: Layer;
   private readonly orbs: Layer;
@@ -320,6 +347,7 @@ export class FxView {
   private readonly mid = new THREE.Vector3();
   private readonly colour = new THREE.Color();
   private readonly tint = new THREE.Color();
+  private readonly hsl = { h: 0, s: 0, l: 0 };
   private readonly at: MutablePoint = { x: 0, z: 0 };
   private readonly mark: MarkState = { fill: 0, edge: 0 };
   private readonly flight: MissileState = { fromX: 0, fromZ: 0, toX: 0, toZ: 0, share: 0 };
@@ -336,11 +364,15 @@ export class FxView {
     this.marks = new Layer(flatOn(new THREE.CircleGeometry(0.84, 6, Math.PI / 2)), light(), CAPACITY.marks, 1);
     // Edges in the sides' colours and rings under units are painted, so they read on pale stone.
     this.edges = new Layer(flatOn(new THREE.RingGeometry(0.76, 0.88, 6, 1, Math.PI / 2)), paint(), CAPACITY.edges, 1, true);
-    this.rings = new Layer(flatOn(new THREE.RingGeometry(1 - EFFECTS.shockwave.width, 1, 48)), light({ side: THREE.DoubleSide }), CAPACITY.rings, 2);
+    const ringMaterial = light({ side: THREE.DoubleSide });
+    withBoardFade(ringMaterial);
+    this.rings = new Layer(flatOn(new THREE.RingGeometry(1 - EFFECTS.shockwave.width, 1, 64)), ringMaterial, CAPACITY.rings, 2);
     this.scorches = new Layer(flatOn(new THREE.CircleGeometry(1, 9)), shade(), CAPACITY.scorches, 1);
     this.lines = new Layer(new THREE.CylinderGeometry(1, 1, 1, 5, 1, true), light(), CAPACITY.lines, 3);
     this.sideLines = new Layer(new THREE.CylinderGeometry(1, 1, 1, 5, 1, true), paint(), CAPACITY.lines, 3, true);
-    this.streaks = new Layer(new THREE.CylinderGeometry(1, 0.15, 1, 6, 1, true), light(), CAPACITY.streaks, 3);
+    // A streak's painted edge, then its bright core over it.
+    this.streakEdges = new Layer(new THREE.CylinderGeometry(1, 0.15, 1, 6, 1, true), paint(), CAPACITY.streaks, 3, true);
+    this.streaks = new Layer(new THREE.CylinderGeometry(1, 0.15, 1, 6, 1, true), light(), CAPACITY.streaks, 4);
     this.arrows = new Layer(arrowGeometry(), faceted({ vertexColors: true, emissive: 0x3a2400 }), CAPACITY.arrows);
     this.orbs = new Layer(new THREE.IcosahedronGeometry(1, 0), new THREE.MeshBasicMaterial(), CAPACITY.orbs);
     this.stones = new Layer(new THREE.DodecahedronGeometry(1, 0), faceted(), CAPACITY.stones);
@@ -360,6 +392,7 @@ export class FxView {
       this.scorches,
       this.lines,
       this.sideLines,
+      this.streakEdges,
       this.streaks,
       this.arrows,
       this.orbs,
@@ -471,29 +504,35 @@ export class FxView {
       const toY = m.to !== null ? units.chest(m.to) : m.lob ? 0.25 : fromY;
       const arc = m.lob ? EFFECTS.lob.arc : 0;
       const span = Math.max(1e-6, m.end - m.start);
+      const { arrow, streak, stone } = EFFECTS;
       this.along(this.p, f, fromY, toY, arc, f.share);
+      const length = Math.hypot(f.toX - f.fromX, f.toZ - f.fromZ, toY - fromY) || 1;
       switch (m.kind) {
         case 'arrow': {
           this.along(this.p2, f, fromY, toY, arc, Math.min(1, f.share + 0.01));
           this.look.lookAt(this.p2, this.p, UP);
           this.q.setFromRotationMatrix(this.look);
-          this.matrix.compose(this.p, this.q, this.s.setScalar(1.15));
+          this.matrix.compose(this.p, this.q, this.s.set(arrow.across, arrow.across, arrow.along));
           this.colour.setHex(0xffffff);
           this.arrows.put(this.matrix, this.colour);
-          const length = Math.hypot(f.toX - f.fromX, f.toZ - f.fromZ, toY - fromY) || 1;
-          this.along(this.p3, f, fromY, toY, arc, Math.max(0, f.share - EFFECTS.streak.length / length));
-          this.segment(this.streaks, this.p3, this.p, EFFECTS.streak.width, m.colour, 0.85);
+          this.along(this.p3, f, fromY, toY, arc, Math.max(0, f.share - streak.length / length));
+          this.streak(this.p3, this.p, m.colour);
           this.glow(this.p, 0.8, m.colour, 1);
           break;
         }
         case 'stone': {
           this.e.set(time * 0.3, time * 0.23, 0);
           this.q.setFromEuler(this.e);
-          this.matrix.compose(this.p, this.q, this.s.setScalar(m.lob ? 0.3 : 0.19));
-          this.colour.setHex(m.lob ? 0x8a8070 : 0xa49a88);
+          this.matrix.compose(this.p, this.q, this.s.setScalar(m.lob ? stone.lobSize : stone.size));
+          this.colour.setHex(stone.colour);
           this.stones.put(this.matrix, this.colour);
-          this.glow(this.p, m.lob ? 1.1 : 0.8, m.colour, 0.8);
-          this.trail(f, fromY, toY, arc, span, time, m, TRAIL.stone, m.lob ? 0.9 : 0.7, 0.7);
+          if (!m.lob) {
+            // A thrown stone streaks like an arrow, shorter, so a small one reads on pale stone.
+            this.along(this.p3, f, fromY, toY, arc, Math.max(0, f.share - streak.stoneLength / length));
+            this.streak(this.p3, this.p, m.colour);
+          }
+          this.glow(this.p, m.lob ? 1.1 : 0.9, m.colour, 0.9);
+          this.trail(f, fromY, toY, arc, span, time, m, TRAIL.stone, m.lob ? 0.9 : 0.7, 0.8);
           break;
         }
         default: {
@@ -509,6 +548,18 @@ export class FxView {
         }
       }
     }
+  }
+
+  /**
+   * A streak from `tail` to `head`: a wide edge painted in a deep, saturated cut of `colour`, which
+   * reads on pale stone and shells, and a bright core of light in `colour` down its middle.
+   */
+  private streak(tail: THREE.Vector3, head: THREE.Vector3, colour: number): void {
+    const { streak } = EFFECTS;
+    this.tint.setHex(colour).getHSL(this.hsl);
+    this.tint.setHSL(this.hsl.h, Math.max(this.hsl.s, 0.75), streak.edgeLightness);
+    this.segment(this.streakEdges, tail, head, streak.edge, this.tint.getHex(), streak.edgeOpacity, true);
+    this.segment(this.streaks, tail, head, streak.width, colour, 1);
   }
 
   /** Glowing copies behind a missile, each further back in time, smaller and fainter. */
@@ -695,7 +746,7 @@ export class FxView {
       const pop = fx.shellPop(s, time);
       const ripple = units.ripple(s.unit);
       const { x, z } = playback.positionInto(this.at, s.unit, time);
-      const radius = Math.min(0.95, units.chest(s.unit) * 0.95 + 0.05);
+      const radius = Math.min(shield.maxRadius, units.chest(s.unit) * shield.size + shield.pad);
       const scale = radius * (0.6 + 0.4 * g) * (1 + shield.pop * pop) * (1 + 0.06 * ripple);
       this.p.set(x, radius * 0.8, z);
       this.e.set(0, (time / T) * 0.6, 0);
