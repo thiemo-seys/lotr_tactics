@@ -173,6 +173,28 @@ Ability numbers are multiples of three base values *(placeholder)*:
 - Durations, stun lengths and buff sizes don't scale with star level.
 - Ability shields last 4 seconds unless stated otherwise.
 
+### Ability timing
+
+Every ability winds up before it goes off, and some then travel (section 7, Mana and abilities). The wind-up follows what the unit does: 0.35 s for a dash or charge, 0.4 s for a blow, a shot, a throw or a horn, 0.5 s for a spell or a Large unit's heavy blow or throw, and 0.6 s for the two greatest spells. All times are *(placeholder)*.
+
+| Wind-up | Delivery | Abilities |
+|---|---|---|
+| 0.35 s | dash | Sneak (Grishnákh), Morgul mace (Witch-king) |
+| 0.35 s | charge | Shadow ride (Khamûl), Forth Eorlingas! (Théoden) |
+| 0.4 s | strike | Loyal (Sam), Barrow-blade (Merry), Shield bash (Beregond), Doorward (Háma), Warg bite (Sharku), Slip away (Frodo), Horn of the Hornburg (Gamling), Lord of Moria (Balin), Riddles in the Dark (Bilbo), My precious (Gollum), And my axe! (Gimli), Horn of Gondor (Boromir), Spear thrust (Éomer), Shieldmaiden (Éowyn), Bred for war (Uglúk), Andúril (Aragorn), Iron Hills (Dáin), Unleash the Orcs (Gothmog) |
+| 0.4 s | projectile | Stone toss (Pippin), Volley (Gorbag), Lórien volley (Haldir), Ranger's shot (Faramir), Piercing arrow (Lurtz), Flurry (Legolas) |
+| 0.5 s | projectile | Black Breath (Ringwraith) |
+| 0.5 s | lob | Flock (Radagast), Fire of Orthanc (Saruman), Boulder (Treebeard) |
+| 0.5 s | strike | Healer of Rivendell (Elrond), Sweep (Sauron) |
+| 0.6 s | strike | You shall not pass (Gandalf), Light of the Eldar (Galadriel) |
+
+- **Strike:** the effects land as the wind-up ends.
+- **Projectile:** an arrow, stone or shadow that flies at 12 hexes a second, the speed of ranged attacks, and follows its target. A volley sends one at each enemy it picked, a bounce hops from one to the next, and a piercing arrow strikes each enemy on its line as it reaches it.
+- **Lob:** a fireball, boulder or swooping flock that lands on the hexes it was aimed at 0.75 s after it leaves, however far it goes.
+- **Dash:** the unit moves at 6 hexes a second, and the rest of the ability lands when it arrives.
+- **Charge:** the unit rides its line at 6 hexes a second, striking each enemy on it as it reaches it.
+- Shields, heals and buffs on the caster and its allies always land as the wind-up ends.
+
 ### Stat templates
 
 Each unit uses the template of its first class. Values are for a 1★, 1-cost unit *(placeholder)*.
@@ -302,6 +324,9 @@ All numbers are *(placeholder)*.
 - When hit, a unit gains mana equal to a share of the damage taken, rounded down and capped per hit.
 - Mana is always a whole number.
 - At full mana, the unit casts its ability instead of its next basic attack, even if its target is out of range, then mana resets to 0. No mana is gained while casting.
+- **Wind-up:** a cast starts a wind-up of 0.35 to 0.6 seconds, by ability (section 5, Ability timing). The ability goes off as it ends: effects at the strike land, and projectiles, lobs, dashes and charges set off. The caster does nothing else until its part is done (the wind-up, and any dash or charge), and for 0.1 s after *(placeholders)*.
+- **Interruptions:** a stun doesn't stop a wind-up, dash or charge under way. If the caster dies during its wind-up, the ability doesn't happen, and the mana is spent. A projectile or lob already in the air still lands; a dash or charge cut short by the caster's death strikes no more.
+- **Aim:** targets and areas are chosen at the cast, so players can see where an ability will land. A target that has died or become untargetable by the time the ability reaches it is missed. An area, line or cone stays where it was aimed and hits the enemies standing in it when the ability lands there, so a unit can step out of it, or into it. Effects that come later, such as Frodo's strike after Slip away, are timed from the end of the wind-up and pick their target when they happen.
 - Untargetable units can't be hit by enemy abilities either.
 - Abilities are built from shared building blocks. Most abilities are data combining these; the few that don't fit get custom code.
   - **Shapes:** single target, area, line, cone, bounce
@@ -317,14 +342,15 @@ All numbers are *(placeholder)*.
 ### Movement
 
 - If its target is out of range, a unit moves one hex at a time along the shortest free path to the nearest hex within range.
-- Only one unit can stand on a hex. A unit claims the next hex when it starts moving into it.
-- All units move at one hex per 0.5 seconds. The Rider charge is the exception.
+- Only one unit can stand on a hex. A unit claims the next hex when it starts moving into it, and a dash or charge claims where it will end as soon as that is chosen, at the cast.
+- All units move at one hex per 0.5 seconds. Dashes, leaps and charges, from abilities and from the Rider and Burglar traits at combat start, move at 6 hexes a second *(placeholder)*. The traits' charges and leaps set off at once, with no wind-up.
 - Units act one at a time each tick, in an order set by their starting position and the fight's seeded random generator. This keeps the simulation deterministic, and fair to both sides when their units act on the same tick.
 
 ### Attacks
 
 - Attacks fire on a timer set by Attack Speed.
-- Melee hits land instantly. Ranged attacks fire a projectile and the damage lands when it arrives; a projectile whose target has died is wasted. A projectile still lands if its attacker has died.
+- A melee blow lands 0.22 seconds *(placeholder)* after the attack starts, as the swing connects. It misses if by then the attacker has died, or the target has died, become untargetable or moved out of reach. Ranged attacks fire a projectile and the damage lands when it arrives; a projectile whose target has died is wasted. A projectile still lands if its attacker has died.
+- The attacker gains its mana as the attack starts, even if the blow or projectile then misses. Dodge and crit are rolled when it lands.
 - Resolution order for a basic attack: dodge roll → crit roll → resist reduction → damage → mana gain.
 
 ---
@@ -611,6 +637,12 @@ Built from day one to:
 
 1. **PvE enemies:** stats and loot tables (placeholders in [`game-spec.md`](game-spec.md) section 9)
 2. **Unit models:** whether Riders stay mounted, as their models are, at a larger triangle budget ([`viewer-spec.md`](viewer-spec.md) section 4)
+3. **Leap speed:** leaps move at the charge speed of 6 hexes a second (section 7, Movement), so a Burglar leaping to the far back row at combat start, or Grishnákh or the Witch-king leaping across the board, is in the air for up to about 1.2 s and can't act until it lands. The options:
+   - *one speed for all* (as now): simplest, and a leap is easy to follow, but Burglars and long leaps start their work later than before;
+   - *leaps at 12 hexes a second*, the projectile speed, and charges at 6: leaps stay quick, for one more number;
+   - *a fixed leap time*, such as 0.5 s whatever the distance, like a lob: every leap reads the same, but a short hop is as slow as a long one.
+
+   Recommendation: keep one speed until the balance runs and the viewer show whether long leaps feel sluggish, and then take the fixed leap time.
 
 All numbers marked *(placeholder)* will be tuned during balancing.
 

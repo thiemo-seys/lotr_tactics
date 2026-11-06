@@ -39,10 +39,12 @@ These are not in `design.md` yet. They were chosen to remove ambiguity and can b
 | Hex layout | Odd-r offset grid, 7 columns × 8 rows |
 | Action order | Units act one at a time in slot order; each tick, the seeded generator picks which team goes first within each slot |
 | Movement | 15 ticks per hex; position updates at the start of the step |
-| Projectiles | Ranged attacks only; 12 hexes per second |
+| Projectiles | Ranged attacks and projectile abilities; 12 hexes per second, following their target |
+| Melee blows | Land 7 ticks (0.22 s) after the attack fires, if the attacker is alive and the target still targetable and in range |
 | Mana from damage taken | 6% of post-reduction damage taken, rounded down, max 15 per hit |
-| Cast time | 15 ticks; ability effects apply at the start of the cast |
-| Dashes and leaps | Instant in the sim (the renderer animates them); unit is busy for 9 ticks after |
+| Casting | Targets and areas are locked at the cast; effects land after the ability's wind-up (0.35–0.6 s), or later if they travel (section 10.6); the caster is busy until its part is done, plus 3 ticks (0.1 s) of recovery |
+| Lobs | Lobbed abilities land 23 ticks (0.75 s) after they leave, whatever the distance |
+| Dashes, leaps and charges | 6 hexes per second (5 ticks per hex); the destination is claimed when it is chosen, and the unit's position becomes it when it sets off; busy until it arrives plus 3 ticks (0.1 s) |
 | Overtime | +10% damage per full second of overtime |
 | Attack Speed limits | Minimum 0.2, maximum 5.0 |
 | Dodge limit | Maximum 60% |
@@ -188,8 +190,8 @@ Tick 0 only sets up the fight; units start acting at tick 1.
 3. **Guardian:** shields.
 4. **Gifts, items and the Ring at combat start**, unit by unit in slot order, team A's first: the team's Light of Valinor shield, then the unit's Star of Elendil and Nenya shields, King's Banner buffs and Miruvor stun immunity, in the order it holds them, then the Ring's invisibility on its bearer (sections 12.4 to 12.7).
 5. **Orc:** spawn grunts, team A's first. Then **the Eye's Nazgûl**, if the other team bears the Ring (section 12.6).
-6. **Burglar:** leaps, in action order.
-7. **Rider:** charges, in action order.
+6. **Burglar:** leaps, in action order. Each sets off at once and lands later (section 12.3).
+7. **Rider:** charges, in action order. Each sets off at once, and its bonus damage lands when it arrives (section 12.3).
 8. **Elven Rope:** stuns, in action order.
 9. **Horn of Helm Hammerhand:** stuns every enemy, team A's Horn first (section 12.5).
 10. **Nazgûl, the Phial of Galadriel and Narya:** set the slow and the Magic Resist reduction on enemies in reach, and Narya's Attack Speed on allies in reach (sections 12.3, 12.4 and 12.7).
@@ -210,9 +212,9 @@ Tick 0 takes one number from the generator to pick the first team for the leaps,
 First, pick the team that goes first this tick (section 6.3). Then:
 
 1. **Expire** statuses and shields whose `expiresTick` is the current tick, then update the Nazgûl slow, the Phial of Galadriel reduction and Narya's Attack Speed from the units' current hexes (sections 12.3, 12.4 and 12.7).
-2. **Resolve the queue:** projectiles and delayed effects due this tick, ordered by due tick, then by creation order.
+2. **Resolve the queue:** everything due this tick, ordered by due tick, then by creation order: melee blows and projectiles (section 9), abilities' landings, dashes setting off and arriving, charges reaching each hex, Athelas and delayed steps (section 10.6), and Rider charge damage (section 12.3).
 3. **Every second**, on ticks 30, 60, 90, …: Istari mana, Ent, Elven Cloak and Hands of the King healing, Dragon-helm damage, and Nenya and Vilya when theirs are due (sections 12.3 to 12.5 and 12.7).
-4. **Act:** each living unit in action order. A unit that is stunned or busy (moving, casting, recovering from a dash) does nothing. Otherwise:
+4. **Act:** each living unit in action order. A unit that is stunned or busy (moving, winding up or recovering from a cast, dashing or recovering from a dash) does nothing. Otherwise:
    1. If mana ≥ max mana: cast its ability (section 10).
    2. Else make sure it has a target (section 8).
    3. If the target is in range: basic attack when its cooldown is ready (section 9).
@@ -297,6 +299,14 @@ PvE monsters (`data/monsters.ts`, from `game-spec.md` section 9.8) can be placed
 - A monster can grow by a percent of Health and Attack Damage for each stage after a given one (the Balrog).
 - Some are Large, so Dwarves deal bonus damage to them.
 - They count as survivors for player damage, as 1★ units.
+- Their abilities (`game-spec.md` section 9.8) have a wind-up and delivery like units' (section 10.6), in `data/monsters.ts`:
+
+  | Monster | Ability | Wind-up | Delivery |
+  |---|---|---|---|
+  | Cave Troll | Smash | 0.5 s | strike |
+  | Watcher in the Water | Tentacles | 0.5 s | strike |
+  | Mûmak | Trample | 0.35 s | strike, charge |
+  | The Balrog | Whip of flame | 0.5 s | strike |
 
 ---
 
@@ -321,7 +331,7 @@ If a unit can't find a path to any hex within range of its target, it switches t
 
 ### Abilities
 
-Abilities that dash to a specific enemy (Grishnákh, the Witch-king) make that enemy the caster's new target.
+Abilities that dash to a specific enemy (Grishnákh, the Witch-king) make that enemy the caster's new target, at the cast.
 
 ---
 
@@ -333,14 +343,19 @@ Abilities that dash to a specific enemy (Grishnákh, the Witch-king) make that e
   - After each attack, the next one is ready at `now + 30 / AttackSpeed` ticks.
   - Keep this as a fraction and compare with `≥`.
 - **When an attack fires:**
-  - The attacker gains 10 mana, plus 5 for each Palantír it holds.
+  - The attacker gains 10 mana, plus 5 for each Palantír it holds, even if the attack is later wasted.
   - Archers gain a stack (section 12), and so does a Grond holder (section 12.4). The cooldown after that attack already counts them.
   - A holder of the Bow of the Galadhrim fires extra attacks at other enemies (section 12.4).
-- **Melee (Range 1):** resolves immediately.
+  - Nothing else happens yet: dodge, crit, damage and on-hit effects wait for the hit (below).
+- **Melee (Range 1):** a blow, which lands at `hitTick = now + Math.round(0.22 × 30)` = `now + 7` (`ATTACKS.meleeHitSeconds`), as the swing connects.
+  - It lands only if, at that tick, the attacker is alive, the target is alive and targetable, and the target is within the attacker's Range of its hex (hexes as claimed, section 11). Otherwise it is wasted and emits nothing.
+  - "Targetable" is from the attacker's side: an ally the One Ring's bearer attacks in Betrayal is always targetable to it, and the Eye's Nazgûl's blows at the bearer land through its invisibility (section 12.6).
+  - The swing doesn't hold the attacker: it isn't busy, and may cast or move before the blow lands, as a ranged attacker may after it shoots.
 - **Ranged (Range ≥ 2):**
   - Fires a projectile that resolves at `now + ceil(distance × 30 / 12)`.
   - If the target is dead or untargetable on arrival, the projectile is wasted.
   - If the attacker has died, the projectile still lands, using the attacker's stats as they were when it died.
+- A blow or projectile resolves through the queue (section 6.4, step 2), and the hit is worked out then, with the attacker's stats at that tick.
 
 ### Resolving a hit
 
@@ -378,7 +393,7 @@ final      = Math.round(reduced × (1 − target's damage reductions)), at least
 - **Shields** absorb `final` first, earliest-expiring shield first, then the oldest. The rest comes off Health.
 - **Defender mana gain:**
   - `Math.floor(final × 6 / 100)`, where `final` is absorbed plus health damage, capped at 15 per hit.
-  - Nobody gains mana from any source while casting.
+  - Nobody gains mana from any source while casting: from the cast tick until the caster is ready again (section 10.6).
 - **Death:** at Health ≤ 0 the unit dies immediately.
   - Its hex is freed.
   - Emit `death` and run on-death hooks: Rohan, then Andúril for the source (section 12.4).
@@ -401,12 +416,12 @@ final      = Math.round(reduced × (1 − target's damage reductions)), at least
 - Mana is always a whole number: start and max values, +10 per attack, damage mana rounded down (section 9.1) and Istari mana in whole amounts (section 12.3).
 - Mana is capped at max mana; anything beyond is lost.
 - **When mana ≥ max:** at its action step, a unit that isn't stunned or busy casts, even if its target is out of range.
-  - Mana resets to 0 and a `cast` event is emitted.
-  - The ability's effects resolve immediately, then Athelas heals (section 12.4).
-  - The unit is then busy for 15 ticks, and gains no mana until they are over: a unit casting on tick `t` gains none on ticks `t` to `t + 14`.
+  - Mana resets to 0, the ability's targets and areas are chosen and locked, and a `cast` event is emitted.
+  - The effects land after the ability's wind-up, or later if they travel, through the queue. Athelas heals as the wind-up ends (section 10.6).
+  - The unit is busy until its part of the cast is done plus a short recovery, and gains no mana from the cast tick until then (section 10.6).
   - The attack cooldown is unchanged.
 - **Missing target:** if the ability uses the current target and the unit has none, it first picks one (section 8). If no enemy can be targeted, those steps select nothing; the cast still happens and the mana is spent.
-- **Delayed steps** go into the queue (section 6.4), for example Frodo's strike. They don't run if the caster has died by then.
+- **Delayed steps** go into the queue (section 6.4), for example Frodo's strike, timed from the end of the wind-up. They don't run if the caster has died by then (section 10.6).
 
 ### 10.2 Ability values
 
@@ -424,11 +439,11 @@ From `design.md` section 5. Each ability number in the table in section 10.5 is 
 - Ability Power is applied here only; the damage pipeline (section 9.1) does not apply it again.
 - Durations, stun lengths and buff sizes do **not** scale with star level.
 - Ability damage can't crit unless the ability says so, or the caster holds Sting (section 12.4).
-- Ability shields last 4 seconds unless stated otherwise.
+- Ability shields last 4 seconds unless stated otherwise, from when they land.
 
 ### 10.3 Building blocks
 
-Model abilities as data: a list of steps, each with a **selector** (who or where) and **effects** (what happens). Only use custom code for something that genuinely doesn't fit.
+Model abilities as data: a list of steps, each with a **selector** (who or where) and **effects** (what happens), plus the ability's **wind-up** (`windupSeconds`) and **delivery** (`delivery`: `strike`, `projectile` or `lob`), whose timing is in section 10.6. Only use custom code for something that genuinely doesn't fit.
 
 **Selectors**
 
@@ -453,6 +468,9 @@ Model abilities as data: a list of steps, each with a **selector** (who or where
 
 How selectors pick:
 
+- **Unit and hex selectors.** Selectors pick at the cast, and lock what they pick until the step lands (section 10.6):
+  - **unit selectors** lock units: `self`, `target`, `farthestEnemy`, `lowestHealthEnemy`, `highestHealthEnemy`, `nearestEnemies`, `nearestAlly`, `lowestHealthPctAllies`, `allAllies` and `bounce` (the whole chain);
+  - **hex selectors** lock the hexes on the board that they cover, and reach the units standing on them when the step lands: `area`, `line`, `cone`, `enemiesWithin`, `adjacentEnemies`, `alliesWithin` and `adjacentAllies`.
 - Enemy selectors only consider targetable enemies, so untargetable units are never hit by enemy abilities. The Hobbit rule and Burglar targeting (section 8) only apply when a unit chooses its target, so they affect `target` but no other selector.
 - **Ties:**
   - `farthestEnemy`, `nearestEnemies` and `nearestAlly`: the section 5 tie-break in the caster's perspective.
@@ -463,7 +481,7 @@ How selectors pick:
 
 **Effects**
 
-A step applies each effect in turn to every selected unit before the next effect, skipping units that have died.
+A step applies each effect in turn to every selected unit before the next effect, skipping units that have died. With timing (section 10.6), "every selected unit" is every unit the step reaches on the tick it lands; a step that reaches units on several ticks, such as a bounce, a piercing arrow or a charge, applies its effects in turn on each of those ticks.
 
 - `damage(mult, type, hits = 1, canCrit = false)`: each hit runs the damage pipeline (section 9.1) and emits its own `damage` event, and with `canCrit` rolls its own crit. A crit against a Mithril Shirt holder deals normal damage. The hits stop if the target dies.
 - `stun(s)`
@@ -474,12 +492,12 @@ A step applies each effect in turn to every selected unit before the next effect
 - `reduce(stats, pct, s)`: lowers Armor and/or Magic Resist
 - `untargetable(s)`
 - `stunImmune(s)`
-- `dashAdjacentTo(unit)`
-- `dashThroughLine`: with a `line(n)` selector, after the step's other effects (section 10.4)
+- `dashAdjacentTo(unit)`: the step's later effects, and the ability's later steps, land when the dash arrives (sections 10.4 and 10.6)
+- `dashThroughLine`: with a `line(n)` selector; the step's other effects land on each enemy as the charge reaches its hex (sections 10.4 and 10.6)
 - `summon(unitId, count)`: placed like Orc trait grunts (section 12.3), each on a free hex next to the caster on its own half, otherwise the nearest free hex on its own half. A summon with no free hex on its own half doesn't appear.
   - Neighbours are tried in the caster's perspective direction order. The fallback takes the free hex nearest the caster, then the section 5 tie-break.
   - A summon takes the team's next slot and the next id (section 6.3), and acts from the next tick.
-- `delay(s, steps)`: a step of its own that runs `steps` after `s` seconds, through the queue
+- `delay(s, steps)`: a step of its own that runs `steps` `s` seconds after the end of the wind-up, through the queue (section 10.6)
 
 **Passives:** always-on rules attached to the unit (the Witch-king).
 
@@ -515,61 +533,130 @@ All of these are computed in the caster's perspective (section 5).
 - The highest score wins. Ties go to the hex closest to the caster's target, then the section 5 tie-break.
 
 **dashAdjacentTo(unit)**
-- Move instantly to the free hex next to that unit that is closest to the caster.
-- If none is free, move to the nearest free hex to that unit.
-- If nothing is free, stay.
+- The destination is the free hex next to that unit that is closest to the caster.
+- If none is free, it is the nearest free hex to that unit.
+- If nothing is free, the caster stays.
 - Ties go to the hex closer to the caster, then the section 5 tie-break. The caster's own hex counts as free, so a caster already next to the unit stays.
 
-**Dashes** emit `dash` and leave the unit busy for 9 ticks, or until its cast ends if that is later. A unit that stays put emits nothing.
+**Dashes** (abilities' dashes and charges, and the Burglar leaps and Rider charges at tick 0, section 12.3):
+- The destination is chosen and **claimed** at once: from then on it isn't free to any other unit, for moving, dashing or summoning. A dash from an ability is chosen at the cast and sets off at the end of the wind-up; the caster stays on its own hex until then (section 10.6).
+- When the dash sets off, the unit's hex becomes the destination and its old hex is freed, as when a step starts (section 11).
+- It arrives `ceil(distance × 30 / 6)` ticks later: 5 ticks per hex, at `MOVEMENT.dashHexesPerSecond` (6).
+- A stun doesn't stop a dash under way, nor what lands when it arrives.
+- `dash` is emitted when the destination is claimed. A unit that stays put emits nothing.
 
 **dashThroughLine(n)**
-- Hit every enemy on the first `n` line hexes.
-- Then move to the farthest free hex among them, or stay if none is free.
+- The destination is the farthest free hex among the first `n` line hexes, or the caster's own hex if none is free.
+- The charge strikes every enemy on those `n` hexes as it reaches each one, including any beyond the destination (section 10.6).
 
-**Free hex:** on the board, with no living unit on it and not claimed by a moving unit.
+**Free hex:** on the board, with no living unit on it and not claimed by a moving or dashing unit, nor by a dash still winding up.
 
 ### 10.5 Ability parameters
 
-The same numbers as `design.md` section 5, written as selectors and effects.
+The same numbers as `design.md` section 5, written as selectors and effects. Wind-up and delivery are timed in section 10.6; "dash" and "charge" mark a `strike` timed by its `dashAdjacentTo` or `dashThroughLine`.
 
-| Unit | Steps |
+| Unit | Wind-up | Delivery | Steps |
+|---|---|---|---|
+| **Sam** | 0.4 s | strike | `self` and `nearestAlly`: shield 0.6 S |
+| **Merry** | 0.4 s | strike | `target`: damage 1.0 D physical; reduce Armor and Magic Resist by 30% for 4s |
+| **Pippin** | 0.4 s | projectile | `bounce(3, 3)` from target: damage 0.7 D physical each |
+| **Beregond** | 0.4 s | strike | `target`: damage 1.0 D physical; stun 1s |
+| **Háma** | 0.4 s | strike | `self`: shield 0.8 S; +30 Armor for 5s |
+| **Grishnákh** | 0.35 s | strike, dash | `lowestHealthEnemy`: dash next to it; damage 1.2 D physical |
+| **Sharku** | 0.4 s | strike | `target`: damage 1.0 D physical; slow 30% for 3s |
+| **Gorbag** | 0.4 s | projectile | `target`: damage 0.4 D physical × 3 hits |
+| **Frodo** | 0.4 s | strike | `self`: untargetable 2s; after 2s, `target`: damage 1.3 D physical |
+| **Haldir** | 0.4 s | projectile | `nearestEnemies(3)`: damage 0.7 D physical each |
+| **Faramir** | 0.4 s | projectile | `farthestEnemy`: damage 1.5 D physical |
+| **Gamling** | 0.4 s | strike | `alliesWithin(2)`: +30% Attack Speed for 4s |
+| **Balin** | 0.4 s | strike | `self` and `adjacentAllies`: shield 0.6 S each |
+| **Lurtz** | 0.4 s | projectile | `line(edge)` through target: damage 1.0 D physical to each enemy |
+| **Radagast** | 0.5 s | lob | `area(1)` around target: damage 0.8 D magic; slow 25% for 3s |
+| **Ringwraith** | 0.5 s | projectile | `target`: damage 1.0 D magic; stun 1.5s |
+| **Bilbo** | 0.4 s | strike | `target`: stun 2s; damage 1.0 D physical |
+| **Gollum** | 0.4 s | strike | `target`: damage 0.4 D physical × 3 hits; heal self for 50% of the damage dealt |
+| **Gimli** | 0.4 s | strike | `adjacentEnemies`: damage 0.9 D physical; `self`: shield 0.6 S |
+| **Boromir** | 0.4 s | strike | `alliesWithin(2)`: +25 Armor and Magic Resist for 5s; `self`: shield 1.0 S |
+| **Éomer** | 0.4 s | strike | `line(4)` through target: damage 1.0 D physical |
+| **Éowyn** | 0.4 s | strike | `self`: shield 0.6 S; `target`: damage 1.2 D physical, ×2 against Nazgûl-origin targets |
+| **Uglúk** | 0.4 s | strike | `self`: shield 1.0 S; stun immunity for 4s |
+| **Khamûl** | 0.35 s | strike, charge | `dashThroughLine(3)`: damage 0.9 D magic; slow 25% for 3s |
+| **Legolas** | 0.4 s | projectile | `target`: damage 0.3 D physical × 5 hits; each hit can crit |
+| **Elrond** | 0.5 s | strike | `lowestHealthPctAllies(2)`: heal 1.0 H; +30 Magic Resist for 4s |
+| **Aragorn** | 0.4 s | strike | `target`: damage 1.3 D physical; `alliesWithin(2)`: +25% Attack Damage for 4s |
+| **Théoden** | 0.35 s | strike, charge | `dashThroughLine(3)`: damage 1.0 D physical; stun 1s |
+| **Dáin** | 0.4 s | strike | `adjacentEnemies`: damage 0.9 D physical; stun 1.5s |
+| **Saruman** | 0.5 s | lob | `area(1)` around `farthestEnemy`: damage 1.2 D magic |
+| **Gothmog** | 0.4 s | strike | `summon(orc-grunt, 2)` (placement in section 10.3); Orc-origin `alliesWithin(2)`: +25% Attack Damage for 5s |
+| **Gandalf** | 0.6 s | strike | `area(2)` around target: damage 1.0 D magic; stun 2s |
+| **Galadriel** | 0.6 s | strike | `allAllies`: shield 0.5 S; `enemiesWithin(3)`: damage 0.8 D magic |
+| **Witch-king** | 0.35 s | strike, dash | `highestHealthEnemy`: dash next to it; `adjacentEnemies`: damage 1.0 D magic; slow 30% for 3s. **Passive:** takes 50% less damage from Gondor- and Rohan-origin sources, except Éowyn |
+| **Treebeard** | 0.5 s | lob | `area(1)` around `bestClusterHex(1)`: damage 1.0 D physical; stun 1.5s |
+| **Sauron** | 0.5 s | strike | `cone`: damage 1.2 D physical; stun 1s |
+
+### 10.6 Wind-up and delivery
+
+Every ability has a wind-up and a delivery (section 10.5; monsters' in section 7.6). The numbers are in `data/rules.ts` (`ABILITIES`, `MOVEMENT`, `ATTACKS`), and each ability's own in its definition in `data/units.ts` or `data/monsters.ts`, all in seconds.
+
+**Ticks**, for a cast on tick `t`:
+
+- **Wind-up** `W = Math.round(windupSeconds × 30)`: 0.35 s is 11 ticks (10.5, rounded up), 0.4 s is 12, 0.5 s is 15 and 0.6 s is 18.
+- **Release** at `t + W`: the wind-up ends, effects at the strike land, projectiles and lobs leave, and a dash or charge sets off.
+- **The caster's part** ends at the release, or when its dash arrives, or when its charge reaches its last hex.
+- **Ready** at the end of the caster's part plus the recovery, `Math.round(ABILITIES.recoverySeconds × 30)` = 3 ticks (0.1 s). The caster acts again on that tick.
+- **Projectile flight:** `ceil(d × 30 / 12)` ticks for `d` hexes (`ATTACKS.projectileHexesPerSecond`, as ranged attacks).
+- **Lob flight:** `Math.round(ABILITIES.lobSeconds × 30)` = 23 ticks (0.75 s is 22.5, rounded up), whatever the distance.
+- **Dash or charge:** `ceil(d × 30 / 6)` ticks for `d` hexes, so 5 a hex (`MOVEMENT.dashHexesPerSecond`).
+
+A test checks these tick counts, since they are what `Math.round` gives on the data's decimals. With the common 0.4 s wind-up, a strike leaves the caster busy for 15 ticks, as long as a cast did before wind-ups.
+
+**At the cast** (tick `t`, in the caster's action step, section 6.4):
+1. Mana resets to 0.
+2. Each step that isn't delayed selects in turn, and what it selects is locked: units for unit selectors, hexes for hex selectors (section 10.3). A dash or charge chooses and claims its destination (section 10.4), and the steps after it measure from that hex, as if the caster stood there: the Witch-king's `adjacentEnemies` are the hexes round where he will land.
+3. The `cast` event is emitted, with what each step locked and when it lands (section 14), then the `dash` event of any dash or charge.
+4. The landings go into the queue (section 6.4, step 2): the steps' in step order, and within a step in the selection's order (for a charge, hex by hex from the caster), then Athelas, then any delayed steps. So landings due on one tick resolve in that order.
+
+**During the wind-up** the caster is busy and stays on its hex.
+- A stun doesn't interrupt a wind-up, nor anything after it: the ability goes off at the release as usual. A stun still stops the caster acting once it is ready, as any stun does.
+- If the caster dies before the release, the ability does nothing more: nothing lands, no dash or charge sets off and its claim is freed, Athelas doesn't heal and delayed steps don't run. The mana stays spent.
+
+**When a step lands**, its damage, heals, shields and statuses are worked out on that tick, from the caster's stats and the target's then (or the caster's as they were when it died, for a projectile or lob in flight), with that tick's overtime; shields and statuses last from that tick. Sting's crit rolls are made then. The step reaches:
+- a **locked unit** if it is still alive and, for an enemy, still targetable, wherever it now stands; otherwise that unit is missed. A locked ally doesn't need to be targetable. Abilities don't check range, as before.
+- on a **locked hex**, the units of the step's side standing on it then: targetable enemies for enemy selectors, living allies for ally selectors (and only Orcs for Gothmog's). A unit stands on the hex it has claimed (section 11), so one in the middle of a step stands on its destination. A unit that has stepped out of the hexes is missed, and one that has stepped in is reached.
+- each unit at most once per step, even if it moves on into a later hex of a line or charge.
+
+**Deliveries**
+
+| Delivery | When it lands |
 |---|---|
-| **Sam** | `self` and `nearestAlly`: shield 0.6 S |
-| **Merry** | `target`: damage 1.0 D physical; reduce Armor and Magic Resist by 30% for 4s |
-| **Pippin** | `bounce(3, 3)` from target: damage 0.7 D physical each |
-| **Beregond** | `target`: damage 1.0 D physical; stun 1s |
-| **Háma** | `self`: shield 0.8 S; +30 Armor for 5s |
-| **Grishnákh** | `lowestHealthEnemy`: dash next to it; damage 1.2 D physical |
-| **Sharku** | `target`: damage 1.0 D physical; slow 30% for 3s |
-| **Gorbag** | `target`: damage 0.4 D physical × 3 hits |
-| **Frodo** | `self`: untargetable 2s; after 2s, `target`: damage 1.3 D physical |
-| **Haldir** | `nearestEnemies(3)`: damage 0.7 D physical each |
-| **Faramir** | `farthestEnemy`: damage 1.5 D physical |
-| **Gamling** | `alliesWithin(2)`: +30% Attack Speed for 4s |
-| **Balin** | `self` and `adjacentAllies`: shield 0.6 S each |
-| **Lurtz** | `line(edge)` through target: damage 1.0 D physical to each enemy |
-| **Radagast** | `area(1)` around target: damage 0.8 D magic; slow 25% for 3s |
-| **Ringwraith** | `target`: damage 1.0 D magic; stun 1.5s |
-| **Bilbo** | `target`: stun 2s; damage 1.0 D physical |
-| **Gollum** | `target`: damage 0.4 D physical × 3 hits; heal self for 50% of the damage dealt |
-| **Gimli** | `adjacentEnemies`: damage 0.9 D physical; `self`: shield 0.6 S |
-| **Boromir** | `alliesWithin(2)`: +25 Armor and Magic Resist for 5s; `self`: shield 1.0 S |
-| **Éomer** | `line(4)` through target: damage 1.0 D physical |
-| **Éowyn** | `self`: shield 0.6 S; `target`: damage 1.2 D physical, ×2 against Nazgûl-origin targets |
-| **Uglúk** | `self`: shield 1.0 S; stun immunity for 4s |
-| **Khamûl** | `dashThroughLine(3)`: damage 0.9 D magic; slow 25% for 3s |
-| **Legolas** | `target`: damage 0.3 D physical × 5 hits; each hit can crit |
-| **Elrond** | `lowestHealthPctAllies(2)`: heal 1.0 H; +30 Magic Resist for 4s |
-| **Aragorn** | `target`: damage 1.3 D physical; `alliesWithin(2)`: +25% Attack Damage for 4s |
-| **Théoden** | `dashThroughLine(3)`: damage 1.0 D physical; stun 1s |
-| **Dáin** | `adjacentEnemies`: damage 0.9 D physical; stun 1.5s |
-| **Saruman** | `area(1)` around `farthestEnemy`: damage 1.2 D magic |
-| **Gothmog** | `summon(orc-grunt, 2)` (placement in section 10.3); Orc-origin `alliesWithin(2)`: +25% Attack Damage for 5s |
-| **Gandalf** | `area(2)` around target: damage 1.0 D magic; stun 2s |
-| **Galadriel** | `allAllies`: shield 0.5 S; `enemiesWithin(3)`: damage 0.8 D magic |
-| **Witch-king** | `highestHealthEnemy`: dash next to it; `adjacentEnemies`: damage 1.0 D magic; slow 30% for 3s. **Passive:** takes 50% less damage from Gondor- and Rohan-origin sources, except Éowyn |
-| **Treebeard** | `area(1)` around `bestClusterHex(1)`: damage 1.0 D physical; stun 1.5s |
-| **Sauron** | `cone`: damage 1.2 D physical; stun 1s |
+| `strike` | At the release. After a `dashAdjacentTo`, when the dash arrives. With `dashThroughLine`, as the charge reaches each hex (below). |
+| `projectile` | It leaves at the release at 12 hexes a second. Distances `d` are measured at the cast, so every landing tick is known then. **Units:** one projectile per locked unit, which follows it wherever it goes, as a ranged attack does (section 9), and lands at `release + ceil(d × 30 / 12)`, `d` from the caster to that unit. Its hits (`hits`) all arrive together, one after another, and stop if the target dies (section 10.3). **Bounce:** one projectile hopping along the locked chain: hop `k` lands at `release + ceil((d₀ + … + d_k) × 30 / 12)`, `d₀` from the caster to the first unit and each later `d` from one unit to the next. A hop whose unit is missed is wasted, and the rest still fly. **Line:** one projectile flying along the locked hexes, reaching each at `release + ceil(d × 30 / 12)`, `d` its distance from the caster. |
+| `lob` | It leaves at the release and lands on all its locked hexes 23 ticks later, whatever the distance. |
+
+- **The caster and its allies:** steps that select the caster or its allies always land as a `strike`, whatever the ability's delivery. A delivery is how an ability reaches enemies.
+- **In flight:** a projectile or lob that has left still lands if the caster dies, as a ranged attack does (section 9).
+- `projectile` goes with unit selectors and lines, and `lob` with hex selectors; a `lob` ability with a step on enemies chosen by a unit selector is invalid data.
+
+**Dashes** (`dashAdjacentTo`):
+- At the cast, the destination is chosen and claimed (section 10.4). The caster stays on its hex until the release, when the dash sets off and the caster's hex becomes the destination.
+- It arrives at `release + ceil(distance(from, to) × 30 / 6)`. The step's effects after the `dashAdjacentTo`, and the ability's later steps, land then, on their locked units and hexes, and the caster's part ends.
+- A caster that stays put (its destination is its own hex) arrives at the release.
+- The dash goes ahead even if the unit it dashes to has died or become untargetable by the release; the effects on that unit are then missed, and the caster chooses a new target when it is ready.
+- If the caster dies before it arrives, nothing after the dash lands.
+
+**Charges** (`dashThroughLine` with `line(n)`):
+- At the cast, the line's `n` hexes are locked (on the board or off it) and the destination is chosen and claimed (section 10.4). The charge sets off at the release.
+- It reaches the line hex at distance `i` from the caster at `release + 5i`, for `i` from 1 to `n`, and the step's other effects land then on the targetable enemies standing on that hex. It rides through the units on the way, and strikes those on hexes past its destination from where it stops, as if ramming them.
+- The caster's hex becomes its destination at the release, and it arrives at `release + 5 × distance(from, to)`. Its part ends when the charge reaches its last hex, at `release + 5n`, wherever it stopped.
+- If the caster dies during the charge, the hexes it hasn't reached aren't struck.
+
+**Delayed steps** (`delay(s, steps)`) are due `Math.round(s × 30)` ticks after the release, so Frodo strikes as his untargetability ends. They select when they run, not at the cast, and land at once, with no wind-up or delivery of their own. They don't run if the caster has died by then.
+
+**Athelas** heals at the release, after the effects that land then, and not if the caster died during the wind-up (section 12.4).
+
+**Busy and mana:** the caster is busy from the cast until it is ready. It gains no mana from any source on ticks `t` to `ready − 1`, the Istari trait's included (section 12.3). The attack cooldown is unchanged.
+
+**Example:** Théoden casts on tick 100, with an enemy on the second hex of his line and the third hex free. He locks the 3 line hexes and claims the third. His wind-up is 11 ticks, so on tick 111 he sets off and his hex becomes the third; the charge reaches the first hex on tick 116, the second on 121 (striking and stunning the enemy there, if it is still on it), and the third on 126, when he arrives. He is ready on tick 129.
 
 ---
 
@@ -581,7 +668,7 @@ The same numbers as `design.md` section 5, written as selectors and effects.
   - Neighbours are visited in perspective direction order.
   - The goal is the first hex found, at the smallest depth, that is within Range of the target.
   - The unit steps to the first hex on that path.
-- **Claiming:** when a step starts, the unit's position becomes the destination immediately. The old hex is freed and the new hex is occupied, so two units can never move onto the same hex. The renderer animates over the 15 ticks.
+- **Claiming:** when a step starts, the unit's position becomes the destination immediately. The old hex is freed and the new hex is occupied, so two units can never move onto the same hex. The renderer animates over the 15 ticks. A hex claimed by a dash or charge (section 10.4), including one still winding up, isn't free either, so pathfinding goes round it.
 - **Re-planning:** the path is recomputed at every step, because targets move.
 - **No path:** see section 8.
 
@@ -593,15 +680,15 @@ The same numbers as `design.md` section 5, written as selectors and effects.
 
 | Status | Rule |
 |---|---|
-| Stun | No moving, attacking or casting. A new stun extends the current one only if it lasts longer. A move already in progress completes. |
+| Stun | No moving, attacking or casting. A new stun extends the current one only if it lasts longer. A move already in progress completes, and so do a wind-up, dash or charge, with all that lands from them (section 10.6). A melee blow already swung still lands (section 9). |
 | Stun immunity | New stuns are ignored; a stun already in place runs its course. A new one extends the current one only if it lasts longer. |
 | Slow | Only the strongest active slow applies. |
 | Armor / Magic Resist reduction | Only the strongest active reduction per stat applies. |
 | Buff | Buffs add together; each has its own duration. |
 | Shield | Separate instances, each with its own amount and expiry. Damage takes the earliest-expiring shield first, then the oldest (section 9.1). |
-| Untargetable | Can't be chosen as a target. Enemies currently targeting it drop it at once and choose again when they next act. Projectiles at it are wasted. A new one extends the current one only if it lasts longer. |
+| Untargetable | Can't be chosen as a target. Enemies currently targeting it drop it at once and choose again when they next act. Projectiles and melee blows at it, and enemy abilities that locked it, miss it while it lasts (sections 9 and 10.6), apart from the Eye's Nazgûl's blows at the Ring's bearer (section 12.6). A new one extends the current one only if it lasts longer. |
 
-- **Timing:** a status applied on tick `t` for `s` seconds has `expiresTick = t + Math.round(s × 30)` and is removed at the start of that tick (section 6.4, step 1). A unit stunned for 1 s on tick 10 acts again on tick 40.
+- **Timing:** a status applied on tick `t` for `s` seconds has `expiresTick = t + Math.round(s × 30)` and is removed at the start of that tick (section 6.4, step 1). A unit stunned for 1 s on tick 10 acts again on tick 40. A status or shield from an ability is applied when the ability lands on the unit, not at the cast (section 10.6).
 - **Stats** are recomputed whenever a buff, slow or reduction starts or ends (section 7.4). An attack's cooldown uses the Attack Speed at the moment it fires.
 - **Shields** are rounded to a whole number when applied (section 4). A shield that rounds to 0 isn't added.
 
@@ -625,15 +712,15 @@ Numbers are from `design.md` section 4. Where a trait lists several values, they
 | Dwarf | Static; damage | Dwarves gain flat Armor and a damage amp against Large targets. |
 | Gondor | Tick 0 | All allies placed in their team's row 3, Gondor or not, gain flat Armor and Magic Resist for the whole fight. Summons don't. |
 | Rohan | On death | When a non-summon Rohan unit dies, every other living Rohan ally gains a permanent Attack Speed % buff (stacks). Right after the `death` event, each buff emits a `status` event with `expiresTick` null. |
-| Istari | Every 30 ticks | Istari gain the trait's mana per second in one go, on ticks 30, 60, 90, …, in action order. A unit that is casting on that tick gets none. |
+| Istari | Every 30 ticks | Istari gain the trait's mana per second in one go, on ticks 30, 60, 90, …, in action order. A unit that is casting on that tick gets none: from its cast tick until it is ready again, wind-up and recovery included (section 10.6). |
 | Orc | Tick 0 | Spawn 1 / 2 / 4 grunts. Spread them round-robin across Orc units in slot order, each on a free hex next to that Orc on its own half. Otherwise use the nearest free hex on its own half. |
 | Nazgûl | Continuous | Enemies within 2 hexes of any living Nazgûl are slowed. It doesn't stack with itself; the strongest-slow rule applies. It is updated at the start of each tick (section 6.4, step 1) and at the end of tick 0, emits no events, and shows in the unit's stats. |
 | Ent | Every 30 ticks | Treebeard heals 2% of max Health, in action order with the Istari. He is Large. |
 | Dark Lord | Damage | Allies with Orc or Nazgûl origin, including grunts, get a +15% damage amp. Sauron is Large. |
 | Guardian | Tick 0 | Guardians gain a shield that lasts 8 seconds. |
 | Archer | On attack | Each basic attack an Archer fires gives it an Attack Speed % stack for the rest of the fight, up to 15 stacks. Each stack emits a `status` event with `expiresTick` null. |
-| Rider | Tick 0 | Each Rider picks its target (section 8, so the nearest enemy), dashes next to it (section 10.4) and deals the bonus physical damage if it ends next to it. This trait damage can't crit or be dodged. The Rider is then busy for 9 ticks, even if it couldn't move. |
-| Burglar | Tick 0; targeting | Each Burglar picks its target (section 8, so the farthest enemy), dashes next to it (section 10.4) and is busy for 9 ticks, even if it couldn't move. Burglars gain Crit Damage and use farthest-enemy targeting. |
+| Rider | Tick 0 | Each Rider picks its target (section 8, so the nearest enemy) and dashes next to it (section 10.4), with no wind-up: it claims its destination and sets off at tick 0, its hex becoming the destination at once, and arrives `5 × distance` ticks later. If the destination is next to the target, the bonus physical damage lands when it arrives, through the queue, on that target if it is still alive and targetable, wherever it now stands; a Rider already next to its target doesn't move and deals it at once, at tick 0. This trait damage can't crit or be dodged. A stun doesn't stop the charge or its damage. The Rider is busy until it arrives plus 3 ticks (`MOVEMENT.dashRecoverySeconds`, 0.1 s), even if it couldn't move. |
+| Burglar | Tick 0; targeting | Each Burglar picks its target (section 8, so the farthest enemy) and leaps next to it (section 10.4), as a Rider charges: no wind-up, setting off at tick 0 and arriving `5 × distance` ticks later. It is busy until it arrives plus 3 ticks, even if it couldn't move. Burglars gain Crit Damage and use farthest-enemy targeting. |
 | Captain | Damage | A unit, summons included, that deals damage while standing next to a living allied Captain (not itself) gets the damage amp. It is checked when the damage is dealt, from the unit's hex at that moment. Several Captains don't stack. |
 | Sorcerer | Static | Sorcerers gain flat Ability Power. |
 
@@ -653,10 +740,10 @@ Numbers are from `design.md` section 6, in `data/items.ts`.
 | Andúril | On a kill | When the holder deals the damage that kills a unit, it gains +15% Attack Damage for the rest of the fight. |
 | Black Arrow | Damage | A 30% damage amp when the target's max Health is higher than the holder's. |
 | Orcrist | After damage | The first time the holder is alive with Health below 50% of its max Health after taking damage, it becomes untargetable for 1s and gains +40% Attack Speed for the rest of the fight. |
-| Sting | Static; casting | Its stats include +25% Crit Chance. Each hit of the holder's ability damage rolls a crit, as if it had `canCrit`. |
+| Sting | Static; casting | Its stats include +25% Crit Chance. Each hit of the holder's ability damage rolls a crit, as if it had `canCrit`, when it lands (section 10.6). |
 | Herugrim | After damage | The first time the holder is alive with Health below 50% of its max Health after taking damage, it gains a shield of 30% of its max Health for 5s and +30% Attack Damage for the rest of the fight. |
 | Glamdring | After damage | After each damage the holder deals, it heals 20% of it, including any part shields absorbed. |
-| Bow of the Galadhrim | On attack | Each basic attack the holder fires also fires one at the nearest other targetable enemy within its Range, with the section 5 tie-break; with two bows, at the two nearest. The extra attacks fire after the main one, while the holder is alive. Each emits its own `attack` event and lands like a basic attack (melee at once, ranged as a projectile) for 50% damage, with its own dodge and crit rolls. It gives the holder no mana and no Archer, Grond or Palantír stacks. |
+| Bow of the Galadhrim | On attack | Each basic attack the holder fires also fires one at the nearest other targetable enemy within its Range, with the section 5 tie-break; with two bows, at the two nearest. The extra attacks fire after the main one, while the holder is alive. Each emits its own `attack` event and lands like a basic attack (melee as a blow 7 ticks later, ranged as a projectile, section 9) for 50% damage, with its own dodge and crit rolls. A melee holder's blows land in the order they fired, so if an Oakenshield's damage back kills it on its first blow, the rest are wasted. It gives the holder no mana and no Archer, Grond or Palantír stacks. |
 | Grond | On attack | Each basic attack the holder fires gives it +5% Attack Speed for the rest of the fight, up to 20 stacks. |
 | Miruvor | Tick 0 | The holder gains stun immunity for 15s. |
 | King's Banner | Tick 0 | The holder and its adjacent allies gain +20% Attack Speed for the rest of the fight. |
@@ -669,7 +756,7 @@ Numbers are from `design.md` section 6, in `data/items.ts`.
 | Elven Rope | Tick 0 | The farthest targetable enemy from the holder, with the section 5 tie-break, is stunned for 3s. |
 | Phial of Galadriel | Continuous | Enemies within 2 hexes of any living holder have their Magic Resist reduced by 30%. It is a reduction, so only the strongest one counts (section 12.1). It is updated with the Nazgûl slow, emits no events, and shows in the unit's stats. |
 | Ent-draught | Static | Its stats include +300 Health. |
-| Athelas | After a cast | Once the holder's ability has resolved, the ally with the lowest Health %, the holder included, heals 200. The tie-break is `lowestHealthPctAllies`'s (section 10.3). |
+| Athelas | After a cast | At the release of the holder's ability, the end of its wind-up, after the effects that land then, the ally with the lowest Health % at that tick, the holder included, heals 200. It doesn't wait for projectiles, lobs, dashes or charges, and doesn't heal if the holder died during the wind-up (section 10.6). The tie-break is `lowestHealthPctAllies`'s (section 10.3). |
 | Wizard's Staff | Static | Its stats include +40 Ability Power. |
 
 - **Order:** where several items act at once, they act in the order the unit holds them. Every second, a unit does its Istari mana, then its Ent healing, then its items, then its team's Hands of the King, before the next unit.
@@ -710,7 +797,7 @@ Numbers are from `design.md` section 9, in `data/ring.ts`. A placed unit with `r
   - It is placed like a summon of the bearer (section 10.3), but on its own team's half: the first free hex next to the bearer on that half, in its team's neighbour order, otherwise the free hex on its half nearest the bearer. It doesn't appear if its half is full.
   - Nazgûl origin, no classes and no ability. It counts as a living unit, like a grunt, but not for traits or player damage.
   - Health 500 + 100 per point of Corruption, Attack Damage 40 + 10 per point, Attack Speed 0.8, Range 1, Armor and Magic Resist 30.
-  - While the bearer is alive, the bearer is its target, even while untargetable. Its attacks on the bearer land as usual. Once the bearer dies, it targets like any unit.
+  - While the bearer is alive, the bearer is its target, even while untargetable. Its attacks on the bearer land as usual: its blows aren't wasted for the bearer's invisibility (section 9). Once the bearer dies, it targets like any unit.
 
 ### 12.7 Rings of Power
 
@@ -802,16 +889,31 @@ Every event has a `tick`.
 |---|---|
 | `spawn` | unit, unitId, team, hex, star, summon, owner (for a summon, the id of the unit it is credited to: the Orc a trait grunt was spread to, or the caster of a `summon` ability; null for placed units and the Eye's Nazgûl) |
 | `move` | unit, from, to, arriveTick |
-| `dash` | unit, from, to |
-| `attack` | unit, target, ranged, hitTick |
+| `dash` | unit, from, to, departTick (when the unit's hex becomes `to` and it sets off), arriveTick. Emitted when the destination is chosen and claimed (section 10.4): at the cast for an ability's dash or charge, right after the `cast` event, with `departTick` its release; at tick 0 for a Burglar leap or Rider charge, with `departTick` 0. A unit that stays put emits none. |
+| `attack` | unit, target, ranged, hitTick (a melee blow's, 7 ticks after the attack, or a ranged attack's projectile's arrival; section 9). A blow or projectile that is wasted emits nothing more; one that lands emits its `dodge` or `damage` on `hitTick`. |
 | `dodge` | unit (defender), source |
 | `damage` | source, target, amount (the final damage, including any absorbed part), absorbed, damageType, crit, kind (`attack`, `ability`, `trait` or `item`) |
 | `heal` | source, target, amount |
 | `shield` | source, target, amount, expiresTick |
-| `cast` | unit, ability (its name) |
+| `cast` | unit, ability (its name), releaseTick (the end of the wind-up), readyTick (when the caster acts again), aims (what each step locked, below; section 10.6) |
 | `status` | source, target, status (`stun`, `stunImmune`, `untargetable`, `slow`, `reduce` or `buff`), stat (for `reduce` and `buff`, otherwise null), value (the slow or reduction percent, or the buff amount, otherwise null), expiresTick (null for the Rohan, Archer and item buffs that last the rest of the fight). A reduction of both Armor and Magic Resist emits one event per stat. A stun, stun immunity or untargetable that doesn't outlast the current one emits nothing. |
 | `death` | unit |
 | `end` | outcome |
+
+**Aims.** A `cast` event's `aims` has one entry for each of the ability's steps that isn't delayed, in step order, so the client can show where an ability will land while it winds up and travels:
+
+| Field | Meaning |
+|---|---|
+| step | The step's index in the ability's steps. Delayed steps have no aim. |
+| select | The selector's kind (section 10.3): `self`, `target`, `area`, `line`, `bounce` and so on. |
+| side | `enemy` or `ally`: whom the step affects. |
+| delivery | How the step lands: `strike` (at the release, or when a dash before it arrives), `projectile`, `lob`, `dash` (a step with `dashAdjacentTo`, its unit the one dashed to) or `charge` (a step with `dashThroughLine`). Steps on the caster and allies are always `strike` (section 10.6). |
+| units | For a unit selector, the locked units in the selection's order (section 10.3), each as `{ unit, landTick }`: the tick the step reaches it. Empty for a hex selector. |
+| hexes | For a hex selector, the locked hexes on the board, in board coordinates, each as `{ hex, landTick }`: a line's or charge's from the caster outwards, a cone's in the order of section 10.4, others by board row, then column. Off-board hexes of a `line(n)` are left out. Empty for a unit selector. |
+| centre | For `area`, the hex it is around; for `enemiesWithin`, `alliesWithin`, `adjacentEnemies` and `adjacentAllies`, the caster's hex or, after a dash, its destination. Null otherwise. |
+
+- `landTick` is when the step would reach that unit or hex. The `damage`, `heal`, `shield` and `status` events of what it reaches come on that tick; a unit or hex it misses has none.
+- If the caster dies before `releaseTick`, nothing in the cast lands, and its `dash` never sets off. If it dies during a dash or charge, nothing still to land from it does. Projectiles and lobs that have left land anyway.
 
 ---
 
@@ -836,11 +938,14 @@ Every event has a `tick`.
 **Attacks and damage**
 - Attack cooldown timing.
 - Projectile travel and wasted projectiles.
+- Melee blows land 7 ticks after the attack, with `hitTick` set to that tick; mana, Archer, Grond and Palantír gains come at the attack, and dodge, crit, damage, defender mana and the Oakenshield at the blow.
+- A melee blow is wasted, with no event, if by then the attacker has died, the target has died or become untargetable, or it has stepped out of the attacker's Range; one at a target that stepped and is still in range lands. The Eye's Nazgûl's blows land on the invisible bearer, and Betrayal's on allies.
+- A melee attacker isn't held by its swing: it can cast or move before its blow lands, and the blow still lands if the target is in range.
 - Resolution order (dodge → crit → reduction → damage → mana).
 - Armor and Magic Resist formula; damage amps; overtime multiplier; shields absorbing first; Witch-king reduction.
 
 **Statuses**
-- Stuns extend only if longer, stun immunity ignores new stuns, and a move in progress completes.
+- Stuns extend only if longer, stun immunity ignores new stuns, and a move, wind-up, dash or charge in progress completes.
 - Only the strongest slow, and the strongest reduction of each stat, applies; buffs add together.
 - Shields absorb earliest-expiring first, then oldest; the damage event reports the absorbed part.
 - Untargetable units are dropped as targets, and projectiles at them are wasted.
@@ -848,15 +953,16 @@ Every event has a `tick`.
 
 **Mana**
 - Gain per attack and per hit, including rounding down and the cap.
-- Istari gain mana only on ticks 30, 60, 90, …, and none if they are casting on that tick.
-- No gain while casting.
-- Casting at full mana, resetting to 0, busy for 15 ticks.
+- Istari gain mana only on ticks 30, 60, 90, …, and none if they are casting on that tick, from the cast tick to the tick before they are ready, wind-up included.
+- No gain while casting, from the cast tick until the caster is ready.
+- Casting at full mana, resetting to 0 at the cast, busy until ready: release plus 3 ticks for a strike, projectile or lob (15 ticks with a 0.4 s wind-up), arrival plus 3 for a dash, the charge's last hex plus 3 for a charge.
 
 **Stars and stats**
 - Derived stats for a sample unit at each star level match section 7.
 
 **Traits**
 - Each trait at each breakpoint.
+- Rider charges and Burglar leaps at tick 0: no wind-up, the hex claimed and taken at tick 0, arrival 5 ticks a hex later, busy until 3 ticks after that; the Rider's damage lands on arrival, on its tick-0 target wherever it now is if it is alive and targetable, or at tick 0 for a Rider already next to it; a Horn of Helm Hammerhand stun doesn't stop it.
 - Duplicate units count once; summons don't count.
 - `teamTraitCounts` counts crests and the Nine's Nazgûl, never monsters, and with `traitLevelsOf` gives exactly the levels a fight's teams start with.
 
@@ -867,7 +973,24 @@ Every event has a `tick`.
 - Only abilities that say so can crit; the Witch-king's passive halves damage from Gondor and Rohan sources other than Éowyn.
 - Healing stops at max Health, and the `heal` event reports only the Health restored.
 - Gothmog's grunts go next to him on his own half, fall back to the nearest free hex on his half, and don't appear when his half is full.
-- One scripted scenario per unit, checking targets, damage and statuses.
+- One scripted scenario per unit, checking targets, damage and statuses, and the ticks they land on.
+
+**Ability timing**
+- Every ability's and monster ability's wind-up and delivery match sections 10.5 and 7.6, and the tick counts match section 10.6: wind-ups of 11, 12, 15 and 18 ticks, a 3-tick recovery, a 23-tick lob, 5 ticks a hex for dashes and charges.
+- Nothing lands at the cast: a strike's effects land at the release, a projectile at `release + ceil(d × 2.5)` with `d` from the cast, following a target that has moved, and a lob 23 ticks after the release.
+- A caster killed during its wind-up: nothing lands, no dash or charge sets off and its claimed hex is free again, no Athelas, no delayed steps, and its mana stays spent. A stun during the wind-up changes nothing.
+- A projectile or lob that has left lands after its caster dies, with the caster's stats at its death; a dash's or charge's effects still to land don't.
+- Locked single targets: one that has died or become untargetable by the landing is missed, and a wasted bounce hop doesn't stop the later ones; one that has stepped away is still reached, out of range or not.
+- Locked hexes (area, line, cone, within, adjacent): an enemy that steps out before the landing is missed, and one that steps in is reached; a unit in the middle of a step counts on its destination; each unit is reached at most once per step.
+- Haldir's three arrows land on their own ticks by distance; Pippin's hops land at cumulative distances; Lurtz's arrow reaches each line hex by its distance; Gorbag's and Legolas's hits arrive together and stop when the target dies.
+- Steps on the caster and allies land at the release even in a projectile or lob ability; `allAllies` reaches only the allies locked at the cast.
+- Dashes: the destination is claimed at the cast, so no other unit steps, dashes or is summoned onto it, and pathfinding goes round it; the caster stays on its hex during the wind-up and its hex becomes the destination at the release; the effects after the dash land on arrival; the Witch-king's adjacent hexes are those round his destination.
+- Charges: the enemy on line hex `i` is struck at `release + 5i`, including one past the destination; an enemy that leaves the line first is missed; if the charger dies mid-charge, the hexes ahead aren't struck.
+- Delayed steps are due from the release, choose their target when they run, and don't run once the caster has died: Frodo strikes on the tick his untargetability ends.
+- Athelas heals at the release, after the strike's effects and before any projectile lands.
+- Gothmog's grunts, summoned at the release, get his buff.
+- Damage, crits (Sting, Legolas), overtime and the Captain amp are worked out at the landing; shields and statuses expire counting from the landing.
+- The `cast` event's `releaseTick`, `readyTick` and `aims`, and the `dash` event's `departTick` and `arriveTick`, match what then happens: every `damage`, `heal`, `shield` and `status` from a cast comes on a `landTick` of its aims, and positions in `state` change on `departTick`.
 
 **Monsters**
 - No traits for monsters, while the units next to them keep theirs.
@@ -876,7 +999,7 @@ Every event has a `tick`.
 
 **Items**
 - Component and combined item stats, and copies of one item adding up.
-- Each combined item's effect, including its trigger timing: tick 0 order, once-only low-Health triggers, every-second effects, and the extra attacks of the Bow of the Galadhrim.
+- Each combined item's effect, including its trigger timing: tick 0 order, once-only low-Health triggers, every-second effects, the extra attacks of the Bow of the Galadhrim (a melee holder's blows wasted after an Oakenshield kills it), and Athelas at the release.
 - Crits against a Mithril Shirt holder, abilities critting with Sting, and damage reductions adding up.
 - Invalid items, too many items and items on monsters throw.
 
