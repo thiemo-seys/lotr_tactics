@@ -26,7 +26,11 @@ group('event log', () => {
         { type: 'damage', tick: 5, source: 0, target: 1, amount: 120, absorbed: 0, damageType: 'magic', crit: false, kind: 'ability' },
         '[5] Sam (A) deals 120 magic damage to Sam (B) (ability)',
       ],
-      [{ type: 'cast', tick: 5, unit: 0, ability: 'Loyal' }, '[5] Sam (A) casts Loyal'],
+      [{ type: 'cast', tick: 5, unit: 0, ability: 'Loyal', releaseTick: 17, readyTick: 20, aims: [] }, '[5] Sam (A) casts Loyal'],
+      [
+        { type: 'dash', tick: 5, unit: 0, from: units[0]!.hex, to: units[1]!.hex, departTick: 17, arriveTick: 37 },
+        '[5] Sam (A) dashes to (3, 4)',
+      ],
       [{ type: 'shield', tick: 5, source: 0, target: 0, amount: 150, expiresTick: 125 }, '[5] Sam (A) shields Sam (A) for 150 until tick 125'],
       [
         { type: 'status', tick: 6, source: 1, target: 0, status: 'stun', stat: null, value: null, expiresTick: 36 },

@@ -4,20 +4,25 @@ import { finalDamage } from '../src/combat/damage.js';
 import { abilityValue, monsterStats } from '../src/combat/stats.js';
 import { MONSTERS, type MonsterId } from '../src/data/monsters.js';
 import type { Effect } from '../src/data/units.js';
-import { input, ofType, placed } from './helpers.js';
+import { fromOffset } from '../src/hex.js';
+import { castsOf, dashesOf, input, ofType, placed, stepTo } from './helpers.js';
 
 function monster(unitId: MonsterId, col: number, row: number): PlacedUnit {
   return { unitId, star: 1, col, row, items: [] };
 }
 
-/** Fills a monster's mana, stuns everyone else for tick 1, and returns tick 1's events from its cast. */
-function castBy(caster: PlacedUnit, enemies: readonly PlacedUnit[]) {
+/**
+ * Fills a monster's mana so it casts on tick 1, stuns everyone else until after `until`, and
+ * returns the events from its cast to `until`.
+ */
+function castBy(caster: PlacedUnit, enemies: readonly PlacedUnit[], until: number) {
   const fight = new Fight(input([caster], enemies));
   const [self, ...others] = fight.state.units;
-  for (const unit of others) fight.applyStatus(unit.id, unit.id, { kind: 'stun', seconds: 2 / 30 });
+  for (const unit of others) fight.applyStatus(unit.id, unit.id, { kind: 'stun', seconds: (until + 1) / 30 });
   Object.assign(self!, { mana: self!.base.maxMana });
-  const events = fight.step();
-  return { fight, events: events.slice(events.findIndex((e) => e.type === 'cast')) };
+  const tick1 = fight.step();
+  const events = [...tick1.slice(tick1.findIndex((e) => e.type === 'cast')), ...stepTo(fight, until)];
+  return { fight, events };
 }
 
 describe('monster data', () => {
@@ -86,7 +91,8 @@ describe('monsters in a fight', () => {
     const dwarves = [placed('gimli', 3, 3), placed('dain', 2, 3)];
     const firstHit = (target: MonsterId) => {
       const fight = new Fight(input(dwarves, [monster(target, 3, 3)]));
-      const hits = ofType(fight.step(), 'damage').filter((e) => e.source === 0 && e.kind === 'attack');
+      // The blow from tick 1 lands on 8 (sim-spec 9).
+      const hits = ofType(stepTo(fight, 8), 'damage').filter((e) => e.source === 0 && e.kind === 'attack');
       return { hit: hits[0], fight };
     };
     const { hit, fight } = firstHit('cave-troll');
@@ -100,20 +106,30 @@ describe('monsters in a fight', () => {
 describe('monster abilities', () => {
   const effects = (id: MonsterId): Effect[] => MONSTERS[id].ability!.steps.flatMap((s) => ('effects' in s ? s.effects : []));
 
-  it('Cave Troll: Smash damages and stuns adjacent enemies', () => {
-    const { events } = castBy(monster('cave-troll', 3, 3), [placed('sam', 3, 3), placed('merry', 2, 3), placed('legolas', 3, 0)]);
-    expect(events[0]).toMatchObject({ type: 'cast', ability: 'Smash' });
+  // Monsters' wind-ups are 0.5 s, 15 ticks, or 0.35 s, 11, for the Mûmak (sim-spec 7.6), so a cast on
+  // tick 1 releases on 16, or 12.
+
+  it('Cave Troll: Smash damages and stuns adjacent enemies at its release', () => {
+    const { events } = castBy(monster('cave-troll', 3, 3), [placed('sam', 3, 3), placed('merry', 2, 3), placed('legolas', 3, 0)], 16);
+    expect(castsOf(events)).toMatchObject([{ type: 'cast', ability: 'Smash', releaseTick: 16, readyTick: 19 }]);
     const value = abilityValue('D', 100, 3, 1, 100);
     expect(value).toBe(300);
-    expect(ofType(events, 'damage').map((e) => e.target)).toEqual([1, 2]);
-    expect(ofType(events, 'status').filter((e) => e.status === 'stun').map((e) => e.target)).toEqual([1, 2]);
+    expect(ofType(events, 'damage').map((e) => [e.tick, e.target])).toEqual([
+      [16, 1],
+      [16, 2],
+    ]);
+    expect(ofType(events, 'status').filter((e) => e.status === 'stun').map((e) => [e.tick, e.target, e.expiresTick])).toEqual([
+      [16, 1, 46],
+      [16, 2, 46],
+    ]);
     expect(effects('cave-troll')).toContainEqual({ kind: 'stun', seconds: 1 });
   });
 
   it('Watcher in the Water: Tentacles hit the target and the enemies next to it', () => {
-    const { events, fight } = castBy(monster('watcher', 3, 3), [placed('sam', 3, 3), placed('merry', 2, 3), placed('legolas', 3, 0)]);
-    expect(events[0]).toMatchObject({ type: 'cast', ability: 'Tentacles' });
+    const { events, fight } = castBy(monster('watcher', 3, 3), [placed('sam', 3, 3), placed('merry', 2, 3), placed('legolas', 3, 0)], 16);
+    expect(castsOf(events)).toMatchObject([{ type: 'cast', ability: 'Tentacles', releaseTick: 16, readyTick: 19 }]);
     const target = fight.state.units[0]!.target;
+    expect(ofType(events, 'damage').every((e) => e.tick === 16)).toBe(true);
     const hit = ofType(events, 'damage').map((e) => e.target);
     expect(hit).toContain(target);
     expect(hit).not.toContain(3);
@@ -121,17 +137,22 @@ describe('monster abilities', () => {
   });
 
   it('Mûmak: Trample rides through a line, damaging and stunning', () => {
-    const { events } = castBy(monster('mumak', 3, 3), [placed('sam', 3, 3), placed('merry', 3, 2), placed('pippin', 3, 1)]);
-    expect(events[0]).toMatchObject({ type: 'cast', ability: 'Trample' });
-    expect(ofType(events, 'damage').length).toBeGreaterThan(0);
-    expect(ofType(events, 'dash')).toHaveLength(1);
+    // The line from (3, 3) through Sam on (3, 4) runs (3, 4), (2, 5), (2, 6); Merry on (3, 5) and
+    // Pippin on (3, 6) are off it. Release 12: Sam is struck on 17, and the Mûmak arrives on the
+    // farthest free hex, (2, 6), 3 hexes away, on 27; ready on 30.
+    const { events } = castBy(monster('mumak', 3, 3), [placed('sam', 3, 3), placed('merry', 3, 2), placed('pippin', 3, 1)], 27);
+    expect(castsOf(events)).toMatchObject([{ type: 'cast', ability: 'Trample', releaseTick: 12, readyTick: 30 }]);
+    expect(ofType(events, 'damage').map((e) => [e.tick, e.target])).toEqual([[17, 1]]);
+    expect(ofType(events, 'status').filter((e) => e.status === 'stun').map((e) => [e.tick, e.target])).toEqual([[17, 1]]);
+    expect(dashesOf(events)).toMatchObject([{ tick: 1, to: fromOffset({ col: 2, row: 6 }), departTick: 12, arriveTick: 27 }]);
   });
 
   it('The Balrog: Whip of flame deals magic damage in a cone and stuns', () => {
-    const { events } = castBy(monster('balrog', 3, 3), [placed('sam', 3, 3), placed('merry', 2, 3), placed('pippin', 4, 3)]);
-    expect(events[0]).toMatchObject({ type: 'cast', ability: 'Whip of flame' });
+    const { events } = castBy(monster('balrog', 3, 3), [placed('sam', 3, 3), placed('merry', 2, 3), placed('pippin', 4, 3)], 16);
+    expect(castsOf(events)).toMatchObject([{ type: 'cast', ability: 'Whip of flame', releaseTick: 16, readyTick: 19 }]);
     const damage = ofType(events, 'damage');
     expect(damage.length).toBeGreaterThan(0);
+    expect(damage.every((e) => e.tick === 16)).toBe(true);
     expect(damage.every((e) => e.damageType === 'magic' && e.kind === 'ability')).toBe(true);
     expect(ofType(events, 'status').filter((e) => e.status === 'stun')).toHaveLength(damage.length);
   });

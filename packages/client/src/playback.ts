@@ -13,12 +13,16 @@ export interface MutablePoint {
 
 /** How long the viewer's own effects last, in ticks of fight time. */
 export const EFFECT_TICKS = {
-  dash: 4,
+  /** A melee lunge, at its height halfway through, on the blow's `hitTick` (docs/viewer-spec.md section 5). */
   lunge: 6,
   floatingText: 24,
-  castRing: 15,
-  death: 15,
 } as const;
+
+/**
+ * How floating texts move, in world units: how far one rises over its life, and how far apart the
+ * texts on a unit stay at least (`textOffset`), about a line of numbers at the starting camera.
+ */
+export const FLOATING_TEXT = { rise: 0.9, gap: 0.32 } as const;
 
 /** How far past the final tick display time runs, so effects can finish. */
 const AFTERGLOW_TICKS = 30;
@@ -50,16 +54,14 @@ export interface FloatingText {
   readonly kind: TextKind;
   readonly big: boolean;
   readonly startTick: number;
+  /** How far above the others' start it starts, in world units, so it doesn't print over its unit's other texts (`textOffset`). */
+  readonly offset: number;
 }
 
-export interface CastRing {
-  readonly unit: number;
-  readonly startTick: number;
-}
-
+/** A melee lunge, from `tick` for EFFECT_TICKS.lunge ticks, at its height on the blow's `hitTick`. */
 interface Lunge {
+  readonly tick: number;
   readonly target: number;
-  readonly startTick: number;
 }
 
 /** A unit's attack or cast. A unit acts at most once a tick; a cast on the same tick as an attack wins. */
@@ -69,10 +71,12 @@ export interface ActionRecord {
 }
 
 /**
- * A unit's step, from its tick to `endTick`, its arrival; or a dash, which takes 4 ticks. It goes
- * from the centre of its `from` hex to the centre of its `to` hex.
+ * A unit's step, from its tick to `endTick`, its arrival; or a dash or charge, from its `departTick`
+ * to its `arriveTick`, standing on `from` before it sets off. It goes from the centre of its `from`
+ * hex to the centre of its `to` hex.
  */
 export interface StepRecord {
+  /** When it sets off: a step's tick, or a dash's `departTick`. */
   readonly tick: number;
   readonly endTick: number;
   readonly dash: boolean;
@@ -114,10 +118,14 @@ interface History {
   readonly actions: { readonly tick: number; cast: boolean }[];
   readonly steps: StepRecord[];
   readonly stuns: { readonly tick: number; endTick: number; readonly starts: number[] }[];
+  /** Its melee lunges, in tick order. */
+  readonly lunges: Lunge[];
   death: number | null;
 }
 
 const NOTHING: UnitHistory = { team: null, actions: [], steps: [], stuns: [], death: null };
+
+const NO_LUNGES: readonly Lunge[] = [];
 
 /** What `advance` returns when no tick was processed. */
 const NO_EVENTS: readonly CombatEvent[] = [];
@@ -133,10 +141,8 @@ export class Playback {
   playing = true;
   projectiles: Projectile[] = [];
   texts: FloatingText[] = [];
-  casts: CastRing[] = [];
   /** The fight's end, once it has come. */
   ended: { readonly tick: number; readonly outcome: Outcome } | null = null;
-  private readonly lunges = new Map<number, Lunge>();
   private readonly histories: History[] = [];
 
   constructor(readonly combat: Combat) {
@@ -168,7 +174,9 @@ export class Playback {
 
   /**
    * Where a unit is drawn at display time, part-way through a step or dash. Any time up to the
-   * playback's own works, from the unit's steps so far.
+   * playback's own works, from the unit's steps so far. A unit that dies stays where it was when it
+   * died, part-way through a step or dash too, so it dies and breaks up there (docs/viewer-spec.md
+   * section 4, Death).
    */
   position(unit: number, time = this.time): Point {
     return this.positionInto({ x: 0, z: 0 }, unit, time);
@@ -177,6 +185,8 @@ export class Playback {
   /** position(), written into `out`. */
   positionInto<T extends MutablePoint>(out: T, unit: number, time = this.time): T {
     const history = this.histories[unit];
+    const death = history?.death ?? null;
+    if (death !== null && time > death) time = death;
     const steps = history?.steps ?? NOTHING.steps;
     const step = lastStarted(steps, time);
     if (step !== undefined && time < step.endTick) {
@@ -201,9 +211,13 @@ export class Playback {
   lungeInto<T extends MutablePoint>(out: T, unit: number, time = this.time): T {
     out.x = 0;
     out.z = 0;
-    const lunge = this.lunges.get(unit);
+    const history = this.histories[unit];
+    // A unit that dies mid-lunge stops there, as it does mid-step.
+    const death = history?.death ?? null;
+    if (death !== null && time > death) time = death;
+    const lunge = lastStarted(history?.lunges ?? NO_LUNGES, time);
     if (lunge === undefined) return out;
-    const progress = (time - lunge.startTick) / EFFECT_TICKS.lunge;
+    const progress = (time - lunge.tick) / EFFECT_TICKS.lunge;
     if (progress < 0 || progress >= 1) return out;
     const from = this.positionInto(lungeFrom, unit, time);
     const to = this.positionInto(lungeTo, lunge.target, time);
@@ -225,16 +239,6 @@ export class Playback {
     out.x = projectile.from.x + (to.x - projectile.from.x) * progress;
     out.z = projectile.from.z + (to.z - projectile.from.z) * progress;
     return out;
-  }
-
-  /**
-   * How far a dead unit has sunk and faded: 0 until `delaySeconds` after its death, which the scene
-   * sets to half its death clip, so the clip plays on as it starts to sink; then rising to 1 once it
-   * has faded out. Always 0 for living units.
-   */
-  deathProgress(unit: number, time = this.time, delaySeconds = 0): number {
-    const tick = this.histories[unit]?.death ?? null;
-    return tick === null ? 0 : clamp01((time - tick - delaySeconds * TICKS_PER_SECOND) / EFFECT_TICKS.death);
   }
 
   /** What a unit has done so far in the fight. */
@@ -266,14 +270,16 @@ export class Playback {
           this.addStep(e.unit, { tick: e.tick, endTick: e.arriveTick, dash: false, from: hexToWorld(e.from), to: hexToWorld(e.to) });
           break;
         case 'dash':
-          this.addStep(e.unit, { tick: e.tick, endTick: e.tick + EFFECT_TICKS.dash, dash: true, from: hexToWorld(e.from), to: hexToWorld(e.to) });
+          // Emitted at the cast, it sets off at the release: the unit stands on `from` until then.
+          this.addStep(e.unit, { tick: e.departTick, endTick: e.arriveTick, dash: true, from: hexToWorld(e.from), to: hexToWorld(e.to) });
           break;
         case 'attack':
           if (e.ranged) {
             const startTick = Math.min(e.tick + SHOT_DELAY_TICKS, e.hitTick - 1);
             this.projectiles.push({ source: e.unit, target: e.target, from: this.position(e.unit, e.tick), startTick, hitTick: e.hitTick });
           } else {
-            this.lunges.set(e.unit, { target: e.target, startTick: e.tick });
+            // At its height when the blow lands.
+            this.historyOf(e.unit).lunges.push({ tick: e.hitTick - EFFECT_TICKS.lunge / 2, target: e.target });
           }
           this.addAction(e.unit, e.tick, false);
           break;
@@ -287,7 +293,7 @@ export class Playback {
           this.addText(e.target, `+${e.amount}`, 'heal', false, e.tick);
           break;
         case 'cast':
-          this.casts.push({ unit: e.unit, startTick: e.tick });
+          // The ability's name in its pill; its wind-up, travel and impact are effects.ts's.
           this.addText(e.unit, e.ability, 'cast', false, e.tick);
           this.addAction(e.unit, e.tick, true);
           break;
@@ -295,9 +301,15 @@ export class Playback {
           // A stun the unit is immune to, or one that doesn't outlast the current one, has no event.
           if (e.status === 'stun') this.addStun(e.target, e.tick, e.expiresTick ?? Infinity);
           break;
-        case 'death':
-          this.historyOf(e.unit).death = e.tick;
+        case 'death': {
+          const history = this.historyOf(e.unit);
+          history.death = e.tick;
+          // A unit that dies before its dash sets off never sets off (sim-spec section 14): it is still
+          // on the dash's `from` hex, which the state shows, as nothing moves a dead unit.
+          const last = history.steps.at(-1);
+          if (last?.dash === true && last.tick >= e.tick && pointDistance(hexToWorld(this.combat.state.units[e.unit]!.hex), last.to) > 1e-6) history.steps.pop();
           break;
+        }
         case 'end':
           this.ended = { tick: e.tick, outcome: e.outcome };
           break;
@@ -308,7 +320,7 @@ export class Playback {
   private historyOf(unit: number): History {
     let history = this.histories[unit];
     if (history === undefined) {
-      history = { team: null, home: null, actions: [], steps: [], stuns: [], death: null };
+      history = { team: null, home: null, actions: [], steps: [], stuns: [], lunges: [], death: null };
       this.histories[unit] = history;
     }
     return history;
@@ -322,11 +334,16 @@ export class Playback {
     else actions.push({ tick, cast });
   }
 
-  /** The later of two steps on one tick replaces the other, as it does for the unit's position. */
+  /**
+   * Keeps the steps in the order they set off, as a dash comes at its cast and sets off later. The
+   * later of two steps setting off on one tick replaces the other, as it does for the unit's position.
+   */
   private addStep(unit: number, step: StepRecord): void {
     const { steps } = this.historyOf(unit);
-    if (steps.at(-1)?.tick === step.tick) steps[steps.length - 1] = step;
-    else steps.push(step);
+    let at = steps.length;
+    while (at > 0 && steps[at - 1]!.tick > step.tick) at--;
+    if (steps[at - 1]?.tick === step.tick) steps[at - 1] = step;
+    else steps.splice(at, 0, step);
   }
 
   /** A stun that starts while the unit is stunned, or as its stun ends, carries that stun on. */
@@ -343,20 +360,46 @@ export class Playback {
   }
 
   private addText(unit: number, text: string, kind: TextKind, big: boolean, startTick: number): void {
-    this.texts.push({ unit, text, kind, big, startTick });
+    this.texts.push({ unit, text, kind, big, startTick, offset: textOffset(this.texts, unit, startTick) });
   }
 
   /** Drops effects that have finished. A list stays the same list while none of it has. */
   private prune(): void {
     this.projectiles = unfinished(this.projectiles, projectileEnd, this.time);
     this.texts = unfinished(this.texts, textEnd, this.time);
-    this.casts = unfinished(this.casts, castEnd, this.time);
   }
+}
+
+/**
+ * How far up a text starting on `unit` at `startTick` starts: the lowest height, from 0 or just
+ * above one of the unit's texts still showing, at least FLOATING_TEXT.gap from where each of those
+ * is then. All texts rise at the same pace, so they stay that far apart for as long as they show:
+ * texts that start together stack upwards, so do those of a multi-hit a few ticks apart, and one
+ * that has risen out of the way leaves room below it.
+ */
+export function textOffset(texts: readonly FloatingText[], unit: number, startTick: number): number {
+  const { gap } = FLOATING_TEXT;
+  /** Where a text of the unit still showing is as this one starts, or NaN for any other. */
+  const height = (t: FloatingText): number => {
+    const age = startTick - t.startTick;
+    return t.unit === unit && age >= 0 && age < EFFECT_TICKS.floatingText ? t.offset + (FLOATING_TEXT.rise * age) / EFFECT_TICKS.floatingText : NaN;
+  };
+  let best = Infinity;
+  // Candidates: the bottom, and just above each text showing.
+  for (let c = -1; c < texts.length; c++) {
+    const below = c < 0 ? -gap : height(texts[c]!);
+    if (Number.isNaN(below)) continue;
+    const y = Math.max(0, below + gap);
+    if (y >= best) continue;
+    let clear = true;
+    for (let i = 0; i < texts.length && clear; i++) clear = !(Math.abs(y - height(texts[i]!)) < gap - 1e-9);
+    if (clear) best = y;
+  }
+  return best;
 }
 
 const projectileEnd = (projectile: Projectile) => projectile.hitTick;
 const textEnd = (text: FloatingText) => text.startTick + EFFECT_TICKS.floatingText;
-const castEnd = (cast: CastRing) => cast.startTick + EFFECT_TICKS.castRing;
 
 /** The effects that haven't ended by `time`: the list itself if none has, so most frames allocate nothing. */
 function unfinished<T>(list: T[], end: (effect: T) => number, time: number): T[] {

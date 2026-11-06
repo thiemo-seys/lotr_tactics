@@ -17,7 +17,7 @@ import type { OriginId } from '../src/data/traits.js';
 import { UNITS, type DamageType, type Selector, type UnitId } from '../src/data/units.js';
 import { BOARD_HEXES, distance, fromOffset, fromPlacement, hexEquals, mirror, toOffset, type Hex } from '../src/hex.js';
 import type { Team } from '../src/types.js';
-import { BOARDS, input, mirrorMatch, ofType, placed, stepTo } from './helpers.js';
+import { BOARDS, castsOf, dashesOf, input, mirrorMatch, ofType, placed, stepTo } from './helpers.js';
 
 /** Board offset coordinates. */
 function at(col: number, row: number): Hex {
@@ -161,10 +161,51 @@ describe('dash and summon placement', () => {
   });
 });
 
+
+/** Wind-ups in ticks, from the wind-ups in sim-spec 10.5: 0.35 s is 11, 0.4 s is 12, 0.5 s is 15 and 0.6 s is 18 (section 10.6). */
+const WINDUP_TICKS: Readonly<Record<UnitId, number>> = {
+  sam: 12,
+  merry: 12,
+  pippin: 12,
+  beregond: 12,
+  hama: 12,
+  grishnakh: 11,
+  sharku: 12,
+  gorbag: 12,
+  frodo: 12,
+  haldir: 12,
+  faramir: 12,
+  gamling: 12,
+  balin: 12,
+  lurtz: 12,
+  radagast: 15,
+  ringwraith: 15,
+  bilbo: 12,
+  gollum: 12,
+  gimli: 12,
+  boromir: 12,
+  eomer: 12,
+  eowyn: 12,
+  ugluk: 12,
+  khamul: 11,
+  legolas: 12,
+  elrond: 15,
+  aragorn: 12,
+  theoden: 11,
+  dain: 12,
+  saruman: 15,
+  gothmog: 12,
+  gandalf: 18,
+  galadriel: 18,
+  'witch-king': 11,
+  treebeard: 15,
+  sauron: 15,
+};
+
 interface Cast {
   readonly fight: Fight;
   readonly caster: UnitState;
-  /** Tick 1's events from the cast on: everything the ability did. */
+  /** The events from the cast on tick 1 to the last tick stepped: everything the ability did. */
   readonly events: CombatEvent[];
   /** The unit placed at (col, row) in `team`'s perspective. */
   at(team: Team, col: number, row: number): UnitState;
@@ -178,33 +219,42 @@ interface Cast {
 const covered = new Set<string>();
 
 /**
- * Fills the mana of the unit placed first on team A and steps tick 1. Every other unit is stunned
- * for that tick, so tick 1's events from the cast on all come from the ability. `prepare` runs
+ * Fills the mana of the unit placed first on team A, so it casts on tick 1, and steps to `until`:
+ * by default its release, tick 1 + its wind-up (sim-spec 10.6). Every other unit is stunned until
+ * then, so the events from the cast on all come from the ability, and the stuns the ability lands
+ * outlast those. If the caster is ready (`ready`, by default release + 3) before `until`, it is
+ * stunned from then on, once its part of the cast is done, so it doesn't attack. `prepare` runs
  * first, on tick 0.
  */
 function castBy(
   A: readonly PlacedUnit[],
   B: readonly PlacedUnit[],
-  options: { prepare?: (fight: Fight, find: Cast['at']) => void; seed?: number } = {},
+  options: { prepare?: (fight: Fight, find: Cast['at']) => void; seed?: number; until?: number; ready?: number } = {},
 ): Cast {
   const fight = new Fight(input(A, B, options.seed));
   const find = (team: Team, col: number, row: number) =>
     fight.state.units.find((u) => u.team === team && hexEquals(u.hex, fromPlacement(team, { col, row })))!;
   const caster = find('A', A[0]!.col, A[0]!.row);
   covered.add(caster.unitId);
+  const def = UNITS[caster.unitId as UnitId];
+  const release = 1 + WINDUP_TICKS[def.id];
+  const until = options.until ?? release;
+  const ready = options.ready ?? release + 3;
   options.prepare?.(fight, find);
   for (const unit of fight.state.units) {
-    if (unit !== caster) fight.applyStatus(unit.id, unit.id, { kind: 'stun', seconds: 2 / 30 });
+    if (unit !== caster) fight.applyStatus(unit.id, unit.id, { kind: 'stun', seconds: (until + 1) / 30 });
   }
   Object.assign(caster, { mana: caster.base.maxMana });
   // Stats are replaced, not changed in place, so these stay as they were.
   const before = new Map<number, Stats>(fight.state.units.map((u) => [u.id, u.stats]));
   const tick1 = fight.step();
   const events = tick1.slice(tick1.findIndex((e) => e.type === 'cast'));
-  const def = UNITS[caster.unitId as UnitId];
-  expect(events[0]).toEqual({ type: 'cast', tick: 1, unit: caster.id, ability: def.ability.name });
-  const cost = def.cost;
-  const value = (base: 'D' | 'S' | 'H', pct: number) => abilityValue(base, pct, cost, caster.star, before.get(caster.id)!.abilityPower);
+  while (fight.tick < until) {
+    if (fight.tick === ready - 1) fight.applyStatus(caster.id, caster.id, { kind: 'stun', seconds: (until + 1 - fight.tick) / 30 });
+    events.push(...fight.step());
+  }
+  expect(events[0]).toMatchObject({ type: 'cast', tick: 1, unit: caster.id, ability: def.ability.name, releaseTick: release, readyTick: ready });
+  const value = (base: 'D' | 'S' | 'H', pct: number) => abilityValue(base, pct, def.cost, caster.star, before.get(caster.id)!.abilityPower);
   return {
     fight,
     caster,
@@ -216,19 +266,21 @@ function castBy(
   };
 }
 
-const damages = (c: Cast) => ofType(c.events, 'damage').map((e) => [e.target, e.amount]);
-const shields = (c: Cast) => ofType(c.events, 'shield').map((e) => [e.target, e.amount, e.expiresTick]);
-const statuses = (c: Cast) => ofType(c.events, 'status').map((e) => [e.target, e.status, e.stat, e.value, e.expiresTick]);
-const heals = (c: Cast) => ofType(c.events, 'heal').map((e) => [e.target, e.amount]);
+// Each with the tick it lands on, which is when the `damage`, `heal`, `shield` and `status` events come (sim-spec 10.6).
+const damages = (c: Cast) => ofType(c.events, 'damage').map((e) => [e.tick, e.target, e.amount]);
+const shields = (c: Cast) => ofType(c.events, 'shield').map((e) => [e.tick, e.target, e.amount, e.expiresTick]);
+const statuses = (c: Cast) => ofType(c.events, 'status').map((e) => [e.tick, e.target, e.status, e.stat, e.value, e.expiresTick]);
+const heals = (c: Cast) => ofType(c.events, 'heal').map((e) => [e.tick, e.target, e.amount]);
 
 describe('casting', () => {
-  it('casts at full mana instead of attacking, then is busy for 15 ticks and gains no mana', () => {
-    // Háma (id 0) and Haldir (id 1) stand 3 apart, so Haldir's first arrow lands on tick 9.
+  it('casts at full mana instead of attacking, then is busy until 3 ticks after its release and gains no mana', () => {
+    // Háma (id 0) and Haldir (id 1) stand 3 apart, so Haldir's first arrow lands on tick 1 + ceil(3 × 30 / 12) = 9.
+    // sim-spec 10.6: a 0.4 s wind-up is 12 ticks, so the release is on 13 and Háma is ready on 16.
     const fight = new Fight(input([placed('hama', 3, 3)], [placed('haldir', 3, 1)]));
     const hama = fight.state.units[0]!;
     Object.assign(hama, { mana: hama.base.maxMana });
     const tick1 = fight.step();
-    expect(ofType(tick1, 'cast')).toEqual([{ type: 'cast', tick: 1, unit: 0, ability: 'Doorward' }]);
+    expect(castsOf(tick1)).toMatchObject([{ type: 'cast', tick: 1, unit: 0, ability: 'Doorward', releaseTick: 13, readyTick: 16 }]);
     expect(ofType(tick1, 'attack').filter((e) => e.unit === 0)).toEqual([]);
     expect(hama.mana).toBe(0);
 
@@ -245,7 +297,7 @@ describe('casting', () => {
     const c = castBy([placed('beregond', 3, 3)], [placed('gimli', 3, 0)]);
     const gimli = c.at('B', 3, 0);
     expect(distance(c.caster.hex, gimli.hex)).toBe(4);
-    expect(damages(c)).toEqual([[gimli.id, 133]]);
+    expect(damages(c)).toEqual([[13, gimli.id, 133]]);
     expect(ofType(c.events, 'move')).toEqual([]);
   });
 
@@ -262,10 +314,11 @@ describe('casting', () => {
     const fight = new Fight(input([placed('frodo', 3, 3), placed('sam', 0, 0)], [placed('gimli', 3, 3)]));
     const frodo = fight.state.units[0]!;
     Object.assign(frodo, { mana: frodo.base.maxMana });
-    fight.step();
+    // The release is on 13 and the delayed strike is due on 13 + 60 = 73 (sim-spec 10.6).
+    stepTo(fight, 13);
     // Nothing can hit Frodo while he is untargetable, so stand in for a death.
     Object.assign(frodo, { alive: false });
-    const events = stepTo(fight, 61);
+    const events = stepTo(fight, 74);
     expect(ofType(events, 'damage').filter((e) => e.source === frodo.id)).toEqual([]);
   });
 
@@ -278,7 +331,7 @@ describe('casting', () => {
         fight.applyStatus(haldir.id, haldir.id, { kind: 'untargetable', seconds: 1 });
       },
     });
-    expect(damages(c).map(([id]) => id)).toEqual([c.at('B', 3, 3).id]);
+    expect(damages(c).map(([, id]) => id)).toEqual([c.at('B', 3, 3).id]);
   });
 
   it('only crits when the ability says so', () => {
@@ -298,7 +351,8 @@ describe('casting', () => {
   it('lets the Witch-king take half damage from Gondor and Rohan units other than Éowyn', () => {
     const firstHit = (attacker: UnitId) => {
       const fight = new Fight(input([placed(attacker, 3, 3)], [placed('witch-king', 3, 3)]));
-      const hit = ofType(fight.step(), 'damage').find((e) => e.source === 0)!;
+      // A melee blow lands 7 ticks after the attack on tick 1 (sim-spec 9).
+      const hit = ofType(stepTo(fight, 8), 'damage').find((e) => e.source === 0)!;
       const [source, target] = fight.state.units;
       return { hit, source: source!, target: target! };
     };
@@ -309,12 +363,13 @@ describe('casting', () => {
       ['gimli', 0],
     ] as const) {
       const { hit, source, target } = firstHit(attacker);
+      expect(hit.tick).toBe(8);
       const raw = (source.stats.attackDamage * (hit.crit ? source.stats.critDamagePct : 100)) / 100;
       expect(hit.amount).toBe(finalDamage(raw, 'physical', target.stats, { ampPct: 0, overtimePct: 100, reductionPct }));
     }
     // Ability damage too: 200 physical against Armor 50, halved.
     const c = castBy([placed('beregond', 3, 3)], [placed('witch-king', 3, 3)]);
-    expect(damages(c)).toEqual([[c.at('B', 3, 3).id, 67]]);
+    expect(damages(c)).toEqual([[13, c.at('B', 3, 3).id, 67]]);
   });
 
   it('doesn’t summon when its own half is full', () => {
@@ -324,105 +379,132 @@ describe('casting', () => {
     });
     const c = castBy([placed('gothmog', 3, 3), ...fillers], [placed('gimli', 3, 3)]);
     expect(ofType(c.events, 'spawn')).toEqual([]);
-    expect(statuses(c)).toEqual([[c.caster.id, 'buff', 'attackDamagePct', 25, 151]]);
+    // The buff lands at the release, 13, for 5 s.
+    expect(statuses(c)).toEqual([[13, c.caster.id, 'buff', 'attackDamagePct', 25, 163]]);
   });
 });
 
+// The scenarios below cast on tick 1, so a 0.35 s wind-up releases on 12, a 0.4 s one on 13, 0.5 s
+// on 16 and 0.6 s on 19 (sim-spec 10.6). Shields last 4 s (120 ticks) and statuses their own
+// time, counted from the tick they land.
 describe('abilities', () => {
   it('Sam shields himself and the nearest ally', () => {
     const c = castBy([placed('sam', 3, 3), placed('haldir', 2, 3), placed('eomer', 0, 0)], [placed('gimli', 3, 3)]);
     expect(shields(c)).toEqual([
-      [c.caster.id, 150, 121],
-      [c.at('A', 2, 3).id, 150, 121],
+      [13, c.caster.id, 150, 133],
+      [13, c.at('A', 2, 3).id, 150, 133],
     ]);
   });
 
   it('Merry damages the target and lowers its Armor and Magic Resist', () => {
     const c = castBy([placed('merry', 3, 3)], [placed('gimli', 3, 3), placed('haldir', 2, 3)]);
     const gimli = c.at('B', 3, 3);
-    expect(damages(c)).toEqual([[gimli.id, 133]]);
+    expect(damages(c)).toEqual([[13, gimli.id, 133]]);
     expect(statuses(c)).toEqual([
-      [gimli.id, 'reduce', 'armor', 30, 121],
-      [gimli.id, 'reduce', 'magicResist', 30, 121],
+      [13, gimli.id, 'reduce', 'armor', 30, 133],
+      [13, gimli.id, 'reduce', 'magicResist', 30, 133],
     ]);
     expect([gimli.stats.armor, gimli.stats.magicResist]).toEqual([35, 35]);
   });
 
-  it('Pippin’s stone bounces from the target to the nearest enemy within 3, three times', () => {
+  it('Pippin’s stone bounces from the target to the nearest enemy within 3, three times, each hop landing in turn', () => {
+    // Distances: Pippin to Gimli 1, Gimli to Haldir 2, Haldir to Éomer 1. The hops land at
+    // 13 + ceil(1 × 2.5) = 16, 13 + ceil(3 × 2.5) = 21 and 13 + ceil(4 × 2.5) = 23 (sim-spec 10.6, Bounce).
     const c = castBy(
       [placed('pippin', 3, 3)],
       [placed('gimli', 3, 3), placed('haldir', 3, 1), placed('eomer', 3, 0), placed('radagast', 0, 0)],
+      { until: 23 },
     );
-    const hit = [c.at('B', 3, 3), c.at('B', 3, 1), c.at('B', 3, 0)];
-    expect(damages(c)).toEqual(hit.map((u) => [u.id, c.damage(u, 70)]));
+    const [gimli, haldir, eomer] = [c.at('B', 3, 3), c.at('B', 3, 1), c.at('B', 3, 0)];
+    expect(damages(c)).toEqual([
+      [16, gimli.id, c.damage(gimli, 70)],
+      [21, haldir.id, c.damage(haldir, 70)],
+      [23, eomer.id, c.damage(eomer, 70)],
+    ]);
   });
 
   it('Beregond damages and stuns the target, choosing one first', () => {
     const c = castBy([placed('beregond', 3, 3)], [placed('gimli', 3, 3)]);
     const gimli = c.at('B', 3, 3);
-    expect(damages(c)).toEqual([[gimli.id, 133]]);
-    expect(statuses(c)).toEqual([[gimli.id, 'stun', null, null, 31]]);
+    expect(damages(c)).toEqual([[13, gimli.id, 133]]);
+    expect(statuses(c)).toEqual([[13, gimli.id, 'stun', null, null, 43]]);
     expect(c.caster.target).toBe(gimli.id);
   });
 
   it('Háma shields himself and gains Armor', () => {
     const c = castBy([placed('hama', 3, 3)], [placed('gimli', 3, 3)]);
-    expect(shields(c)).toEqual([[c.caster.id, 200, 121]]);
-    expect(statuses(c)).toEqual([[c.caster.id, 'buff', 'armor', 30, 151]]);
+    expect(shields(c)).toEqual([[13, c.caster.id, 200, 133]]);
+    expect(statuses(c)).toEqual([[13, c.caster.id, 'buff', 'armor', 30, 163]]);
     expect(c.caster.stats.armor).toBe(70);
   });
 
-  it('Grishnákh dashes next to the enemy with the lowest Health and strikes it', () => {
-    const c = castBy([placed('grishnakh', 3, 3)], [placed('gimli', 3, 3), placed('haldir', 3, 0), placed('eomer', 0, 0)]);
+  it('Grishnákh dashes next to the enemy with the lowest Health and strikes it when he arrives', () => {
+    // The dash sets off at the release, 12, and covers 3 hexes at 5 ticks a hex: it arrives on 27,
+    // and he is ready on 30 (sim-spec 10.6, Dashes).
+    const c = castBy([placed('grishnakh', 3, 3)], [placed('gimli', 3, 3), placed('haldir', 3, 0), placed('eomer', 0, 0)], {
+      until: 27,
+      ready: 30,
+    });
     const haldir = c.at('B', 3, 0);
-    expect(ofType(c.events, 'dash')).toEqual([{ type: 'dash', tick: 1, unit: c.caster.id, from: at(3, 3), to: at(3, 6) }]);
-    expect(damages(c)).toEqual([[haldir.id, 200]]);
+    expect(dashesOf(c.events)).toEqual([
+      { type: 'dash', tick: 1, unit: c.caster.id, from: at(3, 3), to: at(3, 6), departTick: 12, arriveTick: 27 },
+    ]);
+    // The dash event comes right after the cast event.
+    expect(c.events[1]!.type).toBe('dash');
+    // Sneak is 1.4 D (design.md section 5): 280 at cost 1, against Armor 20.
+    expect(damages(c)).toEqual([[27, haldir.id, 233]]);
     expect(c.caster.target).toBe(haldir.id);
   });
 
   it('Sharku damages and slows the target', () => {
     const c = castBy([placed('sharku', 3, 3)], [placed('gimli', 3, 3)]);
     const gimli = c.at('B', 3, 3);
-    expect(damages(c)).toEqual([[gimli.id, 133]]);
-    expect(statuses(c)).toEqual([[gimli.id, 'slow', null, 30, 91]]);
+    expect(damages(c)).toEqual([[13, gimli.id, 133]]);
+    expect(statuses(c)).toEqual([[13, gimli.id, 'slow', null, 30, 103]]);
     expect(gimli.stats.attackSpeed).toBeCloseTo(0.42, 10);
   });
 
-  it('Gorbag hits the target three times', () => {
-    const c = castBy([placed('gorbag', 3, 3)], [placed('gimli', 3, 3)]);
+  it('Gorbag shoots the target three times, the arrows 3 ticks apart', () => {
+    // Each arrow leaves 3 ticks after the last, from the release on 13, and flies 1 hex in
+    // ceil(2.5) = 3 ticks: they land on 16, 19 and 22. The last leaves on 19, so he is ready on 22.
+    const c = castBy([placed('gorbag', 3, 3)], [placed('gimli', 3, 3)], { until: 22, ready: 22 });
     const gimli = c.at('B', 3, 3);
     expect(damages(c)).toEqual([
-      [gimli.id, 53],
-      [gimli.id, 53],
-      [gimli.id, 53],
+      [16, gimli.id, 53],
+      [19, gimli.id, 53],
+      [22, gimli.id, 53],
     ]);
   });
 
-  it('Frodo turns untargetable for 2 seconds, then strikes the target', () => {
+  it('Frodo turns untargetable for 2 seconds, then strikes the target as it ends', () => {
     const c = castBy([placed('frodo', 3, 3)], [placed('gimli', 3, 3)]);
     const gimli = c.at('B', 3, 3);
-    expect(statuses(c)).toEqual([[c.caster.id, 'untargetable', null, null, 61]]);
+    // Untargetable from the release, 13, until 13 + 60 = 73; the delayed strike is due 60 ticks after the release.
+    expect(statuses(c)).toEqual([[13, c.caster.id, 'untargetable', null, null, 73]]);
     expect(damages(c)).toEqual([]);
-    const later = stepTo(c.fight, 61);
-    // Gimli can't target Frodo until the start of tick 61.
-    expect(ofType(later, 'attack').filter((e) => e.unit === gimli.id).map((e) => e.tick)).toEqual([61]);
+    const later = stepTo(c.fight, 73);
+    // Gimli's stun ends on 14, but he can't target Frodo until the start of tick 73.
+    expect(ofType(later, 'attack').filter((e) => e.unit === gimli.id).map((e) => e.tick)).toEqual([73]);
     const strike = ofType(later, 'damage').filter((e) => e.kind === 'ability');
-    expect(strike).toMatchObject([{ tick: 61, source: c.caster.id, target: gimli.id, amount: c.damage(gimli, 130) }]);
+    expect(strike).toMatchObject([{ tick: 73, source: c.caster.id, target: gimli.id, amount: c.damage(gimli, 130) }]);
   });
 
-  it('Haldir shoots the three nearest enemies', () => {
+  it('Haldir shoots the three nearest enemies, each arrow landing by its distance', () => {
+    // Gimli is 1 away, Éomer 2 and Radagast 3: 13 + ceil(2.5) = 16, 13 + 5 = 18 and 13 + ceil(7.5) = 21.
     const c = castBy(
       [placed('haldir', 3, 3)],
-      [placed('gimli', 3, 3), placed('eomer', 2, 3), placed('radagast', 3, 2), placed('boromir', 0, 0)],
+      [placed('gimli', 3, 3), placed('eomer', 4, 2), placed('radagast', 4, 1), placed('boromir', 0, 0)],
+      { until: 21 },
     );
-    const hit = [c.at('B', 3, 3), c.at('B', 2, 3), c.at('B', 3, 2)];
-    expect(damages(c)).toEqual(hit.map((u) => [u.id, c.damage(u, 70)]));
+    const hit = [c.at('B', 3, 3), c.at('B', 4, 2), c.at('B', 4, 1)];
+    expect(damages(c)).toEqual([16, 18, 21].map((tick, i) => [tick, hit[i]!.id, c.damage(hit[i]!, 70)]));
   });
 
   it('Faramir shoots the farthest enemy', () => {
     // Eomer and Radagast are both 5 away; Radagast comes first in the tie-break. 375 × 100 / 120 = 312.5 rounds up.
-    const c = castBy([placed('faramir', 3, 3)], [placed('gimli', 3, 3), placed('eomer', 0, 0), placed('radagast', 6, 0)]);
-    expect(damages(c)).toEqual([[c.at('B', 6, 0).id, 313]]);
+    // The arrow lands on 13 + ceil(5 × 30 / 12) = 26.
+    const c = castBy([placed('faramir', 3, 3)], [placed('gimli', 3, 3), placed('eomer', 0, 0), placed('radagast', 6, 0)], { until: 26 });
+    expect(damages(c)).toEqual([[26, c.at('B', 6, 0).id, 313]]);
   });
 
   it('Gamling speeds up allies within 2, himself included', () => {
@@ -431,7 +513,7 @@ describe('abilities', () => {
       [placed('eomer', 3, 3)],
     );
     expect(statuses(c)).toEqual(
-      [c.at('A', 1, 3), c.at('A', 2, 3), c.caster].map((u) => [u.id, 'buff', 'attackSpeedPct', 30, 121]),
+      [c.at('A', 1, 3), c.at('A', 2, 3), c.caster].map((u) => [13, u.id, 'buff', 'attackSpeedPct', 30, 133]),
     );
   });
 
@@ -439,45 +521,53 @@ describe('abilities', () => {
     // 0.6 S at cost 2 is 187.5, which rounds to 188.
     const c = castBy([placed('balin', 3, 3), placed('haldir', 2, 3), placed('radagast', 1, 3)], [placed('eomer', 3, 3)]);
     expect(shields(c)).toEqual([
-      [c.caster.id, 188, 121],
-      [c.at('A', 2, 3).id, 188, 121],
+      [13, c.caster.id, 188, 133],
+      [13, c.at('A', 2, 3).id, 188, 133],
     ]);
   });
 
-  it('Lurtz shoots every enemy on the line through the target, to the edge', () => {
+  it('Lurtz shoots every enemy on the line through the target, to the edge, reaching each hex by its distance', () => {
+    // The line runs (3, 4), (2, 5), (2, 6), (1, 7), 1 to 4 hexes away: 16, 18, 21 and 23.
     const c = castBy(
       [placed('lurtz', 3, 3)],
       [placed('gimli', 3, 3), placed('haldir', 4, 2), placed('eomer', 4, 1), placed('radagast', 2, 2)],
+      { until: 23 },
     );
     const hit = [c.at('B', 3, 3), c.at('B', 4, 2), c.at('B', 4, 1)];
-    expect(damages(c)).toEqual(hit.map((u) => [u.id, c.damage(u, 100)]));
+    expect(damages(c)).toEqual([16, 18, 21].map((tick, i) => [tick, hit[i]!.id, c.damage(hit[i]!, 100)]));
   });
 
-  it('Radagast damages and slows the target and the enemies next to it', () => {
-    const c = castBy([placed('radagast', 3, 0)], [placed('gimli', 3, 3), placed('eomer', 2, 3), placed('boromir', 3, 1)]);
+  it('Radagast lobs at the target, damaging and slowing it and the enemies next to it 23 ticks after the release', () => {
+    // Release 1 + 15 = 16, landing 16 + 23 = 39; the slow lasts 3 s.
+    const c = castBy([placed('radagast', 3, 0)], [placed('gimli', 3, 3), placed('eomer', 2, 3), placed('boromir', 3, 1)], { until: 39 });
     const hit = [c.at('B', 2, 3), c.at('B', 3, 3)];
-    expect(damages(c)).toEqual(hit.map((u) => [u.id, c.damage(u, 80, 'magic')]));
-    expect(statuses(c)).toEqual(hit.map((u) => [u.id, 'slow', null, 25, 91]));
+    expect(damages(c)).toEqual(hit.map((u) => [39, u.id, c.damage(u, 80, 'magic')]));
+    expect(statuses(c)).toEqual(hit.map((u) => [39, u.id, 'slow', null, 25, 129]));
   });
 
   it('Ringwraith deals magic damage and stuns the target', () => {
-    const c = castBy([placed('ringwraith', 3, 3)], [placed('gimli', 3, 3)]);
+    // Release 16, and 1 hex of flight: 19. Ready on 16 + 3 = 19.
+    const c = castBy([placed('ringwraith', 3, 3)], [placed('gimli', 3, 3)], { until: 19 });
     const gimli = c.at('B', 3, 3);
-    expect(damages(c)).toEqual([[gimli.id, 167]]);
-    expect(statuses(c)).toEqual([[gimli.id, 'stun', null, null, 46]]);
+    // Black Breath is 1.2 D magic (design.md section 5): 300 at cost 2, against Magic Resist 50.
+    expect(damages(c)).toEqual([[19, gimli.id, 200]]);
+    expect(statuses(c)).toEqual([[19, gimli.id, 'stun', null, null, 64]]);
   });
 
   it('Bilbo stuns the target, then stabs it', () => {
     const c = castBy([placed('bilbo', 3, 3)], [placed('gimli', 3, 3)]);
     const gimli = c.at('B', 3, 3);
     expect(c.events.slice(1).map((e) => e.type)).toEqual(['status', 'damage']);
-    expect(statuses(c)).toEqual([[gimli.id, 'stun', null, null, 61]]);
-    expect(damages(c)).toEqual([[gimli.id, 200]]);
+    expect(statuses(c)).toEqual([[13, gimli.id, 'stun', null, null, 73]]);
+    expect(damages(c)).toEqual([[13, gimli.id, 200]]);
   });
 
-  it('Gollum hits three times and heals for half the damage dealt, up to max Health', () => {
+  it('Gollum stabs three times, 3 ticks apart, healing for half of each stab, up to max Health', () => {
+    // Stabs on 13, 16 and 19 (sim-spec 10.6, Multi-hit); his part ends with the last, so he is ready on 22.
     const wounded = (missing: number) =>
       castBy([placed('gollum', 3, 3)], [placed('gimli', 3, 3)], {
+        until: 19,
+        ready: 22,
         prepare: (_, find) => {
           const gollum = find('A', 3, 3);
           Object.assign(gollum, { health: gollum.stats.maxHealth - missing });
@@ -485,31 +575,41 @@ describe('abilities', () => {
       });
     const c = wounded(200);
     const gimli = c.at('B', 3, 3);
+    // 0.4 D at cost 3 is 120, 80 against Armor 50; half of each stab is 40.
     expect(damages(c)).toEqual([
-      [gimli.id, 80],
-      [gimli.id, 80],
-      [gimli.id, 80],
+      [13, gimli.id, 80],
+      [16, gimli.id, 80],
+      [19, gimli.id, 80],
     ]);
-    expect(heals(c)).toEqual([[c.caster.id, 120]]);
-    expect(heals(wounded(50))).toEqual([[c.caster.id, 50]]);
+    expect(heals(c)).toEqual([
+      [13, c.caster.id, 40],
+      [16, c.caster.id, 40],
+      [19, c.caster.id, 40],
+    ]);
+    expect(c.events.slice(1).map((e) => e.type)).toEqual(['damage', 'heal', 'damage', 'heal', 'damage', 'heal']);
+    // 50 missing: 40, then the last 10, then nothing to restore.
+    expect(heals(wounded(50))).toEqual([
+      [13, c.caster.id, 40],
+      [16, c.caster.id, 10],
+    ]);
     expect(heals(wounded(0))).toEqual([]);
   });
 
   it('Gimli hits adjacent enemies and shields himself', () => {
     const c = castBy([placed('gimli', 3, 3)], [placed('eomer', 3, 3), placed('haldir', 2, 3), placed('radagast', 3, 2)]);
     const hit = [c.at('B', 2, 3), c.at('B', 3, 3)];
-    expect(damages(c)).toEqual(hit.map((u) => [u.id, c.damage(u, 90)]));
-    expect(shields(c)).toEqual([[c.caster.id, 225, 121]]);
+    expect(damages(c)).toEqual(hit.map((u) => [13, u.id, c.damage(u, 90)]));
+    expect(shields(c)).toEqual([[13, c.caster.id, 225, 133]]);
   });
 
   it('Boromir gives allies within 2 Armor and Magic Resist, and shields himself', () => {
     const c = castBy([placed('boromir', 3, 3), placed('haldir', 2, 3), placed('gimli', 0, 0)], [placed('eomer', 3, 3)]);
     const buffed = [c.at('A', 2, 3), c.caster];
     expect(statuses(c)).toEqual([
-      ...buffed.map((u) => [u.id, 'buff', 'armor', 25, 151]),
-      ...buffed.map((u) => [u.id, 'buff', 'magicResist', 25, 151]),
+      ...buffed.map((u) => [13, u.id, 'buff', 'armor', 25, 163]),
+      ...buffed.map((u) => [13, u.id, 'buff', 'magicResist', 25, 163]),
     ]);
-    expect(shields(c)).toEqual([[c.caster.id, 375, 121]]);
+    expect(shields(c)).toEqual([[13, c.caster.id, 375, 133]]);
   });
 
   it('Éomer hits the enemies on the first 4 hexes of the line through the target', () => {
@@ -518,39 +618,50 @@ describe('abilities', () => {
       [placed('gimli', 3, 3), placed('haldir', 4, 2), placed('radagast', 5, 0), placed('boromir', 2, 2)],
     );
     const hit = [c.at('B', 3, 3), c.at('B', 4, 2), c.at('B', 5, 0)];
-    expect(damages(c)).toEqual(hit.map((u) => [u.id, c.damage(u, 100)]));
+    expect(damages(c)).toEqual(hit.map((u) => [13, u.id, c.damage(u, 100)]));
   });
 
   it('Éowyn shields herself and strikes the target, for double damage against a Nazgûl', () => {
     const nazgul = castBy([placed('eowyn', 3, 3)], [placed('ringwraith', 3, 3)]);
-    expect(shields(nazgul)).toEqual([[nazgul.caster.id, 225, 121]]);
-    expect(damages(nazgul)).toEqual([[nazgul.at('B', 3, 3).id, 576]]);
+    expect(shields(nazgul)).toEqual([[13, nazgul.caster.id, 225, 133]]);
+    expect(damages(nazgul)).toEqual([[13, nazgul.at('B', 3, 3).id, 576]]);
     const dwarf = castBy([placed('eowyn', 3, 3)], [placed('gimli', 3, 3)]);
-    expect(damages(dwarf)).toEqual([[dwarf.at('B', 3, 3).id, 240]]);
+    expect(damages(dwarf)).toEqual([[13, dwarf.at('B', 3, 3).id, 240]]);
   });
 
   it('Uglúk shields himself and can’t be stunned for 4 seconds', () => {
     const c = castBy([placed('ugluk', 3, 3)], [placed('gimli', 3, 3)]);
-    expect(shields(c)).toEqual([[c.caster.id, 375, 121]]);
-    expect(statuses(c)).toEqual([[c.caster.id, 'stunImmune', null, null, 121]]);
+    expect(shields(c)).toEqual([[13, c.caster.id, 375, 133]]);
+    expect(statuses(c)).toEqual([[13, c.caster.id, 'stunImmune', null, null, 133]]);
     c.fight.applyStatus(1, c.caster.id, { kind: 'stun', seconds: 1 });
     expect(c.caster.statuses.has('stun')).toBe(false);
   });
 
-  it('Khamûl rides through 3 hexes, damaging and slowing the enemies there, and ends on the farthest free one', () => {
-    const c = castBy([placed('khamul', 3, 3)], [placed('gimli', 3, 3), placed('haldir', 4, 2), placed('radagast', 2, 2)]);
-    const hit = [c.at('B', 3, 3), c.at('B', 4, 2)];
-    expect(damages(c)).toEqual(hit.map((u) => [u.id, c.damage(u, 90, 'magic')]));
-    expect(statuses(c)).toEqual(hit.map((u) => [u.id, 'slow', null, 25, 91]));
-    expect(c.events.at(-1)).toEqual({ type: 'dash', tick: 1, unit: c.caster.id, from: at(3, 3), to: at(2, 6) });
+  it('Khamûl rides through 3 hexes, damaging and slowing the enemies as he reaches them, and ends on the farthest free one', () => {
+    // Release 12; the line hexes are reached on 17, 22 and 27, when he arrives on (2, 6), 3 hexes away. Ready on 30.
+    const c = castBy([placed('khamul', 3, 3)], [placed('gimli', 3, 3), placed('haldir', 4, 2), placed('radagast', 2, 2)], {
+      until: 27,
+      ready: 30,
+    });
+    const [gimli, haldir] = [c.at('B', 3, 3), c.at('B', 4, 2)];
+    expect(damages(c)).toEqual([
+      [17, gimli.id, c.damage(gimli, 90, 'magic')],
+      [22, haldir.id, c.damage(haldir, 90, 'magic')],
+    ]);
+    expect(statuses(c)).toEqual([
+      [17, gimli.id, 'slow', null, 25, 107],
+      [22, haldir.id, 'slow', null, 25, 112],
+    ]);
+    expect(c.events[1]).toEqual({ type: 'dash', tick: 1, unit: c.caster.id, from: at(3, 3), to: at(2, 6), departTick: 12, arriveTick: 27 });
   });
 
-  it('Legolas shoots the target five times, and each arrow can crit', () => {
+  it('Legolas shoots the target five times, 3 ticks apart, and each arrow can crit', () => {
     let crits = 0;
     for (const seed of [1, 2, 3, 4]) {
-      const c = castBy([placed('legolas', 3, 3)], [placed('gimli', 3, 3)], { seed });
+      // The arrows leave on 13, 16, 19, 22 and 25, and land 3 ticks later; he is ready on 25 + 3 = 28.
+      const c = castBy([placed('legolas', 3, 3)], [placed('gimli', 3, 3)], { seed, until: 28, ready: 28 });
       const hits = ofType(c.events, 'damage');
-      expect(hits).toHaveLength(5);
+      expect(hits.map((h) => h.tick)).toEqual([16, 19, 22, 25, 28]);
       // 0.3 D at cost 4 is 105, or 147 on a crit, against Armor 50.
       for (const hit of hits) expect(hit.amount).toBe(hit.crit ? 98 : 70);
       crits += hits.filter((h) => h.crit).length;
@@ -571,48 +682,61 @@ describe('abilities', () => {
     );
     const [gimli, eomer] = [c.at('A', 3, 3), c.at('A', 2, 3)];
     expect(heals(c)).toEqual([
-      [gimli.id, 350],
-      [eomer.id, 234],
+      [16, gimli.id, 350],
+      [16, eomer.id, 234],
     ]);
-    expect(statuses(c)).toEqual([gimli, eomer].map((u) => [u.id, 'buff', 'magicResist', 30, 121]));
+    expect(statuses(c)).toEqual([gimli, eomer].map((u) => [16, u.id, 'buff', 'magicResist', 30, 136]));
   });
 
   it('Aragorn strikes the target and gives allies within 2 Attack Damage', () => {
     const c = castBy([placed('aragorn', 3, 3), placed('haldir', 2, 3), placed('gimli', 0, 0)], [placed('eomer', 3, 3)]);
-    expect(damages(c)).toEqual([[c.at('B', 3, 3).id, 325]]);
-    expect(statuses(c)).toEqual([c.at('A', 2, 3), c.caster].map((u) => [u.id, 'buff', 'attackDamagePct', 25, 121]));
+    expect(damages(c)).toEqual([[13, c.at('B', 3, 3).id, 325]]);
+    expect(statuses(c)).toEqual([c.at('A', 2, 3), c.caster].map((u) => [13, u.id, 'buff', 'attackDamagePct', 25, 133]));
   });
 
-  it('Théoden rides through 3 hexes, damaging and stunning the enemies there, and ends on the farthest free one', () => {
-    const c = castBy([placed('theoden', 3, 3)], [placed('gimli', 3, 3), placed('haldir', 4, 1), placed('radagast', 2, 2)]);
-    const hit = [c.at('B', 3, 3), c.at('B', 4, 1)];
-    expect(damages(c)).toEqual(hit.map((u) => [u.id, c.damage(u, 100)]));
-    expect(statuses(c)).toEqual(hit.map((u) => [u.id, 'stun', null, null, 31]));
-    expect(c.events.at(-1)).toEqual({ type: 'dash', tick: 1, unit: c.caster.id, from: at(3, 3), to: at(2, 5) });
+  it('Théoden rides through 3 hexes, damaging and stunning the enemies as he reaches them, and ends on the farthest free one', () => {
+    // The sim-spec 10.6 example: release 12, line hexes on 17, 22 and 27; he arrives on (2, 5), 2 hexes away,
+    // on 22, and rams Haldir on the hex past it on 27. Ready on 30.
+    const c = castBy([placed('theoden', 3, 3)], [placed('gimli', 3, 3), placed('haldir', 4, 1), placed('radagast', 2, 2)], {
+      until: 27,
+      ready: 30,
+    });
+    const [gimli, haldir] = [c.at('B', 3, 3), c.at('B', 4, 1)];
+    expect(damages(c)).toEqual([
+      [17, gimli.id, c.damage(gimli, 100)],
+      [27, haldir.id, c.damage(haldir, 100)],
+    ]);
+    expect(statuses(c)).toEqual([
+      [17, gimli.id, 'stun', null, null, 47],
+      [27, haldir.id, 'stun', null, null, 57],
+    ]);
+    expect(c.events[1]).toEqual({ type: 'dash', tick: 1, unit: c.caster.id, from: at(3, 3), to: at(2, 5), departTick: 12, arriveTick: 22 });
   });
 
   it('Dáin damages and stuns adjacent enemies', () => {
     const c = castBy([placed('dain', 3, 3)], [placed('eomer', 3, 3), placed('haldir', 2, 3), placed('radagast', 3, 2)]);
     const hit = [c.at('B', 2, 3), c.at('B', 3, 3)];
-    expect(damages(c)).toEqual(hit.map((u) => [u.id, c.damage(u, 90)]));
-    expect(statuses(c)).toEqual(hit.map((u) => [u.id, 'stun', null, null, 46]));
+    expect(damages(c)).toEqual(hit.map((u) => [13, u.id, c.damage(u, 90)]));
+    expect(statuses(c)).toEqual(hit.map((u) => [13, u.id, 'stun', null, null, 58]));
   });
 
-  it('Saruman blasts the farthest enemy and the enemies next to it', () => {
+  it('Saruman lobs fire at the farthest enemy and the enemies next to it', () => {
+    // Release 16, landing 39.
     const c = castBy(
       [placed('saruman', 3, 3)],
       [placed('gimli', 3, 3), placed('eomer', 3, 0), placed('haldir', 2, 0), placed('radagast', 3, 2)],
+      { until: 39 },
     );
     const hit = [c.at('B', 2, 0), c.at('B', 3, 0)];
-    expect(damages(c)).toEqual(hit.map((u) => [u.id, c.damage(u, 120, 'magic')]));
+    expect(damages(c)).toEqual(hit.map((u) => [39, u.id, c.damage(u, 120, 'magic')]));
   });
 
-  it('Gothmog summons two grunts next to him, then gives Orcs within 2 Attack Damage', () => {
+  it('Gothmog summons two grunts next to him at the release, then gives Orcs within 2 Attack Damage', () => {
     const c = castBy([placed('gothmog', 3, 3), placed('haldir', 2, 3)], [placed('eomer', 3, 3)]);
     const spawns = ofType(c.events, 'spawn');
     expect(spawns).toMatchObject([
-      { unit: 3, unitId: 'orc-grunt', team: 'A', star: 1, summon: true, owner: c.caster.id },
-      { unit: 4, unitId: 'orc-grunt', team: 'A', star: 1, summon: true, owner: c.caster.id },
+      { tick: 13, unit: 3, unitId: 'orc-grunt', team: 'A', star: 1, summon: true, owner: c.caster.id },
+      { tick: 13, unit: 4, unitId: 'orc-grunt', team: 'A', star: 1, summon: true, owner: c.caster.id },
     ]);
     const grunts = spawns.map((e) => c.fight.state.units[e.unit]!);
     for (const grunt of grunts) {
@@ -621,44 +745,52 @@ describe('abilities', () => {
       expect(grunt.base).toEqual(gruntStats(2));
     }
     expect(grunts.map((g) => g.slot)).toEqual([2, 3]);
-    expect(statuses(c)).toEqual([c.caster, ...grunts].map((u) => [u.id, 'buff', 'attackDamagePct', 25, 151]));
+    expect(statuses(c)).toEqual([c.caster, ...grunts].map((u) => [13, u.id, 'buff', 'attackDamagePct', 25, 163]));
     expect(grunts[0]!.stats.attackDamage).toBe(50);
     // Grunts act from the next tick.
-    const tick2 = c.fight.step();
-    for (const grunt of grunts) expect(tick2.some((e) => (e.type === 'attack' || e.type === 'move') && e.unit === grunt.id)).toBe(true);
+    const tick14 = c.fight.step();
+    for (const grunt of grunts) expect(tick14.some((e) => (e.type === 'attack' || e.type === 'move') && e.unit === grunt.id)).toBe(true);
   });
 
   it('Gandalf damages and stuns enemies within 2 of the target', () => {
     const c = castBy([placed('gandalf', 3, 3)], [placed('gimli', 3, 3), placed('haldir', 3, 1), placed('eomer', 6, 0)]);
     const hit = [c.at('B', 3, 3), c.at('B', 3, 1)];
-    expect(damages(c)).toEqual(hit.map((u) => [u.id, c.damage(u, 100, 'magic')]));
-    expect(statuses(c)).toEqual(hit.map((u) => [u.id, 'stun', null, null, 61]));
+    expect(damages(c)).toEqual(hit.map((u) => [19, u.id, c.damage(u, 100, 'magic')]));
+    expect(statuses(c)).toEqual(hit.map((u) => [19, u.id, 'stun', null, null, 79]));
   });
 
   it('Galadriel shields every ally and damages enemies within 3', () => {
     const c = castBy([placed('galadriel', 3, 3), placed('gimli', 0, 0)], [placed('eomer', 3, 3), placed('haldir', 3, 1), placed('radagast', 3, 0)]);
-    expect(shields(c)).toEqual([c.caster, c.at('A', 0, 0)].map((u) => [u.id, 250, 121]));
+    expect(shields(c)).toEqual([c.caster, c.at('A', 0, 0)].map((u) => [19, u.id, 250, 139]));
     const hit = [c.at('B', 3, 3), c.at('B', 3, 1)];
-    expect(damages(c)).toEqual(hit.map((u) => [u.id, c.damage(u, 80, 'magic')]));
+    expect(damages(c)).toEqual(hit.map((u) => [19, u.id, c.damage(u, 80, 'magic')]));
   });
 
-  it('the Witch-king leaps next to the enemy with the most Health, then damages and slows adjacent enemies', () => {
-    const c = castBy([placed('witch-king', 3, 3)], [placed('haldir', 3, 3), placed('gimli', 3, 0), placed('eomer', 2, 1)]);
+  it('the Witch-king leaps next to the enemy with the most Health, then damages and slows the enemies next to where he lands', () => {
+    // Release 12, 3 hexes at 5 ticks a hex: arrives on 27, ready on 30.
+    const c = castBy([placed('witch-king', 3, 3)], [placed('haldir', 3, 3), placed('gimli', 3, 0), placed('eomer', 2, 1)], {
+      until: 27,
+      ready: 30,
+    });
     const [gimli, eomer] = [c.at('B', 3, 0), c.at('B', 2, 1)];
-    expect(ofType(c.events, 'dash')).toEqual([{ type: 'dash', tick: 1, unit: c.caster.id, from: at(3, 3), to: at(3, 6) }]);
-    expect(damages(c)).toEqual([eomer, gimli].map((u) => [u.id, c.damage(u, 100, 'magic')]));
-    expect(statuses(c)).toEqual([eomer, gimli].map((u) => [u.id, 'slow', null, 30, 91]));
+    expect(dashesOf(c.events)).toEqual([
+      { type: 'dash', tick: 1, unit: c.caster.id, from: at(3, 3), to: at(3, 6), departTick: 12, arriveTick: 27 },
+    ]);
+    expect(damages(c)).toEqual([eomer, gimli].map((u) => [27, u.id, c.damage(u, 100, 'magic')]));
+    expect(statuses(c)).toEqual([eomer, gimli].map((u) => [27, u.id, 'slow', null, 30, 117]));
     expect(c.caster.target).toBe(gimli.id);
   });
 
-  it('Treebeard throws a boulder at the biggest group of enemies', () => {
+  it('Treebeard lobs a boulder at the biggest group of enemies', () => {
+    // Release 16, landing 39; the stun lasts 1.5 s.
     const c = castBy(
       [placed('treebeard', 3, 3)],
       [placed('gimli', 6, 3), placed('haldir', 3, 1), placed('eomer', 2, 1), placed('radagast', 3, 0)],
+      { until: 39 },
     );
     const hit = [c.at('B', 2, 1), c.at('B', 3, 1), c.at('B', 3, 0)];
-    expect(damages(c)).toEqual(hit.map((u) => [u.id, c.damage(u, 100)]));
-    expect(statuses(c)).toEqual(hit.map((u) => [u.id, 'stun', null, null, 46]));
+    expect(damages(c)).toEqual(hit.map((u) => [39, u.id, c.damage(u, 100)]));
+    expect(statuses(c)).toEqual(hit.map((u) => [39, u.id, 'stun', null, null, 84]));
   });
 
   it('Sauron sweeps the cone in front of him, damaging and stunning', () => {
@@ -667,8 +799,8 @@ describe('abilities', () => {
       [placed('gimli', 3, 3), placed('haldir', 2, 3), placed('eomer', 4, 2), placed('radagast', 3, 1)],
     );
     const hit = [c.at('B', 2, 3), c.at('B', 3, 3), c.at('B', 4, 2)];
-    expect(damages(c)).toEqual(hit.map((u) => [u.id, c.damage(u, 120)]));
-    expect(statuses(c)).toEqual(hit.map((u) => [u.id, 'stun', null, null, 31]));
+    expect(damages(c)).toEqual(hit.map((u) => [16, u.id, c.damage(u, 120)]));
+    expect(statuses(c)).toEqual(hit.map((u) => [16, u.id, 'stun', null, null, 46]));
   });
 
   it('has a scenario for every unit', () => {

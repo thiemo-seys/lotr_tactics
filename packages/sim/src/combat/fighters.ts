@@ -44,8 +44,13 @@ export type Unit = { -readonly [K in Exclude<keyof UnitState, 'statuses'>]: Unit
   readonly ability: AbilityDef | null;
   /** Ability values scale with it (section 10.2). */
   readonly cost: Cost;
-  /** The unit gains no mana before this tick (section 9.1). */
+  /** The unit gains no mana before this tick: the tick it is ready after a cast (section 10.6). */
   castingUntil: number;
+  /**
+   * The destination of a dash or charge the unit has chosen but not yet set off on, which no other
+   * unit may take (section 10.4). Null otherwise; it lapses if the unit dies.
+   */
+  claim: Hex | null;
   /** Empty for summons and monsters. */
   readonly classes: readonly ClassId[];
   /** Treebeard, Sauron and the big monsters (design.md section 4). */
@@ -223,6 +228,7 @@ function startOfFight() {
     busyUntil: 0,
     nextAttackTick: 1,
     castingUntil: 0,
+    claim: null,
     auraSlowPct: 0,
     auraShredPct: 0,
     auraHastePct: 0,

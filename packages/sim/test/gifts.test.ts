@@ -110,7 +110,8 @@ describe('gifts in the fight', () => {
     // Gimli (Dwarf), Legolas (Elf) and Aragorn (Gondor) are three origins: 3 × 4% = 12%, plus 8%.
     const fight = new Fight(withGifts(input(board, [placed('beregond', 3, 3)]), ['last-alliance', 'fellowship']));
     const gimli = unitOf(fight, 'gimli');
-    const hit = ofType(stepTo(fight, 1), 'damage').find((e) => e.source === gimli.id && e.kind === 'attack')!;
+    // Gimli's blow from tick 1 lands on 8 (sim-spec 9).
+    const hit = ofType(stepTo(fight, 8), 'damage').find((e) => e.source === gimli.id && e.kind === 'attack')!;
     const target = fight.state.units[hit.target]!;
     const raw = (gimli.stats.attackDamage * (hit.crit ? gimli.stats.critDamagePct : 100)) / 100;
     expect(hit.amount).toBe(finalDamage(raw, 'physical', target.stats, { ampPct: 20, overtimePct: 100, reductionPct: 0 }));

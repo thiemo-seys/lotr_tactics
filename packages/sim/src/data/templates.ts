@@ -23,7 +23,7 @@ export const TEMPLATES: Readonly<Record<TemplateId, StatTemplate>> = {
   tank: { health: 650, attackDamage: 45, attackSpeed: 0.6, range: 1, armor: 40, magicResist: 40, startMana: 30, maxMana: 90 },
   fighter: { health: 600, attackDamage: 55, attackSpeed: 0.7, range: 1, armor: 30, magicResist: 30, startMana: 0, maxMana: 60 },
   skirmisher: { health: 500, attackDamage: 55, attackSpeed: 0.8, range: 1, armor: 20, magicResist: 20, startMana: 0, maxMana: 50 },
-  archer: { health: 450, attackDamage: 50, attackSpeed: 0.75, range: 4, armor: 15, magicResist: 15, startMana: 0, maxMana: 60 },
+  archer: { health: 450, attackDamage: 46, attackSpeed: 0.75, range: 4, armor: 15, magicResist: 15, startMana: 0, maxMana: 60 },
   caster: { health: 450, attackDamage: 35, attackSpeed: 0.65, range: 4, armor: 15, magicResist: 15, startMana: 20, maxMana: 70 },
 };
 

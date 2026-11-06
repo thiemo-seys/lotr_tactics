@@ -45,10 +45,10 @@ export interface PoseBuffer {
 /** How much further on each unit's idle is, in seconds per id, so units don't breathe together. */
 const IDLE_STAGGER = 0.37;
 
-/** A dash holds `move` at this share of its length: a stride in mid-air. */
-const DASH_STRIDE = 0.25;
+/** How much faster than its own pace a dash or charge plays `move`, from the start of the clip. */
+const DASH_PACE = 2;
 
-/** How far through its death clip a unit starts to sink and fade out. */
+/** How far through its death clip a unit breaks into shards. */
 const SINK_SHARE = 0.5;
 
 /** How long a unit takes to turn into a step or dash, and back to its target after one, in ticks. */
@@ -103,8 +103,8 @@ export function fightPoseInto(
 }
 
 /**
- * How long after its death a unit starts to sink and fade out, in seconds, for
- * Playback.deathProgress: halfway through its death clip, or at once for a model or pawn without one.
+ * How long after its death a unit breaks into shards, in seconds, for Effects.shardsShare: halfway
+ * through its death clip, or at once for a model or pawn without one.
  */
 export function sinkDelay(lengths: ClipLengths | null): number {
   return lengths === null ? 0 : lengths.death * SINK_SHARE;
@@ -132,9 +132,9 @@ function toPose(pose: PoseBuffer): Pose {
 /** What a unit plays over a stretch of the fight. */
 interface Segment {
   clip: ClipName;
-  /** For `move`: a dash's, held mid-stride, rather than a step's. */
+  /** For `move`: a dash's or charge's, at twice the clip's pace, rather than a step's. */
   dash: boolean;
-  /** The tick its time counts from: its event, the start of the stun, or the start of the step. */
+  /** The tick its time counts from: its event, the start of the stun, or when the step or dash set off. */
   start: number;
   /** For `move`: the step's arrival, which sets the pace of its cycle. */
   end: number;
@@ -147,9 +147,9 @@ const current: Segment = { clip: 'idle', dash: false, start: 0, end: 0, shown: 0
 const previous: Segment = { clip: 'idle', dash: false, start: 0, end: 0, shown: 0 };
 
 /**
- * Whether a segment starts at full weight rather than fading in (section 5, Cuts): an attack, a cast
- * or a dash's held move on its event's tick, so its first frame shows. One that comes back after a
- * stun or step hid it fades in as usual.
+ * Whether a segment starts at full weight rather than fading in (section 5, Cuts): an attack or a
+ * cast on its event's tick, or a dash's move on its `departTick`, so its first frame shows. One that
+ * comes back after a stun or step hid it fades in as usual.
  */
 function cutsIn(segment: Segment): boolean {
   if (segment.shown !== segment.start) return false;
@@ -210,8 +210,9 @@ function timeInto(segment: Segment, t: number, lengths: ClipLengths, idleOffset:
     case 'stun':
       return still ? 0 : wrap((t - segment.start) / TICKS_PER_SECOND, lengths.stun);
     case 'move': {
-      // One cycle per step, looping on at that pace while it fades out.
-      if (segment.dash) return lengths.move * DASH_STRIDE;
+      // A dash at twice the clip's pace from when it sets off; a step one cycle per step. Either loops
+      // on at its pace while it fades out.
+      if (segment.dash) return wrap((DASH_PACE * (t - segment.start)) / TICKS_PER_SECOND, lengths.move);
       const span = segment.end - segment.start;
       return span > 0 ? wrap(((t - segment.start) / span) * lengths.move, lengths.move) : 0;
     }

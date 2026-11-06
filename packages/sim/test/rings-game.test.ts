@@ -144,6 +144,9 @@ describe('eliminated players', () => {
     playerOf(game, 0).returnEverything();
     field(game, 0, 'gimli', { bench: 0 }, { items: ['nenya', 'blade'] });
     giveItems(game, 0, 'ring-of-the-nine');
+    // The others field a board Gimli can't beat, so player 0 goes out first, whatever the fights' rolls.
+    field(game, 1, 'sauron', { col: 3, row: 0 }, { star: 3 });
+    field(game, 2, 'gandalf', { col: 3, row: 0 }, { star: 3 });
     playerOf(game, 0).hp = 1;
     while (playerOf(game, 0).placement === null) game.advance();
     expect(playerOf(game, 0).items).toEqual([]);

@@ -1,8 +1,8 @@
-import { TICKS_PER_SECOND, createCombat, type PlacedUnit, type UnitId } from '@lotr-tactics/sim';
+import { TICKS_PER_SECOND, createCombat, type Combat, type PlacedUnit, type UnitId } from '@lotr-tactics/sim';
 import { describe, expect, it } from 'vitest';
 import { PRESETS } from '../src/boards.js';
 import { hexToWorld, lerpPoint } from '../src/layout.js';
-import { EFFECT_TICKS, Playback, SHOT_DELAY_TICKS, facing } from '../src/playback.js';
+import { EFFECT_TICKS, Playback, SHOT_DELAY_TICKS, FLOATING_TEXT, facing, textOffset, type FloatingText } from '../src/playback.js';
 
 function placed(unitId: UnitId, col: number, row: number): PlacedUnit {
   return { unitId, star: 1, col, row, items: [] };
@@ -10,6 +10,35 @@ function placed(unitId: UnitId, col: number, row: number): PlacedUnit {
 
 function playback(A: readonly PlacedUnit[], B: readonly PlacedUnit[], seed = 1): Playback {
   return new Playback(createCombat({ seed, stage: 2, teams: { A, B } }));
+}
+
+/** Khamûl (id 0) against two Gimlis, seed 1: he casts Shadow ride on 174 and dashes away. */
+function khamulRides(): Combat {
+  return createCombat({ seed: 1, stage: 2, teams: { A: [placed('khamul', 3, 3)], B: [placed('gimli', 3, 3), placed('gimli', 4, 3)] } });
+}
+
+/** The fight, with a `death` event for `unit` added after the sim's own events on `tick`, which the sim's state doesn't know of. */
+function withDeath(fight: Combat, unit: number, tick: number): Combat {
+  const events = [...fight.events];
+  return {
+    get tick() {
+      return fight.tick;
+    },
+    get state() {
+      return fight.state;
+    },
+    get events() {
+      return events;
+    },
+    step() {
+      const stepped = fight.step();
+      if (fight.tick === tick) stepped.push({ type: 'death', tick, unit });
+      events.push(...stepped);
+      return stepped;
+    },
+    isOver: () => fight.isOver(),
+    result: () => fight.result(),
+  };
 }
 
 describe('Playback timing', () => {
@@ -65,6 +94,77 @@ describe('what is drawn', () => {
     expect(p.position(0, move.arriveTick)).toEqual(to);
   });
 
+  it('holds a dashing unit on its hex through the wind-up, then moves it from departTick to arriveTick', () => {
+    // Khamûl (id 0) casts Shadow ride on 174, choosing a hex 3 away. His wind-up ends on 185, when he sets off, and he
+    // arrives on 200, at 5 ticks a hex (sim-spec 10.6); the dash comes with the cast (sim-spec 14).
+    const p = new Playback(khamulRides());
+    p.playing = false;
+    while (p.combat.tick < 174) p.step();
+    const dash = p.combat.events.find((e) => e.type === 'dash' && e.unit === 0);
+    if (dash?.type !== 'dash') throw new Error('Khamûl should dash on 174.');
+    expect(dash).toMatchObject({ tick: 174, departTick: 185, arriveTick: 200 });
+    const from = hexToWorld(dash.from);
+    const to = hexToWorld(dash.to);
+    // Section 5, Positions: on `from` until it sets off, even once the dash is known.
+    for (const time of [170, 174, 180, 184.5]) expect(p.position(0, time)).toEqual(from);
+    while (p.combat.tick < 210) p.step();
+    for (const time of [174, 180, 184.5, 185]) expect(p.position(0, time)).toEqual(from);
+    // Then evenly to `to`, arriving on 200.
+    for (const share of [0.25, 0.5, 0.9]) {
+      const at = p.position(0, 185 + 15 * share);
+      expect(at.x).toBeCloseTo(lerpPoint(from, to, share).x, 10);
+      expect(at.z).toBeCloseTo(lerpPoint(from, to, share).z, 10);
+    }
+    expect(p.position(0, 200)).toEqual(to);
+    expect(p.position(0, 210)).toEqual(to);
+    expect(p.history(0).steps).toEqual([{ tick: 185, endTick: 200, dash: true, from, to }]);
+  });
+
+  it('never sets off a dash whose unit dies before departTick, and keeps one whose unit dies after', () => {
+    // As above, with a death added before Khamûl sets off, on 180, or after, on 190. A unit that dies during its wind-up
+    // never sets off (sim-spec 14), and stays on its hex. (Here the sim's state, which the playback reads, has him set
+    // off either way; he does only if the death comes after.)
+    for (const [deathTick, sets] of [
+      [180, false],
+      [190, true],
+    ] as const) {
+      const p = new Playback(withDeath(khamulRides(), 0, deathTick));
+      p.playing = false;
+      while (p.combat.tick < 210) p.step();
+      const dash = p.combat.events.find((e) => e.type === 'dash' && e.unit === 0);
+      if (dash?.type !== 'dash') throw new Error('Khamûl should dash on 174.');
+      const from = hexToWorld(dash.from);
+      const to = hexToWorld(dash.to);
+      expect(p.position(0, 184)).toEqual(from);
+      // One that dies on the way stops where it was when it died, a third of the way along.
+      const stopped = sets ? lerpPoint(from, to, 1 / 3) : from;
+      for (const time of [deathTick, 200, 210]) {
+        expect(p.position(0, time).x).toBeCloseTo(stopped.x, 10);
+        expect(p.position(0, time).z).toBeCloseTo(stopped.z, 10);
+      }
+      expect(p.history(0).steps.length).toBe(sets ? 1 : 0);
+    }
+  });
+
+  it('stops a unit that dies mid-step where it was when it died, so it breaks up there', () => {
+    // As in the test above, Sam (id 0) starts walking on tick 1; here he dies halfway through the step.
+    const fight = createCombat({ seed: 1, stage: 2, teams: { A: [placed('sam', 3, 0)], B: [placed('gimli', 3, 0)] } });
+    const p = new Playback(withDeath(fight, 0, 8));
+    p.playing = false;
+    const move = p.step().find((e) => e.type === 'move' && e.unit === 0);
+    if (move?.type !== 'move') throw new Error('Sam should move on tick 1.');
+    while (p.combat.tick < 30) p.step();
+    const from = hexToWorld(move.from);
+    const to = hexToWorld(move.to);
+    const share = (8 - move.tick) / (move.arriveTick - move.tick);
+    for (const time of [8, 12, move.arriveTick, 30]) {
+      expect(p.position(0, time).x).toBeCloseTo(lerpPoint(from, to, share).x, 10);
+      expect(p.position(0, time).z).toBeCloseTo(lerpPoint(from, to, share).z, 10);
+    }
+    // Before it died, it walked as usual.
+    expect(p.position(0, 4)).toEqual(lerpPoint(from, to, (4 - move.tick) / (move.arriveTick - move.tick)));
+  });
+
   it('flies projectiles from the archer to the target, landing on the hit tick', () => {
     // Legolas (id 0) and Haldir (id 1) stand 3 apart and shoot on tick 1. The shot leaves 3 ticks
     // later, as the attack clip looses it (viewer-spec section 5, Projectiles), and lands on 9.
@@ -109,18 +209,16 @@ describe('what is drawn', () => {
   it('keeps the same lists of effects from frame to frame until one ends, so a frame allocates nothing', () => {
     const p = playback(PRESETS.full, PRESETS.traits);
     p.advance(1);
-    const { projectiles, texts, casts } = p;
+    const { projectiles, texts } = p;
     // A frame between ticks: nothing new, nothing over.
     const events = p.advance(0.1 / TICKS_PER_SECOND);
     expect(events).toEqual([]);
     expect(p.advance(0.1 / TICKS_PER_SECOND)).toBe(events);
     expect(p.projectiles).toBe(projectiles);
     expect(p.texts).toBe(texts);
-    expect(p.casts).toBe(casts);
     // Once an effect ends, it is gone from its list.
     p.advance(1);
     expect(p.texts.every((text) => text.startTick + EFFECT_TICKS.floatingText > p.time)).toBe(true);
-    expect(p.casts.every((cast) => cast.startTick + EFFECT_TICKS.castRing > p.time)).toBe(true);
     expect(p.projectiles.every((shot) => shot.hitTick > p.time)).toBe(true);
   });
 
@@ -140,55 +238,40 @@ describe('what is drawn', () => {
     expect(kinds).toContain('cast');
   });
 
-  it('fades dead units out over half a second', () => {
-    const p = playback(PRESETS.duel, PRESETS.duel);
-    while (!p.combat.isOver()) p.advance(1);
-    const dead = p.combat.state.units.find((u) => !u.alive)!;
-    const deathTick = p.combat.events.find((e) => e.type === 'death')!.tick;
-    expect(p.deathProgress(dead.id, deathTick)).toBe(0);
-    expect(p.deathProgress(dead.id, deathTick + EFFECT_TICKS.death / 2)).toBeCloseTo(0.5, 10);
-    expect(p.deathProgress(dead.id, deathTick + EFFECT_TICKS.death)).toBe(1);
-  });
-
-  it('holds a dying unit for a delay, then sinks and fades it over half a second', () => {
-    const p = playback(PRESETS.duel, PRESETS.duel);
-    while (!p.combat.isOver()) p.advance(1);
-    p.advance(10);
-    const death = p.combat.events.find((e) => e.type === 'death');
-    if (death?.type !== 'death') throw new Error('A Sam should die.');
-    const { unit, tick } = death;
-    // viewer-spec 5: 0 until delaySeconds after the death, then rising to 1 over the 15 ticks of the sink. (The scene
-    // passes half the death clip's length.) A delay of 0.4 s is 12 ticks, so the sink runs from tick + 12 to tick + 27.
-    expect(p.deathProgress(unit, tick - 30, 0.4)).toBe(0);
-    expect(p.deathProgress(unit, tick, 0.4)).toBe(0);
-    expect(p.deathProgress(unit, tick + 6, 0.4)).toBe(0);
-    expect(p.deathProgress(unit, tick + 11.5, 0.4)).toBe(0);
-    expect(p.deathProgress(unit, tick + 12 + 7.5, 0.4)).toBeCloseTo(0.5, 10);
-    expect(p.deathProgress(unit, tick + 27, 0.4)).toBeCloseTo(1, 10);
-    expect(p.deathProgress(unit, tick + 29, 0.4)).toBe(1);
-    // With no delay the sink starts at once, as without a death clip.
-    expect(p.deathProgress(unit, tick + 7.5, 0)).toBeCloseTo(0.5, 10);
-    expect(p.deathProgress(unit, tick + 7.5)).toBeCloseTo(0.5, 10);
-    // The Sam that lives never sinks.
-    const living = p.combat.state.units.find((u) => u.alive)!;
-    expect(p.deathProgress(living.id, tick + 20, 0.4)).toBe(0);
-  });
-
-  it('lets a unit that dies on the last tick finish a half-second death clip and its fade before the afterglow ends', () => {
-    const p = playback(PRESETS.duel, PRESETS.duel);
-    while (!p.combat.isOver()) p.advance(1);
-    p.advance(10);
-    // The fight ends with its last death (sim-spec 13).
-    const last = p.combat.events.findLast((e) => e.type === 'death');
-    if (last?.type !== 'death') throw new Error('A Sam should die.');
-    expect(last.tick).toBe(p.combat.tick);
-    // viewer-spec 5: a death clip lasts at most 0.5 s (15 ticks), and the 15-tick sink starts halfway through it, so the
-    // scene passes a delay of at most 0.25 s and the sink is over 22.5 ticks after the death. Even a delay of the whole
-    // clip ends the sink 30 ticks after it: within the second of afterglow the viewer runs after the fight, at the
-    // display time it ends on.
-    expect(p.time).toBeCloseTo(last.tick + TICKS_PER_SECOND, 6);
-    expect(p.deathProgress(last.unit, undefined, 0.25)).toBe(1);
-    expect(p.deathProgress(last.unit, undefined, 0.5)).toBeCloseTo(1, 10);
+  it('starts a text on a unit clear of its others, which rise with it, so a multi-hit’s numbers each read', () => {
+    const { gap, rise } = FLOATING_TEXT;
+    const life = EFFECT_TICKS.floatingText;
+    const text = (unit: number, startTick: number, offset: number): FloatingText => ({ unit, text: '1', kind: 'physical', big: false, startTick, offset });
+    // Alone, at the bottom; together, stacked upwards.
+    expect(textOffset([], 0, 10)).toBe(0);
+    expect(textOffset([text(0, 10, 0)], 0, 10)).toBe(gap);
+    // A few ticks apart, as a multi-hit's: just above where the last has risen to.
+    expect(textOffset([text(0, 10, 0)], 0, 13)).toBeCloseTo((3 * rise) / life + gap, 10);
+    // Once the lowest has risen a gap's height, the bottom is free again; another unit's text never counts.
+    expect(textOffset([text(0, 10, 0)], 0, 10 + Math.ceil((gap * life) / rise))).toBe(0);
+    expect(textOffset([text(1, 10, 0)], 0, 10)).toBe(0);
+    // Into a space between two that is wide enough.
+    expect(textOffset([text(0, 10, 0), text(0, 10, 3 * gap)], 0, 10)).toBe(gap);
+    // In fights: no two texts of a unit showing together are ever closer than the gap.
+    let stacked = 0;
+    for (const [a, b] of [
+      [PRESETS.archers, PRESETS.tanks],
+      [PRESETS.full, PRESETS.traits],
+    ] as const) {
+      const p = playback(a, b);
+      for (let i = 0; i < 600 && !p.combat.isOver(); i++) {
+        p.advance(1 / TICKS_PER_SECOND);
+        for (const x of p.texts) {
+          for (const y of p.texts) {
+            if (x === y || x.unit !== y.unit) continue;
+            const height = (t: FloatingText) => t.offset + (rise * (p.time - t.startTick)) / life;
+            expect(Math.abs(height(x) - height(y))).toBeGreaterThanOrEqual(gap - 1e-9);
+            if (x.startTick !== y.startTick && x.offset > 0) stacked++;
+          }
+        }
+      }
+    }
+    expect(stacked).toBeGreaterThan(0);
   });
 
   it('turns units to face a point, about the vertical axis', () => {

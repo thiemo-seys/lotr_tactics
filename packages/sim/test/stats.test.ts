@@ -42,9 +42,13 @@ describe('baseStats', () => {
   });
 
   it('rounds exact halves up, as by hand', () => {
-    // 50 × 1.15 = 57.5 and 450 × 1.15 = 517.5, which floating-point multiplication would round down.
-    expect(baseStats(UNITS.haldir, 1)).toMatchObject({ maxHealth: 518, attackDamage: 58 });
-    expect(baseStats(UNITS.haldir, 2)).toMatchObject({ maxHealth: 932, attackDamage: 104 });
+    // 450 × 1.15 = 517.5 and 450 × 1.15 × 1.8 = 931.5, which floating-point multiplication would
+    // round down. The Archer template's Attack Damage is 46 (design.md section 5, Stat templates):
+    // 46 × 1.15 = 52.9 and 46 × 1.15 × 1.8 = 95.22.
+    expect(baseStats(UNITS.haldir, 1)).toMatchObject({ maxHealth: 518, attackDamage: 53 });
+    expect(baseStats(UNITS.haldir, 2)).toMatchObject({ maxHealth: 932, attackDamage: 95 });
+    // A half in Attack Damage: the Fighter template's 55 × 1.3 = 71.5 for a 3-cost.
+    expect(baseStats(UNITS.boromir, 1)).toMatchObject({ attackDamage: 72 });
   });
 
   it('uses only the first class for units with two', () => {

@@ -9,7 +9,7 @@ import { UNITS, type UnitId } from '../src/data/units.js';
 import { boardIndex, distance, fromOffset } from '../src/hex.js';
 import { createRng } from '../src/rng.js';
 import type { Star } from '../src/types.js';
-import { BOARDS, input, mirrorMatch, placed } from './helpers.js';
+import { BOARDS, input, mirrorMatch, placed, stepTo } from './helpers.js';
 
 /** Runs a fight to the end, calling `check` with each tick's events. */
 function run(combat: Combat, check: (events: CombatEvent[]) => void = () => {}): CombatResult {
@@ -250,11 +250,14 @@ describe('basic attacks', () => {
     expect(hits.some((h) => !h.crit)).toBe(true);
   });
 
-  it('gives the attacker 10 mana and the defender 6% of the damage taken', () => {
+  it('gives the attacker 10 mana when it attacks and the defender 6% of the damage taken when the blow lands', () => {
+    // Both attack on tick 1, and melee blows land 7 ticks later (sim-spec 9).
     const combat = createCombat(DUEL);
-    const tick1 = combat.step();
-    const taken = (unit: number) => tick1.flatMap((e) => (e.type === 'damage' && e.target === unit ? [e.amount] : []));
+    combat.step();
     const [sam, gimli] = combat.state.units;
+    expect([sam!.mana, gimli!.mana]).toEqual([40, 40]);
+    const tick8 = stepTo(combat, 8).filter((e) => e.tick === 8);
+    const taken = (unit: number) => tick8.flatMap((e) => (e.type === 'damage' && e.target === unit ? [e.amount] : []));
     expect(taken(0)).toHaveLength(1);
     expect(sam!.mana).toBe(30 + 10 + manaFromDamage(taken(0)[0]!));
     expect(gimli!.mana).toBe(30 + 10 + manaFromDamage(taken(1)[0]!));
@@ -403,6 +406,39 @@ describe('fight invariants', () => {
       }
     }
     expect(landedAfterDeath).toBeGreaterThan(0);
+    expect(wasted).toBeGreaterThan(0);
+  });
+
+  it('lands melee blows 7 ticks after the attack, and wastes those whose attacker or target has died by then', () => {
+    let landedCount = 0;
+    let wasted = 0;
+    for (const { result } of fights) {
+      const deathTick = new Map<number, number>();
+      for (const e of result.events) if (e.type === 'death') deathTick.set(e.unit, e.tick);
+      for (const attack of result.events) {
+        if (attack.type !== 'attack' || attack.ranged) continue;
+        expect(attack.hitTick).toBe(attack.tick + 7);
+        if (attack.hitTick >= result.finalTick) continue;
+        const landed = result.events.some(
+          (e) =>
+            e.tick === attack.hitTick &&
+            ((e.type === 'damage' && e.kind === 'attack' && e.source === attack.unit && e.target === attack.target) ||
+              (e.type === 'dodge' && e.source === attack.unit && e.unit === attack.target)),
+        );
+        const died = (deathTick.get(attack.unit) ?? Infinity) < attack.hitTick || (deathTick.get(attack.target) ?? Infinity) < attack.hitTick;
+        if (died) {
+          expect(landed).toBe(false);
+          wasted++;
+        } else if (landed) landedCount++;
+      }
+      // Every blow that lands comes on the hitTick of an attack.
+      for (const e of result.events) {
+        if (e.type !== 'damage' || e.kind !== 'attack') continue;
+        const attack = result.events.find((a) => a.type === 'attack' && a.unit === e.source && a.target === e.target && a.hitTick === e.tick);
+        expect(attack, `hit on tick ${e.tick}`).toBeDefined();
+      }
+    }
+    expect(landedCount).toBeGreaterThan(0);
     expect(wasted).toBeGreaterThan(0);
   });
 });

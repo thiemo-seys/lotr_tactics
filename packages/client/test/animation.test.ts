@@ -12,13 +12,17 @@ import {
 } from '@lotr-tactics/sim';
 import { describe, expect, it } from 'vitest';
 import { CLIPS, FADE_TICKS, fightFacing, fightPose, planningPose, sinkDelay, type ClipLengths, type ClipName, type Pose } from '../src/animation.js';
+import { Effects } from '../src/effects.js';
+import { EFFECTS } from '../src/look.js';
 import { PRESETS } from '../src/boards.js';
 import { Playback, facing } from '../src/playback.js';
 
 // Which clip each unit plays at a display time, and how far into it, and which way it faces (docs/viewer-spec.md
 // section 5, Animation). Display times are in ticks, and a tick is 1/30 s. The fights are real ones from createCombat,
-// all with seed 1, and each test first pins the events it relies on, so a change in the sim fails there rather than as
-// a wrong pose.
+// with seed 1 unless a test says otherwise, and each test first pins the events it relies on, so a change in the sim
+// fails there rather than as a wrong pose. A few rules cover moments the sim no longer makes, such as an attack on the
+// tick a stun starts, now that abilities and blows land before units act (sim-spec 6.4); those tests add the event to a
+// real fight.
 
 /** Clip lengths of our own, in seconds: each a whole number of ticks, and each different, so a mix-up shows. */
 const LENGTHS: ClipLengths = { idle: 2.4, move: 0.6, attack: 0.9, cast: 0.7, stun: 0.8, death: 0.4, victory: 0.5 };
@@ -28,8 +32,8 @@ function placed(unitId: UnitId, col: number, row: number, star: Star = 1, items:
   return { unitId, star, col, row, items };
 }
 
-function combat(A: readonly PlacedUnit[], B: readonly PlacedUnit[]): Combat {
-  return createCombat({ seed: 1, stage: 2, teams: { A, B } });
+function combat(A: readonly PlacedUnit[], B: readonly PlacedUnit[], seed = 1): Combat {
+  return createCombat({ seed, stage: 2, teams: { A, B } });
 }
 
 /** A fight played to its end, with display time run on after it, so any time in it can be asked about. */
@@ -60,6 +64,16 @@ function expectFading(actual: Pose, clip: ClipName, time: number, from: ClipName
   expect(actual.from?.clip).toBe(from);
   expect(actual.from?.time).toBeCloseTo(fromTime, 9);
   expect(actual.weight).toBeCloseTo(weight, 9);
+}
+
+/** A stun on `target` from `tick` until it is gone on `expiresTick`, as the sim's `status` event has it. */
+function stunEvent(target: number, tick: number, expiresTick: number, source: number): CombatEvent {
+  return { type: 'status', tick, source, target, status: 'stun', stat: null, value: null, expiresTick };
+}
+
+/** A unit's `dash` events. */
+function dashesOf(p: Playback, unit: number): { tick: number; departTick: number; arriveTick: number }[] {
+  return p.combat.events.flatMap((e) => (e.type === 'dash' && e.unit === unit ? [{ tick: e.tick, departTick: e.departTick, arriveTick: e.arriveTick }] : []));
 }
 
 /** The ticks of a unit's events of one kind. */
@@ -101,14 +115,14 @@ function unitsOf(p: Playback): string[] {
 
 // The fights. Ids are given team A's units first, by slot (sim-spec 6.3).
 
-/** Sam (id 0) and Gimli (id 1) start at either end of the board, step three times to meet and fight. Gimli wins on 697. */
+/** Sam (id 0) and Gimli (id 1) start at either end of the board, step three times to meet and fight. Gimli wins on 753. */
 function walkingDuel(): Playback {
   const p = finished(combat([placed('sam', 3, 0)], [placed('gimli', 3, 0)]));
   expect(unitsOf(p)).toEqual(['sam', 'gimli']);
   return p;
 }
 
-/** Beregond (id 0) and Gimli (id 1) stand face to face; Beregond's cast stuns Gimli for 1 s. */
+/** Beregond (id 0) and Gimli (id 1) stand face to face; Beregond's Shield bash stuns Gimli for 1 s. */
 function stunningDuel(): Playback {
   const p = finished(combat([placed('beregond', 3, 3)], [placed('gimli', 3, 3)]));
   expect(unitsOf(p)).toEqual(['beregond', 'gimli']);
@@ -122,7 +136,10 @@ function doubleStun(): Playback {
   return p;
 }
 
-/** The Ringwraith (id 0) and Gandalf (id 1) against Aragorn (id 2), whom Gandalf stuns as he steps. Team A wins on 239. */
+/**
+ * The Ringwraith (id 0) and Gandalf (id 1) against Aragorn (id 2), whom the Ringwraith's Black Breath stuns. Nobody
+ * moves. Team A wins on 208.
+ */
 function gandalfStunsFight(): Combat {
   return combat([placed('ringwraith', 2, 3), placed('gandalf', 4, 3)], [placed('aragorn', 3, 3)]);
 }
@@ -140,7 +157,7 @@ function fastBilbo(): Playback {
   return p;
 }
 
-/** Khamûl (id 0) against two Gimlis (ids 1 and 2); on 174 he casts Shadow ride and dashes away. */
+/** Khamûl (id 0) against two Gimlis (ids 1 and 2); on 174 he casts Shadow ride, and dashes away from 185 to 200. */
 function khamulRidesFight(): Combat {
   return combat([placed('khamul', 3, 3)], [placed('gimli', 3, 3), placed('gimli', 4, 3)]);
 }
@@ -151,7 +168,7 @@ function khamulRides(): Playback {
   return p;
 }
 
-/** Sauron (id 0) against two Gimlis (ids 1 and 2), whom his Sweep stuns. */
+/** Sauron (id 0) against two Gimlis (ids 1 and 2), whom his Sweep stuns. Team B wins on 405, the first Gimli dead. */
 function sauronSweeps(): Playback {
   const p = finished(combat([placed('sauron', 3, 3)], [placed('gimli', 3, 3), placed('gimli', 4, 3)]));
   expect(unitsOf(p)).toEqual(['sauron', 'gimli', 'gimli']);
@@ -165,12 +182,6 @@ function gandalfWaits(): Playback {
   return p;
 }
 
-/** Treebeard (id 0) and Aragorn (id 1) face to face; Treebeard's Boulder stuns Aragorn. */
-function treebeardThrows(): Playback {
-  const p = finished(combat([placed('treebeard', 3, 3)], [placed('aragorn', 3, 3)]));
-  expect(unitsOf(p)).toEqual(['treebeard', 'aragorn']);
-  return p;
-}
 
 /** The full preset on both sides, as the viewer plays #a=full&b=full&seed=1&stage=2. */
 function fullBoards(): Playback {
@@ -180,6 +191,11 @@ function fullBoards(): Playback {
 /** The items preset on both sides, seed 1. */
 function itemBoards(): Playback {
   return finished(combat(PRESETS.items, PRESETS.items));
+}
+
+/** Two presets, team A's and team B's, with a seed. */
+function presets(a: keyof typeof PRESETS, b: keyof typeof PRESETS, seed = 1): Playback {
+  return finished(combat(PRESETS[a], PRESETS[b], seed));
 }
 
 describe('the clips', () => {
@@ -244,49 +260,81 @@ describe('a step', () => {
   });
 
   it('plays when it starts after an action whose clip is still playing', () => {
-    const p = gandalfStuns();
-    // Aragorn casts on 162, and steps from 177 to 192, while the cast's 21-tick clip would run to 183.
-    expect(ticksOf(p, 'cast', 2)).toEqual([162]);
-    expect(stepsOf(p, 2)).toEqual([[177, 192]]);
-    // The step started last: at 178 move is 1/15 × 0.6 = 0.04 s in, a third of the way through its fade, over the cast
-    // carrying on, 16 / 30 s in.
-    expectFading(pose(p, 2, 178), 'move', 0.04, 'cast', 16 / 30, 1 / 3);
+    const p = khamulRides();
+    // The second Gimli (id 2) attacks on 166, and steps from 185 to 200, while the attack's 27-tick clip would run to 193,
+    // and on from 200 to 215.
+    expect(within(ticksOf(p, 'attack', 2), 150, 200)).toEqual([166]);
+    expect(within(ticksOf(p, 'cast', 2), 150, 200)).toEqual([]);
+    expect(startingWithin(stepsOf(p, 2), 150, 200)).toEqual([
+      [185, 200],
+      [200, 215],
+    ]);
+    // The step started last: at 186 move is 1/15 × 0.6 = 0.04 s in, a third of the way through its fade, over the
+    // attack carrying on, 20 / 30 s in.
+    expectFading(pose(p, 2, 186), 'move', 0.04, 'attack', 20 / 30, 1 / 3);
     // 5 ticks in: 0.2 s.
-    expectPlaying(pose(p, 2, 182), 'move', 0.2);
+    expectPlaying(pose(p, 2, 190), 'move', 0.2);
   });
 });
 
 describe('a dash', () => {
-  it('plays move held at a quarter of its length for the dash’s 4 ticks, at full weight from its tick', () => {
+  it('plays move at twice its speed from when it sets off until it arrives, cutting in at full weight', () => {
     const p = finished(combat([placed('merry', 2, 0), placed('bilbo', 4, 0)], [placed('gimli', 3, 0)]));
     expect(unitsOf(p)).toEqual(['merry', 'bilbo', 'gimli']);
-    // Merry (id 0) and Bilbo (id 1) are Burglars: they leap on tick 0 (sim-spec 6.2), and are busy until 9, when they attack.
-    expect(ticksOf(p, 'dash', 0)).toEqual([0]);
-    expect(ticksOf(p, 'dash', 1)).toEqual([0]);
-    expect(ticksOf(p, 'attack', 0)[0]).toBe(9);
-    // A dash's held move is one of the cuts (section 5, Fades): a quarter of 0.6 s, 0.15 s, at full weight from the
-    // dash's tick, though every unit counts as idling before the fight, until the dash ends on 4.
-    for (const t of [0, 0.5, 1, 2, 3, 3.5]) {
-      expectPlaying(pose(p, 0, t), 'move', 0.15);
-      expectPlaying(pose(p, 1, t), 'move', 0.15);
+    // Merry (id 0) and Bilbo (id 1) are Burglars: they leap 6 hexes on tick 0 (sim-spec 6.2), setting off at once and
+    // arriving on 30, at 5 ticks a hex (sim-spec 10.6), and first attack on 33.
+    expect(dashesOf(p, 0)).toEqual([{ tick: 0, departTick: 0, arriveTick: 30 }]);
+    expect(dashesOf(p, 1)).toEqual([{ tick: 0, departTick: 0, arriveTick: 30 }]);
+    expect(ticksOf(p, 'attack', 0)[0]).toBe(33);
+    expect(ticksOf(p, 'attack', 1)[0]).toBe(33);
+    // A dash's move is one of the cuts (section 5, Fades): at full weight from its departTick, though every unit counts as
+    // idling before the fight, from the start of the clip, at twice its pace: 2t / 30 s, wrapped at 0.6 s. So 0.5 ticks
+    // in is 1/30 s, 4.5 ticks 0.3 s, 20 ticks 1.3333 s, wrapped twice: 0.1333 s, and 29.5 ticks 1.9667 s, wrapped three
+    // times: 0.1667 s.
+    for (const unit of [0, 1]) {
+      expectPlaying(pose(p, unit, 0), 'move', 0);
+      expectPlaying(pose(p, unit, 0.5), 'move', 1 / 30);
+      expectPlaying(pose(p, unit, 4.5), 'move', 0.3);
+      expectPlaying(pose(p, unit, 20), 'move', 40 / 30 - 2 * 0.6);
+      expectPlaying(pose(p, unit, 29.5), 'move', 59 / 30 - 3 * 0.6);
     }
-    // From 4 Merry idles, fading in: 5 / 30 s by 5, a tick of the fade's 3, over the move still held at 0.15 s.
-    expectFading(pose(p, 0, 5), 'idle', 5 / 30, 'move', 0.15, 1 / 3);
-    expectPlaying(pose(p, 0, 8), 'idle', 8 / 30);
-    expectPlaying(pose(p, 1, 8), 'idle', 8 / 30 + 0.37);
+    // It arrives on 30, and Merry idles, fading in over the move looping on at its pace: at 31 idle is 31 / 30 s in, a
+    // tick of the fade's 3, over move 62 / 30 s in, wrapped three times: 0.2667 s.
+    expectFading(pose(p, 0, 30), 'idle', 1, 'move', 60 / 30 - 3 * 0.6, 0);
+    expectFading(pose(p, 0, 31), 'idle', 31 / 30, 'move', 62 / 30 - 3 * 0.6, 1 / 3);
+    expectFading(pose(p, 1, 32), 'idle', 32 / 30 + 0.37, 'move', 64 / 30 - 3 * 0.6, 2 / 3);
+    // Their attacks on 33 cut in.
+    expectPlaying(pose(p, 0, 33), 'attack', 0);
   });
 
-  it('gives way to a cast on the same tick: the action wins a tie', () => {
+  it('plays the cast through the wind-up, then cuts to move from when it sets off, and idles after it arrives', () => {
     const p = finished(combat([placed('grishnakh', 3, 3)], [placed('gimli', 3, 3), placed('legolas', 5, 0)]));
     expect(unitsOf(p)).toEqual(['grishnakh', 'gimli', 'legolas']);
-    // Grishnákh (id 0) attacks on 115, then on 116 casts Sneak and dashes next to Legolas.
-    expect(ticksOf(p, 'attack', 0)).toContain(115);
-    expect(ticksOf(p, 'cast', 0)).toEqual([116]);
-    expect(ticksOf(p, 'dash', 0)).toEqual([116]);
-    // The cast cuts in at full weight on 116, over the attack still playing, and plays through the dash's 4 ticks.
+    // Grishnákh (id 0) attacks on 115, and on 116 casts Sneak, choosing a hex 3 away next to Legolas. His wind-up ends on
+    // 127, when he sets off, and he arrives on 142, at 5 ticks a hex (sim-spec 10.6). He next attacks on 153.
+    expect(within(ticksOf(p, 'attack', 0), 100, 160)).toEqual([115, 153]);
+    expect(p.combat.events.find((e) => e.type === 'cast' && e.unit === 0)).toMatchObject({ tick: 116, releaseTick: 127, readyTick: 145 });
+    expect(dashesOf(p, 0)).toEqual([{ tick: 116, departTick: 127, arriveTick: 142 }]);
+    expect(stepsOf(p, 0)).toEqual([]);
+    // The cast cuts in at full weight on 116, over the attack still playing, and plays through the wind-up.
     expectPlaying(pose(p, 0, 116), 'cast', 0);
-    expectPlaying(pose(p, 0, 117), 'cast', 1 / 30);
-    expectPlaying(pose(p, 0, 119.5), 'cast', 3.5 / 30);
+    expectPlaying(pose(p, 0, 120), 'cast', 4 / 30);
+    expectPlaying(pose(p, 0, 126.5), 'cast', 10.5 / 30);
+    // On 127 move cuts in, at full weight from the start of the clip, at twice its pace: 2 / 30 s a tick, wrapped at 0.6 s.
+    expectPlaying(pose(p, 0, 127), 'move', 0);
+    expectPlaying(pose(p, 0, 128), 'move', 2 / 30);
+    expectPlaying(pose(p, 0, 134.5), 'move', 0.5);
+    expectPlaying(pose(p, 0, 141.5), 'move', 29 / 30 - 0.6);
+    // The cast's 21-tick clip ended on 137, under the move, so from 142 he idles: 143 / 30 = 4.7667 s, wrapped at 2.4 s:
+    // 2.3667 s at 143, a tick into its fade over the move, 32 / 30 s in, wrapped: 0.4667 s.
+    expectFading(pose(p, 0, 143), 'idle', 143 / 30 - 2.4, 'move', 32 / 30 - 0.6, 1 / 3);
+    expectPlaying(pose(p, 0, 153), 'attack', 0);
+    // A longer cast clip, of 1 s, still plays when he arrives, and comes back, fading in as usual (section 5, Cuts) over
+    // the move: 27 ticks in at 143.
+    const lengths: ClipLengths = { ...LENGTHS, cast: 1 };
+    expectPlaying(fightPose(p, 0, lengths, { time: 126.5 }), 'cast', 10.5 / 30);
+    expectPlaying(fightPose(p, 0, lengths, { time: 127 }), 'move', 0);
+    expectFading(fightPose(p, 0, lengths, { time: 143 }), 'cast', 27 / 30, 'move', 32 / 30 - 0.6, 1 / 3);
   });
 });
 
@@ -328,17 +376,17 @@ describe('an action', () => {
 
   it('cuts into a cast at full weight over the attack before it, and plays it until the clip ends', () => {
     const p = walkingDuel();
-    // Sam attacks on 246 and casts on 247; his next attack is on 296.
+    // Sam attacks on 246 and casts on 253; his next attack is on 296.
     expect(ticksOf(p, 'attack', 0)).toEqual(expect.arrayContaining([246, 296]));
     expect(ticksOf(p, 'attack', 0).filter((t) => t > 246 && t < 296)).toEqual([]);
-    expect(ticksOf(p, 'cast', 0)[0]).toBe(247);
-    // The attack would play on to 273, but the cast cuts in on 247.
-    expectPlaying(pose(p, 0, 247), 'cast', 0);
-    expectPlaying(pose(p, 0, 248), 'cast', 1 / 30);
-    expectPlaying(pose(p, 0, 260), 'cast', 13 / 30);
-    // The 21-tick clip ends on 268. At 269 idle is 269 / 30 = 8.9667 s, wrapped at 2.4 s: 1.7667 s, a tick into its fade
+    expect(ticksOf(p, 'cast', 0)[0]).toBe(253);
+    // The attack would play on to 273, but the cast cuts in on 253.
+    expectPlaying(pose(p, 0, 253), 'cast', 0);
+    expectPlaying(pose(p, 0, 254), 'cast', 1 / 30);
+    expectPlaying(pose(p, 0, 266), 'cast', 13 / 30);
+    // The 21-tick clip ends on 274. At 275 idle is 275 / 30 = 9.1667 s, wrapped at 2.4 s: 1.9667 s, a tick into its fade
     // over the cast held at 0.7 s.
-    expectFading(pose(p, 0, 269), 'idle', 269 / 30 - 3 * 2.4, 'cast', 0.7, 1 / 3);
+    expectFading(pose(p, 0, 275), 'idle', 275 / 30 - 3 * 2.4, 'cast', 0.7, 1 / 3);
   });
 
   it('cuts back to the start without a fade when the next attack comes before the clip ends', () => {
@@ -353,14 +401,19 @@ describe('an action', () => {
   });
 
   it('cuts from one action into another at full weight', () => {
+    // A cast clip of 0.9 s, 27 ticks, so the next attack comes while it plays: animation.ts takes whatever lengths a
+    // model gives it.
+    const lengths: ClipLengths = { ...LENGTHS, cast: 0.9 };
     const p = fastBilbo();
-    // Bilbo casts on 101, while the attack from 79 still plays, and attacks on 116, while the cast still plays.
-    expect(ticksOf(p, 'attack', 0).slice(3, 5)).toEqual([79, 116]);
-    expect(ticksOf(p, 'cast', 0)[0]).toBe(101);
-    expectPlaying(pose(p, 0, 101), 'cast', 0);
-    expectPlaying(pose(p, 0, 102), 'cast', 1 / 30);
-    expectPlaying(pose(p, 0, 116), 'attack', 0);
-    expectPlaying(pose(p, 0, 117), 'attack', 1 / 30);
+    const at = (time: number) => fightPose(p, 0, lengths, { time });
+    // Bilbo casts on 80, while the attack from 79 still plays, and attacks on 105, while the cast still plays.
+    expect(ticksOf(p, 'attack', 0).slice(3, 5)).toEqual([79, 105]);
+    expect(ticksOf(p, 'cast', 0)[0]).toBe(80);
+    expectPlaying(at(80), 'cast', 0);
+    expectPlaying(at(81), 'cast', 1 / 30);
+    expectPlaying(at(104.5), 'cast', 24.5 / 30);
+    expectPlaying(at(105), 'attack', 0);
+    expectPlaying(at(106), 'attack', 1 / 30);
   });
 
   it('plays one clip at full weight for more attacks on the same tick, such as the Bow of the Galadhrim’s', () => {
@@ -381,9 +434,9 @@ describe('an action', () => {
   it('plays a cast that comes on the same tick as an attack', () => {
     // The sim never has a unit attack and cast on one tick, since a unit acts once a tick (sim-spec 6.4). So this adds
     // a cast to Sam's first attack, on 46, once after the attack and once before it.
-    const cast: CastEvent = { type: 'cast', tick: 46, unit: 0, ability: 'Loyal' };
+    const cast: CastEvent = { type: 'cast', tick: 46, unit: 0, ability: 'Loyal', releaseTick: 58, readyTick: 61, aims: [] };
     for (const before of [false, true]) {
-      const p = finished(withEvent(combat([placed('sam', 3, 0)], [placed('gimli', 3, 0)]), cast, before));
+      const p = finished(withEvents(combat([placed('sam', 3, 0)], [placed('gimli', 3, 0)]), [cast], before));
       expect(ticksOf(p, 'attack', 0)[0]).toBe(46);
       expect(ticksOf(p, 'cast', 0)[0]).toBe(46);
       // The cast plays from 46, at full weight, and not the attack.
@@ -393,78 +446,84 @@ describe('an action', () => {
   });
 
   it('fades back in when it comes back after a step hid it', () => {
-    const p = khamulRides();
-    // The second Gimli (id 2) attacks on 166, and steps from 174 to 189 after Khamûl rides off. He isn't stunned, and
-    // next acts on 216.
-    expect(within(ticksOf(p, 'attack', 2), 150, 220)).toEqual([166, 216]);
-    expect(within(ticksOf(p, 'cast', 2), 150, 220)).toEqual([]);
-    expect(startingWithin(stepsOf(p, 2), 150, 220)).toEqual([[174, 189]]);
-    expect(startingWithin(stunsOf(p, 2), 150, 220)).toEqual([]);
-    expectPlaying(pose(p, 2, 170), 'attack', 4 / 30);
-    // The step started last, so it plays, fading in over the attack: 1/15 × 0.6 = 0.04 s in at 175, over the attack
-    // 9 ticks in.
-    expectFading(pose(p, 2, 175), 'move', 0.04, 'attack', 9 / 30, 1 / 3);
-    expectPlaying(pose(p, 2, 180), 'move', 0.24);
-    // The step is over on 189, but the attack's 27-tick clip runs on to 193: the attack comes back, fading in as usual
-    // (section 5, Cuts) over the move, which loops on: 16/15 × 0.6 = 0.64 s at 190, wrapped at 0.6 s: 0.04 s.
-    expectFading(pose(p, 2, 190), 'attack', 24 / 30, 'move', 0.04, 1 / 3);
-    expectFading(pose(p, 2, 190.5), 'attack', 24.5 / 30, 'move', 0.06, 0.5);
-    expectPlaying(pose(p, 2, 192), 'attack', 26 / 30);
-    // The clip ends on 193, and idle fades in: 194 / 30 + 0.37 × 2 = 7.2067 s at 194, wrapped at 2.4 s: 0.0067 s.
-    expectFading(pose(p, 2, 194), 'idle', 194 / 30 + 0.74 - 3 * 2.4, 'attack', 0.9, 1 / 3);
-    expectPlaying(pose(p, 2, 216), 'attack', 0);
+    const p = presets('tanks', 'items');
+    // Team B's Aragorn (id 6) attacks on 92, and steps from 95 to 110. He isn't stunned, and next acts on 130.
+    expect(p.combat.state.units[6]).toMatchObject({ unitId: 'aragorn', team: 'B' });
+    expect(within(ticksOf(p, 'attack', 6), 80, 135)).toEqual([92, 130]);
+    expect(within(ticksOf(p, 'cast', 6), 80, 135)).toEqual([]);
+    expect(startingWithin(stepsOf(p, 6), 80, 135)).toEqual([[95, 110]]);
+    expect(startingWithin(stunsOf(p, 6), 80, 135)).toEqual([]);
+    expectPlaying(pose(p, 6, 93), 'attack', 1 / 30);
+    // The step started last, so it plays, fading in over the attack: 1/15 × 0.6 = 0.04 s in at 96, over the attack
+    // 4 ticks in.
+    expectFading(pose(p, 6, 96), 'move', 0.04, 'attack', 4 / 30, 1 / 3);
+    expectPlaying(pose(p, 6, 100), 'move', 0.2);
+    // The step is over on 110, but the attack's 27-tick clip runs on to 119: the attack comes back, fading in as usual
+    // (section 5, Cuts) over the move, which loops on: 16/15 × 0.6 = 0.64 s at 111, wrapped at 0.6 s: 0.04 s.
+    expectFading(pose(p, 6, 111), 'attack', 19 / 30, 'move', 0.04, 1 / 3);
+    expectFading(pose(p, 6, 111.5), 'attack', 19.5 / 30, 'move', 0.06, 0.5);
+    expectPlaying(pose(p, 6, 113), 'attack', 21 / 30);
+    // The clip ends on 119, and idle fades in: 120 / 30 + 0.37 × 6 = 6.22 s at 120, wrapped at 2.4 s: 1.42 s.
+    expectFading(pose(p, 6, 120), 'idle', 120 / 30 + 6 * 0.37 - 2 * 2.4, 'attack', 0.9, 1 / 3);
+    expectPlaying(pose(p, 6, 130), 'attack', 0);
   });
 
   it('fades back in when it comes back after a stun hid it', () => {
     // Every stun in the sim lasts at least 1 s, longer than any attack clip in section 4, so here the attack lasts
     // 1.5 s, 45 ticks: animation.ts takes whatever lengths a model gives it.
     const lengths: ClipLengths = { ...LENGTHS, attack: 1.5 };
-    const p = sauronSweeps();
-    const at = (time: number) => fightPose(p, 2, lengths, { time });
-    // The second Gimli (id 2) attacks on 316; Sauron's Sweep stuns him on 317 until 347. He next acts on 366.
-    expect(within(ticksOf(p, 'attack', 2), 300, 370)).toEqual([316, 366]);
-    expect(within(ticksOf(p, 'cast', 2), 300, 370)).toEqual([]);
-    expect(startingWithin(stepsOf(p, 2), 300, 370)).toEqual([]);
-    expect(startingWithin(stunsOf(p, 2), 300, 370)).toEqual([[317, 347]]);
-    expectPlaying(at(316.5), 'attack', 0.5 / 30);
-    // Stunned comes before acting: the stun fades in over the attack, which is 2 ticks in at 318.
-    expectFading(at(318), 'stun', 1 / 30, 'attack', 2 / 30, 1 / 3);
-    expectPlaying(at(330), 'stun', 13 / 30);
-    // The stun is gone on 347, and the attack's clip runs on to 361: the attack comes back, 31 ticks in, fading in as
-    // usual over the stun, which loops on: 30 / 30 = 1 s at 347, wrapped at 0.8 s: 0.2 s; 31 / 30 = 1.0333 s at 348:
+    const p = itemBoards();
+    const at = (time: number) => fightPose(p, 0, lengths, { time });
+    // Team A's Gimli (id 0) attacks on 101; team B's Beregond (id 11) stuns him on 111 until 141. He next acts on 151.
+    expect(p.combat.state.units[0]).toMatchObject({ unitId: 'gimli', team: 'A' });
+    expect(within(ticksOf(p, 'attack', 0), 90, 160)).toEqual([101, 151]);
+    expect(within(ticksOf(p, 'cast', 0), 90, 160)).toEqual([]);
+    expect(startingWithin(stepsOf(p, 0), 90, 160)).toEqual([]);
+    expect(startingWithin(stunsOf(p, 0), 90, 160)).toEqual([[111, 141]]);
+    expectPlaying(at(101.5), 'attack', 0.5 / 30);
+    // Stunned comes before acting: the stun fades in over the attack, which is 11 ticks in at 112.
+    expectFading(at(112), 'stun', 1 / 30, 'attack', 11 / 30, 1 / 3);
+    expectPlaying(at(124), 'stun', 13 / 30);
+    // The stun is gone on 141, and the attack's clip runs on to 146: the attack comes back, 40 ticks in, fading in as
+    // usual over the stun, which loops on: 30 / 30 = 1 s at 141, wrapped at 0.8 s: 0.2 s; 31 / 30 = 1.0333 s at 142:
     // 0.2333 s.
-    expectFading(at(347), 'attack', 31 / 30, 'stun', 30 / 30 - 0.8, 0);
-    expectFading(at(348), 'attack', 32 / 30, 'stun', 31 / 30 - 0.8, 1 / 3);
-    expectFading(at(348.5), 'attack', 32.5 / 30, 'stun', 31.5 / 30 - 0.8, 0.5);
-    expectPlaying(at(350), 'attack', 34 / 30);
-    // The clip ends on 361 and idle fades in: 362 / 30 + 0.74 = 12.8067 s at 362, wrapped at 2.4 s: 0.8067 s.
-    expectFading(at(362), 'idle', 362 / 30 + 0.74 - 5 * 2.4, 'attack', 1.5, 1 / 3);
-    expectPlaying(at(366), 'attack', 0);
+    expectFading(at(141), 'attack', 40 / 30, 'stun', 30 / 30 - 0.8, 0);
+    expectFading(at(142), 'attack', 41 / 30, 'stun', 31 / 30 - 0.8, 1 / 3);
+    expectFading(at(142.5), 'attack', 41.5 / 30, 'stun', 31.5 / 30 - 0.8, 0.5);
+    expectPlaying(at(144), 'attack', 43 / 30);
+    // The clip ends on 146 and idle fades in: 147 / 30 = 4.9 s at 147, wrapped at 2.4 s: 0.1 s.
+    expectFading(at(147), 'idle', 147 / 30 - 2 * 2.4, 'attack', 1.5, 1 / 3);
+    expectPlaying(at(151), 'attack', 0);
   });
 });
 
 describe('a melee attack', () => {
-  it('still lunges at the target, at its height when the blow lands, 3 ticks into the attack', () => {
+  it('still lunges at the target, at its height when the blow lands, on its hitTick, 7 ticks into the attack', () => {
     // Played an eighth of a tick at a time from tick 44, asking about the playback's own display time each frame.
     const p = new Playback(combat([placed('sam', 3, 0)], [placed('gimli', 3, 0)]));
     p.playing = false;
     while (p.combat.tick < 44) p.step();
     p.playing = true;
     let peak = { time: 0, reach: 0, toward: 0 };
-    while (p.time < 60) {
+    let still = true;
+    while (p.time < 70) {
       p.advance(1 / (8 * 30));
       const lunge = p.lungeOffset(0);
       const reach = Math.hypot(lunge.x, lunge.z);
       const [from, to] = [p.position(0), p.position(1)];
       if (reach > peak.reach) peak = { time: p.time, reach, toward: lunge.x * (to.x - from.x) + lunge.z * (to.z - from.z) };
+      // It starts no sooner than 3 ticks before the blow, and is over 3 ticks after it.
+      if (p.time <= 50 || p.time >= 56) still &&= reach === 0;
     }
-    // Sam's first attack, on 46, is melee. The blow lands 0.1 s (3 ticks) into the attack clip (section 4), which is
-    // where the lunge is at its height (section 5): on 49, to within the eighth of a tick sampled.
+    // Sam's first attack, on 46, is melee. The blow lands on its hitTick, 53, 0.22 s (7 ticks) into the attack clip
+    // (section 4), which is where the lunge is at its height (section 5): on 53, to within the eighth of a tick sampled.
     const attack = p.combat.events.find((e) => e.type === 'attack' && e.unit === 0);
-    expect(attack).toMatchObject({ tick: 46, target: 1, ranged: false });
+    expect(attack).toMatchObject({ tick: 46, target: 1, ranged: false, hitTick: 53 });
+    expect(p.combat.events.find((e) => e.type === 'damage' && e.source === 0)).toMatchObject({ tick: 53, target: 1, kind: 'attack' });
     expect(ticksOf(p, 'attack', 0)).toEqual([46]);
     expect(peak.reach).toBeGreaterThan(0);
-    expect(Math.abs(peak.time - 49)).toBeLessThanOrEqual(1 / 8 + 1e-9);
+    expect(Math.abs(peak.time - 53)).toBeLessThanOrEqual(1 / 8 + 1e-9);
+    expect(still).toBe(true);
     // Towards Gimli.
     expect(peak.toward).toBeGreaterThan(0);
   });
@@ -473,261 +532,262 @@ describe('a melee attack', () => {
 describe('a stun', () => {
   it('plays from the tick it starts until it expires, over an attack, wrapped at the clip’s length', () => {
     const p = stunningDuel();
-    // Gimli attacks on 201; Beregond's cast stuns him on 202 until 232, when he casts.
-    expect(ticksOf(p, 'attack', 1)).toContain(201);
-    expect(stunsOf(p, 1)).toEqual([[202, 232]]);
-    expect(ticksOf(p, 'cast', 1)[0]).toBe(232);
-    // Stunned comes before acting: the attack's clip would run to 228, but at 203 stun is 1 tick in, and as much into
-    // its fade, over the attack carrying on, 2 ticks in.
-    expectFading(pose(p, 1, 203), 'stun', 1 / 30, 'attack', 2 / 30, 1 / 3);
-    expectPlaying(pose(p, 1, 210), 'stun', 8 / 30);
+    // Gimli attacks on 201; Beregond's Shield bash, cast on 208, stuns him on its release, 220, until 250, when he casts.
+    expect(within(ticksOf(p, 'attack', 1), 190, 250)).toEqual([201]);
+    expect(ticksOf(p, 'cast', 0)[0]).toBe(208);
+    expect(stunsOf(p, 1)).toEqual([[220, 250]]);
+    expect(ticksOf(p, 'cast', 1)[0]).toBe(250);
+    // Stunned comes before acting: the attack's clip would run to 228, but at 221 stun is 1 tick in, and as much into
+    // its fade, over the attack carrying on, 20 ticks in.
+    expectFading(pose(p, 1, 221), 'stun', 1 / 30, 'attack', 20 / 30, 1 / 3);
+    expectPlaying(pose(p, 1, 228), 'stun', 8 / 30);
     // 28 ticks in: 0.9333 s, wrapped at 0.8 s: 0.1333 s.
-    expectPlaying(pose(p, 1, 230), 'stun', 28 / 30 - 0.8);
-    // The stun is gone on 232, and the cast on 232 cuts in at full weight.
-    expectPlaying(pose(p, 1, 232), 'cast', 0);
-    expectPlaying(pose(p, 1, 233), 'cast', 1 / 30);
+    expectPlaying(pose(p, 1, 248), 'stun', 28 / 30 - 0.8);
+    // The stun is gone on 250, and the cast on 250 cuts in at full weight.
+    expectPlaying(pose(p, 1, 250), 'cast', 0);
+    expectPlaying(pose(p, 1, 251), 'cast', 1 / 30);
   });
 
   it('carries on without restarting when it is extended while it lasts', () => {
     const p = doubleStun();
-    // Sam (id 2) is stunned on 252 until 282; on 267 the other Beregond's stun extends it to 297. He attacks on 301.
+    // Sam (id 2) is stunned on 264 until 294; on 279 the other Beregond's stun extends it to 309. He attacks on 309.
     expect(stunsOf(p, 2)).toEqual([
-      [252, 282],
-      [267, 297],
+      [264, 294],
+      [279, 309],
     ]);
-    expect(ticksOf(p, 'attack', 2)).toContain(301);
-    expect(ticksOf(p, 'attack', 2).filter((t) => t > 251 && t < 301)).toEqual([]);
-    expect(ticksOf(p, 'cast', 2).filter((t) => t > 251 && t < 301)).toEqual([]);
-    expectPlaying(pose(p, 2, 260), 'stun', 8 / 30);
-    // Still timed from 252, with no fade: 16 ticks in at 268, and past the first stun's end, 33 ticks in at 285:
+    expect(ticksOf(p, 'attack', 2)).toContain(309);
+    expect(ticksOf(p, 'attack', 2).filter((t) => t > 251 && t < 309)).toEqual([]);
+    expect(ticksOf(p, 'cast', 2).filter((t) => t > 251 && t < 309)).toEqual([]);
+    expectPlaying(pose(p, 2, 272), 'stun', 8 / 30);
+    // Still timed from 264, with no fade: 16 ticks in at 280, and past the first stun's end, 33 ticks in at 297:
     // 1.1 s, wrapped at 0.8 s: 0.3 s.
-    expectPlaying(pose(p, 2, 268), 'stun', 16 / 30);
-    expectPlaying(pose(p, 2, 285), 'stun', 33 / 30 - 0.8);
-    expectPlaying(pose(p, 2, 296.5), 'stun', 44.5 / 30 - 0.8);
-    // Free on 297, he idles: 298 / 30 + 0.37 × 2 = 10.6733 s, wrapped at 2.4 s: 1.0733 s, a tick into its fade over the
-    // stun 46 ticks in: 1.5333 s, wrapped at 0.8 s: 0.7333 s.
-    expectFading(pose(p, 2, 298), 'idle', 298 / 30 + 0.74 - 4 * 2.4, 'stun', 46 / 30 - 0.8, 1 / 3);
+    expectPlaying(pose(p, 2, 280), 'stun', 16 / 30);
+    expectPlaying(pose(p, 2, 297), 'stun', 33 / 30 - 0.8);
+    expectPlaying(pose(p, 2, 308.5), 'stun', 44.5 / 30 - 0.8);
+    // Free on 309, he attacks at once, cutting in at full weight.
+    expectPlaying(pose(p, 2, 309), 'attack', 0);
   });
 
   it('carries on without restarting when another starts on the tick it ends', () => {
-    const p = itemBoards();
-    // Team A's Aragorn (id 3): team B's Gandalf (id 16) stuns him on 190 until 250, and team B's Dáin (id 10) on 250,
-    // before Aragorn can act, until 295, when he casts.
-    expect(p.combat.state.units[3]).toMatchObject({ unitId: 'aragorn', team: 'A' });
-    expect(startingWithin(stunsOf(p, 3), 150, 340)).toEqual([
-      [190, 250],
-      [250, 295],
+    const p = presets('items', 'stars');
+    // Team B's second Aragorn (id 13): team A's Gandalf (id 7) stuns him on 208 until 268, and team A's Beregond (id 2)
+    // on 268, before Aragorn can act, until 298, when he casts.
+    expect(p.combat.state.units[13]).toMatchObject({ unitId: 'aragorn', team: 'B' });
+    expect(startingWithin(stunsOf(p, 13), 150, 300)).toEqual([
+      [208, 268],
+      [268, 298],
     ]);
-    expect(within(ticksOf(p, 'attack', 3), 150, 340)).toEqual([168, 310]);
-    expect(within(ticksOf(p, 'cast', 3), 150, 340)).toEqual([295]);
-    expect(startingWithin(stepsOf(p, 3), 150, 340)).toEqual([[172, 187]]);
-    expectPlaying(pose(p, 3, 200), 'stun', 10 / 30);
-    // Still timed from 190, at full weight: 59.5 ticks in at 249.5, 1.9833 s, wrapped twice at 0.8 s: 0.3833 s; 60.5 at
-    // 250.5: 0.4167 s; 104.5 at 294.5, 3.4833 s, wrapped four times: 0.2833 s.
-    expectPlaying(pose(p, 3, 249.5), 'stun', 59.5 / 30 - 2 * 0.8);
-    expectPlaying(pose(p, 3, 250.5), 'stun', 60.5 / 30 - 2 * 0.8);
-    expectPlaying(pose(p, 3, 294.5), 'stun', 104.5 / 30 - 4 * 0.8);
-    // Free on 295, he casts, at full weight.
-    expectPlaying(pose(p, 3, 295), 'cast', 0);
+    expect(within(ticksOf(p, 'attack', 13), 150, 300)).toEqual([177]);
+    expect(within(ticksOf(p, 'cast', 13), 150, 300)).toEqual([298]);
+    expect(startingWithin(stepsOf(p, 13), 150, 300)).toEqual([]);
+    expectPlaying(pose(p, 13, 218), 'stun', 10 / 30);
+    // Still timed from 208, at full weight: 59.5 ticks in at 267.5, 1.9833 s, wrapped twice at 0.8 s: 0.3833 s; 60.5 at
+    // 268.5: 0.4167 s; 89.5 at 297.5, 2.9833 s, wrapped three times: 0.5833 s.
+    expectPlaying(pose(p, 13, 267.5), 'stun', 59.5 / 30 - 2 * 0.8);
+    expectPlaying(pose(p, 13, 268.5), 'stun', 60.5 / 30 - 2 * 0.8);
+    expectPlaying(pose(p, 13, 297.5), 'stun', 89.5 / 30 - 3 * 0.8);
+    // Free on 298, he casts, at full weight.
+    expectPlaying(pose(p, 13, 298), 'cast', 0);
   });
 
   it('plays over a step that is still sliding to its hex', () => {
-    const p = gandalfStuns();
-    // Aragorn steps from 177 to 192, and Gandalf stuns him on 190 until 250; the step still completes (sim-spec 12.1).
-    // (The Ringwraith's stun, from 116 to 161, was over long before.)
-    expect(stepsOf(p, 2)).toEqual([[177, 192]]);
-    expect(stunsOf(p, 2)).toEqual([
-      [116, 161],
-      [190, 250],
-    ]);
-    // At 191.5 the step has half a tick to go, but stun plays, 1.5 ticks in and halfway through its fade, over the
-    // move: 14.5 / 15 × 0.6 = 0.58 s.
-    expectFading(pose(p, 2, 191.5), 'stun', 0.05, 'move', 0.58, 0.5);
-    expectPlaying(pose(p, 2, 195), 'stun', 5 / 30);
+    const p = fullBoards();
+    // Team A's Aragorn (id 3) steps from 208 to 223, and team B's Dáin (id 10) stuns him on 218 until 263; the step
+    // still completes (sim-spec 12.1). He casts on 263.
+    expect(p.combat.state.units[3]).toMatchObject({ unitId: 'aragorn', team: 'A' });
+    expect(startingWithin(stepsOf(p, 3), 190, 270)).toEqual([[208, 223]]);
+    expect(startingWithin(stunsOf(p, 3), 0, 270)).toEqual([[218, 263]]);
+    expect(within(ticksOf(p, 'cast', 3), 190, 270)).toEqual([263]);
+    // At 219.5 the step has 3.5 ticks to go, but stun plays, 1.5 ticks in and halfway through its fade, over the
+    // move: 11.5 / 15 × 0.6 = 0.46 s.
+    expectFading(pose(p, 3, 219.5), 'stun', 0.05, 'move', 0.46, 0.5);
+    expectPlaying(pose(p, 3, 225), 'stun', 7 / 30);
   });
 });
 
 describe('an attack or cast on the tick a stun starts', () => {
+  // Abilities and blows now land before units act (sim-spec 6.4), so a unit stunned on a tick no longer acts on it in
+  // the sim's fights. Section 5 still says what an action on such a tick plays, so these tests add the stun to a real
+  // fight, on the tick of a real attack or cast.
+  const duel = () => combat([placed('sam', 3, 0)], [placed('gimli', 3, 0)]);
+
   it('plays out first, an attack, and stun fades in once its clip ends', () => {
-    const p = gandalfWaits();
-    // Gimli (id 1) attacks on 211, and Gandalf's You shall not pass stuns him on 211 until 271, when he casts.
-    expect(within(ticksOf(p, 'attack', 1), 150, 300)).toEqual([161, 211, 286]);
-    expect(within(ticksOf(p, 'cast', 1), 150, 300)).toEqual([271]);
-    expect(stunsOf(p, 1)).toEqual([
-      [211, 271],
-      [436, 496],
-    ]);
-    expect(startingWithin(stepsOf(p, 1), 62, 300)).toEqual([]);
-    // A stunned unit can't act, so the attack came before the stun on 211 and plays out first (section 5, Stunned),
+    // Sam (id 0) attacks on 96, and next on 146; here Gimli stuns him on 96 until 140.
+    const p = finished(withEvents(duel(), [stunEvent(0, 96, 140, 1)]));
+    expect(within(ticksOf(p, 'attack', 0), 50, 150)).toEqual([96, 146]);
+    expect(within(ticksOf(p, 'cast', 0), 50, 150)).toEqual([]);
+    expect(stunsOf(p, 0)).toEqual([[96, 140]]);
+    // A stunned unit can't act, so the attack came before the stun on 96 and plays out first (section 5, Stunned),
     // cutting in at full weight.
-    expectPlaying(pose(p, 1, 211), 'attack', 0);
-    expectPlaying(pose(p, 1, 220), 'attack', 9 / 30);
-    expectPlaying(pose(p, 1, 237.5), 'attack', 26.5 / 30);
-    // Its 27-tick clip ends on 238, and stun shows, timed from 211, fading in over the attack held at 0.9 s: 27 ticks in
-    // at 238, 0.9 s, wrapped at 0.8 s: 0.1 s; 28 ticks in at 239: 0.1333 s, a tick into the fade.
-    expectFading(pose(p, 1, 238), 'stun', 27 / 30 - 0.8, 'attack', 0.9, 0);
-    expectFading(pose(p, 1, 239), 'stun', 28 / 30 - 0.8, 'attack', 0.9, 1 / 3);
-    expectPlaying(pose(p, 1, 241), 'stun', 30 / 30 - 0.8);
-    // 59.5 ticks in at 270.5: 1.9833 s, wrapped twice: 0.3833 s.
-    expectPlaying(pose(p, 1, 270.5), 'stun', 59.5 / 30 - 2 * 0.8);
-    // Free on 271, the cast cuts in.
-    expectPlaying(pose(p, 1, 271), 'cast', 0);
+    expectPlaying(pose(p, 0, 96), 'attack', 0);
+    expectPlaying(pose(p, 0, 105), 'attack', 9 / 30);
+    expectPlaying(pose(p, 0, 122.5), 'attack', 26.5 / 30);
+    // Its 27-tick clip ends on 123, and stun shows, timed from 96, fading in over the attack held at 0.9 s: 27 ticks in
+    // at 123, 0.9 s, wrapped at 0.8 s: 0.1 s; 28 ticks in at 124: 0.1333 s, a tick into the fade.
+    expectFading(pose(p, 0, 123), 'stun', 27 / 30 - 0.8, 'attack', 0.9, 0);
+    expectFading(pose(p, 0, 124), 'stun', 28 / 30 - 0.8, 'attack', 0.9, 1 / 3);
+    expectPlaying(pose(p, 0, 126), 'stun', 30 / 30 - 0.8);
+    // 43.5 ticks in at 139.5: 1.45 s, wrapped: 0.65 s.
+    expectPlaying(pose(p, 0, 139.5), 'stun', 43.5 / 30 - 0.8);
+    // Free on 140, he idles until his attack on 146 cuts in.
+    expect(pose(p, 0, 142).clip).toBe('idle');
+    expectPlaying(pose(p, 0, 146), 'attack', 0);
   });
 
   it('plays out first, a cast, and stun fades in once its clip ends', () => {
-    const p = treebeardThrows();
-    // Aragorn (id 1) attacks on 173 and casts Andúril on 174, when Treebeard's Boulder stuns him until 219. He attacks
-    // again on 219.
-    expect(within(ticksOf(p, 'attack', 1), 150, 230)).toEqual([173, 219]);
-    expect(within(ticksOf(p, 'cast', 1), 150, 230)).toEqual([174]);
-    expect(stunsOf(p, 1)[0]).toEqual([174, 219]);
-    expect(stepsOf(p, 1)).toEqual([]);
-    // The cast cuts in at full weight over the attack, and plays out.
-    expectPlaying(pose(p, 1, 174), 'cast', 0);
-    expectPlaying(pose(p, 1, 180), 'cast', 6 / 30);
-    expectPlaying(pose(p, 1, 194.5), 'cast', 20.5 / 30);
-    // Its 21-tick clip ends on 195, and stun fades in over it, held at 0.7 s: 21 ticks into the stun, 0.7 s; 22 ticks
-    // in at 196, 0.7333 s.
-    expectFading(pose(p, 1, 195), 'stun', 21 / 30, 'cast', 0.7, 0);
-    expectFading(pose(p, 1, 196), 'stun', 22 / 30, 'cast', 0.7, 1 / 3);
-    // 26 ticks in at 200: 0.8667 s, wrapped at 0.8 s: 0.0667 s.
-    expectPlaying(pose(p, 1, 200), 'stun', 26 / 30 - 0.8);
-    expectPlaying(pose(p, 1, 219), 'attack', 0);
+    // Sam (id 0) casts Loyal on 253, and next attacks on 296; here Gimli stuns him on 253 until 290.
+    const p = finished(withEvents(duel(), [stunEvent(0, 253, 290, 1)]));
+    expect(within(ticksOf(p, 'cast', 0), 240, 300)).toEqual([253]);
+    expect(within(ticksOf(p, 'attack', 0), 250, 300)).toEqual([296]);
+    expect(stunsOf(p, 0)).toEqual([[253, 290]]);
+    // The cast cuts in at full weight over the attack from 246, and plays out.
+    expectPlaying(pose(p, 0, 253), 'cast', 0);
+    expectPlaying(pose(p, 0, 259), 'cast', 6 / 30);
+    expectPlaying(pose(p, 0, 273.5), 'cast', 20.5 / 30);
+    // Its 21-tick clip ends on 274, and stun fades in over it, held at 0.7 s: 21 ticks into the stun, 0.7 s; 22 ticks
+    // in at 275, 0.7333 s.
+    expectFading(pose(p, 0, 274), 'stun', 21 / 30, 'cast', 0.7, 0);
+    expectFading(pose(p, 0, 275), 'stun', 22 / 30, 'cast', 0.7, 1 / 3);
+    // 26 ticks in at 279: 0.8667 s, wrapped at 0.8 s: 0.0667 s.
+    expectPlaying(pose(p, 0, 279), 'stun', 26 / 30 - 0.8);
+    expectPlaying(pose(p, 0, 296), 'attack', 0);
   });
 
-  it('plays out first when the stun carries on one that ended that tick: Gimli’s cast in the play-test', () => {
-    const p = fullBoards();
-    // Team A's Gimli (id 0) attacks on 151, and Beregond (id 11) stuns him on 152 until 182. On 182 he casts, then Dáin
-    // (id 10) stuns him until 227, and Gandalf (id 16) extends that on 190 to 250. He attacks on 250 and steps on 251.
-    expect(p.combat.state.units[0]).toMatchObject({ unitId: 'gimli', team: 'A' });
-    expect(startingWithin(stunsOf(p, 0), 140, 260)).toEqual([
-      [152, 182],
-      [182, 227],
-      [190, 250],
+  it('plays out first when the stun carries on one that ended that tick', () => {
+    // As in a play-test: Sam (id 0) attacks on 246 and casts on 253. Here Gimli stuns him on 248 until 253, and again on
+    // 253, the tick that stun ends, until 290, which carries it on. Sam next attacks on 296.
+    const p = finished(withEvents(duel(), [stunEvent(0, 248, 253, 1), stunEvent(0, 253, 290, 1)]));
+    expect(within(ticksOf(p, 'attack', 0), 240, 300)).toEqual([246, 296]);
+    expect(within(ticksOf(p, 'cast', 0), 240, 300)).toEqual([253]);
+    expect(stunsOf(p, 0)).toEqual([
+      [248, 253],
+      [253, 290],
     ]);
-    expect(within(ticksOf(p, 'cast', 0), 140, 260)).toEqual([182]);
-    expect(within(ticksOf(p, 'attack', 0), 140, 260)).toEqual([151, 250]);
-    expect(startingWithin(stepsOf(p, 0), 140, 260)).toEqual([[251, 266]]);
-    // Stunned since 152: 29.5 ticks in at 181.5, 0.9833 s, wrapped at 0.8 s: 0.1833 s.
-    expectPlaying(pose(p, 0, 181.5), 'stun', 29.5 / 30 - 0.8);
-    // The cast came before Dáin's stun on 182, so it plays out first, cutting in at full weight.
-    expectPlaying(pose(p, 0, 182), 'cast', 0);
-    expectPlaying(pose(p, 0, 190), 'cast', 8 / 30);
-    expectPlaying(pose(p, 0, 202.5), 'cast', 20.5 / 30);
-    // Its 21-tick clip ends on 203, and stun fades in over it, held at 0.7 s.
-    const fading = pose(p, 0, 204);
+    // Stunned since 248, over the attack: 3 ticks in at 251, at full weight.
+    expectPlaying(pose(p, 0, 251), 'stun', 3 / 30);
+    // The cast came before the second stun on 253, so it plays out first, cutting in at full weight.
+    expectPlaying(pose(p, 0, 253), 'cast', 0);
+    expectPlaying(pose(p, 0, 261), 'cast', 8 / 30);
+    expectPlaying(pose(p, 0, 273.5), 'cast', 20.5 / 30);
+    // Its 21-tick clip ends on 274, and stun fades in over it, held at 0.7 s.
+    const fading = pose(p, 0, 275);
     expect(fading).toMatchObject({ clip: 'stun', from: { clip: 'cast' } });
     expect(fading.from?.time).toBeCloseTo(0.7, 9);
     expect(fading.weight).toBeCloseTo(1 / 3, 9);
-    // How far into the stun is left open: timed from 152, as the stun carried on from Beregond's, 52 ticks in at 204,
-    // 1.7333 s, wrapped twice: 0.1333 s; or from Dáin's on 182, 22 ticks in, 0.7333 s. At 207, at full weight: 55 ticks,
-    // 0.2333 s, or 25 ticks, 0.0333 s.
-    expectOneOf(fading.time, [52 / 30 - 2 * 0.8, 22 / 30]);
-    const stunned = pose(p, 0, 207);
+    // How far into the stun is left open: timed from 248, as the stun carried on from the first, 27 ticks in at 275,
+    // 0.9 s, wrapped: 0.1 s; or from the second on 253, 22 ticks in, 0.7333 s. At 278, at full weight: 30 ticks, 0.2 s,
+    // or 25 ticks, 0.0333 s.
+    expectOneOf(fading.time, [27 / 30 - 0.8, 22 / 30]);
+    const stunned = pose(p, 0, 278);
     expect({ clip: stunned.clip, from: stunned.from, weight: stunned.weight }).toEqual({ clip: 'stun', from: null, weight: 1 });
-    expectOneOf(stunned.time, [55 / 30 - 2 * 0.8, 25 / 30 - 0.8]);
-    // Free on 250, the attack cuts in; the step on 251 fades in over it: 1/15 × 0.6 = 0.04 s at 252, over the attack
-    // 2 ticks in.
-    expectPlaying(pose(p, 0, 250), 'attack', 0);
-    expectFading(pose(p, 0, 252), 'move', 0.04, 'attack', 2 / 30, 1 / 3);
+    expectOneOf(stunned.time, [30 / 30 - 0.8, 25 / 30 - 0.8]);
+    // Free on 290; the attack on 296 cuts in.
+    expectPlaying(pose(p, 0, 296), 'attack', 0);
   });
 
   it('plays out first until its side wins, and victory fades in over it', () => {
-    const p = finished(combat([placed('gimli', 2, 3, 2), placed('gimli', 4, 3, 2)], [placed('beregond', 3, 3)]));
+    const fight = () => combat([placed('gimli', 2, 3, 2), placed('gimli', 4, 3, 2)], [placed('beregond', 3, 3)]);
+    // The first Gimli (id 0) casts on 202, and team A wins on 208; here Beregond stuns him on 202 until 240.
+    const p = finished(withEvents(fight(), [stunEvent(0, 202, 240, 2)]));
     expect(unitsOf(p)).toEqual(['gimli', 'gimli', 'beregond']);
-    // The first Gimli (id 0) attacks on 151, and Beregond stuns him on 151 until 181; team A wins on 166.
-    expect(within(ticksOf(p, 'attack', 0), 120, 166)).toEqual([151]);
-    expect(stunsOf(p, 0)).toEqual([[151, 181]]);
-    expect(endOf(p)).toEqual({ tick: 166, outcome: 'A' });
-    expectPlaying(pose(p, 0, 165.5), 'attack', 14.5 / 30);
-    // At 167: victory 1 tick in, over the attack carrying on, 16 ticks in.
-    expectFading(pose(p, 0, 167), 'victory', 1 / 30, 'attack', 16 / 30, 1 / 3);
-    // Still stunned at 180, after the attack's clip ended on 178, but won comes before stunned: victory, 14 ticks in.
-    expectPlaying(pose(p, 0, 180), 'victory', 14 / 30);
+    expect(within(ticksOf(p, 'cast', 0), 150, 208)).toEqual([202]);
+    expect(within(ticksOf(p, 'attack', 0), 202, 208)).toEqual([]);
+    expect(startingWithin(stunsOf(p, 0), 195, 240)).toEqual([[202, 240]]);
+    expect(endOf(p)).toEqual({ tick: 208, outcome: 'A' });
+    expectPlaying(pose(p, 0, 207.5), 'cast', 5.5 / 30);
+    // At 209: victory 1 tick in, over the cast carrying on, 7 ticks in.
+    expectFading(pose(p, 0, 209), 'victory', 1 / 30, 'cast', 7 / 30, 1 / 3);
+    // Still stunned at 225, after the cast's clip ended on 223, but won comes before stunned: victory, held on its last
+    // frame since 223.
+    expectPlaying(pose(p, 0, 220), 'victory', 12 / 30);
+    expectPlaying(pose(p, 0, 225), 'victory', 0.5);
   });
 });
 
 describe('death', () => {
   it('plays from the unit’s death, over what it was doing, and holds on its last frame', () => {
     const p = walkingDuel();
-    // Sam dies on 697, a tick after his last attack.
-    expect(ticksOf(p, 'death', 0)).toEqual([697]);
-    expect(ticksOf(p, 'attack', 0).at(-1)).toBe(696);
-    // At 698: death 1 tick in, and as far into its fade, over the attack 2 ticks in.
-    expectFading(pose(p, 0, 698), 'death', 1 / 30, 'attack', 2 / 30, 1 / 3);
-    expectPlaying(pose(p, 0, 703), 'death', 6 / 30);
-    // The 12-tick clip ends on 709 and holds.
-    expectPlaying(pose(p, 0, 715), 'death', 0.4);
+    // Sam dies on 753, as the blow of Gimli's attack on 746 lands, and 7 ticks after his own last attack.
+    expect(ticksOf(p, 'death', 0)).toEqual([753]);
+    expect(ticksOf(p, 'attack', 0).at(-1)).toBe(746);
+    expect(ticksOf(p, 'cast', 0).at(-1)).toBeLessThan(746);
+    // At 754: death 1 tick in, and as far into its fade, over the attack 8 ticks in.
+    expectFading(pose(p, 0, 754), 'death', 1 / 30, 'attack', 8 / 30, 1 / 3);
+    expectPlaying(pose(p, 0, 759), 'death', 6 / 30);
+    // The 12-tick clip ends on 765 and holds.
+    expectPlaying(pose(p, 0, 770), 'death', 0.4);
   });
 
   it('comes before a stun', () => {
-    const p = gandalfStuns();
-    // Aragorn dies on 239, stunned since 190 until 250.
-    expect(stunsOf(p, 2)).toEqual([
-      [116, 161],
-      [190, 250],
-    ]);
-    expect(ticksOf(p, 'death', 2)).toEqual([239]);
-    // At 239.5: death 0.5 ticks in, a sixth of the way through its fade, over the stun 49.5 ticks in: 1.65 s, wrapped
-    // twice at 0.8 s: 0.05 s.
-    expectFading(pose(p, 2, 239.5), 'death', 0.5 / 30, 'stun', 49.5 / 30 - 2 * 0.8, 1 / 6);
-    expectPlaying(pose(p, 2, 255), 'death', 0.4);
+    const p = gandalfWaits();
+    // Gimli (id 1) dies on 492, stunned by You shall not pass since 486 until 546.
+    expect(stunsOf(p, 1).at(-1)).toEqual([486, 546]);
+    expect(ticksOf(p, 'death', 1)).toEqual([492]);
+    // At 492.5: death 0.5 ticks in, a sixth of the way through its fade, over the stun 6.5 ticks in.
+    expectFading(pose(p, 1, 492.5), 'death', 0.5 / 30, 'stun', 6.5 / 30, 1 / 6);
+    expectPlaying(pose(p, 1, 510), 'death', 0.4);
   });
 });
 
-describe('sinking after death', () => {
+describe('breaking up after death', () => {
   it('starts halfway through the death clip, or at once without one', () => {
     expect(sinkDelay(LENGTHS)).toBeCloseTo(0.2, 10);
     expect(sinkDelay({ ...LENGTHS, death: 0.5 })).toBeCloseTo(0.25, 10);
     expect(sinkDelay(null)).toBe(0);
   });
 
-  it('is what deathProgress waits for, then the sink and fade take 15 ticks', () => {
+  it('is what the shards wait for (effects.ts), then they fall and fade', () => {
     const p = walkingDuel();
-    // Sam dies on 697; halfway through his 12-tick death clip is 703, and he has sunk and faded by 718.
-    expect(ticksOf(p, 'death', 0)).toEqual([697]);
+    const fx = new Effects(p);
+    // Sam dies on 753; halfway through his 12-tick death clip is 759, when he breaks up.
+    expect(ticksOf(p, 'death', 0)).toEqual([753]);
     const delay = sinkDelay(LENGTHS);
-    expect(p.deathProgress(0, 697, delay)).toBe(0);
-    expect(p.deathProgress(0, 703, delay)).toBe(0);
-    expect(p.deathProgress(0, 703 + 7.5, delay)).toBeCloseTo(0.5, 10);
-    expect(p.deathProgress(0, 718, delay)).toBe(1);
-    // Without a death clip it starts at once.
-    expect(p.deathProgress(0, 697 + 7.5, sinkDelay(null))).toBeCloseTo(0.5, 10);
+    const shards = EFFECTS.shards.seconds * 30;
+    expect(fx.shardsShare(0, delay, 753)).toBeLessThan(0);
+    expect(fx.shardsShare(0, delay, 758.9)).toBeLessThan(0);
+    expect(fx.shardsShare(0, delay, 759)).toBe(0);
+    expect(fx.shardsShare(0, delay, 759 + shards / 2)).toBeCloseTo(0.5, 10);
+    expect(fx.shardsShare(0, delay, 759 + shards)).toBeCloseTo(1, 10);
+    // Without a death clip it breaks up at once.
+    expect(fx.shardsShare(0, sinkDelay(null), 753)).toBe(0);
   });
 });
 
 describe('victory', () => {
   it('plays for the living winners from the end, over what they were doing, and holds; dead winners play death', () => {
-    const p = gandalfStuns();
-    // Team A wins on 239. Gandalf (id 1) last attacked on 236; the Ringwraith (id 0) died on 162.
-    expect(endOf(p)).toEqual({ tick: 239, outcome: 'A' });
-    expect(ticksOf(p, 'attack', 1).at(-1)).toBe(236);
-    expect(ticksOf(p, 'cast', 1).at(-1)).toBeLessThan(236);
-    expect(ticksOf(p, 'death', 0)).toEqual([162]);
-    // At 240: victory 1 tick in, and as far into its fade, over the attack 4 ticks in.
-    expectFading(pose(p, 1, 240), 'victory', 1 / 30, 'attack', 4 / 30, 1 / 3);
-    expectPlaying(pose(p, 1, 243), 'victory', 4 / 30);
-    // The 15-tick clip ends on 254 and holds.
-    expectPlaying(pose(p, 1, 258), 'victory', 0.5);
-    // Dead comes before won: the Ringwraith's death clip, long since held on its last frame.
-    expectPlaying(pose(p, 0, 245), 'death', 0.4);
+    const p = sauronSweeps();
+    // Team B wins on 405. The second Gimli (id 2) last attacked on 398; the first (id 1) died on 318.
+    expect(endOf(p)).toEqual({ tick: 405, outcome: 'B' });
+    expect(ticksOf(p, 'attack', 2).at(-1)).toBe(398);
+    expect(ticksOf(p, 'cast', 2).at(-1)).toBeLessThan(398);
+    expect(stunsOf(p, 2).at(-1)?.[1]).toBeLessThan(398);
+    expect(ticksOf(p, 'death', 1)).toEqual([318]);
+    expect(ticksOf(p, 'death', 2)).toEqual([]);
+    // At 406: victory 1 tick in, and as far into its fade, over the attack 8 ticks in.
+    expectFading(pose(p, 2, 406), 'victory', 1 / 30, 'attack', 8 / 30, 1 / 3);
+    expectPlaying(pose(p, 2, 409), 'victory', 4 / 30);
+    // The 15-tick clip ends on 420 and holds.
+    expectPlaying(pose(p, 2, 424), 'victory', 0.5);
+    // Dead comes before won: the first Gimli's death clip, long since held on its last frame.
+    expectPlaying(pose(p, 1, 410), 'death', 0.4);
   });
 
   it('comes before a stun', () => {
-    const p = finished(combat([placed('aragorn', 2, 3, 2), placed('aragorn', 4, 3, 2)], [placed('ringwraith', 3, 3)]));
-    expect(unitsOf(p)).toEqual(['aragorn', 'aragorn', 'ringwraith']);
-    // The Ringwraith stuns the first Aragorn (id 0) on 78 until 123, well after his last attack, on 44, whose clip ended
-    // on 71. Team A wins on 102.
-    expect(stunsOf(p, 0)).toEqual([[78, 123]]);
-    expect(ticksOf(p, 'attack', 0)).toEqual([1, 44]);
-    expect(ticksOf(p, 'cast', 0)).toEqual([]);
-    expect(endOf(p)).toEqual({ tick: 102, outcome: 'A' });
-    expectPlaying(pose(p, 0, 90), 'stun', 12 / 30);
-    // At 103: victory 1 tick in, over the stun 25 ticks in: 0.8333 s, wrapped at 0.8 s: 0.0333 s.
-    expectFading(pose(p, 0, 103), 'victory', 1 / 30, 'stun', 25 / 30 - 0.8, 1 / 3);
-    // Still stunned at 110, but playing victory, 8 ticks in; held on its last frame by 120.
-    expectPlaying(pose(p, 0, 110), 'victory', 8 / 30);
-    expectPlaying(pose(p, 0, 120), 'victory', 0.5);
+    const p = presets('rings', 'items', 6);
+    // With seed 6, team B's Gimli (id 7) is stunned on 524 until 584, well after his last attack, on 491, whose clip
+    // ended on 518. Team B wins on 576.
+    expect(p.combat.state.units[7]).toMatchObject({ unitId: 'gimli', team: 'B' });
+    expect(startingWithin(stunsOf(p, 7), 480, 600)).toEqual([[524, 584]]);
+    expect(within(ticksOf(p, 'attack', 7), 480, 600)).toEqual([491]);
+    expect(within(ticksOf(p, 'cast', 7), 480, 600)).toEqual([]);
+    expect(startingWithin(stepsOf(p, 7), 491, 600)).toEqual([]);
+    expect(endOf(p)).toEqual({ tick: 576, outcome: 'B' });
+    expectPlaying(pose(p, 7, 540), 'stun', 16 / 30);
+    // At 577: victory 1 tick in, over the stun 53 ticks in: 1.77 s, wrapped twice at 0.8 s: 0.17 s.
+    expectFading(pose(p, 7, 577), 'victory', 1 / 30, 'stun', 53 / 30 - 1.6, 1 / 3);
+    // Still stunned at 583, but playing victory, 7 ticks in; held on its last frame by 595.
+    expectPlaying(pose(p, 7, 583), 'victory', 7 / 30);
+    expectPlaying(pose(p, 7, 595), 'victory', 0.5);
   });
 
   it('isn’t played by anyone after a draw', () => {
@@ -785,22 +845,26 @@ describe('reduced motion', () => {
     expectPlaying(pose(p, 0, 80, true), 'idle', 0);
     expectPlaying(pose(p, 0, 6, true), 'move', 0.2);
     expectPlaying(pose(p, 0, 50, true), 'attack', 4 / 30);
-    expectPlaying(pose(p, 0, 260, true), 'cast', 13 / 30);
-    expectPlaying(pose(p, 0, 703, true), 'death', 6 / 30);
-    // Gimli has won since 697: 6 ticks in.
-    expectPlaying(pose(p, 1, 703, true), 'victory', 6 / 30);
+    expectPlaying(pose(p, 0, 266, true), 'cast', 13 / 30);
+    expectPlaying(pose(p, 0, 759, true), 'death', 6 / 30);
+    // Gimli has won since 753: 6 ticks in.
+    expectPlaying(pose(p, 1, 759, true), 'victory', 6 / 30);
     // Idle fading out holds its first frame too, and so does idle fading in.
     expectFading(pose(p, 0, 2, true), 'move', 0.04, 'idle', 0, 1 / 3);
     expectFading(pose(p, 0, 74, true), 'idle', 0, 'attack', 0.9, 1 / 3);
 
     const q = stunningDuel();
-    expectPlaying(pose(q, 1, 210, true), 'stun', 0);
-    // Stun fading in holds its first frame; the cast on 232 cuts in and plays.
-    expectFading(pose(q, 1, 203, true), 'stun', 0, 'attack', 2 / 30, 1 / 3);
-    expectPlaying(pose(q, 1, 233, true), 'cast', 1 / 30);
-    // And so does stun fading out.
-    const r = doubleStun();
-    expectFading(pose(r, 2, 298, true), 'idle', 0, 'stun', 0, 1 / 3);
+    expectPlaying(pose(q, 1, 228, true), 'stun', 0);
+    // Stun fading in holds its first frame; the cast on 250 cuts in and plays.
+    expectFading(pose(q, 1, 221, true), 'stun', 0, 'attack', 20 / 30, 1 / 3);
+    expectPlaying(pose(q, 1, 251, true), 'cast', 1 / 30);
+    // And so does stun fading out: team A's Gimli (id 0) in the items fight is stunned until 141, when he idles, his
+    // attack's clip from 101 long over, until he attacks on 151.
+    const r = itemBoards();
+    expect(startingWithin(stunsOf(r, 0), 90, 160)).toEqual([[111, 141]]);
+    expect(within(ticksOf(r, 'attack', 0), 90, 160)).toEqual([101, 151]);
+    expectFading(pose(r, 0, 142, true), 'idle', 0, 'stun', 0, 1 / 3);
+    expectFading(pose(r, 0, 142), 'idle', 142 / 30 - 2.4, 'stun', 31 / 30 - 0.8, 1 / 3);
   });
 });
 
@@ -990,14 +1054,14 @@ describe('facing', () => {
 
   it('turns evenly from the way to its target as a step starts, and back to its target over the 3 ticks after it', () => {
     const p = khamulRides();
-    // Khamûl (id 0) stands on (2, 3) until he dashes on 174. The second Gimli (id 2), on (0, 4), steps to (1, 3) from 1
-    // to 16, and next moves on 174.
+    // Khamûl (id 0) stands on (2, 3) until his dash sets off on 185. The second Gimli (id 2), on (0, 4), steps to (1, 3)
+    // from 1 to 16, and next moves on 185.
     expect(spawnHexOf(p, 0)).toEqual({ q: 2, r: 3 });
-    expect(motionsOf(p, 'dash', 0)[0]?.tick).toBe(174);
-    expect(motionsOf(p, 'move', 0)[0]?.tick).toBeGreaterThan(174);
+    expect(dashesOf(p, 0)[0]).toEqual({ tick: 174, departTick: 185, arriveTick: 200 });
+    expect(motionsOf(p, 'move', 0)).toEqual([]);
     expect(motionsOf(p, 'move', 2).slice(0, 2)).toEqual([
       { tick: 1, from: { q: 0, r: 4 }, to: { q: 1, r: 3 } },
-      { tick: 174, from: { q: 1, r: 3 }, to: { q: 0, r: 4 } },
+      { tick: 185, from: { q: 1, r: 3 }, to: { q: 0, r: 4 } },
     ]);
     expect(stepsOf(p, 2)[0]).toEqual([1, 16]);
     // From (0, 4) Khamûl is (+2, −1): x √3 × 1.5, z 1.5, π/3. The step, (+1, −1), goes π/6. From (1, 3) Khamûl is
@@ -1017,78 +1081,105 @@ describe('facing', () => {
   });
 
   it('turns the same way around a step that a stun cuts into', () => {
-    const p = gandalfStuns();
-    // Aragorn (id 2) steps from (1, 4) to (2, 4), (+1, 0) at π/2, from 177 to 192, towards Gandalf (id 1), who stands on
-    // (3, 3) all fight: (+2, −1) from (1, 4), π/3, and (+1, −1) from (2, 4), π/6. The stun from 190 changes nothing.
-    expect(motionsOf(p, 'move', 2)).toEqual([{ tick: 177, from: { q: 1, r: 4 }, to: { q: 2, r: 4 } }]);
-    expect(stepsOf(p, 2)).toEqual([[177, 192]]);
-    expect(spawnHexOf(p, 1)).toEqual({ q: 3, r: 3 });
-    expect(motionsOf(p, 'move', 1)).toEqual([]);
-    expect(startingWithin(stunsOf(p, 2), 170, 200)).toEqual([[190, 250]]);
-    expectAngle(facingAt(gandalfStunsFight, 2, 177, 1), PI / 3);
-    const q = playbackAt(gandalfStunsFight, 178.5);
-    expectTurningIn(fightFacing(q, 2, 1), 0.5, facing(q.position(2, 177), q.position(1, 177))!, facing(q.position(2), q.position(1))!, PI / 2);
-    expectAngle(facingAt(gandalfStunsFight, 2, 180, 1), PI / 2);
-    expectAngle(facingAt(gandalfStunsFight, 2, 191.5, 1), PI / 2);
-    // From 192 back by π/3 to Gandalf: π/3 by 193.5.
-    expectAngle(facingAt(gandalfStunsFight, 2, 192, 1), PI / 2);
-    expectAngle(facingAt(gandalfStunsFight, 2, 193.5, 1), PI / 3);
-    expectAngle(facingAt(gandalfStunsFight, 2, 195, 1), PI / 6);
-    expectAngle(facingAt(gandalfStunsFight, 2, 200, 1), PI / 6);
+    const fight = () => combat(PRESETS.full, PRESETS.full);
+    const p = fullBoards();
+    // Team A's Aragorn (id 3) steps from (0, 3) to (0, 4), (0, +1) at 5π/6, from 208 to 223, towards team B's Dáin (id 10),
+    // who stands on (1, 4): (+1, +1) from (0, 3), 2π/3, and (+1, 0) from (0, 4), π/2. Dáin's stun from 218 changes nothing.
+    expect(p.combat.state.units[3]).toMatchObject({ unitId: 'aragorn', team: 'A' });
+    expect(p.combat.state.units[10]).toMatchObject({ unitId: 'dain', team: 'B' });
+    expect(motionsOf(p, 'move', 3).filter((m) => m.tick > 100 && m.tick < 240)).toEqual([{ tick: 208, from: { q: 0, r: 3 }, to: { q: 0, r: 4 } }]);
+    expect(startingWithin(stepsOf(p, 3), 100, 240)).toEqual([[208, 223]]);
+    expect(spawnHexOf(p, 10)).toEqual({ q: 1, r: 4 });
+    expect(motionsOf(p, 'move', 10).filter((m) => m.tick < 240)).toEqual([]);
+    expect(startingWithin(stunsOf(p, 3), 200, 240)).toEqual([[218, 263]]);
+    expectAngle(facingAt(fight, 3, 208, 10), (2 * PI) / 3);
+    const q = playbackAt(fight, 209.5);
+    expectTurningIn(fightFacing(q, 3, 10), 0.5, facing(q.position(3, 208), q.position(10, 208))!, facing(q.position(3), q.position(10))!, (5 * PI) / 6);
+    expectAngle(facingAt(fight, 3, 211, 10), (5 * PI) / 6);
+    expectAngle(facingAt(fight, 3, 222.5, 10), (5 * PI) / 6);
+    // From 223 back by π/3 to Dáin: 2π/3 by 224.5.
+    expectAngle(facingAt(fight, 3, 223, 10), (5 * PI) / 6);
+    expectAngle(facingAt(fight, 3, 224.5, 10), (2 * PI) / 3);
+    expectAngle(facingAt(fight, 3, 226, 10), PI / 2);
+    expectAngle(facingAt(fight, 3, 240, 10), PI / 2);
   });
 
-  it('is the way a dash goes from 3 ticks into it until it ends, and turns back to its target over the 3 ticks after', () => {
+  it('is the way a dash goes from 3 ticks after it sets off until it arrives, and turns back to its target over the 3 ticks after', () => {
     const leaps = () => combat([placed('merry', 2, 0), placed('bilbo', 4, 0)], [placed('gimli', 3, 0)]);
     const p = finished(leaps());
     expect(unitsOf(p)).toEqual(['merry', 'bilbo', 'gimli']);
     // On tick 0 Merry (id 0) leaps from (2, 0) to (0, 6), and Bilbo (id 1) from (4, 0) to (1, 6), next to Gimli (id 2) on
-    // (0, 7), who doesn't move before 10. A dash takes 4 ticks (section 5).
+    // (0, 7), who doesn't move. They set off at once, and arrive on 30, at 5 ticks a hex (sim-spec 10.6).
     expect(motionsOf(p, 'dash', 0)).toEqual([{ tick: 0, from: { q: 2, r: 0 }, to: { q: 0, r: 6 } }]);
     expect(motionsOf(p, 'dash', 1)).toEqual([{ tick: 0, from: { q: 4, r: 0 }, to: { q: 1, r: 6 } }]);
+    expect(dashesOf(p, 1)).toEqual([{ tick: 0, departTick: 0, arriveTick: 30 }]);
     expect(spawnHexOf(p, 2)).toEqual({ q: 0, r: 7 });
-    expect(motionsOf(p, 'move', 2).filter((m) => m.tick < 10)).toEqual([]);
+    expect(motionsOf(p, 'move', 2)).toEqual([]);
     // Bilbo's dash, (−3, +6), moves x by √3 × (−3 + 3) = 0 and z by −9: π, straight down the board. On 0 he faces
     // Gimli, (−4, +7) away: x −√3/2, z −10.5. From (1, 6) Gimli is (−1, +1), −5π/6.
     expectAngle(facingAt(leaps, 1, 0, 2), Math.atan2(-Math.sqrt(3) / 2, -10.5));
     expectAngle(facingAt(leaps, 1, 3, 2), PI);
-    expectAngle(facingAt(leaps, 1, 3.5, 2), PI);
-    // From 4 he turns back by π/6 to Gimli, the shorter way through ±π rather than 11π/6 through 0: π/24 for each
+    expectAngle(facingAt(leaps, 1, 29.5, 2), PI);
+    // From 30 he turns back by π/6 to Gimli, the shorter way through ±π rather than 11π/6 through 0: π/24 for each
     // 3/4 of a tick.
-    expectAngle(facingAt(leaps, 1, 4, 2), PI);
-    expectAngle(facingAt(leaps, 1, 4.75, 2), PI + PI / 24);
-    expectAngle(facingAt(leaps, 1, 5.5, 2), PI + PI / 12);
-    expectAngle(facingAt(leaps, 1, 6.25, 2), PI + PI / 8);
-    expectAngle(facingAt(leaps, 1, 7, 2), (-5 * PI) / 6);
-    expectAngle(facingAt(leaps, 1, 8, 2), (-5 * PI) / 6);
+    expectAngle(facingAt(leaps, 1, 30, 2), PI);
+    expectAngle(facingAt(leaps, 1, 30.75, 2), PI + PI / 24);
+    expectAngle(facingAt(leaps, 1, 31.5, 2), PI + PI / 12);
+    expectAngle(facingAt(leaps, 1, 32.25, 2), PI + PI / 8);
+    expectAngle(facingAt(leaps, 1, 33, 2), (-5 * PI) / 6);
+    expectAngle(facingAt(leaps, 1, 34, 2), (-5 * PI) / 6);
     // Merry's, (−2, +6), moves x by √3 and z by −9. On 0 Gimli is (−2, +7) away: x √3 × 1.5, z −10.5. From (0, 6) he is
     // (0, +1), 5π/6, under 20° from the dash, so Merry turns back the direct way.
     const dash = Math.atan2(Math.sqrt(3), -9);
     expectAngle(facingAt(leaps, 0, 0, 2), Math.atan2(1.5 * Math.sqrt(3), -10.5));
     expectAngle(facingAt(leaps, 0, 3.5, 2), dash);
-    expectAngle(facingAt(leaps, 0, 4, 2), dash);
-    expectAngle(facingAt(leaps, 0, 5.5, 2), dash + ((5 * PI) / 6 - dash) / 2);
-    expectAngle(facingAt(leaps, 0, 7, 2), (5 * PI) / 6);
+    expectAngle(facingAt(leaps, 0, 30, 2), dash);
+    expectAngle(facingAt(leaps, 0, 31.5, 2), dash + ((5 * PI) / 6 - dash) / 2);
+    expectAngle(facingAt(leaps, 0, 33, 2), (5 * PI) / 6);
+  });
+
+  it('faces its target through an ability’s wind-up, and turns into its dash from when it sets off', () => {
+    const fight = () => combat(PRESETS.full, PRESETS.traits);
+    const p = finished(fight());
+    // Team B's Grishnákh (id 14), a Burglar, leaps on tick 0 to (5, 1). On 132 he casts Sneak at team A's Beregond (id 2)
+    // on (3, 3), who doesn't move. The dash, to (4, 3), sets off on 143, at the release, and Grishnákh dies on its way,
+    // on 145.
+    expect(p.combat.state.units[14]).toMatchObject({ unitId: 'grishnakh', team: 'B' });
+    expect(p.combat.state.units[2]).toMatchObject({ unitId: 'beregond', team: 'A' });
+    expect(p.combat.events.find((e) => e.type === 'cast' && e.unit === 14)).toMatchObject({ tick: 132, releaseTick: 143 });
+    expect(motionsOf(p, 'dash', 14).map((m) => m.tick)).toEqual([0, 132]);
+    expect(motionsOf(p, 'dash', 14)[1]).toEqual({ tick: 132, from: { q: 5, r: 1 }, to: { q: 4, r: 3 } });
+    expect(dashesOf(p, 14)[1]).toEqual({ tick: 132, departTick: 143, arriveTick: 153 });
+    expect(dashesOf(p, 14)[0]!.arriveTick).toBeLessThan(100);
+    expect(motionsOf(p, 'move', 14).filter((m) => m.tick > 100)).toEqual([]);
+    expect(spawnHexOf(p, 2)).toEqual({ q: 3, r: 3 });
+    expect(motionsOf(p, 'move', 2)).toEqual([]);
+    expect(ticksOf(p, 'death', 14)).toEqual([145]);
+    // Beregond is (−2, +2) from him: x −√3, z −3, −5π/6. The dash goes (−1, +2): x 0, z −3, π. Through the wind-up he faces
+    // Beregond, and from 143 turns by π/6 the shorter way, through −11π/12 by 144.5, to face the way he dashes.
+    for (const t of [132, 135, 140, 142.5, 143]) expectAngle(facingAt(fight, 14, t, 2), (-5 * PI) / 6);
+    expectAngle(facingAt(fight, 14, 144, 2), (-5 * PI) / 6 - PI / 18);
+    expectAngle(facingAt(fight, 14, 144.5, 2), (-11 * PI) / 12);
+    // He dies on 145, and has nowhere to face.
+    expect(fightFacing(playbackAt(fight, 145), 14, 2)).toBeNull();
   });
 
   it('is towards its target otherwise, from its position to the target’s, without the lunge', () => {
     const p = gandalfStuns();
-    // The Ringwraith (id 0) on (1, 3) and Gandalf (id 1) on (3, 3) never move. Aragorn (id 2) on (1, 4) steps to (2, 4)
-    // from 177 to 192.
+    // The Ringwraith (id 0) on (1, 3), Gandalf (id 1) on (3, 3) and Aragorn (id 2) on (1, 4) never move.
     expect([0, 1, 2].map((unit) => spawnHexOf(p, unit))).toEqual([
       { q: 1, r: 3 },
       { q: 3, r: 3 },
       { q: 1, r: 4 },
     ]);
-    expect([...motionsOf(p, 'move', 0), ...motionsOf(p, 'move', 1), ...motionsOf(p, 'dash', 0), ...motionsOf(p, 'dash', 1)]).toEqual([]);
-    expect(stepsOf(p, 2)).toEqual([[177, 192]]);
+    expect([0, 1, 2].flatMap((unit) => [...motionsOf(p, 'move', unit), ...motionsOf(p, 'dash', unit)])).toEqual([]);
     // From Gandalf, Aragorn is (−2, +1): x −√3 × 1.5, z −1.5, −2π/3. From the Ringwraith he is (0, +1), 5π/6.
     expectAngle(facingAt(gandalfStunsFight, 1, 100, 2), (-2 * PI) / 3);
     expectAngle(facingAt(gandalfStunsFight, 0, 100, 2), (5 * PI) / 6);
-    // Halfway through his step Aragorn is at (1.5, 4), (−1.5, +1) from Gandalf: x −√3, z −1.5.
-    expectAngle(facingAt(gandalfStunsFight, 1, 184.5, 2), Math.atan2(-Math.sqrt(3), -1.5));
-    // Aragorn's melee attack on 44 lunges at the Ringwraith, at its height on 47. Gandalf faces where Aragorn stands.
-    expect(p.combat.events.find((e) => e.type === 'attack' && e.unit === 2 && e.tick === 44)).toMatchObject({ target: 0, ranged: false });
-    const q = playbackAt(gandalfStunsFight, 47);
+    // Aragorn's melee attack on 44 lunges at the Ringwraith, at its height on its hitTick, 51. Gandalf faces where
+    // Aragorn stands.
+    expect(p.combat.events.find((e) => e.type === 'attack' && e.unit === 2 && e.tick === 44)).toMatchObject({ target: 0, ranged: false, hitTick: 51 });
+    const q = playbackAt(gandalfStunsFight, 51);
     const lunge = q.lungeOffset(2);
     expect(Math.hypot(lunge.x, lunge.z)).toBeGreaterThan(0.1);
     expect(q.combat.state.units[1]?.target).toBe(2);
@@ -1108,17 +1199,23 @@ describe('facing', () => {
     const q = playbackAt(gandalfStunsFight, 100);
     expect(fightFacing(q, 1, null)).toBeNull();
     expect(fightFacing(q, 1, 1)).toBeNull();
-    // The Ringwraith dies on 162: at 161.5 it faces Aragorn, from (1, 3) to (1, 4), 5π/6, and from 162 nowhere, even
-    // given a target.
-    expect(ticksOf(gandalfStuns(), 'death', 0)).toEqual([162]);
-    expectAngle(facingAt(gandalfStunsFight, 0, 161.5, 2), (5 * PI) / 6);
-    expect(fightFacing(playbackAt(gandalfStunsFight, 162), 0, 2)).toBeNull();
-    expect(fightFacing(playbackAt(gandalfStunsFight, 170), 0, 2)).toBeNull();
-    // Sam dies on 697, the last tick; in the afterglow too.
-    expect(ticksOf(walkingDuel(), 'death', 0)).toEqual([697]);
-    expectAngle(facingAt(duel, 0, 696.5, 1), (5 * PI) / 6);
-    expect(fightFacing(playbackAt(duel, 697), 0, 1)).toBeNull();
-    expect(fightFacing(playbackAt(duel, 710), 0, 1)).toBeNull();
+    // In the Khamûl fight the first Gimli (id 1) dies on 279, the last tick: at 278.5 he faces Khamûl (id 0), from (0, 5)
+    // to (−1, 6), −5π/6, and from 279 nowhere, even given a target; in the afterglow too.
+    const k = khamulRides();
+    expect(ticksOf(k, 'death', 0)).toEqual([279]);
+    expect(dashesOf(k, 0)[0]?.arriveTick).toBe(200);
+    expect(motionsOf(k, 'move', 1).at(-1)).toEqual({ tick: 185, from: { q: 1, r: 4 }, to: { q: 0, r: 5 } });
+    expect(motionsOf(k, 'move', 0)).toEqual([]);
+    expectAngle(facingAt(khamulRidesFight, 1, 278.5, 0), (-5 * PI) / 6);
+    // Khamûl, who dies on 279, faces him the other way, π/6, and then nowhere.
+    expectAngle(facingAt(khamulRidesFight, 0, 278.5, 1), PI / 6);
+    expect(fightFacing(playbackAt(khamulRidesFight, 279), 0, 1)).toBeNull();
+    expect(fightFacing(playbackAt(khamulRidesFight, 290), 0, 1)).toBeNull();
+    // Sam dies on 753, the last tick; in the afterglow too.
+    expect(ticksOf(walkingDuel(), 'death', 0)).toEqual([753]);
+    expectAngle(facingAt(duel, 0, 752.5, 1), (5 * PI) / 6);
+    expect(fightFacing(playbackAt(duel, 753), 0, 1)).toBeNull();
+    expect(fightFacing(playbackAt(duel, 766), 0, 1)).toBeNull();
   });
 
   it('gives the same angle at a display time however playback got there: frame by frame, at any speed, paused or stepped', () => {
@@ -1127,7 +1224,7 @@ describe('facing', () => {
     const angles = (p: Playback) => units.map((u) => fightFacing(p, u, p.combat.state.units[u]?.target ?? null));
     const seen: { time: number; angles: (number | null)[] }[] = [];
     const speeds = [1, 0.25, 4, 2, 0.5];
-    // Frames of 1/47 s, which seldom end on a whole tick, at each speed in turn: by frame 360 the fight (over on 316)
+    // Frames of 1/47 s, which seldom end on a whole tick, at each speed in turn: by frame 360 the fight (over on 279)
     // and its afterglow are done.
     for (let frame = 0; frame < 400; frame++) {
       live.speed = speeds[Math.floor(frame / 90) % speeds.length]!;
@@ -1159,8 +1256,11 @@ describe('facing', () => {
   });
 });
 
-/** The fight, with one more event on its tick: after the sim's own events, or just before the unit's attack. */
-function withEvent(fight: Combat, extra: CastEvent, beforeAttack: boolean): Combat {
+/**
+ * The fight, with more events, each on its tick: after the sim's own events, or just before the attack of the unit it
+ * is about. Only for ticks after 0.
+ */
+function withEvents(fight: Combat, extras: readonly CombatEvent[], beforeAttack = false): Combat {
   const events: CombatEvent[] = [...fight.events];
   return {
     get tick() {
@@ -1174,8 +1274,10 @@ function withEvent(fight: Combat, extra: CastEvent, beforeAttack: boolean): Comb
     },
     step() {
       const stepped = fight.step();
-      if (fight.tick === extra.tick) {
-        const attack = stepped.findIndex((e) => e.type === 'attack' && e.unit === extra.unit);
+      for (const extra of extras) {
+        if (extra.tick !== fight.tick) continue;
+        const unit = 'unit' in extra ? extra.unit : 'target' in extra ? extra.target : null;
+        const attack = stepped.findIndex((e) => e.type === 'attack' && e.unit === unit);
         stepped.splice(beforeAttack && attack >= 0 ? attack : stepped.length, 0, extra);
       }
       events.push(...stepped);

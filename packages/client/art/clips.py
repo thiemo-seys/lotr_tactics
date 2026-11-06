@@ -23,9 +23,11 @@ which Rig.solve() reads; what isn't given stays as in the rest pose (`rig.rest` 
   `knee_r` where the knee points and `foot_r` the foot's turn on the ground;
 - and the same for the left (`_l`). An arm or leg without a target turns bone by bone instead.
 
-Timing (rig.py checks it): an attack's blow lands, or its shot leaves, on frame 3 (0.1 s), which
-it marks as `strike`; a cast is at its `height` on frames 3 to 6; a death lasts at most half a
-second and ends low; idle, move and stun loop, ending where they start. Motion is eased so it reads
+Timing (rig.py checks it): a style keys an attack's blow, or its shot, on frame 3 (BLOW), which it
+marks as `strike`, and a cast's `height` on a frame of its own, 3 to 6, and timed() then fits both to
+the unit's timing in the sim, so a melee blow lands on frame 7 and a cast is at its height at the end
+of its ability's wind-up, frames 11 to 18 (Timing below); the frames in the styles' docstrings are
+their own keys. A death lasts at most half a second and ends low; idle, move and stun loop, ending where they start. Motion is eased so it reads
 as weight, not machinery: a wind-up before a blow, a blow that gathers speed into the hit, a
 rebound and a slow settle after it, a head and cape that follow a frame or two behind.
 
@@ -47,6 +49,8 @@ import numpy as np
 from mathutils import Quaternion, Vector
 
 from rig import BETWEEN, CLIPS, FPS, LIMBS, STRIKE, Clip, V, aligning, turn_of
+
+BLOW = 3  # the frame a style keys its blow or shot on, 0.1 s in; timed() moves a melee blow to STRIKE
 
 STYLES = {name: {} for name in CLIPS}
 
@@ -437,23 +441,23 @@ def chop(rig, hand='r', seconds=0.6, low=1.0, steep=0.0, out=0.0, wide=0.0, clea
                           yaw=out / 2),
           hips=V(2, 0, b.yaw(-3)), spine=V(8, 0, b.yaw(-6)), hips_at=V(0, -0.01, -0.06 * leg))
     # The blow: the weapon down in front, the body over it, the other arm thrown back.
-    k.key(STRIKE, 'in', **blow(100 + 8 * low + steep, b.near(-0.25, -0.95, -0.3 * low), (0.6, 0.5, -0.5), yaw=6 + out),
+    k.key(BLOW, 'in', **blow(100 + 8 * low + steep, b.near(-0.25, -0.95, -0.3 * low), (0.6, 0.5, -0.5), yaw=6 + out),
           hips=V(4, 0, b.yaw(-6)), spine=V(16, 0, b.yaw(-12)), hips_at=V(0, -0.02, -0.09 * leg),
           head=V(-9, 0, b.yaw(6)), cape=V(10, 0, 0))
-    k.key(STRIKE, 'in', **b.arm(off, b.wrist(off, 0.06, 0.14, -0.04)))
+    k.key(BLOW, 'in', **b.arm(off, b.wrist(off, 0.06, 0.14, -0.04)))
     # A rebound off what it hit, a hold, then the weight comes back up: the weapon lifted first,
     # edge still leading, and only then turned back in the hand.
-    k.key(STRIKE + 2, 'out', **blow(96 + 6 * low + steep, b.near(-0.25, -0.86, -0.22 * low), (0.6, 0.5, -0.5),
+    k.key(BLOW + 2, 'out', **blow(96 + 6 * low + steep, b.near(-0.25, -0.86, -0.22 * low), (0.6, 0.5, -0.5),
                                     yaw=6 + out),
           spine=V(14, 0, b.yaw(-11)), hips_at=V(0, -0.02, -0.08 * leg))
-    k.key(STRIKE + 5, 'smooth', **blow(95 + 6 * low + steep, b.near(-0.24, -0.84, -0.2 * low), (0.6, 0.5, -0.5),
+    k.key(BLOW + 5, 'smooth', **blow(95 + 6 * low + steep, b.near(-0.24, -0.84, -0.2 * low), (0.6, 0.5, -0.5),
                                        yaw=6 + out),
           spine=V(13, 0, b.yaw(-10)), hips_at=V(0, -0.02, -0.075 * leg), head=V(-6, 0, b.yaw(4)))
-    k.key(STRIKE + 9 + slow, 'smooth', **blow(lift, b.near(-0.05 + clear, -0.4, 0.15), (0.7, 0.4, -0.5)),
+    k.key(BLOW + 9 + slow, 'smooth', **blow(lift, b.near(-0.05 + clear, -0.4, 0.15), (0.7, 0.4, -0.5)),
           spine=V(6, 0, b.yaw(-4)), hips_at=V(0, -0.01, -0.04 * leg))
     k.key(n, **b.still())
     k.key(n, **{f'hand_{hand}_world': 1.0})
-    return Clip(n, k, marks={'strike': STRIKE})
+    return Clip(n, k, marks={'strike': BLOW})
 
 
 @style('attack', 'swing')
@@ -473,19 +477,19 @@ def swing(rig, hand='r', seconds=0.55, wide=0.0, ahead=0.0):
         (0, 'smooth', (0.15 + wide, 0.15, 0.55), (0.35, 0.45, 0.82), 18),
         (1, 'in', (0.3 + wide, -0.35, 0.5), (0.65, -0.35, 0.67), 10),
         (2, 'in', (0.15, -0.8, 0.2), (0.35, -0.93, 0.1), 0),
-        (STRIKE, 'in', (-0.25, -0.85, -0.1), (-0.45, -0.82, -0.35), -14),
-        (STRIKE + 3, 'out', (-0.45, -0.6 - ahead, -0.25), (-0.8, -0.35, -0.48), -20),
-        (STRIKE + 6, 'smooth', (-0.4, -0.62 - ahead, -0.2), (-0.75, -0.42, -0.5), -18),
+        (BLOW, 'in', (-0.25, -0.85, -0.1), (-0.45, -0.82, -0.35), -14),
+        (BLOW + 3, 'out', (-0.45, -0.6 - ahead, -0.25), (-0.8, -0.35, -0.48), -20),
+        (BLOW + 6, 'smooth', (-0.4, -0.62 - ahead, -0.2), (-0.75, -0.42, -0.5), -18),
     ]
     faces = leading([b.out(*aim) for _, _, _, aim, _ in path])
     for (f, ease, at, aim, yaw), face in zip(path, faces):
         k.key(f, ease, **b.arm(hand, b.near(*at), b.rig.aim(hand, b.out(*aim), face), (0.7, 0.4, -0.5), world=1.0),
-              spine=V(4 if f >= STRIKE else -4, 0, b.yaw(yaw)), hips=V(0, 0, b.yaw(yaw / 2)))
-    k.key(STRIKE, 'in', hips_at=V(0, -0.02, -0.07 * leg), head=V(-4, 0, b.yaw(8)),
+              spine=V(4 if f >= BLOW else -4, 0, b.yaw(yaw)), hips=V(0, 0, b.yaw(yaw / 2)))
+    k.key(BLOW, 'in', hips_at=V(0, -0.02, -0.07 * leg), head=V(-4, 0, b.yaw(8)),
           **b.arm(off, b.wrist(off, 0.08, 0.12, -0.02)))
     k.key(n, **b.still())
     k.key(n, **{f'hand_{hand}_world': 1.0})
-    return Clip(n, k, marks={'strike': STRIKE})
+    return Clip(n, k, marks={'strike': BLOW})
 
 
 @style('attack', 'thrust')
@@ -517,14 +521,14 @@ def thrust(rig, hand='r', seconds=0.55, guard=False, out=0.0, wide=0.0, rise=0.0
 
     k.key(0, **b.arm(hand, near(0.1 + wide, 0.35, -0.45), ahead, (0.6, 0.6, -0.4), world=1.0),
           spine=V(-2, 0, b.yaw(16)), hips=V(0, 0, b.yaw(8)), hips_at=V(0, 0.02, -0.04 * leg))
-    k.key(STRIKE, 'in', **b.arm(hand, near(-0.05, -0.95, -0.15), ahead, (0.6, 0.5, -0.5), world=1.0),
+    k.key(BLOW, 'in', **b.arm(hand, near(-0.05, -0.95, -0.15), ahead, (0.6, 0.5, -0.5), world=1.0),
           spine=V(8, 0, b.yaw(-18)), hips=V(2, 0, b.yaw(-8)), hips_at=V(0, -0.08 * leg, -0.08 * leg),
           head=V(-6, 0, b.yaw(10)), cape=V(8, 0, 0), **({} if guard else b.arm(off, b.wrist(off, 0.1, 0.15, -0.02))))
-    k.key(STRIKE + 4, 'out', **b.arm(hand, near(-0.05, -0.88, -0.17), ahead, (0.6, 0.5, -0.5), world=1.0),
+    k.key(BLOW + 4, 'out', **b.arm(hand, near(-0.05, -0.88, -0.17), ahead, (0.6, 0.5, -0.5), world=1.0),
           spine=V(7, 0, b.yaw(-15)), hips_at=V(0, -0.07 * leg, -0.07 * leg))
     k.key(n, **b.still())
     k.key(n, **{f'hand_{hand}_world': 1.0})
-    return Clip(n, k, marks={'strike': STRIKE})
+    return Clip(n, k, marks={'strike': BLOW})
 
 
 @style('attack', 'shot')
@@ -537,7 +541,7 @@ def shot(rig, bow='l', seconds=0.6, drawn=False, **drawn_options):
     draw it stands at, the arrow gone to its quiver, and a fresh one drawn from it and nocked;
     `drawn_options` go to drawn_shot()."""
     if drawn:
-        return drawn_shot(rig, bow, seconds, STRIKE, **drawn_options)
+        return drawn_shot(rig, bow, seconds, BLOW, **drawn_options)
     if drawn_options:
         raise TypeError(f'shot takes {", ".join(drawn_options)} only with drawn=True')
     draw = 'r' if bow == 'l' else 'l'
@@ -551,12 +555,12 @@ def shot(rig, bow='l', seconds=0.6, drawn=False, **drawn_options):
           **b.arm(draw, b.near(-0.55, -0.45, 0.42, draw), None, (0.9, 0.2, 0.1), world=1.0),
           spine=V(0, 0, b.yaw(-25)), hips=V(0, 0, b.yaw(-12)), head=V(-2, 0, b.yaw(22)), hips_at=V(0, 0, -0.04 * leg))
     k.key(2, **b.arm(draw, b.near(-0.5, -0.4, 0.42, draw)))
-    k.key(STRIKE, 'in', **b.arm(draw, b.near(-0.2, -0.1, 0.48, draw)), **b.arm(bow, b.near(-0.1, -1.0, 0.1), upright),
+    k.key(BLOW, 'in', **b.arm(draw, b.near(-0.2, -0.1, 0.48, draw)), **b.arm(bow, b.near(-0.1, -1.0, 0.1), upright),
           head=V(-3, 0, b.yaw(22)))
-    k.key(STRIKE + 5, 'out', **b.arm(draw, b.near(-0.15, -0.05, 0.42, draw)), **b.arm(bow, b.near(-0.1, -0.97, 0.08)))
+    k.key(BLOW + 5, 'out', **b.arm(draw, b.near(-0.15, -0.05, 0.42, draw)), **b.arm(bow, b.near(-0.1, -0.97, 0.08)))
     k.key(n, **b.still())
     k.key(n, **{f'hand_{bow}_world': 1.0, f'hand_{draw}_world': 1.0})
-    return Clip(n, k, marks={'strike': STRIKE})
+    return Clip(n, k, marks={'strike': BLOW})
 
 
 @style('attack', 'throw')
@@ -572,19 +576,19 @@ def throw(rig, hand='r', seconds=0.55):
     path = [
         (0, 'smooth', (0.15, 0.4, 0.55), (0.1, 0.7, 0.7), -8, 24),
         (2, 'in', (0.12, -0.05, 0.75), (0.05, -0.2, 0.98), 0, 8),
-        (STRIKE, 'in', (0.0, -0.9, 0.35), (0.0, -0.9, 0.42), 12, -15),
-        (STRIKE + 3, 'out', (-0.2, -0.75, -0.25), (-0.1, -0.7, -0.7), 16, -20),
+        (BLOW, 'in', (0.0, -0.9, 0.35), (0.0, -0.9, 0.42), 12, -15),
+        (BLOW + 3, 'out', (-0.2, -0.75, -0.25), (-0.1, -0.7, -0.7), 16, -20),
     ]
     faces = leading([b.out(*aim) for _, _, _, aim, _, _ in path])
     for (f, ease, at, aim, pitch, yaw), face in zip(path, faces):
         k.key(f, ease, **b.arm(hand, b.near(*at), b.rig.aim(hand, b.out(*aim), face), (0.8, 0.3, -0.4), world=1.0),
               spine=V(pitch, 0, b.yaw(yaw)), hips=V(0, 0, b.yaw(yaw / 2)))
     k.key(0, **b.arm(off, b.wrist(off, 0.1, -0.2, 0.1)))
-    k.key(STRIKE, 'in', hips_at=V(0, -0.05 * leg, -0.06 * leg), head=V(-6, 0, b.yaw(10)),
+    k.key(BLOW, 'in', hips_at=V(0, -0.05 * leg, -0.06 * leg), head=V(-6, 0, b.yaw(10)),
           **b.arm(off, b.wrist(off, 0.1, 0.15, -0.05)))
     k.key(n, **b.still())
     k.key(n, **{f'hand_{hand}_world': 1.0})
-    return Clip(n, k, marks={'strike': STRIKE})
+    return Clip(n, k, marks={'strike': BLOW})
 
 
 # cast ------------------------------------------------------------------------------------------
@@ -736,7 +740,8 @@ def lunge(rig, hand='r', seconds=0.7, height=4, reach=1.0, rise=0.0, wide=0.0):
     far the hand goes, a share of the arm's, and `rise` how many degrees the blade points up from
     level (down when negative): less of one and more of the other keep a long blade in the hex.
     `wide` draws it back that share of the arm's reach further out by the hip, so the fist and the
-    hilt clear a round belly as the body coils."""
+    hilt clear a round belly as the body coils. Frame 2, as the body drives forward out of its coil, is
+    `off`: where a unit whose ability dashes sets off (timed())."""
     b = Body(rig, hand)
     n = frames_for(seconds)
     leg = b.leg
@@ -761,7 +766,7 @@ def lunge(rig, hand='r', seconds=0.7, height=4, reach=1.0, rise=0.0, wide=0.0):
           spine=V(8, 0, b.yaw(-6)), hips_at=V(0, -0.08 * leg, -0.08 * leg))
     k.key(n, **b.still())
     k.key(n, **{f'hand_{hand}_world': 1.0})
-    return Clip(n, k, marks={'height': height})
+    return Clip(n, k, marks={'height': height, 'off': 2})
 
 
 # stun ------------------------------------------------------------------------------------------
@@ -1227,7 +1232,7 @@ def spear_thrust(rig, hand='r', seconds=0.6):
     """A spear stabbed down from the saddle: raised high by the shoulder, the point down at the foe,
     then driven down and forward along its length beside the mount's shoulder, landing on frame 3,
     as the mount tosses its head; then drawn back out past the hip and lifted upright."""
-    return spear_clip(rig, hand, seconds, STRIKE, False)
+    return spear_clip(rig, hand, seconds, BLOW, False)
 
 
 @style('cast', 'spear')
@@ -1269,14 +1274,14 @@ def cut(rig, hand='r', seconds=0.55, out=1.0, across=0.0, early=0.0):
     k.key(2, 'in', **blow(75 + early, (0.32 * out, -0.08, 0.5), (0.7, 0.4, -0.2), 20, across),
           spine=V(6, 0, b.yaw(-2)))
     # The blow, down beside the mount's shoulder, the body over it.
-    k.key(STRIKE, 'in', **blow(135, (0.45 * out, -0.1, -0.2), (0.6, 0.4, -0.4), 20), spine=V(14, 0, b.yaw(-8)),
+    k.key(BLOW, 'in', **blow(135, (0.45 * out, -0.1, -0.2), (0.6, 0.4, -0.4), 20), spine=V(14, 0, b.yaw(-8)),
           hips=V(3, 0, b.yaw(-4)), head=V(-6, 0, b.yaw(6)), cape=V(10, 0, 0), mount_neck=V(-8, 0, 5),
           mount_head=V(-6, 0, 0), mount_tail=V(8, 0, 0), **b.arm(off, b.wrist(off, 0.0, 0.08, 0.0)))
-    k.key(STRIKE + 2, 'out', **blow(128, (0.45 * out, -0.02, -0.15), (0.6, 0.4, -0.4), 20), spine=V(12, 0, b.yaw(-7)))
-    k.key(STRIKE + 7, 'smooth', **blow(30, (0.3 * out, 0.25, 0.4), (0.7, 0.4, -0.3), 15), spine=V(4, 0, b.yaw(-2)))
+    k.key(BLOW + 2, 'out', **blow(128, (0.45 * out, -0.02, -0.15), (0.6, 0.4, -0.4), 20), spine=V(12, 0, b.yaw(-7)))
+    k.key(BLOW + 7, 'smooth', **blow(30, (0.3 * out, 0.25, 0.4), (0.7, 0.4, -0.3), 15), spine=V(4, 0, b.yaw(-2)))
     k.key(n, **seated(b, m, legs=False))
     k.key(n, **{f'hand_{hand}_world': 1.0})
-    return Clip(n, k, marks={'strike': STRIKE})
+    return Clip(n, k, marks={'strike': BLOW})
 
 
 def hinged(rig, bone, degrees):
@@ -1468,8 +1473,11 @@ def rear(rig, hand='r', seconds=1.2, rear=1.0, out=0.08):
 # weapon: a charge through the foes' line (Théoden's Forth Eorlingas! and Khamûl's Shadow ride), a
 # leap that comes down in a slam (the Witch-king's Morgul mace), a horn sounded from the saddle
 # (Gamling's Horn of the Hornburg), and the mount striking out with its forefeet (Gamling's attack,
-# his hands on the horn and the reins). A charge or a leap is a cast the viewer carries through its
-# dash (docs/viewer-spec.md section 5), so the mount is in the air until it lands at the height.
+# his hands on the horn and the reins). A charge or a leap sets off on its dash at the ability's release,
+# and the viewer plays `move` from there (docs/viewer-spec.md section 5), so for a unit whose ability
+# dashes timed() puts the frame it springs on, which the style marks `off`, at the release: the mount
+# gathered on its haunches through the wind-up, springing as it ends. What follows, the landing and the
+# blow, shows only if no dash carries it off.
 
 
 def together(*parts, **channels):
@@ -1504,7 +1512,8 @@ def charge(rig, hand='r', seconds=0.7, height=4, stretch=1.0, out=16.0, wide=0.0
     blade is lifted back. Levelled, its flat is turned up, so it shows from above and behind rather
     than edge on. `stretch` is how far the mount reaches out, and `wide` draws the blade back and
     lifts it again that share of the arm's reach further out on its own side, clear of a big hood. It
-    is mount_grounded()."""
+    is mount_grounded(). Frame 1, as it springs from its haunches, is `off`: where the charge sets off
+    on its dash (timed())."""
     b = Body(rig, hand)
     m = Steed(rig)
     n = frames_for(seconds)
@@ -1553,7 +1562,7 @@ def charge(rig, hand='r', seconds=0.7, height=4, stretch=1.0, out=16.0, wide=0.0
           head=V(-3, 0, 0), cape=V(8, 0, 0))
     k.key(n, **seated(b, m))
     k.key(n, **{f'hand_{hand}_world': 1.0})
-    return Clip(n, mount_grounded(rig, m, k), marks={'height': height})
+    return Clip(n, mount_grounded(rig, m, k), marks={'height': height, 'off': 1})
 
 
 @style('cast', 'leap')
@@ -1563,7 +1572,8 @@ def leap(rig, hand='r', seconds=0.8, height=4, spring=1.0, out=1.0):
     ground, the weapon at the top of its swing; then down onto its forefeet with a crash as the rider
     brings the weapon down past the mount's shoulder with the body over it, at its height on frame
     `height`; then the hind feet land and it stands. `spring` is how high it leaps, and `out` how far
-    out to its own side the blow comes down, as cut's. It is mount_grounded()."""
+    out to its own side the blow comes down, as cut's. It is mount_grounded(). Frame 1, as it springs
+    from its haunches, is `off`: where the leap sets off on its dash (timed())."""
     b = Body(rig, hand)
     m = Steed(rig)
     n = frames_for(seconds)
@@ -1611,7 +1621,7 @@ def leap(rig, hand='r', seconds=0.8, height=4, spring=1.0, out=1.0):
           head=V(-2, 0, 0), cape=V(4, 0, 0))
     k.key(n, **seated(b, m))
     k.key(n, **{f'hand_{hand}_world': 1.0})
-    return Clip(n, mount_grounded(rig, m, k), marks={'height': height})
+    return Clip(n, mount_grounded(rig, m, k), marks={'height': height, 'off': 1})
 
 
 @style('attack', 'trample')
@@ -1640,15 +1650,15 @@ def trample(rig, hand='r', seconds=0.6, rear=1.0):
     striking = together(*(hoof(m, leg, -0.3 + 0.06 * i, (0.25 + 0.04 * i) * rear, 40) for i, leg in enumerate(m.fore)))
     k.key(2, 'in', **striking, **m.body(-5 * rear, 0, 0, at=V(0, 0.01, 0.0), about=hind), mount_neck=V(6, 0, 0))
     struck = together(*(m.planted(leg, (-0.3 + 0.08 * i) * m.reach[leg], -8) for i, leg in enumerate(m.fore)))
-    k.key(STRIKE, 'in', **struck, **m.body(5, 0, 0, at=V(0, -0.02, -0.03 * h)), mount_neck=V(12, 0, 0),
+    k.key(BLOW, 'in', **struck, **m.body(5, 0, 0, at=V(0, -0.02, -0.03 * h)), mount_neck=V(12, 0, 0),
           mount_head=V(8, 0, 0), mount_tail=V(10, 0, 0))
-    k.key(STRIKE, 'in', spine=V(-4, 0, 0), hips=V(-2, 0, 0), head=V(6, 0, 0), cape=V(-4, 0, 0),
+    k.key(BLOW, 'in', spine=V(-4, 0, 0), hips=V(-2, 0, 0), head=V(6, 0, 0), cape=V(-4, 0, 0),
           **b.arm(hand, b.wrist(hand, 0.02, 0.0, 0.0)), **b.arm(off, b.wrist(off, 0.0, -0.08, -0.03)))
-    k.key(STRIKE + 2, 'out', **m.body(3, 0, 0, at=V(0, -0.015, -0.02 * h)), mount_neck=V(9, 0, 0), spine=V(-2, 0, 0))
-    k.key(STRIKE + 8, 'smooth', **together(*(m.planted(leg, -0.06 * m.reach[leg]) for leg in m.fore)),
+    k.key(BLOW + 2, 'out', **m.body(3, 0, 0, at=V(0, -0.015, -0.02 * h)), mount_neck=V(9, 0, 0), spine=V(-2, 0, 0))
+    k.key(BLOW + 8, 'smooth', **together(*(m.planted(leg, -0.06 * m.reach[leg]) for leg in m.fore)),
           **m.body(0, 0, 0), mount_neck=V(2, 0, 0), mount_head=V(2, 0, 0), spine=V(1, 0, 0))
     k.key(n, **seated(b, m))
-    return Clip(n, mount_grounded(rig, m, k), marks={'strike': STRIKE})
+    return Clip(n, mount_grounded(rig, m, k), marks={'strike': BLOW})
 
 
 @style('cast', 'sound')
@@ -1735,14 +1745,127 @@ GIVE = 0.005  # how much deeper than the clip kept_between() may take a hand int
 
 def made(rig, clip, spec):
     """The Clip a Rig's spec gives for `clip`, as Rig makes it: a style's name, with or without
-    options, or a function of the rig."""
+    options, its attack or cast retimed to the unit's Timing (timed()); or a function of the rig, which
+    times its own clip. An attack's or a cast's options may give `begin`, how far into the style's first
+    key the retimed clip begins (Timing below)."""
     if callable(spec):
         return spec(rig)
     name, options = (spec, {}) if isinstance(spec, str) else spec
     styles = STYLES.get(clip, {})
     if name not in styles:
         raise RuntimeError(f'no "{name}" style for {clip}; the library has {", ".join(sorted(styles))}')
-    return styles[name](rig, **options)
+    options = dict(options)
+    begin = options.pop('begin', None) if clip in ('attack', 'cast') else None
+    made_clip = styles[name](rig, **options)
+    if begin is not None:
+        made_clip.begin = begin
+    return timed(rig, clip, made_clip)
+
+
+# Timing ----------------------------------------------------------------------------------------
+#
+# A style keys an attack's blow or shot on frame 3 (BLOW) and a cast's height on a frame of its own, 3 to
+# 6, each after a short wind-up, a few frames of drawing back or gathering from a first frame already
+# drawn back: as the sim had blows land on their attack and abilities on their cast. The sim now lands a
+# melee blow 7 frames after its attack, and an ability at the end of its wind-up, 11 to 18 frames after
+# its cast (docs/viewer-spec.md section 4, Rigs and clips). timed() fits each clip a style makes to its
+# unit's Timing (rig.timing()), so every style keeps its keys and a unit's own timing comes from the sim:
+#
+# - A ranged attack's shot still leaves on frame 3: the clip is as keyed.
+# - A melee attack draws back for the 4 frames more the blow now waits: it starts BEGIN of the way from
+#   rest to the style's first key (BEGIN), drawn back, and eases into it by frame 4; then the style plays on at
+#   its own pace, so the blow, as fast as keyed, lands on frame 7, and the clip is 4 frames longer.
+# - A spec's `begin` (made()) starts it that far into its first key instead, 1 for already there: for a
+#   style whose first key is so far from rest that on the way what the hand holds passes through the body.
+# - A cast reaches the frame it releases on (its height, or for a unit whose ability dashes or charges
+#   the frame its style springs on, `off`) at the end of its wind-up: it starts BEGIN of the way into the
+#   style's first key and eases into it over half of the wind-up before the last FAST frames; the style's
+#   frames up to those then play slowly over the rest of it, a staff raised or a bow drawn at leisure; and
+#   its last FAST frames, the blow, the loose or the stamp, at their own pace. Its hits, and FOLLOW frames
+#   after the last, play at their own pace too, so a flurry still looses every 3 frames; and the rest,
+#   the recovery, is drawn in if it must be to keep the clip within a second (LONGEST).
+
+BEGIN = 0.35  # how far a retimed clip begins into its style's first key, a share of the way from rest
+FAST = 2  # the frames before a cast's release that keep their pace: the blow, the loose, the stamp
+FOLLOW = 4  # the frames after a cast's last hit that keep their pace: its follow-through
+LONGEST = {'attack': 27, 'cast': 30}  # the most frames each may last (rig.LENGTHS: 0.9 and 1 s)
+
+
+def at_rest(rig, name, value):
+    """A channel's value in the rest pose: rig.rest's, or for one of a bone's own (`string_at`) none."""
+    if name in rig.rest:
+        return rig.rest[name]
+    if isinstance(value, Quaternion):
+        return Quaternion()
+    if isinstance(value, (int, float)):
+        return 0.0
+    return V(0, 0, 0)
+
+
+def timed(rig, clip, made_clip):
+    """An attack or a cast a style made, `made_clip`, fitted to the unit's Timing (Timing above); any
+    other clip as made."""
+    t = rig.timing
+    if t is None or clip not in ('attack', 'cast'):
+        return made_clip
+    marks = made_clip.marks
+    if clip == 'attack':
+        keyed = marks['strike']
+        if not t.melee:  # a shot leaves on frame 3, as keyed
+            if keyed != t.strike:
+                raise RuntimeError(f'a ranged attack is keyed to loose on frame {t.strike}, not {keyed}')
+            return made_clip
+        return retimed(rig, made_clip, keyed, t.strike, lead=t.strike - keyed, fast=keyed, last=keyed,
+                       longest=LONGEST[clip], marks={'strike': t.strike})
+    keyed = marks.get('off') if t.dash else marks['height']
+    if keyed is None:
+        raise RuntimeError(f'{t.unit}\'s ability sets off on a dash or charge at its release, so its cast style '
+                           f'must mark the frame it springs on (`off`)')
+    hits = made_clip.hits if made_clip.hits is not None else [keyed]
+    if len(hits) != len(t.hits) or hits[0] != keyed or any(b - a != t.hits[1] - t.hits[0] for a, b in zip(hits, hits[1:])):
+        raise RuntimeError(f'{t.unit}\'s cast must strike or loose {len(t.hits)} times, every '
+                           f'{t.hits[1] - t.hits[0] if len(t.hits) > 1 else 0} frames, not on frames {hits}')
+    fast = min(FAST, keyed)
+    new = {'height': t.release, **({'off': t.release} if t.dash else {})}
+    return retimed(rig, made_clip, keyed, t.release, lead=round(0.5 * (t.release - fast)), fast=fast,
+                   last=hits[-1], longest=LONGEST[clip], marks=new, hits=[t.release + h - keyed for h in hits])
+
+
+def retimed(rig, made_clip, keyed, at, lead, fast, last, longest, marks, hits=None):
+    """`made_clip` with its frame `keyed` moved to `at`: from BEGIN of the way into its first key (or its own `begin`), easing into
+    it by frame `lead`; its frames up to `fast` before `keyed` drawn out over the frames from there to
+    `fast` before `at`; and its last `fast` frames to `keyed`, those on to FOLLOW after `last`, and the
+    rest at their own pace, the rest drawn in only as far as it must be to last no more than `longest`."""
+    n = made_clip.frames
+    pose = made_clip.pose
+    end = min(last + FOLLOW, n)
+    frames = min(longest, at + n - keyed)
+    knots = [(lead, 0.0), (at - fast, keyed - fast), (at, keyed), (at + end - keyed, end), (frames, n)]
+    if not lead <= at - fast or knots[3][0] > frames:
+        raise RuntimeError(f'a clip keyed to {keyed} can\'t be retimed to {at} within {longest} frames')
+    first = pose(0)
+    start = {name: at_rest(rig, name, value) for name, value in first.items()}
+
+    def keyed_frame(f):
+        """The style's frame shown at frame f, from frame `lead` on."""
+        for (f0, s0), (f1, s1) in zip(knots, knots[1:]):
+            if f <= f1:
+                return s0 if f1 == f0 else s0 + (s1 - s0) * (f - f0) / (f1 - f0)
+        return float(n)
+
+    share = BEGIN if made_clip.begin is None else made_clip.begin
+
+    def drawing_back(f):
+        u = share + (1 - share) * EASES['out'](f / lead)
+        return {name: mix(name, start[name], value, u) for name, value in first.items()}
+
+    # On the way into the first key, kept out of the ground, as the style keeps its own frames.
+    drawing_back = mount_grounded(rig, Steed(rig), drawing_back) if rig.mount else grounded(rig, drawing_back)
+
+    def retimed_pose(f):
+        return pose(keyed_frame(f)) if f >= lead else drawing_back(f)
+
+    return Clip(frames, retimed_pose, made_clip.loop, marks, hits)
 
 
 def fit(clips, room=ROOM, pole=None, free=(), bow=None, between=False, **holding_options):
@@ -1760,10 +1883,10 @@ def fit(clips, room=ROOM, pole=None, free=(), bow=None, between=False, **holding
             pose = holding(rig, clip, clip_, pole, **holding_options)
         pose = kept(rig, pose, room)
         if between:
-            pose = kept_between(rig, Clip(clip_.frames, pose, clip_.loop, clip_.marks), room)
+            pose = kept_between(rig, clip_.with_pose(pose), room)
         if bow is not None:  # once the bow hand is kept in, so the drawing hand stays on the string
-            pose = strung(rig, clip, Clip(clip_.frames, pose, clip_.loop, clip_.marks), bow)
-        return Clip(clip_.frames, pose, clip_.loop, clip_.marks)
+            pose = strung(rig, clip, clip_.with_pose(pose), bow)
+        return clip_.with_pose(pose)
 
     return {clip: (lambda rig, clip=clip, spec=spec: fitted(rig, clip, spec)) for clip, spec in clips.items()}
 
@@ -2054,7 +2177,7 @@ def tweened(clips, only=None, room=ROOM):
         made_clip = made(rig, clip, spec)
         if only is not None and clip not in only:
             return made_clip
-        return Clip(made_clip.frames, kept_between(rig, made_clip, room), made_clip.loop, made_clip.marks)
+        return made_clip.with_pose(kept_between(rig, made_clip, room))
 
     return {clip: (lambda rig, clip=clip, spec=spec: wrapped(rig, clip, spec)) for clip, spec in clips.items()}
 
@@ -2733,7 +2856,7 @@ def hanging(clips, bone='beard', share=0.8):
                 ch[bone] = degrees_of(Quaternion().slerp(back, low))
             return ch
 
-        return Clip(made_clip.frames, with_beard, made_clip.loop, made_clip.marks)
+        return made_clip.with_pose(with_beard)
 
     return {clip: (lambda rig, clip=clip, spec=spec: hung(rig, clip, spec)) for clip, spec in clips.items()}
 
@@ -2818,7 +2941,7 @@ def both_hands(clips, hand='r', held=('idle', 'move', 'attack', 'cast'), low=0.1
             model = rig.armature.children[0].name if rig.armature and rig.armature.children else 'the model'
             print(f'WARNING {model}: in {clip} hand_{h.off} falls up to {max(d for _, d in short):.3f} short of '
                   f'the haft, in frames {", ".join(str(f) for f, _ in short)}')
-        return Clip(made_clip.frames, holding_on, made_clip.loop, made_clip.marks)
+        return made_clip.with_pose(holding_on)
 
     return {clip: (lambda rig, clip=clip, spec=spec: gripped(rig, clip, spec)) for clip, spec in clips.items()}
 
@@ -2872,29 +2995,29 @@ def smite(rig, hand='r', seconds=0.6, beard=False):
     in front. With `beard`, the hands and the haft keep out before a long beard and clear of a big
     helm (beard_smite(), Blows before a long beard below)."""
     if beard:
-        return haft_blow(rig, hand, seconds, 'strike', STRIKE, *beard_smite(STRIKE))
+        return haft_blow(rig, hand, seconds, 'strike', BLOW, *beard_smite(BLOW))
     path = [  # frame, ease, the middle of the hands, the way the haft points, elbow
         (0, 'smooth', (-0.34, -0.46, 0.22), (-0.35, 0.55, 0.76), (0.7, 0.3, -0.5)),
         (1, 'in', (-0.26, -0.56, 0.22), (-0.5, 0.05, 0.86), (0.7, 0.3, -0.5)),
         (2, 'in', (-0.12, -0.66, 0.16), (-0.82, -0.3, 0.48), (0.6, 0.4, -0.5)),
-        (STRIKE, 'in', (0.0, -0.72, 0.14), (-0.8, -0.36, -0.46), (0.6, 0.4, -0.6)),
-        (STRIKE + 2, 'out', (-0.02, -0.7, 0.16), (-0.8, -0.34, -0.4), (0.6, 0.4, -0.6)),
-        (STRIKE + 5, 'smooth', (-0.02, -0.7, 0.17), (-0.8, -0.34, -0.38), (0.6, 0.4, -0.6)),
-        (STRIKE + 10, 'smooth', (-0.06, -0.66, 0.12), (-0.8, -0.2, 0.2), (0.6, 0.4, -0.5)),
+        (BLOW, 'in', (0.0, -0.72, 0.14), (-0.8, -0.36, -0.46), (0.6, 0.4, -0.6)),
+        (BLOW + 2, 'out', (-0.02, -0.7, 0.16), (-0.8, -0.34, -0.4), (0.6, 0.4, -0.6)),
+        (BLOW + 5, 'smooth', (-0.02, -0.7, 0.17), (-0.8, -0.34, -0.38), (0.6, 0.4, -0.6)),
+        (BLOW + 10, 'smooth', (-0.06, -0.66, 0.12), (-0.8, -0.2, 0.2), (0.6, 0.4, -0.5)),
     ]
     body = [  # frame, ease, hips, spine and head as (pitch, yaw)
         (0, 'smooth', (-2, -10), (-8, -18), (5, 12)),
         (1, 'in', (0, -6), (-3, -10), (3, 6)),
         (2, 'in', (2, -2), (6, -3), (0, 0)),
-        (STRIKE, 'in', (4, 0), (16, 0), (-8, -8)),
-        (STRIKE + 2, 'out', (4, 0), (14, 0), (-7, -7)),
-        (STRIKE + 5, 'smooth', (3, 0), (13, 0), (-6, -6)),
-        (STRIKE + 10, 'smooth', (1, -1), (6, -2), (-2, -2)),
+        (BLOW, 'in', (4, 0), (16, 0), (-8, -8)),
+        (BLOW + 2, 'out', (4, 0), (14, 0), (-7, -7)),
+        (BLOW + 5, 'smooth', (3, 0), (13, 0), (-6, -6)),
+        (BLOW + 10, 'smooth', (1, -1), (6, -2), (-2, -2)),
     ]
-    crouch = [(0, 'smooth', 0.03, -0.02), (2, 'in', 0.06, 0.02), (STRIKE, 'in', 0.1, 0.05),
-              (STRIKE + 2, 'out', 0.09, 0.05), (STRIKE + 5, 'smooth', 0.085, 0.045),
-              (STRIKE + 10, 'smooth', 0.04, 0.02)]
-    return haft_blow(rig, hand, seconds, 'strike', STRIKE, path, body, crouch)
+    crouch = [(0, 'smooth', 0.03, -0.02), (2, 'in', 0.06, 0.02), (BLOW, 'in', 0.1, 0.05),
+              (BLOW + 2, 'out', 0.09, 0.05), (BLOW + 5, 'smooth', 0.085, 0.045),
+              (BLOW + 10, 'smooth', 0.04, 0.02)]
+    return haft_blow(rig, hand, seconds, 'strike', BLOW, path, body, crouch)
 
 
 @style('cast', 'slam')
@@ -3105,7 +3228,7 @@ def flurry(rig, bow='l', seconds=0.8, height=3, shots=5, every=3, deeper=0.5, re
             w.arrow_to(ch, rig.solve(ch), *w.stowed(rig.solve(ch)))
         return ch
 
-    return Clip(n, pose, marks={'height': height})
+    return Clip(n, pose, marks={'height': height}, hits=looses)
 
 
 # Elrond's and Galadriel's bolt: a sorcerer's attack, loosed from what the hand holds up.
@@ -3136,14 +3259,14 @@ def bolt(rig, hand='r', seconds=0.6, rise=10.0, reach=0.95):
     k.key(2, 'in', **{f'hand_{hand}_at': b.near(0.2, -0.5, 0.18)})
     # Thrust out at the foe, the face to it, the body after it: the bolt leaves.
     thrust = b.rig.aim(hand, turned(V(0, -0.25, 1.0), (rise - 90 + 14, 0, 0)), facing)
-    k.key(STRIKE, 'in', **b.arm(hand, b.near(-0.12, -reach, 0.1), thrust, (0.8, 0.2, -0.6), world=1.0),
+    k.key(BLOW, 'in', **b.arm(hand, b.near(-0.12, -reach, 0.1), thrust, (0.8, 0.2, -0.6), world=1.0),
           **b.arm(off, b.wrist(off, 0.08, 0.14, -0.02)), spine=V(9, 0, b.yaw(-14)), hips=V(2, 0, b.yaw(-6)),
           hips_at=V(0, -0.07 * leg, -0.05 * leg), head=V(-6, 0, b.yaw(8)), cape=V(8, 0, 0))
-    k.key(STRIKE + 4, 'out', **b.arm(hand, b.near(-0.12, -0.92 * reach, 0.08), thrust, (0.8, 0.2, -0.6), world=1.0),
+    k.key(BLOW + 4, 'out', **b.arm(hand, b.near(-0.12, -0.92 * reach, 0.08), thrust, (0.8, 0.2, -0.6), world=1.0),
           spine=V(8, 0, b.yaw(-12)), hips_at=V(0, -0.065 * leg, -0.045 * leg))
     k.key(n, **b.still())
     k.key(n, **{f'hand_{hand}_world': 1.0})
-    return Clip(n, k, marks={'strike': STRIKE})
+    return Clip(n, k, marks={'strike': BLOW})
 
 
 # Galadriel's beacon: a light that the model stands with held up is gathered in and lifted high.
@@ -3222,7 +3345,7 @@ def robed(clips, bone='robe', share=0.8, sway=0.4, kick=0.25):
                 ch[f'{bone}_at'] = ch[f'{bone}_at'] + V(0, 0, -low)
             return ch
 
-        return Clip(made_clip.frames, with_robe, made_clip.loop, made_clip.marks)
+        return made_clip.with_pose(with_robe)
 
     return {clip: (lambda rig, clip=clip, spec=spec: wrapped(rig, clip, spec)) for clip, spec in clips.items()}
 
@@ -3366,16 +3489,16 @@ def point(rig, hand='r', seconds=0.6, tip=38.0, inward=18.0, back=30.0, rise=0.5
     k.key(2, 'in', **staff(0.0, -0.04, 0.85 * rise, tip / 3, inward / 2), spine=V(3, 0, b.yaw(0)),
           hips=V(1, 0, b.yaw(0)))
     # Pointed at the foe, the body leaning in after it: the shot leaves.
-    k.key(STRIKE, 'in', **staff(-0.04, -0.12, rise, tip, inward), **b.arm(off, b.wrist(off, 0.08, 0.14, -0.02)),
+    k.key(BLOW, 'in', **staff(-0.04, -0.12, rise, tip, inward), **b.arm(off, b.wrist(off, 0.08, 0.14, -0.02)),
           hips_at=V(0, -0.06 * leg, -0.05 * leg), hips=V(2, 0, b.yaw(-5)), spine=V(9, 0, b.yaw(-10)),
           head=V(-6, 0, b.yaw(6)), cape=V(8, 0, 0))
-    k.key(STRIKE + 3, 'out', **staff(-0.04, -0.11, 0.95 * rise, tip - 3, inward), spine=V(8, 0, b.yaw(-9)),
+    k.key(BLOW + 3, 'out', **staff(-0.04, -0.11, 0.95 * rise, tip - 3, inward), spine=V(8, 0, b.yaw(-9)),
           hips_at=V(0, -0.055 * leg, -0.045 * leg))
-    k.key(STRIKE + 7, 'smooth', **staff(-0.03, -0.09, 0.8 * rise, tip - 8, inward * 0.8), spine=V(6, 0, b.yaw(-6)),
+    k.key(BLOW + 7, 'smooth', **staff(-0.03, -0.09, 0.8 * rise, tip - 8, inward * 0.8), spine=V(6, 0, b.yaw(-6)),
           hips_at=V(0, -0.04 * leg, -0.035 * leg))
     k.key(n, **b.still())
     k.key(n, **{f'hand_{hand}_world': 1.0})
-    return Clip(n, k, marks={'strike': STRIKE})
+    return Clip(n, k, marks={'strike': BLOW})
 
 
 @style('cast', 'bar')
@@ -3562,7 +3685,7 @@ def resting(clips, hand='l', bone='hips', held=('idle', 'move', 'attack')):
             ch[f'elbow_{hand}'] = carrier.turn @ elbow
             return ch
 
-        return Clip(made_clip.frames, rests, made_clip.loop, made_clip.marks)
+        return made_clip.with_pose(rests)
 
     return {clip: (lambda rig, clip=clip, spec=spec: on(rig, clip, spec)) for clip, spec in clips.items()}
 
@@ -3691,16 +3814,16 @@ def pelt(rig, hand='r', seconds=0.67, stone='stone', wide=0.0):
     path = [
         (0, 'smooth', (0.45 + wide, 0.42, 0.62), (0.25, 0.6, 0.76), -8, 22),
         (2, 'in', (0.36 + wide, -0.15, 0.86), (0.12, -0.45, 0.88), 2, 6),
-        (STRIKE, 'in', (0.12, -0.95, 0.42), (0.05, -0.95, 0.3), 12, -16),
-        (STRIKE + 3, 'out', (-0.02, -0.85, -0.05), (-0.05, -0.7, -0.7), 16, -18),
+        (BLOW, 'in', (0.12, -0.95, 0.42), (0.05, -0.95, 0.3), 12, -16),
+        (BLOW + 3, 'out', (-0.02, -0.85, -0.05), (-0.05, -0.7, -0.7), 16, -18),
     ]
     body = [
         (0, 'smooth', dict(hips_at=V(0, 0.04 * leg, -0.03 * leg), head=V(4, 0, b.yaw(-14)))),
-        (STRIKE, 'in', dict(hips_at=V(0, -0.06 * leg, -0.06 * leg), head=V(-6, 0, b.yaw(10)))),
-        (STRIKE + 3, 'out', dict(hips_at=V(0, -0.06 * leg, -0.07 * leg))),
+        (BLOW, 'in', dict(hips_at=V(0, -0.06 * leg, -0.06 * leg), head=V(-6, 0, b.yaw(10)))),
+        (BLOW + 3, 'out', dict(hips_at=V(0, -0.06 * leg, -0.07 * leg))),
     ]
     fetch = dict(spine=V(6, 0, b.yaw(-4)), head=V(16, 0, b.yaw(10)))
-    return stone_throw(rig, hand, seconds, 'strike', STRIKE, path, body, stone, fetch)
+    return stone_throw(rig, hand, seconds, 'strike', BLOW, path, body, stone, fetch)
 
 
 @style('cast', 'skim')
@@ -3753,8 +3876,7 @@ def paw_down(clips, paw='l', held=('stun', 'victory')):
         if clip not in held:
             return made_clip
         pose = made_clip.pose
-        return Clip(made_clip.frames, grounded(rig, lambda f: pinned(rig, pose(f), paw)), made_clip.loop,
-                    made_clip.marks)
+        return made_clip.with_pose(grounded(rig, lambda f: pinned(rig, pose(f), paw)))
 
     return {clip: (lambda rig, clip=clip, spec=spec: on(rig, clip, spec)) for clip, spec in clips.items()}
 
@@ -3845,23 +3967,23 @@ def rake(rig, hand='r', paw='l', seconds=0.53, wide=0.3):
     path = [
         (0, 'smooth', (0.25 + wide, 0.15, 0.6), (0.2, 0.3, 0.93), -12, 16),
         (2, 'in', (0.15 + wide, -0.55, 0.45), (0.15, -0.8, 0.3), -2, 6),
-        (STRIKE, 'in', (-0.05, -0.95, -0.15), (-0.15, -0.6, -0.8), 14, -12),
-        (STRIKE + 3, 'out', (-0.2, -0.85, -0.22), (-0.3, -0.45, -0.85), 16, -16),
-        (STRIKE + 6, 'smooth', (-0.18, -0.84, -0.2), (-0.3, -0.5, -0.8), 14, -14),
+        (BLOW, 'in', (-0.05, -0.95, -0.15), (-0.15, -0.6, -0.8), 14, -12),
+        (BLOW + 3, 'out', (-0.2, -0.85, -0.22), (-0.3, -0.45, -0.85), 16, -16),
+        (BLOW + 6, 'smooth', (-0.18, -0.84, -0.2), (-0.3, -0.5, -0.8), 14, -14),
     ]
     faces = leading([b.out(*aim) for _, _, _, aim, _, _ in path])
     for (f, ease, at, aim, pitch, yaw), face in zip(path, faces):
         k.key(f, ease, **b.arm(hand, b.near(*at), b.rig.aim(hand, b.out(*aim), face), (0.8, 0.3, -0.4), world=1.0),
               spine=V(pitch, 0, b.yaw(yaw)), hips=V(0, 0, b.yaw(yaw / 2)))
     k.key(0, hips_at=V(0, 0.03 * leg, 0.01 * leg), head=V(-8, 0, b.yaw(-8)))
-    k.key(STRIKE, 'in', hips_at=V(0, -0.06 * leg, -0.02 * leg), head=V(10, 0, b.yaw(8)))
+    k.key(BLOW, 'in', hips_at=V(0, -0.06 * leg, -0.02 * leg), head=V(10, 0, b.yaw(8)))
     k.key(n, **b.still())
     k.key(n, **{f'hand_{hand}_world': 1.0})
-    return Clip(n, grounded(rig, lambda f: pinned(rig, k(f), paw)), marks={'strike': STRIKE})
+    return Clip(n, grounded(rig, lambda f: pinned(rig, k(f), paw)), marks={'strike': BLOW})
 
 
 @style('cast', 'bites')
-def bites(rig, hand='r', paw='l', seconds=0.8, height=4, every=5, count=3):
+def bites(rig, hand='r', paw='l', seconds=0.8, height=4, every=3, count=3):
     """Bites at the foe as fast as the jaws can snap (Gollum's My precious): gathered, the head drawn back
     and the lifted hand cocked; then the body lunging and the head thrust out and snapping down,
     `count` times, the first on frame `height`, its height, and one `every` few frames after, the body
@@ -3887,7 +4009,8 @@ def bites(rig, hand='r', paw='l', seconds=0.8, height=4, every=5, count=3):
             k.key(f + 2, 'out', hips_at=V(0, -0.035 * leg, -0.02 * leg), spine=V(6, 0, 0), head=V(-6, 0, 0))
     k.key(n, **b.still())
     k.key(n, **{f'hand_{hand}_world': 1.0})
-    return Clip(n, grounded(rig, lambda f: pinned(rig, k(f), paw)), marks={'height': height})
+    return Clip(n, grounded(rig, lambda f: pinned(rig, k(f), paw)), marks={'height': height},
+                hits=[height + i * every for i in range(count)])
 
 
 @style('stun', 'cowed')
@@ -3996,7 +4119,7 @@ def swaying(clips, bone, share=0.0, lag=2, drag=0.5):
                 ch[bone] = degrees_of(Quaternion().slerp(local, low))
             return ch
 
-        return Clip(n, with_bone, loop, made_clip.marks)
+        return made_clip.with_pose(with_bone)
 
     return {clip: (lambda rig, clip=clip, spec=spec: swayed(rig, clip, spec)) for clip, spec in clips.items()}
 
@@ -4164,7 +4287,7 @@ def draped(clips, bone='cape', share=0.5, hang=0.0, slack=0.05, room=ROOM):
             ch[bone] = degrees_of(spine.inverted() @ turned_back(back))
             return ch
 
-        return Clip(made_clip.frames, with_cape, made_clip.loop, made_clip.marks)
+        return made_clip.with_pose(with_cape)
 
     return {clip: (lambda rig, clip=clip, spec=spec: fitted(rig, clip, spec)) for clip, spec in clips.items()}
 
@@ -4208,17 +4331,17 @@ def smash(rig, hand='r', seconds=0.6, out=10.0, inward=8.0, drop=0.0, coil=0.0, 
         (0, 'smooth', -35, (0.15, 0.3, 0.7), -6),
         (1, 'in', 15, (0.05, 0.22, 0.92), -inward / 2),
         (2, 'in', over[0], over[1], over[2]),
-        (STRIKE, 'in', 170, (0.2, -0.8, -0.45), out),
-        (STRIKE + 2, 'out', 165, (0.2, -0.78, -0.4), out),
-        (STRIKE + 5, 'smooth', 164, (0.2, -0.77, -0.38), out),
+        (BLOW, 'in', 170, (0.2, -0.8, -0.45), out),
+        (BLOW + 2, 'out', 165, (0.2, -0.78, -0.4), out),
+        (BLOW + 5, 'smooth', 164, (0.2, -0.77, -0.38), out),
     ]
     for f, ease, theta, at, yaw in path:
         aim, face = arc(theta, b.yaw(yaw))
         k.key(f, ease, **b.arm(hand, b.near(*at), b.rig.aim(hand, aim, face), (0.8, 0.2, -0.4), world=1.0))
     # Lifted back across the front, its head swung past the belly to the other side and up before the
     # chest and face, then over to its own side as it rests.
-    for f, at, way in ((STRIKE + 8 + slow, (-0.2, -0.82, -0.25), (-0.75, -0.25, -0.6)),
-                       (STRIKE + 11 + slow, (-0.1, -0.75, -0.4), (-0.45, -0.35, 0.82))):
+    for f, at, way in ((BLOW + 8 + slow, (-0.2, -0.82, -0.25), (-0.75, -0.25, -0.6)),
+                       (BLOW + 11 + slow, (-0.1, -0.75, -0.4), (-0.45, -0.35, 0.82))):
         k.key(f, 'smooth', **b.arm(hand, b.near(*at), b.aim(way, (0, -1, 0)), (0.8, 0.2, -0.4), world=1.0))
     # (frame, ease, spine and hips as pitch and yaw to the weapon's side, hips forward and down as
     # shares of the leg)
@@ -4226,19 +4349,19 @@ def smash(rig, hand='r', seconds=0.6, out=10.0, inward=8.0, drop=0.0, coil=0.0, 
         (0, 'smooth', (-8, 14), (-2, 6), (-0.02, 0.03)),
         (1, 'in', (-3, 6), (0, 3), (0.0, 0.04)),
         (2, 'in', (3, -2 + coil), (1, -1 + coil / 2), (0.01, 0.05)),
-        (STRIKE, 'in', (14, -10), (4, -5), (0.03, 0.09)),
-        (STRIKE + 2, 'out', (13, -9), (4, -5), (0.03, 0.085)),
-        (STRIKE + 5, 'smooth', (12, -8), (3, -4), (0.03, 0.08)),
-        (STRIKE + 11 + slow, 'smooth', (2, -2), (0, -1), (0.01, 0.03)),
+        (BLOW, 'in', (14, -10), (4, -5), (0.03, 0.09)),
+        (BLOW + 2, 'out', (13, -9), (4, -5), (0.03, 0.085)),
+        (BLOW + 5, 'smooth', (12, -8), (3, -4), (0.03, 0.08)),
+        (BLOW + 11 + slow, 'smooth', (2, -2), (0, -1), (0.01, 0.03)),
     ]
     for f, ease, spine, hips, (ahead, low) in body:
         k.key(f, ease, spine=V(spine[0], 0, b.yaw(spine[1])), hips=V(hips[0], 0, b.yaw(hips[1])),
               hips_at=V(0, -ahead * leg, -low * leg))
     k.key(0, head=V(5, 0, b.yaw(-8)), cape=V(-4, 0, 0), **b.arm(off, b.wrist(off, 0.0, -0.1, 0.04)))
-    k.key(STRIKE, 'in', head=V(-9, 0, b.yaw(6)), cape=V(10, 0, 0), **b.arm(off, b.wrist(off, 0.06, 0.14, -0.04)))
+    k.key(BLOW, 'in', head=V(-9, 0, b.yaw(6)), cape=V(10, 0, 0), **b.arm(off, b.wrist(off, 0.06, 0.14, -0.04)))
     k.key(n, **b.still())
     k.key(n, **{f'hand_{hand}_world': 1.0})
-    return Clip(n, k, marks={'strike': STRIKE})
+    return Clip(n, k, marks={'strike': BLOW})
 
 
 @style('cast', 'reap')

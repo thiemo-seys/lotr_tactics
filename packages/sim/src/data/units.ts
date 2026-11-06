@@ -110,7 +110,7 @@ export type Effect =
   | { readonly kind: 'shield'; readonly pct: number; readonly seconds?: number }
   /** Percent of H. */
   | { readonly kind: 'heal'; readonly pct: number }
-  /** Heals the caster for a percent of the damage this step dealt. */
+  /** Heals the caster for a percent of each hit's damage, as that hit lands. */
   | { readonly kind: 'healFromDamage'; readonly pct: number }
   | { readonly kind: 'buff'; readonly stat: BuffStat; readonly amount: number; readonly seconds: number }
   /** Lowers Armor and/or Magic Resist by a percent. */
@@ -122,16 +122,22 @@ export type Effect =
     }
   | { readonly kind: 'untargetable'; readonly seconds: number }
   | { readonly kind: 'stunImmune'; readonly seconds: number }
-  /** The caster dashes next to the selected unit, which becomes its target. */
+  /**
+   * The caster dashes next to the selected unit, which becomes its target. The step's later
+   * effects, and the ability's later steps, land when it arrives.
+   */
   | { readonly kind: 'dashAdjacentTo' }
-  /** With a `line` selector: the caster moves to the farthest free hex on the line. */
+  /**
+   * With a `line` selector: the caster charges to the farthest free hex on the line, and the step's
+   * other effects land on each enemy as the charge reaches its hex.
+   */
   | { readonly kind: 'dashThroughLine' }
   /** Placed next to the caster on its own half (docs/sim-spec.md section 10.3). */
   | { readonly kind: 'summon'; readonly unit: SummonId; readonly count: number };
 
 export type AbilityStep =
   | { readonly select: Selector; readonly effects: readonly Effect[] }
-  /** Runs `steps` later, through the combat queue. */
+  /** Runs `steps` this long after the end of the wind-up, through the combat queue. */
   | { readonly delaySeconds: number; readonly steps: readonly AbilityStep[] };
 
 export interface DamageReductionPassive {
@@ -141,8 +147,18 @@ export interface DamageReductionPassive {
   readonly exceptUnits: readonly UnitId[];
 }
 
+/**
+ * How an ability reaches enemies (docs/sim-spec.md section 10.6): at the end of its wind-up, as a
+ * projectile that flies to the units or hexes it locked, or lobbed onto its hexes. Steps on the
+ * caster and its allies always land as a strike.
+ */
+export type Delivery = 'strike' | 'projectile' | 'lob';
+
 export interface AbilityDef {
   readonly name: string;
+  /** How long the caster winds up before the ability goes off (section 10.6). */
+  readonly windupSeconds: number;
+  readonly delivery: Delivery;
   readonly steps: readonly AbilityStep[];
   readonly passive?: DamageReductionPassive;
 }
@@ -237,7 +253,7 @@ export const UNITS: Readonly<Record<UnitId, UnitDef>> = {
     cost: 1,
     origin: 'hobbit',
     classes: ['guardian'],
-    ability: { name: 'Loyal', steps: [step(SELF, shield(60)), step(NEAREST_ALLY, shield(60))] },
+    ability: { name: 'Loyal', windupSeconds: 0.4, delivery: 'strike', steps: [step(SELF, shield(60)), step(NEAREST_ALLY, shield(60))] },
   },
   merry: {
     id: 'merry',
@@ -245,7 +261,7 @@ export const UNITS: Readonly<Record<UnitId, UnitDef>> = {
     cost: 1,
     origin: 'hobbit',
     classes: ['burglar'],
-    ability: { name: 'Barrow-blade', steps: [step(TARGET, damage(100), reduceResists(30, 4))] },
+    ability: { name: 'Barrow-blade', windupSeconds: 0.4, delivery: 'strike', steps: [step(TARGET, damage(100), reduceResists(30, 4))] },
   },
   pippin: {
     id: 'pippin',
@@ -253,7 +269,7 @@ export const UNITS: Readonly<Record<UnitId, UnitDef>> = {
     cost: 1,
     origin: 'hobbit',
     classes: ['archer'],
-    ability: { name: 'Stone toss', steps: [step(bounce(3, 3), damage(70))] },
+    ability: { name: 'Stone toss', windupSeconds: 0.4, delivery: 'projectile', steps: [step(bounce(3, 3), damage(70))] },
   },
   beregond: {
     id: 'beregond',
@@ -261,7 +277,7 @@ export const UNITS: Readonly<Record<UnitId, UnitDef>> = {
     cost: 1,
     origin: 'gondor',
     classes: ['guardian'],
-    ability: { name: 'Shield bash', steps: [step(TARGET, damage(100), stun(1))] },
+    ability: { name: 'Shield bash', windupSeconds: 0.4, delivery: 'strike', steps: [step(TARGET, damage(100), stun(1))] },
   },
   hama: {
     id: 'hama',
@@ -269,7 +285,7 @@ export const UNITS: Readonly<Record<UnitId, UnitDef>> = {
     cost: 1,
     origin: 'rohan',
     classes: ['guardian'],
-    ability: { name: 'Doorward', steps: [step(SELF, shield(80), buff('armor', 30, 5))] },
+    ability: { name: 'Doorward', windupSeconds: 0.4, delivery: 'strike', steps: [step(SELF, shield(80), buff('armor', 30, 5))] },
   },
   grishnakh: {
     id: 'grishnakh',
@@ -277,7 +293,7 @@ export const UNITS: Readonly<Record<UnitId, UnitDef>> = {
     cost: 1,
     origin: 'orc',
     classes: ['burglar'],
-    ability: { name: 'Sneak', steps: [step(LOWEST_HEALTH_ENEMY, DASH_ADJACENT, damage(120))] },
+    ability: { name: 'Sneak', windupSeconds: 0.35, delivery: 'strike', steps: [step(LOWEST_HEALTH_ENEMY, DASH_ADJACENT, damage(140))] },
   },
   sharku: {
     id: 'sharku',
@@ -285,7 +301,7 @@ export const UNITS: Readonly<Record<UnitId, UnitDef>> = {
     cost: 1,
     origin: 'orc',
     classes: ['rider'],
-    ability: { name: 'Warg bite', steps: [step(TARGET, damage(100), slow(30, 3))] },
+    ability: { name: 'Warg bite', windupSeconds: 0.4, delivery: 'strike', steps: [step(TARGET, damage(100), slow(30, 3))] },
   },
   gorbag: {
     id: 'gorbag',
@@ -293,7 +309,7 @@ export const UNITS: Readonly<Record<UnitId, UnitDef>> = {
     cost: 1,
     origin: 'orc',
     classes: ['archer'],
-    ability: { name: 'Volley', steps: [step(TARGET, damage(40, 'physical', { hits: 3 }))] },
+    ability: { name: 'Volley', windupSeconds: 0.4, delivery: 'projectile', steps: [step(TARGET, damage(40, 'physical', { hits: 3 }))] },
   },
 
   // 2-cost
@@ -304,7 +320,7 @@ export const UNITS: Readonly<Record<UnitId, UnitDef>> = {
     cost: 2,
     origin: 'hobbit',
     classes: ['burglar'],
-    ability: { name: 'Slip away', steps: [step(SELF, untargetable(2)), after(2, step(TARGET, damage(130)))] },
+    ability: { name: 'Slip away', windupSeconds: 0.4, delivery: 'strike', steps: [step(SELF, untargetable(2)), after(2, step(TARGET, damage(130)))] },
   },
   haldir: {
     id: 'haldir',
@@ -312,7 +328,7 @@ export const UNITS: Readonly<Record<UnitId, UnitDef>> = {
     cost: 2,
     origin: 'elf',
     classes: ['archer'],
-    ability: { name: 'Lórien volley', steps: [step(nearestEnemies(3), damage(70))] },
+    ability: { name: 'Lórien volley', windupSeconds: 0.4, delivery: 'projectile', steps: [step(nearestEnemies(3), damage(70))] },
   },
   faramir: {
     id: 'faramir',
@@ -320,7 +336,7 @@ export const UNITS: Readonly<Record<UnitId, UnitDef>> = {
     cost: 2,
     origin: 'gondor',
     classes: ['archer'],
-    ability: { name: "Ranger's shot", steps: [step(FARTHEST_ENEMY, damage(150))] },
+    ability: { name: "Ranger's shot", windupSeconds: 0.4, delivery: 'projectile', steps: [step(FARTHEST_ENEMY, damage(150))] },
   },
   gamling: {
     id: 'gamling',
@@ -328,7 +344,7 @@ export const UNITS: Readonly<Record<UnitId, UnitDef>> = {
     cost: 2,
     origin: 'rohan',
     classes: ['rider'],
-    ability: { name: 'Horn of the Hornburg', steps: [step(alliesWithin(2), buff('attackSpeedPct', 30, 4))] },
+    ability: { name: 'Horn of the Hornburg', windupSeconds: 0.4, delivery: 'strike', steps: [step(alliesWithin(2), buff('attackSpeedPct', 30, 4))] },
   },
   balin: {
     id: 'balin',
@@ -336,7 +352,7 @@ export const UNITS: Readonly<Record<UnitId, UnitDef>> = {
     cost: 2,
     origin: 'dwarf',
     classes: ['captain'],
-    ability: { name: 'Lord of Moria', steps: [step(SELF, shield(60)), step(ADJACENT_ALLIES, shield(60))] },
+    ability: { name: 'Lord of Moria', windupSeconds: 0.4, delivery: 'strike', steps: [step(SELF, shield(60)), step(ADJACENT_ALLIES, shield(60))] },
   },
   lurtz: {
     id: 'lurtz',
@@ -344,7 +360,7 @@ export const UNITS: Readonly<Record<UnitId, UnitDef>> = {
     cost: 2,
     origin: 'orc',
     classes: ['archer'],
-    ability: { name: 'Piercing arrow', steps: [step(lineThroughTarget('edge'), damage(100))] },
+    ability: { name: 'Piercing arrow', windupSeconds: 0.4, delivery: 'projectile', steps: [step(lineThroughTarget('edge'), damage(100))] },
   },
   radagast: {
     id: 'radagast',
@@ -352,7 +368,7 @@ export const UNITS: Readonly<Record<UnitId, UnitDef>> = {
     cost: 2,
     origin: 'istari',
     classes: ['sorcerer'],
-    ability: { name: 'Flock', steps: [step(area(1, TARGET), damage(80, 'magic'), slow(25, 3))] },
+    ability: { name: 'Flock', windupSeconds: 0.5, delivery: 'lob', steps: [step(area(1, TARGET), damage(80, 'magic'), slow(25, 3))] },
   },
   ringwraith: {
     id: 'ringwraith',
@@ -360,7 +376,7 @@ export const UNITS: Readonly<Record<UnitId, UnitDef>> = {
     cost: 2,
     origin: 'nazgul',
     classes: ['burglar'],
-    ability: { name: 'Black Breath', steps: [step(TARGET, damage(100, 'magic'), stun(1.5))] },
+    ability: { name: 'Black Breath', windupSeconds: 0.5, delivery: 'projectile', steps: [step(TARGET, damage(120, 'magic'), stun(1.5))] },
   },
 
   // 3-cost
@@ -371,7 +387,7 @@ export const UNITS: Readonly<Record<UnitId, UnitDef>> = {
     cost: 3,
     origin: 'hobbit',
     classes: ['burglar'],
-    ability: { name: 'Riddles in the Dark', steps: [step(TARGET, stun(2), damage(100))] },
+    ability: { name: 'Riddles in the Dark', windupSeconds: 0.4, delivery: 'strike', steps: [step(TARGET, stun(2), damage(100))] },
   },
   gollum: {
     id: 'gollum',
@@ -380,7 +396,7 @@ export const UNITS: Readonly<Record<UnitId, UnitDef>> = {
     origin: 'hobbit',
     classes: ['burglar'],
     ability: {
-      name: 'My precious',
+      name: 'My precious', windupSeconds: 0.4, delivery: 'strike',
       steps: [step(TARGET, damage(40, 'physical', { hits: 3 }), healFromDamage(50))],
     },
   },
@@ -390,7 +406,7 @@ export const UNITS: Readonly<Record<UnitId, UnitDef>> = {
     cost: 3,
     origin: 'dwarf',
     classes: ['guardian'],
-    ability: { name: 'And my axe!', steps: [step(ADJACENT_ENEMIES, damage(90)), step(SELF, shield(60))] },
+    ability: { name: 'And my axe!', windupSeconds: 0.4, delivery: 'strike', steps: [step(ADJACENT_ENEMIES, damage(90)), step(SELF, shield(60))] },
   },
   boromir: {
     id: 'boromir',
@@ -399,7 +415,7 @@ export const UNITS: Readonly<Record<UnitId, UnitDef>> = {
     origin: 'gondor',
     classes: ['captain'],
     ability: {
-      name: 'Horn of Gondor',
+      name: 'Horn of Gondor', windupSeconds: 0.4, delivery: 'strike',
       steps: [step(alliesWithin(2), buff('armor', 25, 5), buff('magicResist', 25, 5)), step(SELF, shield(100))],
     },
   },
@@ -409,7 +425,7 @@ export const UNITS: Readonly<Record<UnitId, UnitDef>> = {
     cost: 3,
     origin: 'rohan',
     classes: ['rider'],
-    ability: { name: 'Spear thrust', steps: [step(lineThroughTarget(4), damage(100))] },
+    ability: { name: 'Spear thrust', windupSeconds: 0.4, delivery: 'strike', steps: [step(lineThroughTarget(4), damage(100))] },
   },
   eowyn: {
     id: 'eowyn',
@@ -418,7 +434,7 @@ export const UNITS: Readonly<Record<UnitId, UnitDef>> = {
     origin: 'rohan',
     classes: ['guardian'],
     ability: {
-      name: 'Shieldmaiden',
+      name: 'Shieldmaiden', windupSeconds: 0.4, delivery: 'strike',
       steps: [
         step(SELF, shield(60)),
         step(TARGET, damage(120, 'physical', { bonusVs: { origin: 'nazgul', multiplierPct: 200 } })),
@@ -431,7 +447,7 @@ export const UNITS: Readonly<Record<UnitId, UnitDef>> = {
     cost: 3,
     origin: 'orc',
     classes: ['guardian'],
-    ability: { name: 'Bred for war', steps: [step(SELF, shield(100), stunImmune(4))] },
+    ability: { name: 'Bred for war', windupSeconds: 0.4, delivery: 'strike', steps: [step(SELF, shield(100), stunImmune(4))] },
   },
   khamul: {
     id: 'khamul',
@@ -440,7 +456,7 @@ export const UNITS: Readonly<Record<UnitId, UnitDef>> = {
     origin: 'nazgul',
     classes: ['rider'],
     ability: {
-      name: 'Shadow ride',
+      name: 'Shadow ride', windupSeconds: 0.35, delivery: 'strike',
       steps: [step(lineThroughTarget(3), damage(90, 'magic'), slow(25, 3), DASH_THROUGH_LINE)],
     },
   },
@@ -453,7 +469,7 @@ export const UNITS: Readonly<Record<UnitId, UnitDef>> = {
     cost: 4,
     origin: 'elf',
     classes: ['archer'],
-    ability: { name: 'Flurry', steps: [step(TARGET, damage(30, 'physical', { hits: 5, canCrit: true }))] },
+    ability: { name: 'Flurry', windupSeconds: 0.4, delivery: 'projectile', steps: [step(TARGET, damage(30, 'physical', { hits: 5, canCrit: true }))] },
   },
   elrond: {
     id: 'elrond',
@@ -462,7 +478,7 @@ export const UNITS: Readonly<Record<UnitId, UnitDef>> = {
     origin: 'elf',
     classes: ['sorcerer'],
     ability: {
-      name: 'Healer of Rivendell',
+      name: 'Healer of Rivendell', windupSeconds: 0.5, delivery: 'strike',
       steps: [step(lowestHealthPctAllies(2), heal(100), buff('magicResist', 30, 4))],
     },
   },
@@ -473,7 +489,7 @@ export const UNITS: Readonly<Record<UnitId, UnitDef>> = {
     origin: 'gondor',
     classes: ['captain'],
     ability: {
-      name: 'Andúril',
+      name: 'Andúril', windupSeconds: 0.4, delivery: 'strike',
       steps: [step(TARGET, damage(130)), step(alliesWithin(2), buff('attackDamagePct', 25, 4))],
     },
   },
@@ -484,7 +500,7 @@ export const UNITS: Readonly<Record<UnitId, UnitDef>> = {
     origin: 'rohan',
     classes: ['rider', 'captain'],
     ability: {
-      name: 'Forth Eorlingas!',
+      name: 'Forth Eorlingas!', windupSeconds: 0.35, delivery: 'strike',
       steps: [step(lineThroughTarget(3), damage(100), stun(1), DASH_THROUGH_LINE)],
     },
   },
@@ -494,7 +510,7 @@ export const UNITS: Readonly<Record<UnitId, UnitDef>> = {
     cost: 4,
     origin: 'dwarf',
     classes: ['guardian'],
-    ability: { name: 'Iron Hills', steps: [step(ADJACENT_ENEMIES, damage(90), stun(1.5))] },
+    ability: { name: 'Iron Hills', windupSeconds: 0.4, delivery: 'strike', steps: [step(ADJACENT_ENEMIES, damage(90), stun(1.5))] },
   },
   saruman: {
     id: 'saruman',
@@ -502,7 +518,7 @@ export const UNITS: Readonly<Record<UnitId, UnitDef>> = {
     cost: 4,
     origin: 'istari',
     classes: ['sorcerer'],
-    ability: { name: 'Fire of Orthanc', steps: [step(area(1, FARTHEST_ENEMY), damage(120, 'magic'))] },
+    ability: { name: 'Fire of Orthanc', windupSeconds: 0.5, delivery: 'lob', steps: [step(area(1, FARTHEST_ENEMY), damage(120, 'magic'))] },
   },
   gothmog: {
     id: 'gothmog',
@@ -511,7 +527,7 @@ export const UNITS: Readonly<Record<UnitId, UnitDef>> = {
     origin: 'orc',
     classes: ['captain'],
     ability: {
-      name: 'Unleash the Orcs',
+      name: 'Unleash the Orcs', windupSeconds: 0.4, delivery: 'strike',
       // Summon first, so the new grunts get the buff.
       steps: [step(SELF, summon('orc-grunt', 2)), step(alliesWithin(2, 'orc'), buff('attackDamagePct', 25, 5))],
     },
@@ -525,7 +541,7 @@ export const UNITS: Readonly<Record<UnitId, UnitDef>> = {
     cost: 5,
     origin: 'istari',
     classes: ['sorcerer'],
-    ability: { name: 'You shall not pass', steps: [step(area(2, TARGET), damage(100, 'magic'), stun(2))] },
+    ability: { name: 'You shall not pass', windupSeconds: 0.6, delivery: 'strike', steps: [step(area(2, TARGET), damage(100, 'magic'), stun(2))] },
   },
   galadriel: {
     id: 'galadriel',
@@ -534,7 +550,7 @@ export const UNITS: Readonly<Record<UnitId, UnitDef>> = {
     origin: 'elf',
     classes: ['sorcerer'],
     ability: {
-      name: 'Light of the Eldar',
+      name: 'Light of the Eldar', windupSeconds: 0.6, delivery: 'strike',
       steps: [step(ALL_ALLIES, shield(50)), step(enemiesWithin(3), damage(80, 'magic'))],
     },
   },
@@ -545,7 +561,7 @@ export const UNITS: Readonly<Record<UnitId, UnitDef>> = {
     origin: 'nazgul',
     classes: ['rider', 'sorcerer'],
     ability: {
-      name: 'Morgul mace',
+      name: 'Morgul mace', windupSeconds: 0.35, delivery: 'strike',
       steps: [step(HIGHEST_HEALTH_ENEMY, DASH_ADJACENT), step(ADJACENT_ENEMIES, damage(100, 'magic'), slow(30, 3))],
       passive: { kind: 'damageReduction', pct: 50, fromOrigins: ['gondor', 'rohan'], exceptUnits: ['eowyn'] },
     },
@@ -557,7 +573,7 @@ export const UNITS: Readonly<Record<UnitId, UnitDef>> = {
     origin: 'ent',
     classes: ['guardian'],
     large: true,
-    ability: { name: 'Boulder', steps: [step(areaAtBestCluster(1), damage(100), stun(1.5))] },
+    ability: { name: 'Boulder', windupSeconds: 0.5, delivery: 'lob', steps: [step(areaAtBestCluster(1), damage(100), stun(1.5))] },
   },
   sauron: {
     id: 'sauron',
@@ -566,7 +582,7 @@ export const UNITS: Readonly<Record<UnitId, UnitDef>> = {
     origin: 'dark-lord',
     classes: ['captain'],
     large: true,
-    ability: { name: 'Sweep', steps: [step(CONE, damage(120), stun(1))] },
+    ability: { name: 'Sweep', windupSeconds: 0.5, delivery: 'strike', steps: [step(CONE, damage(120), stun(1))] },
   },
 };
 

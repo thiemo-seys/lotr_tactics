@@ -602,7 +602,7 @@ CLIPS = robed(draped(fit({
     'idle': ('ready', {'seconds': 2.8, 'breath': 0.8, 'sway': 0.6, 'crouch': 0.02}),
     'move': ('run', {'heavy': 0.6, 'stride': 0.4, 'lift': 0.2, 'lean': 8.0, 'off': 'high'}),
     'attack': ('smash', {'drop': 1.0, 'coil': 8.0, 'slow': 1}),
-    'cast': ('reap', {'turn': 55.0}),
+    'cast': ('reap', {'turn': 55.0, 'begin': 1.0}),
     'stun': ('dazed', {'seconds': 1.4, 'low': 0.3, 'off_low': 0.7}),
     'death': ('knees', {'dropped': True, 'behind': 0.0, 'slump': 0.8, 'back': 0.15}),
     'victory': ('raise', {'out': 0.3, 'lean': 10.0}),

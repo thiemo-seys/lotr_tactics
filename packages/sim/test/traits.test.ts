@@ -5,9 +5,9 @@ import { finalDamage } from '../src/combat/damage.js';
 import { abilityValue, combineModifiers } from '../src/combat/stats.js';
 import { activeTrait, traitModifiers } from '../src/combat/traits.js';
 import { UNITS, type UnitId } from '../src/data/units.js';
-import { distance } from '../src/hex.js';
+import { distance, fromOffset } from '../src/hex.js';
 import type { Team } from '../src/types.js';
-import { input, ofType, placed, stepTo } from './helpers.js';
+import { dashesOf, input, ofType, placed, stepTo } from './helpers.js';
 
 function unitOf(fight: Fight, unitId: string, team: Team = 'A'): UnitState {
   return fight.state.units.find((u) => u.unitId === unitId && u.team === team)!;
@@ -17,7 +17,8 @@ function unitOf(fight: Fight, unitId: string, team: Team = 'A'): UnitState {
 function firstHit(fightInput: CombatInput, attacker: UnitId, ampPct: number) {
   const fight = new Fight(fightInput);
   const source = unitOf(fight, attacker);
-  const events = stepTo(fight, 1);
+  // Melee blows from tick 1 land on 8 (sim-spec 9).
+  const events = stepTo(fight, 8);
   const hit = ofType(events, 'damage').find((e) => e.source === source.id && e.kind === 'attack')!;
   const target = fight.state.units[hit.target]!;
   const raw = (source.stats.attackDamage * (hit.crit ? source.stats.critDamagePct : 100)) / 100;
@@ -117,45 +118,99 @@ describe('traits at combat start', () => {
     });
   });
 
-  it('Burglar: Burglars leap next to the farthest enemy, target it, gain Crit Damage and wait 9 ticks', () => {
+  it('Burglar: Burglars leap at tick 0 next to the farthest enemy, target it, gain Crit Damage, and act 3 ticks after landing', () => {
+    // Haldir is on board (3, 7), axial (0, 7). Grishnákh, slot 0, leaps first: (3, 6) and (4, 6) are
+    // both 3 from him, and (3, 6) comes first in the tie-break. Merry takes (4, 6), 3 from him.
+    // They take their hexes at tick 0, land 5 ticks a hex later, on 15, and act on 18 (sim-spec 12.3).
     const fight = new Fight(input([placed('merry', 3, 3), placed('grishnakh', 2, 3)], [placed('gimli', 3, 3), placed('haldir', 3, 0)]));
     const haldir = unitOf(fight, 'haldir', 'B');
-    const burglars = [unitOf(fight, 'merry'), unitOf(fight, 'grishnakh')];
-    expect(ofType(fight.events, 'dash').map((e) => e.unit).sort()).toEqual(burglars.map((u) => u.id).sort());
+    const [merry, grishnakh] = [unitOf(fight, 'merry'), unitOf(fight, 'grishnakh')];
+    const burglars = [merry, grishnakh];
+    expect(dashesOf(fight.events)).toEqual([
+      { type: 'dash', tick: 0, unit: grishnakh.id, from: fromOffset({ col: 2, row: 3 }), to: fromOffset({ col: 3, row: 6 }), departTick: 0, arriveTick: 15 },
+      { type: 'dash', tick: 0, unit: merry.id, from: fromOffset({ col: 3, row: 3 }), to: fromOffset({ col: 4, row: 6 }), departTick: 0, arriveTick: 15 },
+    ]);
     for (const burglar of burglars) {
       expect(distance(burglar.hex, haldir.hex)).toBe(1);
       expect(burglar.target).toBe(haldir.id);
       expect(burglar.stats.critDamagePct).toBe(160);
     }
-    const events = stepTo(fight, 9);
+    const events = stepTo(fight, 18);
     const acted = (e: (typeof events)[number]) => (e.type === 'attack' || e.type === 'move') && burglars.some((b) => b.id === e.unit);
-    expect(events.filter((e) => acted(e) && e.tick < 9)).toEqual([]);
-    expect(events.filter((e) => acted(e) && e.tick === 9)).toHaveLength(2);
+    expect(events.filter((e) => acted(e) && e.tick < 18)).toEqual([]);
+    expect(events.filter((e) => acted(e) && e.tick === 18)).toHaveLength(2);
   });
 
-  it('Rider: Riders charge next to the nearest enemy for trait damage that can’t crit, then wait 9 ticks', () => {
-    const fight = new Fight(input([placed('sharku', 2, 0), placed('gamling', 4, 0)], [placed('gimli', 3, 3), placed('haldir', 3, 0)]));
+  /** Sharku and Gamling charge from (2, 0) and (4, 0) to (2, 3) and (3, 3), next to Gimli on (3, 4): 3 hexes each, landing on 15. */
+  const RIDERS = input([placed('sharku', 2, 0), placed('gamling', 4, 0)], [placed('gimli', 3, 3), placed('haldir', 3, 0)]);
+
+  it('Rider: Riders charge at tick 0 next to the nearest enemy, deal trait damage that can’t crit on arrival, and act 3 ticks later', () => {
+    const fight = new Fight(RIDERS);
+    const gimli = unitOf(fight, 'gimli', 'B');
+    const [sharku, gamling] = [unitOf(fight, 'sharku'), unitOf(fight, 'gamling')];
+    const riders = [sharku, gamling];
+    expect(dashesOf(fight.events)).toEqual([
+      { type: 'dash', tick: 0, unit: sharku.id, from: fromOffset({ col: 2, row: 0 }), to: fromOffset({ col: 2, row: 3 }), departTick: 0, arriveTick: 15 },
+      { type: 'dash', tick: 0, unit: gamling.id, from: fromOffset({ col: 4, row: 0 }), to: fromOffset({ col: 3, row: 3 }), departTick: 0, arriveTick: 15 },
+    ]);
+    // The hexes are taken at tick 0, but nothing is dealt until they arrive.
+    for (const rider of riders) expect(distance(rider.hex, gimli.hex)).toBe(1);
+    expect(ofType(fight.events, 'damage')).toEqual([]);
+    const events = stepTo(fight, 18);
+    // 100 physical against Armor 50, on 15.
+    const charges = ofType(events, 'damage').filter((e) => e.kind === 'trait');
+    expect(charges.map((e) => [e.tick, e.source, e.target, e.amount, e.crit])).toEqual(riders.map((r) => [15, r.id, gimli.id, 67, false]));
+    expect(ofType(events, 'attack').filter((e) => e.tick < 18 && riders.some((r) => r.id === e.unit))).toEqual([]);
+    expect(ofType(events, 'attack').filter((e) => e.tick === 18 && riders.some((r) => r.id === e.unit))).toHaveLength(2);
+  });
+
+  it('Rider: a Horn of Helm Hammerhand stun stops neither the charge nor its damage', () => {
+    const fight = new Fight({ ...RIDERS, gifts: { A: [], B: ['horn-of-helm'] } });
+    const [sharku, gamling] = [unitOf(fight, 'sharku'), unitOf(fight, 'gamling')];
+    expect(ofType(fight.events, 'status').filter((e) => e.status === 'stun').map((e) => e.target).sort()).toEqual([sharku.id, gamling.id].sort());
+    const charges = ofType(stepTo(fight, 15), 'damage').filter((e) => e.kind === 'trait');
+    expect(charges.map((e) => [e.tick, e.source])).toEqual([
+      [15, sharku.id],
+      [15, gamling.id],
+    ]);
+  });
+
+  it('Rider: no charge damage on a target that has become untargetable by the arrival', () => {
+    const fight = new Fight(RIDERS);
+    const gimli = unitOf(fight, 'gimli', 'B');
+    fight.applyStatus(gimli.id, gimli.id, { kind: 'untargetable', seconds: 1 });
+    expect(ofType(stepTo(fight, 20), 'damage').filter((e) => e.kind === 'trait')).toEqual([]);
+  });
+
+  it('Rider: a Rider already next to its target stays put and deals its damage at tick 0', () => {
+    // Gimli on (3, 4) is next to both (2, 3) and (3, 3). Neither moves, so neither emits a dash;
+    // both are busy until 0 + 3 and act on tick 3.
+    const fight = new Fight(input([placed('sharku', 2, 3), placed('gamling', 3, 3)], [placed('gimli', 3, 3)]));
     const gimli = unitOf(fight, 'gimli', 'B');
     const riders = [unitOf(fight, 'sharku'), unitOf(fight, 'gamling')];
-    const charges = ofType(fight.events, 'damage');
-    // 100 physical against Armor 50.
-    expect(charges.map((e) => [e.source, e.target, e.amount, e.crit, e.kind]).sort()).toEqual(
-      riders.map((r) => [r.id, gimli.id, 67, false, 'trait']).sort(),
-    );
-    for (const rider of riders) expect(distance(rider.hex, gimli.hex)).toBe(1);
-    const events = stepTo(fight, 9);
-    expect(ofType(events, 'attack').filter((e) => e.tick < 9 && riders.some((r) => r.id === e.unit))).toEqual([]);
-    expect(ofType(events, 'attack').filter((e) => e.tick === 9 && riders.some((r) => r.id === e.unit))).toHaveLength(2);
+    expect(dashesOf(fight.events)).toEqual([]);
+    expect(ofType(fight.events, 'damage').map((e) => [e.tick, e.target, e.amount, e.kind])).toEqual(riders.map(() => [0, gimli.id, 67, 'trait']));
+    const events = stepTo(fight, 3);
+    expect(ofType(events, 'attack').filter((e) => riders.some((r) => r.id === e.unit)).map((e) => e.tick)).toEqual([3, 3]);
   });
 
-  it('ends the fight at tick 0 if the charges wipe a team out', () => {
-    // Four Riders charge for 220 each: 176 against Frodo's Armor 25, so the last one kills him.
+  it('ends the fight on the arrival that wipes a team out', () => {
+    // Four Riders charge for 220 each: 176 against Frodo's Armor 25, and his 575 Health takes four.
+    // Next to Frodo on (3, 7): Sharku and Gamling land on (3, 6) and (4, 6), 6 hexes, on 30; Éomer
+    // and Khamûl on (2, 7) and (4, 7), 7 hexes, on 35.
     const riders = [placed('sharku', 1, 0), placed('gamling', 2, 0), placed('eomer', 4, 0), placed('khamul', 5, 0)];
     const fight = new Fight(input(riders, [placed('frodo', 3, 0)]));
-    expect(fight.isOver()).toBe(true);
-    expect(ofType(fight.events, 'damage').map((e) => e.amount)).toEqual([176, 176, 176, 176]);
-    expect(ofType(fight.events, 'end')).toEqual([{ type: 'end', tick: 0, outcome: 'A' }]);
-    expect(fight.result()).toMatchObject({ outcome: 'A', finalTick: 0 });
+    expect(fight.isOver()).toBe(false);
+    while (!fight.isOver()) fight.step();
+    const charges = ofType(fight.events, 'damage').filter((e) => e.kind === 'trait');
+    expect(charges.map((e) => [e.tick, e.amount])).toEqual([
+      [30, 176],
+      [30, 176],
+      [35, 176],
+      [35, 176],
+    ]);
+    expect(ofType(fight.events, 'end')).toEqual([{ type: 'end', tick: 35, outcome: 'A' }]);
+    expect(fight.result()).toMatchObject({ outcome: 'A', finalTick: 35 });
   });
 });
 
@@ -201,8 +256,11 @@ describe('traits during the fight', () => {
     const radagast = unitOf(fight, 'radagast');
     expect(radagast.stats.abilityPower).toBe(120);
     Object.assign(radagast, { mana: radagast.base.maxMana });
-    const hit = ofType(fight.step(), 'damage').find((e) => e.source === radagast.id && e.kind === 'ability')!;
+    // Gimli stays on his hex, so the lob lands on him: 16 + 23 = 39 (sim-spec 10.6).
     const gimli = unitOf(fight, 'gimli', 'B');
+    fight.applyStatus(gimli.id, gimli.id, { kind: 'stun', seconds: 2 });
+    const hit = ofType(stepTo(fight, 39), 'damage').find((e) => e.source === radagast.id && e.kind === 'ability')!;
+    expect(hit.tick).toBe(39);
     expect(hit.amount).toBe(finalDamage(abilityValue('D', 80, 2, 1, 120), 'magic', gimli.stats, { ampPct: 0, overtimePct: 100, reductionPct: 0 }));
   });
 
@@ -248,14 +306,15 @@ describe('traits during the fight', () => {
     const fallen = (ally: UnitId) => {
       const fight = new Fight(input([placed('hama', 3, 3), placed(ally, 0, 0)], [placed('gimli', 3, 3)]));
       Object.assign(unitOf(fight, 'hama'), { health: 1 });
-      const events = stepTo(fight, 1);
+      // Gimli's blow from tick 1 lands on 8 (sim-spec 9).
+      const events = stepTo(fight, 8);
       return { fight, events: events.slice(events.findIndex((e) => e.type === 'death')) };
     };
     const { fight, events } = fallen('eomer');
     const [hama, eomer] = [unitOf(fight, 'hama'), unitOf(fight, 'eomer')];
     expect(events.slice(0, 2)).toEqual([
-      { type: 'death', tick: 1, unit: hama.id },
-      { type: 'status', tick: 1, source: hama.id, target: eomer.id, status: 'buff', stat: 'attackSpeedPct', value: 10, expiresTick: null },
+      { type: 'death', tick: 8, unit: hama.id },
+      { type: 'status', tick: 8, source: hama.id, target: eomer.id, status: 'buff', stat: 'attackSpeedPct', value: 10, expiresTick: null },
     ]);
     expect(eomer.stats.attackSpeed).toBeCloseTo(eomer.base.attackSpeed * 1.1, 10);
     // Without the trait, nothing happens.
@@ -272,7 +331,7 @@ describe('traits during the fight', () => {
     expect([radagast.mana, saruman.mana]).toEqual([20, 20]);
     stepTo(fight, 30);
     expect([radagast.mana, saruman.mana]).toEqual([23, 23]);
-    // Saruman casts on tick 51, at nothing, and is still casting on tick 60.
+    // Saruman casts on tick 51, at nothing: release 66, ready 69, so he gets nothing on tick 60.
     stepTo(fight, 50);
     Object.assign(saruman, { mana: saruman.base.maxMana });
     stepTo(fight, 60);
