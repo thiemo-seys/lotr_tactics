@@ -18,6 +18,12 @@ export const EFFECT_TICKS = {
   floatingText: 24,
 } as const;
 
+/**
+ * How floating texts move, in world units: how far one rises over its life, and how far apart the
+ * texts on a unit stay at least (`textOffset`), about a line of numbers at the starting camera.
+ */
+export const FLOATING_TEXT = { rise: 0.9, gap: 0.32 } as const;
+
 /** How far past the final tick display time runs, so effects can finish. */
 const AFTERGLOW_TICKS = 30;
 
@@ -48,6 +54,8 @@ export interface FloatingText {
   readonly kind: TextKind;
   readonly big: boolean;
   readonly startTick: number;
+  /** How far above the others' start it starts, in world units, so it doesn't print over its unit's other texts (`textOffset`). */
+  readonly offset: number;
 }
 
 /** A melee lunge, from `tick` for EFFECT_TICKS.lunge ticks, at its height on the blow's `hitTick`. */
@@ -352,7 +360,7 @@ export class Playback {
   }
 
   private addText(unit: number, text: string, kind: TextKind, big: boolean, startTick: number): void {
-    this.texts.push({ unit, text, kind, big, startTick });
+    this.texts.push({ unit, text, kind, big, startTick, offset: textOffset(this.texts, unit, startTick) });
   }
 
   /** Drops effects that have finished. A list stays the same list while none of it has. */
@@ -360,6 +368,34 @@ export class Playback {
     this.projectiles = unfinished(this.projectiles, projectileEnd, this.time);
     this.texts = unfinished(this.texts, textEnd, this.time);
   }
+}
+
+/**
+ * How far up a text starting on `unit` at `startTick` starts: the lowest height, from 0 or just
+ * above one of the unit's texts still showing, at least FLOATING_TEXT.gap from where each of those
+ * is then. All texts rise at the same pace, so they stay that far apart for as long as they show:
+ * texts that start together stack upwards, so do those of a multi-hit a few ticks apart, and one
+ * that has risen out of the way leaves room below it.
+ */
+export function textOffset(texts: readonly FloatingText[], unit: number, startTick: number): number {
+  const { gap } = FLOATING_TEXT;
+  /** Where a text of the unit still showing is as this one starts, or NaN for any other. */
+  const height = (t: FloatingText): number => {
+    const age = startTick - t.startTick;
+    return t.unit === unit && age >= 0 && age < EFFECT_TICKS.floatingText ? t.offset + (FLOATING_TEXT.rise * age) / EFFECT_TICKS.floatingText : NaN;
+  };
+  let best = Infinity;
+  // Candidates: the bottom, and just above each text showing.
+  for (let c = -1; c < texts.length; c++) {
+    const below = c < 0 ? -gap : height(texts[c]!);
+    if (Number.isNaN(below)) continue;
+    const y = Math.max(0, below + gap);
+    if (y >= best) continue;
+    let clear = true;
+    for (let i = 0; i < texts.length && clear; i++) clear = !(Math.abs(y - height(texts[i]!)) < gap - 1e-9);
+    if (clear) best = y;
+  }
+  return best;
 }
 
 const projectileEnd = (projectile: Projectile) => projectile.hitTick;
