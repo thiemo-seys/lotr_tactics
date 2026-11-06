@@ -44,6 +44,7 @@ These are not in `design.md` yet. They were chosen to remove ambiguity and can b
 | Mana from damage taken | 6% of post-reduction damage taken, rounded down, max 15 per hit |
 | Casting | Targets and areas are locked at the cast; effects land after the ability's wind-up (0.35–0.6 s), or later if they travel (section 10.6); the caster is busy until its part is done, plus 3 ticks (0.1 s) of recovery |
 | Lobs | Lobbed abilities land 23 ticks (0.75 s) after they leave, whatever the distance |
+| Multi-hit | An ability's hits come 3 ticks (0.1 s) apart, each arrow its own projectile; the caster is busy until the last has gone (section 10.6) |
 | Monsters' wind-ups | 0.5 s, or 0.35 s for the Mûmak's charge (section 7.6) |
 | Dashes, leaps and charges | 6 hexes per second (5 ticks per hex); the destination is claimed when it is chosen, and the unit's position becomes it when it sets off; busy until it arrives plus 3 ticks (0.1 s) |
 | Overtime | +10% damage per full second of overtime |
@@ -484,7 +485,7 @@ How selectors pick:
 
 A step applies each effect in turn to every selected unit before the next effect, skipping units that have died. With timing (section 10.6), "every selected unit" is every unit the step reaches on the tick it lands; a step that reaches units on several ticks, such as a bounce, a piercing arrow or a charge, applies its effects in turn on each of those ticks.
 
-- `damage(mult, type, hits = 1, canCrit = false)`: each hit runs the damage pipeline (section 9.1) and emits its own `damage` event, and with `canCrit` rolls its own crit. A crit against a Mithril Shirt holder deals normal damage. The hits stop if the target dies.
+- `damage(mult, type, hits = 1, canCrit = false)`: each hit runs the damage pipeline (section 9.1) and emits its own `damage` event, and with `canCrit` rolls its own crit. A crit against a Mithril Shirt holder deals normal damage. The hits come 3 ticks apart (section 10.6, Multi-hit) and stop if the target dies.
 - `stun(s)`
 - `slow(pct, s)`: reduces Attack Speed
 - `shield(mult, s = 4)`
@@ -603,7 +604,7 @@ Every ability has a wind-up and a delivery (section 10.5; monsters' in section 7
 
 - **Wind-up** `W = Math.round(windupSeconds × 30)`: 0.35 s is 11 ticks (10.5, rounded up), 0.4 s is 12, 0.5 s is 15 and 0.6 s is 18.
 - **Release** at `t + W`: the wind-up ends, effects at the strike land, projectiles and lobs leave, and a dash or charge sets off.
-- **The caster's part** ends at the release, or when its dash arrives, or when its charge reaches its last hex.
+- **The caster's part** ends at the release, or when its dash arrives, or when its charge reaches its last hex, or, for a step with several hits, when the last of them is struck or loosed (Multi-hit below).
 - **Ready** at the end of the caster's part plus the recovery, `Math.round(ABILITIES.recoverySeconds × 30)` = 3 ticks (0.1 s). The caster acts again on that tick.
 - **Projectile flight:** `ceil(d × 30 / 12)` ticks for `d` hexes (`ATTACKS.projectileHexesPerSecond`, as ranged attacks).
 - **Lob flight:** `Math.round(ABILITIES.lobSeconds × 30)` = 23 ticks (0.75 s is 22.5, rounded up), whatever the distance.
@@ -631,12 +632,18 @@ A test checks these tick counts, since they are what `Math.round` gives on the d
 | Delivery | When it lands |
 |---|---|
 | `strike` | At the release. After a `dashAdjacentTo`, when the dash arrives. With `dashThroughLine`, as the charge reaches each hex (below). |
-| `projectile` | It leaves at the release at 12 hexes a second. Distances `d` are measured at the cast, so every landing tick is known then. **Units:** one projectile per locked unit, which follows it wherever it goes, as a ranged attack does (section 9), and lands at `release + ceil(d × 30 / 12)`, `d` from the caster to that unit. Its hits (`hits`) all arrive together, one after another, and stop if the target dies (section 10.3). **Bounce:** one projectile hopping along the locked chain: hop `k` lands at `release + ceil((d₀ + … + d_k) × 30 / 12)`, `d₀` from the caster to the first unit and each later `d` from one unit to the next. A hop whose unit is missed is wasted, and the rest still fly. **Line:** one projectile flying along the locked hexes, reaching each at `release + ceil(d × 30 / 12)`, `d` its distance from the caster. |
+| `projectile` | It leaves at the release at 12 hexes a second. Distances `d` are measured at the cast, so every landing tick is known then. **Units:** one projectile per locked unit, which follows it wherever it goes, as a ranged attack does (section 9), and lands at `release + ceil(d × 30 / 12)`, `d` from the caster to that unit. With several hits (`hits`), each is its own projectile, the next leaving 3 ticks after the one before (Multi-hit below). **Bounce:** one projectile hopping along the locked chain: hop `k` lands at `release + ceil((d₀ + … + d_k) × 30 / 12)`, `d₀` from the caster to the first unit and each later `d` from one unit to the next. A hop whose unit is missed is wasted, and the rest still fly. **Line:** one projectile flying along the locked hexes, reaching each at `release + ceil(d × 30 / 12)`, `d` its distance from the caster. |
 | `lob` | It leaves at the release and lands on all its locked hexes 23 ticks later, whatever the distance. |
 
 - **The caster and its allies:** steps that select the caster or its allies always land as a `strike`, whatever the ability's delivery. A delivery is how an ability reaches enemies.
 - **In flight:** a projectile or lob that has left still lands if the caster dies, as a ranged attack does (section 9).
 - `projectile` goes with unit selectors and lines, and `lob` with hex selectors; a `lob` ability with a step on enemies chosen by a unit selector is invalid data.
+
+**Multi-hit** (`damage` with `hits` above 1: Volley, Flurry, My precious):
+- The hits are `G = Math.round(ABILITIES.multiHitSeconds × 30)` = 3 ticks (0.1 s) apart. Hit `k`, from 0, is struck, or loosed as its own projectile, at `release + kG`, and lands `kG` ticks after the step's landing on that unit: at `release + kG` for a strike, and at `release + ceil(d × 30 / 12) + kG` for a projectile, `d` measured at the cast as for the first.
+- The step's other effects land with its first hit, apart from `healFromDamage`, which heals from each hit as it lands.
+- The caster's part ends when its last hit is struck or loosed, at `release + (hits − 1) × G`.
+- If the caster dies before a hit is struck or loosed, that hit and the rest are lost; arrows already loosed still land. If the target dies, or is missed, the hits after that do nothing.
 
 **Dashes** (`dashAdjacentTo`):
 - At the cast, the destination is chosen and claimed (section 10.4). The caster stays on its hex until the release, when the dash sets off and the caster's hex becomes the destination.
@@ -911,6 +918,8 @@ Every event has a `tick`.
 | delivery | How the step lands: `strike` (at the release, or when a dash before it arrives), `projectile`, `lob`, `dash` (a step with `dashAdjacentTo`, its unit the one dashed to) or `charge` (a step with `dashThroughLine`). Steps on the caster and allies are always `strike` (section 10.6). |
 | units | For a unit selector, the locked units in the selection's order (section 10.3), each as `{ unit, landTick }`: the tick the step reaches it. Empty for a hex selector. |
 | hexes | For a hex selector, the locked hexes on the board, in board coordinates, each as `{ hex, landTick }`: a line's or charge's from the caster outwards, a cone's in the order of section 10.4, others by board row, then column. Off-board hexes of a `line(n)` are left out. Empty for a unit selector. |
+| hits | The number of hits of a `damage` with `hits` in the step (1 otherwise). The hits after the first reach each unit `hitGap` ticks apart after its `landTick`. |
+| hitGap | Ticks between hits: 3 (section 10.6, Multi-hit), or 0 for a step with one hit. |
 | centre | For `area`, the hex it is around; for `enemiesWithin`, `alliesWithin`, `adjacentEnemies` and `adjacentAllies`, the caster's hex or, after a dash, its destination. Null otherwise. |
 
 - `landTick` is when the step would reach that unit or hex. The `damage`, `heal`, `shield` and `status` events of what it reaches come on that tick; a unit or hex it misses has none.
@@ -983,7 +992,7 @@ Every event has a `tick`.
 - A projectile or lob that has left lands after its caster dies, with the caster's stats at its death; a dash's or charge's effects still to land don't.
 - Locked single targets: one that has died or become untargetable by the landing is missed, and a wasted bounce hop doesn't stop the later ones; one that has stepped away is still reached, out of range or not.
 - Locked hexes (area, line, cone, within, adjacent): an enemy that steps out before the landing is missed, and one that steps in is reached; a unit in the middle of a step counts on its destination; each unit is reached at most once per step.
-- Haldir's three arrows land on their own ticks by distance; Pippin's hops land at cumulative distances; Lurtz's arrow reaches each line hex by its distance; Gorbag's and Legolas's hits arrive together and stop when the target dies.
+- Haldir's three arrows land on their own ticks by distance; Pippin's hops land at cumulative distances; Lurtz's arrow reaches each line hex by its distance; Gorbag's and Legolas's arrows leave 3 ticks apart and land 3 ticks apart, and Gollum's stabs land 3 ticks apart, healing him from each; the caster is busy until its last hit has gone, a caster that dies loses the hits not yet struck or loosed, and the hits stop when the target dies.
 - Steps on the caster and allies land at the release even in a projectile or lob ability; `allAllies` reaches only the allies locked at the cast.
 - Dashes: the destination is claimed at the cast, so no other unit steps, dashes or is summoned onto it, and pathfinding goes round it; the caster stays on its hex during the wind-up and its hex becomes the destination at the release; the effects after the dash land on arrival; the Witch-king's adjacent hexes are those round his destination.
 - Charges: the enemy on line hex `i` is struck at `release + 5i`, including one past the destination; an enemy that leaves the line first is missed; if the charger dies mid-charge, the hexes ahead aren't struck.
