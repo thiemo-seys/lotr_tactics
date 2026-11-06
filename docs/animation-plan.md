@@ -95,7 +95,7 @@ The user approved Gimli and decided, from what the play-test found (`viewer-spec
 
 1. **Facing:** a unit faces the way it goes while a step or dash moves it, and turns back to its target after, each turn taking 3 ticks. Facing the target throughout made 42% of steps run sideways or backwards.
 2. **Cuts:** `attack`, `cast` and a dash's held stride start at full weight. The 3-tick fade blended away most of the chop's wind-up. Every other change still fades. With dashes that take time, the design has since dropped the held stride: a dash will run `move` from when it sets off (`viewer-spec.md` section 5).
-3. **Death:** the sink and fade start halfway through the `death` clip, so a body is fading when another unit steps into its hex, which happened in a third of deaths.
+3. **Death:** the sink and fade start halfway through the `death` clip, so a body is fading when another unit steps into its hex, which happened in a third of deaths. (The effects have since replaced the sink with shards at the same point: `viewer-spec.md` section 5, Effects.)
 4. **Stun:** an attack or cast on the tick a stun starts plays before the stun shows.
 5. **Size:** under 200,000 bytes, or 300,000 for Riders and Large units, which have more triangles and bones.
 6. **Liveliness:** `idle` and `victory` stay as subtle as Gimli's.

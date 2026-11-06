@@ -418,7 +418,10 @@ export class ModelCopy {
   /** Every material of the copy, all its own. */
   private readonly materials: readonly THREE.MeshStandardMaterial[];
   private readonly skeletons: readonly THREE.Skeleton[];
+  /** Each material's own emissive colour, which a hit's flash is added to. */
+  private readonly emissive: readonly THREE.Color[];
   private opacity = 1;
+  private flashed = 0;
 
   constructor(model: Model, star: Star) {
     this.clips = model.clips;
@@ -453,7 +456,18 @@ export class ModelCopy {
     });
     this.object.add(this.model);
     this.materials = [...materials.values()];
+    this.emissive = this.materials.map((material) => material.emissive.clone());
     this.skeletons = [...skeletons];
+  }
+
+  /**
+   * Lights every material up by `amount` of `colour` over its own emissive, for a hit's flash
+   * (viewer-spec section 5, Effects). It changes only a uniform, so it needs no new shader.
+   */
+  flash(amount: number, colour: THREE.Color): void {
+    if (amount === this.flashed) return;
+    this.flashed = amount;
+    for (let i = 0; i < this.materials.length; i++) this.materials[i]!.emissive.copy(colour).multiplyScalar(amount).add(this.emissive[i]!);
   }
 
   /** Fades every material together, for untargetable and dying units. */

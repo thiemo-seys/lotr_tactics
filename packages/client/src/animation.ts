@@ -48,7 +48,7 @@ const IDLE_STAGGER = 0.37;
 /** How much faster than its own pace a dash or charge plays `move`, from the start of the clip. */
 const DASH_PACE = 2;
 
-/** How far through its death clip a unit starts to sink and fade out. */
+/** How far through its death clip a unit breaks into shards. */
 const SINK_SHARE = 0.5;
 
 /** How long a unit takes to turn into a step or dash, and back to its target after one, in ticks. */
@@ -103,8 +103,8 @@ export function fightPoseInto(
 }
 
 /**
- * How long after its death a unit starts to sink and fade out, in seconds, for
- * Playback.deathProgress: halfway through its death clip, or at once for a model or pawn without one.
+ * How long after its death a unit breaks into shards, in seconds, for Effects.shardsShare: halfway
+ * through its death clip, or at once for a model or pawn without one.
  */
 export function sinkDelay(lengths: ClipLengths | null): number {
   return lengths === null ? 0 : lengths.death * SINK_SHARE;

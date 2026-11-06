@@ -16,8 +16,6 @@ export const EFFECT_TICKS = {
   /** A melee lunge, at its height halfway through, on the blow's `hitTick` (docs/viewer-spec.md section 5). */
   lunge: 6,
   floatingText: 24,
-  castRing: 15,
-  death: 15,
 } as const;
 
 /** How far past the final tick display time runs, so effects can finish. */
@@ -49,11 +47,6 @@ export interface FloatingText {
   readonly text: string;
   readonly kind: TextKind;
   readonly big: boolean;
-  readonly startTick: number;
-}
-
-export interface CastRing {
-  readonly unit: number;
   readonly startTick: number;
 }
 
@@ -140,7 +133,6 @@ export class Playback {
   playing = true;
   projectiles: Projectile[] = [];
   texts: FloatingText[] = [];
-  casts: CastRing[] = [];
   /** The fight's end, once it has come. */
   ended: { readonly tick: number; readonly outcome: Outcome } | null = null;
   private readonly histories: History[] = [];
@@ -175,8 +167,8 @@ export class Playback {
   /**
    * Where a unit is drawn at display time, part-way through a step or dash. Any time up to the
    * playback's own works, from the unit's steps so far. A unit that dies stays where it was when it
-   * died, part-way through a step or dash too, so it sinks there (docs/viewer-spec.md section 4,
-   * Death).
+   * died, part-way through a step or dash too, so it dies and breaks up there (docs/viewer-spec.md
+   * section 4, Death).
    */
   position(unit: number, time = this.time): Point {
     return this.positionInto({ x: 0, z: 0 }, unit, time);
@@ -241,16 +233,6 @@ export class Playback {
     return out;
   }
 
-  /**
-   * How far a dead unit has sunk and faded: 0 until `delaySeconds` after its death, which the scene
-   * sets to half its death clip, so the clip plays on as it starts to sink; then rising to 1 once it
-   * has faded out. Always 0 for living units.
-   */
-  deathProgress(unit: number, time = this.time, delaySeconds = 0): number {
-    const tick = this.histories[unit]?.death ?? null;
-    return tick === null ? 0 : clamp01((time - tick - delaySeconds * TICKS_PER_SECOND) / EFFECT_TICKS.death);
-  }
-
   /** What a unit has done so far in the fight. */
   history(unit: number): UnitHistory {
     return this.histories[unit] ?? NOTHING;
@@ -303,7 +285,7 @@ export class Playback {
           this.addText(e.target, `+${e.amount}`, 'heal', false, e.tick);
           break;
         case 'cast':
-          this.casts.push({ unit: e.unit, startTick: e.tick });
+          // The ability's name in its pill; its wind-up, travel and impact are effects.ts's.
           this.addText(e.unit, e.ability, 'cast', false, e.tick);
           this.addAction(e.unit, e.tick, true);
           break;
@@ -377,13 +359,11 @@ export class Playback {
   private prune(): void {
     this.projectiles = unfinished(this.projectiles, projectileEnd, this.time);
     this.texts = unfinished(this.texts, textEnd, this.time);
-    this.casts = unfinished(this.casts, castEnd, this.time);
   }
 }
 
 const projectileEnd = (projectile: Projectile) => projectile.hitTick;
 const textEnd = (text: FloatingText) => text.startTick + EFFECT_TICKS.floatingText;
-const castEnd = (cast: CastRing) => cast.startTick + EFFECT_TICKS.castRing;
 
 /** The effects that haven't ended by `time`: the list itself if none has, so most frames allocate nothing. */
 function unfinished<T>(list: T[], end: (effect: T) => number, time: number): T[] {

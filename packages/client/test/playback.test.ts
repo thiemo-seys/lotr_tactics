@@ -146,7 +146,7 @@ describe('what is drawn', () => {
     }
   });
 
-  it('stops a unit that dies mid-step where it was when it died', () => {
+  it('stops a unit that dies mid-step where it was when it died, so it breaks up there', () => {
     // As in the test above, Sam (id 0) starts walking on tick 1; here he dies halfway through the step.
     const fight = createCombat({ seed: 1, stage: 2, teams: { A: [placed('sam', 3, 0)], B: [placed('gimli', 3, 0)] } });
     const p = new Playback(withDeath(fight, 0, 8));
@@ -209,18 +209,16 @@ describe('what is drawn', () => {
   it('keeps the same lists of effects from frame to frame until one ends, so a frame allocates nothing', () => {
     const p = playback(PRESETS.full, PRESETS.traits);
     p.advance(1);
-    const { projectiles, texts, casts } = p;
+    const { projectiles, texts } = p;
     // A frame between ticks: nothing new, nothing over.
     const events = p.advance(0.1 / TICKS_PER_SECOND);
     expect(events).toEqual([]);
     expect(p.advance(0.1 / TICKS_PER_SECOND)).toBe(events);
     expect(p.projectiles).toBe(projectiles);
     expect(p.texts).toBe(texts);
-    expect(p.casts).toBe(casts);
     // Once an effect ends, it is gone from its list.
     p.advance(1);
     expect(p.texts.every((text) => text.startTick + EFFECT_TICKS.floatingText > p.time)).toBe(true);
-    expect(p.casts.every((cast) => cast.startTick + EFFECT_TICKS.castRing > p.time)).toBe(true);
     expect(p.projectiles.every((shot) => shot.hitTick > p.time)).toBe(true);
   });
 
@@ -238,57 +236,6 @@ describe('what is drawn', () => {
     expect(kinds).toContain('physical');
     expect(kinds).toContain('absorbed');
     expect(kinds).toContain('cast');
-  });
-
-  it('fades dead units out over half a second', () => {
-    const p = playback(PRESETS.duel, PRESETS.duel);
-    while (!p.combat.isOver()) p.advance(1);
-    const dead = p.combat.state.units.find((u) => !u.alive)!;
-    const deathTick = p.combat.events.find((e) => e.type === 'death')!.tick;
-    expect(p.deathProgress(dead.id, deathTick)).toBe(0);
-    expect(p.deathProgress(dead.id, deathTick + EFFECT_TICKS.death / 2)).toBeCloseTo(0.5, 10);
-    expect(p.deathProgress(dead.id, deathTick + EFFECT_TICKS.death)).toBe(1);
-  });
-
-  it('holds a dying unit for a delay, then sinks and fades it over half a second', () => {
-    const p = playback(PRESETS.duel, PRESETS.duel);
-    while (!p.combat.isOver()) p.advance(1);
-    p.advance(10);
-    const death = p.combat.events.find((e) => e.type === 'death');
-    if (death?.type !== 'death') throw new Error('A Sam should die.');
-    const { unit, tick } = death;
-    // viewer-spec 5: 0 until delaySeconds after the death, then rising to 1 over the 15 ticks of the sink. (The scene
-    // passes half the death clip's length.) A delay of 0.4 s is 12 ticks, so the sink runs from tick + 12 to tick + 27.
-    expect(p.deathProgress(unit, tick - 30, 0.4)).toBe(0);
-    expect(p.deathProgress(unit, tick, 0.4)).toBe(0);
-    expect(p.deathProgress(unit, tick + 6, 0.4)).toBe(0);
-    expect(p.deathProgress(unit, tick + 11.5, 0.4)).toBe(0);
-    expect(p.deathProgress(unit, tick + 12 + 7.5, 0.4)).toBeCloseTo(0.5, 10);
-    expect(p.deathProgress(unit, tick + 27, 0.4)).toBeCloseTo(1, 10);
-    expect(p.deathProgress(unit, tick + 29, 0.4)).toBe(1);
-    // With no delay the sink starts at once, as without a death clip.
-    expect(p.deathProgress(unit, tick + 7.5, 0)).toBeCloseTo(0.5, 10);
-    expect(p.deathProgress(unit, tick + 7.5)).toBeCloseTo(0.5, 10);
-    // The Sam that lives never sinks.
-    const living = p.combat.state.units.find((u) => u.alive)!;
-    expect(p.deathProgress(living.id, tick + 20, 0.4)).toBe(0);
-  });
-
-  it('lets a unit that dies on the last tick finish a half-second death clip and its fade before the afterglow ends', () => {
-    const p = playback(PRESETS.duel, PRESETS.duel);
-    while (!p.combat.isOver()) p.advance(1);
-    p.advance(10);
-    // The fight ends with its last death (sim-spec 13).
-    const last = p.combat.events.findLast((e) => e.type === 'death');
-    if (last?.type !== 'death') throw new Error('A Sam should die.');
-    expect(last.tick).toBe(p.combat.tick);
-    // viewer-spec 5: a death clip lasts at most 0.5 s (15 ticks), and the 15-tick sink starts halfway through it, so the
-    // scene passes a delay of at most 0.25 s and the sink is over 22.5 ticks after the death. Even a delay of the whole
-    // clip ends the sink 30 ticks after it: within the second of afterglow the viewer runs after the fight, at the
-    // display time it ends on.
-    expect(p.time).toBeCloseTo(last.tick + TICKS_PER_SECOND, 6);
-    expect(p.deathProgress(last.unit, undefined, 0.25)).toBe(1);
-    expect(p.deathProgress(last.unit, undefined, 0.5)).toBeCloseTo(1, 10);
   });
 
   it('turns units to face a point, about the vertical axis', () => {

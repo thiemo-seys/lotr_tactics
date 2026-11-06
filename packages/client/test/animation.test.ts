@@ -12,6 +12,8 @@ import {
 } from '@lotr-tactics/sim';
 import { describe, expect, it } from 'vitest';
 import { CLIPS, FADE_TICKS, fightFacing, fightPose, planningPose, sinkDelay, type ClipLengths, type ClipName, type Pose } from '../src/animation.js';
+import { Effects } from '../src/effects.js';
+import { EFFECTS } from '../src/look.js';
 import { PRESETS } from '../src/boards.js';
 import { Playback, facing } from '../src/playback.js';
 
@@ -727,24 +729,27 @@ describe('death', () => {
   });
 });
 
-describe('sinking after death', () => {
+describe('breaking up after death', () => {
   it('starts halfway through the death clip, or at once without one', () => {
     expect(sinkDelay(LENGTHS)).toBeCloseTo(0.2, 10);
     expect(sinkDelay({ ...LENGTHS, death: 0.5 })).toBeCloseTo(0.25, 10);
     expect(sinkDelay(null)).toBe(0);
   });
 
-  it('is what deathProgress waits for, then the sink and fade take 15 ticks', () => {
+  it('is what the shards wait for (effects.ts), then they fall and fade', () => {
     const p = walkingDuel();
-    // Sam dies on 753; halfway through his 12-tick death clip is 759, and he has sunk and faded by 774.
+    const fx = new Effects(p);
+    // Sam dies on 753; halfway through his 12-tick death clip is 759, when he breaks up.
     expect(ticksOf(p, 'death', 0)).toEqual([753]);
     const delay = sinkDelay(LENGTHS);
-    expect(p.deathProgress(0, 753, delay)).toBe(0);
-    expect(p.deathProgress(0, 759, delay)).toBe(0);
-    expect(p.deathProgress(0, 759 + 7.5, delay)).toBeCloseTo(0.5, 10);
-    expect(p.deathProgress(0, 774, delay)).toBe(1);
-    // Without a death clip it starts at once.
-    expect(p.deathProgress(0, 753 + 7.5, sinkDelay(null))).toBeCloseTo(0.5, 10);
+    const shards = EFFECTS.shards.seconds * 30;
+    expect(fx.shardsShare(0, delay, 753)).toBeLessThan(0);
+    expect(fx.shardsShare(0, delay, 758.9)).toBeLessThan(0);
+    expect(fx.shardsShare(0, delay, 759)).toBe(0);
+    expect(fx.shardsShare(0, delay, 759 + shards / 2)).toBeCloseTo(0.5, 10);
+    expect(fx.shardsShare(0, delay, 759 + shards)).toBeCloseTo(1, 10);
+    // Without a death clip it breaks up at once.
+    expect(fx.shardsShare(0, sinkDelay(null), 753)).toBe(0);
   });
 });
 
