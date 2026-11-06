@@ -489,7 +489,7 @@ A step applies each effect in turn to every selected unit before the next effect
 - `stun(s)`
 - `slow(pct, s)`: reduces Attack Speed
 - `shield(mult, s = 4)`
-- `heal(mult)` and `healFromDamage(pct)`: capped at max Health (section 9.2). `healFromDamage` heals the caster once, for `pct`% of the damage the step has dealt so far, including any part shields absorbed.
+- `heal(mult)` and `healFromDamage(pct)`: capped at max Health (section 9.2). `healFromDamage` heals the caster `pct`% of each hit's damage as that hit lands, including any part shields absorbed (section 10.6, Multi-hit).
 - `buff(stat, amount, s)`
 - `reduce(stats, pct, s)`: lowers Armor and/or Magic Resist
 - `untargetable(s)`
@@ -619,7 +619,7 @@ A test checks these tick counts, since they are what `Math.round` gives on the d
 4. The landings go into the queue (section 6.4, step 2): the steps' in step order, and within a step in the selection's order (for a charge, hex by hex from the caster), then Athelas, then any delayed steps. So landings due on one tick resolve in that order.
 
 **During the wind-up** the caster is busy and stays on its hex.
-- A stun doesn't interrupt a wind-up, nor anything after it: the ability goes off at the release as usual. A stun still stops the caster acting once it is ready, as any stun does.
+- A stun doesn't interrupt a wind-up, nor anything after it: the ability goes off at the release as usual, a dash or charge goes on, and the later hits of a multi-hit step are still struck or loosed. A stun still stops the caster acting once it is ready, as any stun does.
 - If the caster dies before the release, the ability does nothing more: nothing lands, no dash or charge sets off and its claim is freed, Athelas doesn't heal and delayed steps don't run. The mana stays spent.
 
 **When a step lands**, its damage, heals, shields and statuses are worked out on that tick, from the caster's stats and the target's then (or the caster's as they were when it died, for a projectile or lob in flight), with that tick's overtime; shields and statuses last from that tick. Sting's crit rolls are made then. The step reaches:
@@ -916,7 +916,7 @@ Every event has a `tick`.
 | select | The selector's kind (section 10.3): `self`, `target`, `area`, `line`, `bounce` and so on. |
 | side | `enemy` or `ally`: whom the step affects. |
 | delivery | How the step lands: `strike` (at the release, or when a dash before it arrives), `projectile`, `lob`, `dash` (a step with `dashAdjacentTo`, its unit the one dashed to) or `charge` (a step with `dashThroughLine`). Steps on the caster and allies are always `strike` (section 10.6). |
-| units | For a unit selector, the locked units in the selection's order (section 10.3), each as `{ unit, landTick }`: the tick the step reaches it. Empty for a hex selector. |
+| units | For a unit selector, the locked units in the selection's order (section 10.3), each as `{ unit, landTick }`: the tick the step reaches it, or for a step whose unit is dashed to, the dash's arrival. Empty for a hex selector. |
 | hexes | For a hex selector, the locked hexes on the board, in board coordinates, each as `{ hex, landTick }`: a line's or charge's from the caster outwards, a cone's in the order of section 10.4, others by board row, then column. Off-board hexes of a `line(n)` are left out. Empty for a unit selector. |
 | hits | The number of hits of a `damage` with `hits` in the step (1 otherwise). The hits after the first reach each unit `hitGap` ticks apart after its `landTick`. |
 | hitGap | Ticks between hits: 3 (section 10.6, Multi-hit), or 0 for a step with one hit. |
