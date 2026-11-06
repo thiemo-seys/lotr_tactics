@@ -259,7 +259,7 @@ Which clip (section 4, Rigs and clips) each unit's model plays, and how far into
 - **How far into the clip,** in seconds, with a tick 1/30 s:
   - `death`, `victory`, `attack` and `cast`: the time since the event, held on the last frame once the clip ends.
   - `stun`: the time since the stun started, wrapped at the clip's length.
-  - `move`: the step's progress from its tick to `arriveTick` times the clip's length. For a dash or charge, its progress from `departTick` to `arriveTick` times the clip's length times the hexes it crosses.
+  - `move`: the step's progress from its tick to `arriveTick` times the clip's length. For a dash or charge, twice the time since its `departTick`, wrapped at the clip's length.
   - `idle`: `t` / 30 + 0.37 × the unit's id in the fight (its index in `combat.state.units`), wrapped at the clip's length, so units don't breathe together and a unit going back to idle picks up where it would have been.
   - Between two of a clip's frames, Three.js turns each bone the short way round from its turn on one to its turn on the next, and moves a bone the clip moves in a straight line. A bone that turns far in one frame, as an arm does in a blow, swings what hangs from it round in an arc, so the art checks these poses too (section 4, Limits).
 - **Fades:** when the clip changes, the new one fades in over 3 ticks, its weight rising evenly from 0 to 1, while the one before carries on as it would have (a loop looping, a one-shot clip held on its last frame). Before the fight starts, every unit counts as playing `idle`.
