@@ -2,7 +2,7 @@ import { TICKS_PER_SECOND, createCombat, type Combat, type PlacedUnit, type Unit
 import { describe, expect, it } from 'vitest';
 import { PRESETS } from '../src/boards.js';
 import { hexToWorld, lerpPoint } from '../src/layout.js';
-import { EFFECT_TICKS, Playback, SHOT_DELAY_TICKS, facing } from '../src/playback.js';
+import { EFFECT_TICKS, Playback, SHOT_DELAY_TICKS, FLOATING_TEXT, facing, textOffset, type FloatingText } from '../src/playback.js';
 
 function placed(unitId: UnitId, col: number, row: number): PlacedUnit {
   return { unitId, star: 1, col, row, items: [] };
@@ -236,6 +236,42 @@ describe('what is drawn', () => {
     expect(kinds).toContain('physical');
     expect(kinds).toContain('absorbed');
     expect(kinds).toContain('cast');
+  });
+
+  it('starts a text on a unit clear of its others, which rise with it, so a multi-hit’s numbers each read', () => {
+    const { gap, rise } = FLOATING_TEXT;
+    const life = EFFECT_TICKS.floatingText;
+    const text = (unit: number, startTick: number, offset: number): FloatingText => ({ unit, text: '1', kind: 'physical', big: false, startTick, offset });
+    // Alone, at the bottom; together, stacked upwards.
+    expect(textOffset([], 0, 10)).toBe(0);
+    expect(textOffset([text(0, 10, 0)], 0, 10)).toBe(gap);
+    // A few ticks apart, as a multi-hit's: just above where the last has risen to.
+    expect(textOffset([text(0, 10, 0)], 0, 13)).toBeCloseTo((3 * rise) / life + gap, 10);
+    // Once the lowest has risen a gap's height, the bottom is free again; another unit's text never counts.
+    expect(textOffset([text(0, 10, 0)], 0, 10 + Math.ceil((gap * life) / rise))).toBe(0);
+    expect(textOffset([text(1, 10, 0)], 0, 10)).toBe(0);
+    // Into a space between two that is wide enough.
+    expect(textOffset([text(0, 10, 0), text(0, 10, 3 * gap)], 0, 10)).toBe(gap);
+    // In fights: no two texts of a unit showing together are ever closer than the gap.
+    let stacked = 0;
+    for (const [a, b] of [
+      [PRESETS.archers, PRESETS.tanks],
+      [PRESETS.full, PRESETS.traits],
+    ] as const) {
+      const p = playback(a, b);
+      for (let i = 0; i < 600 && !p.combat.isOver(); i++) {
+        p.advance(1 / TICKS_PER_SECOND);
+        for (const x of p.texts) {
+          for (const y of p.texts) {
+            if (x === y || x.unit !== y.unit) continue;
+            const height = (t: FloatingText) => t.offset + (rise * (p.time - t.startTick)) / life;
+            expect(Math.abs(height(x) - height(y))).toBeGreaterThanOrEqual(gap - 1e-9);
+            if (x.startTick !== y.startTick && x.offset > 0) stacked++;
+          }
+        }
+      }
+    }
+    expect(stacked).toBeGreaterThan(0);
   });
 
   it('turns units to face a point, about the vertical axis', () => {
