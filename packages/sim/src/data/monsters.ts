@@ -50,6 +50,8 @@ export const MONSTERS: Readonly<Record<MonsterId, MonsterDef>> = {
     cost: 3,
     ability: {
       name: 'Smash',
+      windupSeconds: 0.5,
+      delivery: 'strike',
       steps: [
         {
           select: { kind: 'adjacentEnemies' },
@@ -69,6 +71,8 @@ export const MONSTERS: Readonly<Record<MonsterId, MonsterDef>> = {
     cost: 4,
     ability: {
       name: 'Tentacles',
+      windupSeconds: 0.5,
+      delivery: 'strike',
       steps: [
         {
           select: { kind: 'area', radius: 1, around: { kind: 'target' } },
@@ -88,6 +92,8 @@ export const MONSTERS: Readonly<Record<MonsterId, MonsterDef>> = {
     cost: 4,
     ability: {
       name: 'Trample',
+      windupSeconds: 0.35,
+      delivery: 'strike',
       steps: [
         {
           select: { kind: 'line', length: 3 },
@@ -104,6 +110,8 @@ export const MONSTERS: Readonly<Record<MonsterId, MonsterDef>> = {
     cost: 5,
     ability: {
       name: 'Whip of flame',
+      windupSeconds: 0.5,
+      delivery: 'strike',
       steps: [
         {
           select: { kind: 'cone' },

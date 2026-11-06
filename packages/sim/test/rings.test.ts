@@ -165,7 +165,8 @@ describe('the Nine', () => {
         gifts: { A: [], B: ['gandalfs-fireworks', 'gandalfs-fireworks', 'gandalfs-fireworks', 'gandalfs-fireworks'] },
       });
       const eowyn = unitOf(fight, 'eowyn', 'B');
-      return ofType(stepTo(fight, 1), 'damage').find((e) => e.source === eowyn.id && e.kind === 'ability')!.amount;
+      // Her strike lands at her release, 1 + 12 = 13 (sim-spec 10.6).
+      return ofType(stepTo(fight, 13), 'damage').find((e) => e.source === eowyn.id && e.kind === 'ability')!.amount;
     };
     const plain = shieldmaiden([]);
     expect(Math.abs(shieldmaiden(['ring-of-the-nine']) - 2 * plain)).toBeLessThanOrEqual(1);

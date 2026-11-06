@@ -181,9 +181,10 @@ describe('statuses in a fight', () => {
     const gimli = fight.state.units[1]!;
     expect([gimli.stats.armor, gimli.stats.magicResist]).toEqual([25, 35]);
 
-    // Sam's 45 Attack Damage (63 on a crit) against Armor 25 until tick 120, then 50.
+    // Sam's 45 Attack Damage (63 on a crit) against Armor 25 until tick 120, then 50. He attacks on
+    // 1, 51, 101 and 151, and his blows land 7 ticks later (sim-spec 9).
     const hits = ofType(stepTo(fight, 200), 'damage').filter((e) => e.source === 0);
-    expect(hits.map((h) => h.tick)).toEqual([1, 51, 101, 151]);
+    expect(hits.map((h) => h.tick)).toEqual([8, 58, 108, 158]);
     for (const hit of hits) {
       const expected = hit.tick < 120 ? (hit.crit ? 50 : 36) : hit.crit ? 42 : 30;
       expect(hit.amount).toBe(expected);
@@ -215,8 +216,9 @@ describe('statuses in a fight', () => {
     const sam = fight.state.units[0]!;
     let shield = 100;
     let health = sam.health;
+    // Gimli attacks on 1, 51, 101 and 151; his blows land 7 ticks later (sim-spec 9).
     const hits = ofType(stepTo(fight, 200), 'damage').filter((e) => e.target === 0);
-    expect(hits.map((h) => h.tick)).toEqual([1, 51, 101, 151]);
+    expect(hits.map((h) => h.tick)).toEqual([8, 58, 108, 158]);
     for (const hit of hits) {
       const absorbed = hit.tick < 120 ? Math.min(hit.amount, shield) : 0;
       expect(hit.absorbed).toBe(absorbed);
@@ -230,7 +232,9 @@ describe('statuses in a fight', () => {
   it('gives the defender mana from damage its shield absorbed', () => {
     const fight = new Fight(DUEL);
     fight.addShield(0, 0, 1000, 4);
-    const hit = ofType(fight.step(), 'damage').find((e) => e.target === 0)!;
+    // Gimli's blow from tick 1 lands on 8 (sim-spec 9).
+    const hit = ofType(stepTo(fight, 8), 'damage').find((e) => e.target === 0)!;
+    expect(hit.tick).toBe(8);
     expect(hit.absorbed).toBe(hit.amount);
     const sam = fight.state.units[0]!;
     expect(sam.health).toBe(sam.stats.maxHealth);

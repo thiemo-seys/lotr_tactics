@@ -13,7 +13,7 @@ export interface MutablePoint {
 
 /** How long the viewer's own effects last, in ticks of fight time. */
 export const EFFECT_TICKS = {
-  dash: 4,
+  /** A melee lunge, at its height halfway through, on the blow's `hitTick` (docs/viewer-spec.md section 5). */
   lunge: 6,
   floatingText: 24,
   castRing: 15,
@@ -57,9 +57,10 @@ export interface CastRing {
   readonly startTick: number;
 }
 
+/** A melee lunge, from `tick` for EFFECT_TICKS.lunge ticks, at its height on the blow's `hitTick`. */
 interface Lunge {
+  readonly tick: number;
   readonly target: number;
-  readonly startTick: number;
 }
 
 /** A unit's attack or cast. A unit acts at most once a tick; a cast on the same tick as an attack wins. */
@@ -69,10 +70,12 @@ export interface ActionRecord {
 }
 
 /**
- * A unit's step, from its tick to `endTick`, its arrival; or a dash, which takes 4 ticks. It goes
- * from the centre of its `from` hex to the centre of its `to` hex.
+ * A unit's step, from its tick to `endTick`, its arrival; or a dash or charge, from its `departTick`
+ * to its `arriveTick`, standing on `from` before it sets off. It goes from the centre of its `from`
+ * hex to the centre of its `to` hex.
  */
 export interface StepRecord {
+  /** When it sets off: a step's tick, or a dash's `departTick`. */
   readonly tick: number;
   readonly endTick: number;
   readonly dash: boolean;
@@ -114,10 +117,14 @@ interface History {
   readonly actions: { readonly tick: number; cast: boolean }[];
   readonly steps: StepRecord[];
   readonly stuns: { readonly tick: number; endTick: number; readonly starts: number[] }[];
+  /** Its melee lunges, in tick order. */
+  readonly lunges: Lunge[];
   death: number | null;
 }
 
 const NOTHING: UnitHistory = { team: null, actions: [], steps: [], stuns: [], death: null };
+
+const NO_LUNGES: readonly Lunge[] = [];
 
 /** What `advance` returns when no tick was processed. */
 const NO_EVENTS: readonly CombatEvent[] = [];
@@ -136,7 +143,6 @@ export class Playback {
   casts: CastRing[] = [];
   /** The fight's end, once it has come. */
   ended: { readonly tick: number; readonly outcome: Outcome } | null = null;
-  private readonly lunges = new Map<number, Lunge>();
   private readonly histories: History[] = [];
 
   constructor(readonly combat: Combat) {
@@ -201,9 +207,9 @@ export class Playback {
   lungeInto<T extends MutablePoint>(out: T, unit: number, time = this.time): T {
     out.x = 0;
     out.z = 0;
-    const lunge = this.lunges.get(unit);
+    const lunge = lastStarted(this.histories[unit]?.lunges ?? NO_LUNGES, time);
     if (lunge === undefined) return out;
-    const progress = (time - lunge.startTick) / EFFECT_TICKS.lunge;
+    const progress = (time - lunge.tick) / EFFECT_TICKS.lunge;
     if (progress < 0 || progress >= 1) return out;
     const from = this.positionInto(lungeFrom, unit, time);
     const to = this.positionInto(lungeTo, lunge.target, time);
@@ -266,14 +272,16 @@ export class Playback {
           this.addStep(e.unit, { tick: e.tick, endTick: e.arriveTick, dash: false, from: hexToWorld(e.from), to: hexToWorld(e.to) });
           break;
         case 'dash':
-          this.addStep(e.unit, { tick: e.tick, endTick: e.tick + EFFECT_TICKS.dash, dash: true, from: hexToWorld(e.from), to: hexToWorld(e.to) });
+          // Emitted at the cast, it sets off at the release: the unit stands on `from` until then.
+          this.addStep(e.unit, { tick: e.departTick, endTick: e.arriveTick, dash: true, from: hexToWorld(e.from), to: hexToWorld(e.to) });
           break;
         case 'attack':
           if (e.ranged) {
             const startTick = Math.min(e.tick + SHOT_DELAY_TICKS, e.hitTick - 1);
             this.projectiles.push({ source: e.unit, target: e.target, from: this.position(e.unit, e.tick), startTick, hitTick: e.hitTick });
           } else {
-            this.lunges.set(e.unit, { target: e.target, startTick: e.tick });
+            // At its height when the blow lands.
+            this.historyOf(e.unit).lunges.push({ tick: e.hitTick - EFFECT_TICKS.lunge / 2, target: e.target });
           }
           this.addAction(e.unit, e.tick, false);
           break;
@@ -295,9 +303,15 @@ export class Playback {
           // A stun the unit is immune to, or one that doesn't outlast the current one, has no event.
           if (e.status === 'stun') this.addStun(e.target, e.tick, e.expiresTick ?? Infinity);
           break;
-        case 'death':
-          this.historyOf(e.unit).death = e.tick;
+        case 'death': {
+          const history = this.historyOf(e.unit);
+          history.death = e.tick;
+          // A unit that dies before its dash sets off never sets off (sim-spec section 14): it is still
+          // on the dash's `from` hex, which the state shows, as nothing moves a dead unit.
+          const last = history.steps.at(-1);
+          if (last?.dash === true && last.tick >= e.tick && pointDistance(hexToWorld(this.combat.state.units[e.unit]!.hex), last.to) > 1e-6) history.steps.pop();
           break;
+        }
         case 'end':
           this.ended = { tick: e.tick, outcome: e.outcome };
           break;
@@ -308,7 +322,7 @@ export class Playback {
   private historyOf(unit: number): History {
     let history = this.histories[unit];
     if (history === undefined) {
-      history = { team: null, home: null, actions: [], steps: [], stuns: [], death: null };
+      history = { team: null, home: null, actions: [], steps: [], stuns: [], lunges: [], death: null };
       this.histories[unit] = history;
     }
     return history;
@@ -322,11 +336,16 @@ export class Playback {
     else actions.push({ tick, cast });
   }
 
-  /** The later of two steps on one tick replaces the other, as it does for the unit's position. */
+  /**
+   * Keeps the steps in the order they set off, as a dash comes at its cast and sets off later. The
+   * later of two steps setting off on one tick replaces the other, as it does for the unit's position.
+   */
   private addStep(unit: number, step: StepRecord): void {
     const { steps } = this.historyOf(unit);
-    if (steps.at(-1)?.tick === step.tick) steps[steps.length - 1] = step;
-    else steps.push(step);
+    let at = steps.length;
+    while (at > 0 && steps[at - 1]!.tick > step.tick) at--;
+    if (steps[at - 1]?.tick === step.tick) steps[at - 1] = step;
+    else steps.splice(at, 0, step);
   }
 
   /** A stun that starts while the unit is stunned, or as its stun ends, carries that stun on. */

@@ -37,7 +37,8 @@ describe('the One Ring', () => {
   it('gives its bearer 10% more damage per point of Corruption', () => {
     const fight = new Fight(input([bearing('gimli', 3, 3, 3)], [placed('beregond', 3, 3)]));
     const gimli = unitOf(fight, 'gimli');
-    const hit = ofType(stepTo(fight, 1), 'damage').find((e) => e.source === gimli.id)!;
+    // Gimli's blow from tick 1 lands on 8 (sim-spec 9).
+    const hit = ofType(stepTo(fight, 8), 'damage').find((e) => e.source === gimli.id)!;
     const target = fight.state.units[hit.target]!;
     const raw = (gimli.stats.attackDamage * (hit.crit ? gimli.stats.critDamagePct : 100)) / 100;
     expect(hit.amount).toBe(finalDamage(raw, 'physical', target.stats, { ampPct: 30, overtimePct: 100, reductionPct: 0 }));
@@ -77,6 +78,11 @@ describe('the One Ring', () => {
     const attacks = ofType(early, 'attack').filter((e) => e.unit === gimli.id);
     expect(attacks.length).toBeGreaterThan(0);
     expect(attacks.every((e) => e.target === hama.id)).toBe(true);
+    // Its blows land on the ally 7 ticks after each attack (sim-spec 9).
+    for (const attack of attacks.filter((e) => e.hitTick <= 90)) {
+      const blow = early.find((e) => (e.type === 'damage' || e.type === 'dodge') && e.tick === attack.hitTick && e.source === gimli.id);
+      expect(blow, `blow from tick ${attack.tick}`).toMatchObject({ tick: attack.tick + 7 });
+    }
     expect(ofType(early, 'cast').some((e) => e.unit === gimli.id)).toBe(false);
     // Afterwards it fights the enemy again.
     const later = stepTo(fight, 200);
@@ -103,6 +109,11 @@ describe('the One Ring', () => {
     const attacks = ofType(early, 'attack').filter((e) => e.unit === eye.id);
     expect(attacks.length).toBeGreaterThan(0);
     expect(attacks.every((e) => e.target === gimli.id)).toBe(true);
+    // Its blows land on the invisible bearer 7 ticks after each attack (sim-spec 9 and 12.6).
+    for (const attack of attacks.filter((e) => e.hitTick <= 89)) {
+      const blow = early.find((e) => (e.type === 'damage' || e.type === 'dodge') && e.tick === attack.hitTick && e.source === eye.id);
+      expect(blow, `blow from tick ${attack.tick}`).toMatchObject({ tick: attack.tick + 7 });
+    }
     // Nobody else attacks the invisible bearer.
     expect(ofType(early, 'attack').filter((e) => e.target === gimli.id && e.unit !== eye.id)).toHaveLength(0);
   });

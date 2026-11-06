@@ -36,23 +36,72 @@ export interface SelectionContext<U extends AbilityUnit> {
   readonly enemies: readonly U[];
   /** The caster's target, choosing one first if it has none (section 10.1). */
   readonly target: () => U | null;
+  /**
+   * Where the caster measures from: its hex, unless a dash or charge earlier in the cast has chosen
+   * where it will be (section 10.6). Defaults to the caster's hex.
+   */
+  readonly origin?: Hex;
 }
 
 export interface Selection<U> {
   readonly units: readonly U[];
-  /** For a line: its hexes, in order from the caster, for `dashThroughLine`. */
+  /**
+   * For a hex selector (section 10.3), the hexes it covers: a line's in order from the caster,
+   * with any off the board for `line(n)`; a cone's in the order of section 10.4, on the board;
+   * the others' on the board, by row, then column. Empty for a unit selector.
+   */
   readonly hexes: readonly Hex[];
+  /** For `area`, the hex it is around; for the selectors round the caster, the origin. Null otherwise. */
+  readonly centre: Hex | null;
+}
+
+/** Selectors that lock hexes at the cast rather than units (section 10.3). */
+export type HexSelector = Extract<Selector, { kind: 'area' | 'line' | 'cone' | 'enemiesWithin' | 'adjacentEnemies' | 'alliesWithin' | 'adjacentAllies' }>;
+
+export function isHexSelector(selector: Selector): selector is HexSelector {
+  switch (selector.kind) {
+    case 'area':
+    case 'line':
+    case 'cone':
+    case 'enemiesWithin':
+    case 'adjacentEnemies':
+    case 'alliesWithin':
+    case 'adjacentAllies':
+      return true;
+    default:
+      return false;
+  }
+}
+
+/** Whether a selector picks the caster or its allies rather than enemies. */
+export function selectsAllies(selector: Selector): boolean {
+  switch (selector.kind) {
+    case 'self':
+    case 'nearestAlly':
+    case 'lowestHealthPctAllies':
+    case 'allAllies':
+    case 'alliesWithin':
+    case 'adjacentAllies':
+      return true;
+    default:
+      return false;
+  }
 }
 
 /**
- * The units a step's effects apply to (section 10.3). Multi-unit selections are in slot order,
- * except `nearestEnemies` (nearest first), `lowestHealthPctAllies` (lowest first), lines (from the
- * caster outwards) and bounces (in hit order).
+ * The units a step's effects apply to (section 10.3), and for a hex selector the hexes it covers.
+ * Multi-unit selections are in slot order, except `nearestEnemies` (nearest first),
+ * `lowestHealthPctAllies` (lowest first), lines (from the caster outwards) and bounces (in hit
+ * order).
  */
 export function select<U extends AbilityUnit>(selector: Selector, ctx: SelectionContext<U>): Selection<U> {
   const { caster, allies, enemies } = ctx;
-  const units = (list: readonly U[]): Selection<U> => ({ units: list, hexes: [] });
-  const within = (list: readonly U[], centre: Hex, radius: number) => bySlot(list.filter((u) => distance(u.hex, centre) <= radius));
+  const origin = ctx.origin ?? caster.hex;
+  const units = (list: readonly U[]): Selection<U> => ({ units: list, hexes: [], centre: null });
+  const shape = (shaped: HexSelector, hexes: readonly Hex[], centre: Hex | null): Selection<U> => {
+    const candidates = selectsAllies(shaped) ? allies : enemies;
+    return { units: standingOn(shaped, hexes, candidates), hexes, centre };
+  };
   switch (selector.kind) {
     case 'self':
     case 'target':
@@ -64,44 +113,40 @@ export function select<U extends AbilityUnit>(selector: Selector, ctx: Selection
       return units(unit === null ? [] : [unit]);
     }
     case 'nearestEnemies':
-      return units(byDistance(caster.team, caster.hex, enemies).slice(0, selector.count));
+      return units(byDistance(caster.team, origin, enemies).slice(0, selector.count));
     case 'lowestHealthPctAllies':
       return units(
         [...allies]
-          .sort((a, b) => a.health * b.stats.maxHealth - b.health * a.stats.maxHealth || closerFirst(caster.team, caster.hex, a, b))
+          .sort((a, b) => a.health * b.stats.maxHealth - b.health * a.stats.maxHealth || closerFirst(caster.team, origin, a, b))
           .slice(0, selector.count),
       );
     case 'allAllies':
       return units(bySlot(allies));
-    case 'alliesWithin': {
-      const { origin } = selector;
-      return units(within(origin === undefined ? allies : allies.filter((u) => u.origin === origin), caster.hex, selector.radius));
-    }
-    case 'adjacentAllies':
-      return units(within(allies, caster.hex, 1).filter((u) => u !== caster));
-    case 'adjacentEnemies':
-      return units(within(enemies, caster.hex, 1));
+    case 'alliesWithin':
     case 'enemiesWithin':
-      return units(within(enemies, caster.hex, selector.radius));
+      return shape(selector, hexesWithin(origin, selector.radius), origin);
+    case 'adjacentAllies':
+    case 'adjacentEnemies':
+      return shape(
+        selector,
+        BOARD_HEXES.filter((hex) => distance(hex, origin) === 1),
+        origin,
+      );
     case 'area': {
       const { around } = selector;
       const centre =
         around.kind === 'bestClusterHex'
           ? bestClusterHex(caster.team, enemies, around.radius, ctx.target()?.hex ?? null)
           : (selectUnit(around, ctx)?.hex ?? null);
-      return units(centre === null ? [] : within(enemies, centre, selector.radius));
+      return centre === null ? shape(selector, [], null) : shape(selector, hexesWithin(centre, selector.radius), centre);
     }
     case 'line': {
       const target = ctx.target();
-      if (target === null) return units([]);
-      const hexes = line(caster.team, caster.hex, target.hex, selector.length);
-      return { units: hexes.flatMap((hex) => enemies.filter((u) => hexEquals(u.hex, hex))), hexes };
+      return shape(selector, target === null ? [] : line(caster.team, origin, target.hex, selector.length), null);
     }
     case 'cone': {
       const target = ctx.target();
-      if (target === null) return units([]);
-      const hexes = new Set(cone(caster.team, caster.hex, target.hex).filter(isOnBoard).map(boardIndex));
-      return units(bySlot(enemies.filter((u) => hexes.has(boardIndex(u.hex)))));
+      return shape(selector, target === null ? [] : cone(caster.team, origin, target.hex).filter(isOnBoard), null);
     }
     case 'bounce': {
       const first = ctx.target();
@@ -120,8 +165,27 @@ export function select<U extends AbilityUnit>(selector: Selector, ctx: Selection
   }
 }
 
+/**
+ * The units of `candidates` standing on `hexes`, for a hex selector (section 10.6): in line order
+ * for a line, otherwise in slot order, and only Orcs for `alliesWithin` with that origin. Pass the
+ * targetable enemies for an enemy selector, or the living allies for an ally selector.
+ */
+export function standingOn<U extends AbilityUnit>(selector: HexSelector, hexes: readonly Hex[], candidates: readonly U[]): U[] {
+  const origin = selector.kind === 'alliesWithin' ? selector.origin : undefined;
+  const eligible = origin === undefined ? candidates : candidates.filter((u) => u.origin === origin);
+  if (selector.kind === 'line') return hexes.flatMap((hex) => eligible.filter((u) => hexEquals(u.hex, hex)));
+  const covered = new Set(hexes.filter(isOnBoard).map(boardIndex));
+  return bySlot(eligible.filter((u) => covered.has(boardIndex(u.hex))));
+}
+
+/** The hexes on the board within `radius` of `centre`, by row, then column. */
+function hexesWithin(centre: Hex, radius: number): Hex[] {
+  return BOARD_HEXES.filter((hex) => distance(hex, centre) <= radius);
+}
+
 function selectUnit<U extends AbilityUnit>(selector: UnitSelector, ctx: SelectionContext<U>): U | null {
   const { caster, allies, enemies } = ctx;
+  const origin = ctx.origin ?? caster.hex;
   switch (selector.kind) {
     case 'self':
       return caster;
@@ -130,14 +194,14 @@ function selectUnit<U extends AbilityUnit>(selector: UnitSelector, ctx: Selectio
     case 'farthestEnemy':
       return first(
         enemies,
-        (a, b) => distance(caster.hex, b.hex) - distance(caster.hex, a.hex) || compareHexes(caster.team, a.hex, b.hex),
+        (a, b) => distance(origin, b.hex) - distance(origin, a.hex) || compareHexes(caster.team, a.hex, b.hex),
       );
     case 'lowestHealthEnemy':
-      return first(enemies, (a, b) => a.health - b.health || closerFirst(caster.team, caster.hex, a, b));
+      return first(enemies, (a, b) => a.health - b.health || closerFirst(caster.team, origin, a, b));
     case 'highestHealthEnemy':
-      return first(enemies, (a, b) => b.health - a.health || closerFirst(caster.team, caster.hex, a, b));
+      return first(enemies, (a, b) => b.health - a.health || closerFirst(caster.team, origin, a, b));
     case 'nearestAlly':
-      return byDistance(caster.team, caster.hex, allies).find((u) => u !== caster) ?? null;
+      return byDistance(caster.team, origin, allies).find((u) => u !== caster) ?? null;
   }
 }
 

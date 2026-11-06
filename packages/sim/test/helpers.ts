@@ -2,6 +2,7 @@ import type { Combat, CombatInput, PlacedUnit } from '../src/combat/combat.js';
 import type { CombatEvent } from '../src/combat/events.js';
 import type { ItemId } from '../src/data/items.js';
 import type { UnitId } from '../src/data/units.js';
+import type { Hex } from '../src/hex.js';
 import type { Star } from '../src/types.js';
 
 export function placed(unitId: UnitId, col: number, row: number, star: Star = 1, items: readonly ItemId[] = []): PlacedUnit {
@@ -69,6 +70,54 @@ export function stepTo(combat: Combat, tick: number): CombatEvent[] {
 
 export function ofType<T extends CombatEvent['type']>(events: readonly CombatEvent[], type: T): Extract<CombatEvent, { type: T }>[] {
   return events.filter((e): e is Extract<CombatEvent, { type: T }> => e.type === type);
+}
+
+/** A unit a cast's step locked, and the tick the step reaches it (sim-spec section 14, Aims). */
+export interface AimUnit {
+  readonly unit: number;
+  readonly landTick: number;
+}
+
+/** A board hex a cast's step locked, in board coordinates, and the tick the step reaches it. */
+export interface AimHex {
+  readonly hex: Hex;
+  readonly landTick: number;
+}
+
+/** What one of a cast's steps locked, and when it lands (sim-spec section 14, Aims). */
+export interface Aim {
+  readonly step: number;
+  readonly select: string;
+  readonly side: 'enemy' | 'ally';
+  readonly delivery: 'strike' | 'projectile' | 'lob' | 'dash' | 'charge';
+  readonly units: readonly AimUnit[];
+  readonly hexes: readonly AimHex[];
+  readonly hits: number;
+  readonly hitGap: number;
+  readonly centre: Hex | null;
+}
+
+/** A `cast` event with the timing fields of sim-spec section 14. */
+export type TimedCast = Extract<CombatEvent, { type: 'cast' }> & {
+  readonly releaseTick: number;
+  readonly readyTick: number;
+  readonly aims: readonly Aim[];
+};
+
+/** A `dash` event with the timing fields of sim-spec section 14. */
+export type TimedDash = Extract<CombatEvent, { type: 'dash' }> & {
+  readonly departTick: number;
+  readonly arriveTick: number;
+};
+
+/** The `cast` events, read with their timing fields. */
+export function castsOf(events: readonly CombatEvent[]): TimedCast[] {
+  return ofType(events, 'cast') as unknown as TimedCast[];
+}
+
+/** The `dash` events, read with their timing fields. */
+export function dashesOf(events: readonly CombatEvent[]): TimedDash[] {
+  return ofType(events, 'dash') as unknown as TimedDash[];
 }
 
 /** FNV-1a hash of a string, in hex. */
