@@ -1,0 +1,25 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Ability effects study</title>
+    <style>
+      html, body { margin: 0; height: 100%; background: #2a2018; overflow: hidden; font-family: "DejaVu Sans", "Liberation Sans", sans-serif; }
+      #view { position: absolute; inset: 0; }
+      #flash { position: absolute; inset: 0; pointer-events: none; opacity: 0; mix-blend-mode: screen; }
+      #caption { position: absolute; left: 22px; top: 18px; color: #f3e9d6; text-shadow: 0 1px 3px #000a; pointer-events: none; }
+      #style { font-size: 30px; font-weight: 800; letter-spacing: 0.04em; text-transform: uppercase; }
+      body[data-style="grounded"] #style { color: #e9dcc2; }
+      body[data-style="punchy"] #style { color: #ffd34d; }
+      #title { font-size: 21px; font-weight: 700; margin-top: 2px; }
+      #who { font-size: 14px; opacity: 0.8; margin-top: 2px; }
+    </style>
+  </head>
+  <body>
+    <div id="view"></div>
+    <div id="flash"></div>
+    <div id="caption"><div id="style"></div><div id="title"></div><div id="who"></div></div>
+    <script type="module" src="./study.ts"></script>
+  </body>
+</html>
