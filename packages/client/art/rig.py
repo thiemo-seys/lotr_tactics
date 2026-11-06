@@ -74,14 +74,20 @@ LENGTHS = {
     'idle': (1.5, 3.0),
     'move': (0.4, 1.0),
     'attack': (0.4, 0.9),
-    'cast': (0.3, 0.8),
+    'cast': (0.55, 1.0),
     'stun': (0.5, 1.5),
     'death': (0.3, 0.5),
     'victory': (0.5, 1.0),  # within the second the viewer and the play page hold a fight's end
 }
 LOOPS = ('idle', 'move', 'stun')
-STRIKE = 3  # the frame an attack's blow lands or its shot leaves: 0.1 s in
-CAST_HEIGHT = (3, 6)  # the frames a cast may be at its height in: 0.1 to 0.2 s
+# When an attack strikes and a cast is at its height follow the sim (docs/viewer-spec.md section 4, Rigs and
+# clips): a melee blow lands on frame 7 (0.22 s in, the sim's ATTACKS.meleeHitSeconds) and a ranged attack's
+# shot leaves on frame 3 (0.1 s, the viewer's SHOT_DELAY_TICKS); a cast is at its height at the end of its
+# ability's wind-up (windupSeconds, frames 11 to 18), and an ability with several hits strikes or looses
+# again every 3 frames after (ABILITIES.multiHitSeconds). timing() reads them from the sim's data and the
+# viewer's, so the clips keep in step with them.
+STRIKE = 7  # the frame a melee attack's blow lands on, as the sim has it today (timing() reads it)
+SHOT = 3  # the frame a ranged attack's shot leaves on
 MAX_BYTES = {'foot': 200_000, 'large': 300_000, 'mounted': 300_000}  # a rigged model's .glb, by kind (placeholders)
 # A rigged gear model (<id>-2, README.md, Gear models) has a triangle budget 12.5% above its 1★ model's, and
 # as much more room: 225,000 bytes on foot and 337,500 for a Large or mounted model (placeholders).
@@ -93,6 +99,77 @@ FLOOR = -1e-4  # how far under the ground a frame may reach before it warns: rou
 BETWEEN = 4
 BETWEEN_FLOOR = -0.01
 DEATH_LOW = 0.8  # a death ends with its top below this share of the standing height
+
+CLIENT = os.path.join(os.path.dirname(os.path.abspath(__file__)), '..')
+DATA = os.path.join(CLIENT, '..', 'sim', 'src', 'data')
+
+
+class Timing:
+    """When a unit's attack strikes and its cast is at its height, in frames, from the sim's data and the
+    viewer's (timing()): `melee` (range 1) or not, `strike` (the frame its blow lands or its shot leaves),
+    `release` (the frame its ability's effects leave or land, or its dash or charge sets off: its wind-up),
+    `hits` (the frames each of its ability's hits is struck or loosed on, the first at the release),
+    and `dash`, whether its ability dashes or charges, so `move` carries it on from the release."""
+
+    def __init__(self, unit, melee, strike, release, hits, dash):
+        self.unit, self.melee, self.strike, self.release, self.hits, self.dash = unit, melee, strike, release, hits, dash
+
+
+def ticks(seconds: float) -> int:
+    """Seconds as ticks (frames), as the sim's toTicks() rounds them: Math.round, halves up."""
+    return math.floor(seconds * FPS + 0.5)
+
+
+def _read(*path) -> str:
+    with open(os.path.join(*path), encoding='utf-8') as f:
+        return f.read()
+
+
+def _number(text: str, name: str) -> float:
+    found = re.search(rf'\b{name}\s*[:=]\s*([0-9.]+)', text)
+    if found is None:
+        raise RuntimeError(f'no {name} in the sim\'s data')
+    return float(found.group(1))
+
+
+_TIMINGS = {}
+
+
+def timing(unit: str) -> Timing:
+    """A unit's Timing, read from packages/sim/src/data (units.ts for each unit's classes, wind-up, hits
+    and dash; templates.ts for the range each class's template gives; rules.ts for the ticks a second, the
+    melee blow's delay and the gap between hits) and the viewer's playback.ts (SHOT_DELAY_TICKS)."""
+    if not _TIMINGS:
+        rules = _read(DATA, 'rules.ts')
+        if _number(rules, 'TICKS_PER_SECOND') != FPS:
+            raise RuntimeError(f'the sim no longer runs {FPS} ticks a second, as the clips are keyed')
+        melee_hit = ticks(_number(rules, 'meleeHitSeconds'))
+        gap = ticks(_number(rules, 'multiHitSeconds'))
+        shot = int(_number(_read(CLIENT, 'src', 'playback.ts'), 'SHOT_DELAY_TICKS'))
+        if melee_hit != STRIKE or shot != SHOT:
+            raise RuntimeError(f'the sim lands a blow on frame {melee_hit} and the viewer looses a shot on {shot}, '
+                               f'where the clip library keys them on {STRIKE} and {SHOT}: retime the clips')
+        templates = _read(DATA, 'templates.ts')
+        ranges = dict(re.findall(r'(\w+): \{[^}]*\brange: (\d+)', templates.split('CLASS_TEMPLATE')[0]))
+        block = re.search(r'CLASS_TEMPLATE[^{]*\{([^}]*)\}', templates).group(1)
+        template = dict(re.findall(r'(\w+): \'(\w+)\'', block))
+        units = _read(DATA, 'units.ts').split('export const UNITS')[1]
+        for chunk in re.split(r'\n  [\w\']+[\w\'-]*: \{\n', units)[1:]:
+            found = re.search(r"\bid: '([\w-]+)'", chunk)
+            classes = re.search(r'\bclasses: \[([^\]]*)\]', chunk)
+            windup = re.search(r'\bwindupSeconds: ([0-9.]+)', chunk)
+            if not (found and classes and windup):
+                continue
+            first = re.findall(r"'(\w+)'", classes.group(1))[0]
+            release = ticks(float(windup.group(1)))
+            hits = max([int(h) for h in re.findall(r'\bhits: (\d+)', chunk)] or [1])
+            melee = int(ranges[template[first]]) == 1
+            _TIMINGS[found.group(1)] = Timing(found.group(1), melee, melee_hit if melee else shot, release,
+                                             [release + i * gap for i in range(hits)], 'DASH_' in chunk)
+    if unit not in _TIMINGS:
+        raise RuntimeError(f'"{unit}" is no unit of the sim\'s, so its clips have no timing')
+    return _TIMINGS[unit]
+
 
 LIMBS = {  # the bones of each limb, from the body out: the two IK turns, then the hand or foot
     'arm_l': ('upper_arm_l', 'forearm_l', 'hand_l'),
@@ -218,11 +295,20 @@ class Mount:
 
 class Clip:
     """A clip: its length in frames (the frame of its last key; a loop's last frame is its first
-    again), whether it loops, the frames it marks (`strike` for an attack, `height` for a cast),
-    and `pose(frame)`, the channels at a frame (clips.py)."""
+    again), whether it loops, the frames it marks (`strike` for an attack, `height` for a cast, and
+    for a cast that sets off on a dash or charge `off`, where it springs, clips.py), the frames each
+    of a cast's hits is struck or loosed on (`hits`, the first its height: one, unless it looses or
+    strikes again), `begin`, how far into its first key it begins once retimed, if not clips.BEGIN of the
+    way from rest, and `pose(frame)`, the channels at a frame (clips.py)."""
 
-    def __init__(self, frames: int, pose, loop: bool = False, marks=None):
+    def __init__(self, frames: int, pose, loop: bool = False, marks=None, hits=None, begin=None):
         self.frames, self.pose, self.loop, self.marks = frames, pose, loop, dict(marks or {})
+        self.hits = list(hits) if hits is not None else None
+        self.begin = begin
+
+    def with_pose(self, pose) -> 'Clip':
+        """This clip with another pose function, as a wrapper fitting it to a model makes it."""
+        return Clip(self.frames, pose, self.loop, self.marks, self.hits, self.begin)
 
     @property
     def seconds(self) -> float:
@@ -267,6 +353,7 @@ class Rig:
             self.bones[name] = tuple(spec)
         self.kind = kind
         self.gear = False  # a 2★ gear model's rig (geared()), with GEAR_BYTES as its size limit
+        self.timing = None  # its unit's Timing, once build() knows the model's name
         self.joints = {}
         self.height = 0.0
         self.death_top = 0.0  # how tall the model is at the end of its death
@@ -605,6 +692,7 @@ class Rig:
         """Builds the armature and binds `model` to it, makes and checks the clips, and warns about
         frames that reach outside the hex."""
         self.height = height
+        self.timing = timing(re.sub(r'-[23]$', '', model.name))  # its unit's: gimli's for gimli-2
         self._check_bones()
         self.check_parts([model])
         self._measure(model)
@@ -618,6 +706,7 @@ class Rig:
         marks = ', '.join(
             f'{name} {clip.seconds:.2f} s'
             + ''.join(f' ({mark} at {frame / FPS:.2f} s)' for mark, frame in clip.marks.items())
+            + (f' (again at {", ".join(f"{h / FPS:.2f}" for h in clip.hits[1:])} s)' if len(clip.hits or ()) > 1 else '')
             + (f' (ends {self.death_top:.2f} tall)' if name == 'death' else '')
             for name, clip in self.clips.items()
         )
@@ -691,13 +780,7 @@ class Rig:
     def _clip(self, name, spec) -> Clip:
         import clips as library  # noqa: PLC0415, the library imports this module
 
-        if callable(spec):
-            return spec(self)
-        style, options = (spec, {}) if isinstance(spec, str) else spec
-        styles = library.STYLES.get(name, {})
-        if style not in styles:
-            raise RuntimeError(f'no "{style}" style for {name}; the library has {", ".join(sorted(styles))}')
-        return styles[style](self, **options)
+        return library.made(self, name, spec)  # a style's attack and cast retimed to the unit's Timing
 
     def _check_clips(self) -> None:
         if sorted(self.clips) != sorted(CLIPS):
@@ -714,12 +797,23 @@ class Rig:
                     a, b = first[bone], last[bone]
                     if a.turn.rotation_difference(b.turn).angle > 1e-4 or (a.at - b.at).length > 1e-5:
                         raise RuntimeError(f'{name} loops but ends away from where it starts ({bone})')
-        if self.clips['attack'].marks.get('strike') != STRIKE:
-            raise RuntimeError(f'attack must strike at frame {STRIKE} (0.1 s), and mark it')
-        height = self.clips['cast'].marks.get('height')
-        if height is None or not CAST_HEIGHT[0] <= height <= CAST_HEIGHT[1]:
-            low, high = CAST_HEIGHT
-            raise RuntimeError(f'cast must be at its height at frames {low} to {high}, and mark it')
+        t = self.timing
+        strike = self.clips['attack'].marks.get('strike')
+        if strike != t.strike:
+            what = 'blow lands' if t.melee else 'shot leaves'
+            raise RuntimeError(f'attack must strike on frame {t.strike} ({t.strike / FPS:.2f} s), when its {what}, '
+                               f'and mark it, not on {strike}')
+        cast = self.clips['cast']
+        height = cast.marks.get('height')
+        if height != t.release:
+            raise RuntimeError(f'cast must be at its height on frame {t.release} ({t.release / FPS:.2f} s), at the end '
+                               f'of its wind-up, and mark it, not on {height}')
+        hits = cast.hits if cast.hits is not None else [height]
+        if hits != t.hits:
+            raise RuntimeError(f'cast must strike or loose on frames {", ".join(map(str, t.hits))}, its ability\'s '
+                               f'hits, not on {", ".join(map(str, hits))}')
+        if t.dash and 'off' not in cast.marks:
+            raise RuntimeError('its ability dashes or charges from its release, so its cast must spring then (`off`)')
 
     def _keyframe(self, name: str, clip: Clip) -> None:
         """The clip as an action of its own, keyed on every frame, with a slot for the armature."""
@@ -858,6 +952,9 @@ class Rig:
         for o in bpy.context.scene.objects:
             o.select_set(o in (model, self.armature))
         self.armature['reach'] = round(max(self.radius, self.radius_between), 4)
+        # When it strikes and casts, for the client's tests (test/models.test.ts) to check against the sim.
+        self.armature['strike'] = self.clips['attack'].marks['strike']
+        self.armature['hits'] = self.clips['cast'].hits or [self.clips['cast'].marks['height']]
         bpy.ops.export_scene.gltf(
             filepath=out,
             export_format='GLB',

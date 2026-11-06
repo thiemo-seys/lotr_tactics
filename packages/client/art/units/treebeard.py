@@ -615,10 +615,10 @@ def open_hand():
 # he wins. His beard hangs from his chin as he bows and rears, and it and his leaves sway after him
 # (swaying()).
 CLIPS = swaying(swaying(fit({
-    'idle': ('ready', {'seconds': 3.0, 'breath': 0.7, 'sway': 0.6, 'crouch': 0.03}),
+    'idle': ('ready', {'seconds': 2.6, 'breath': 0.7, 'sway': 0.6, 'crouch': 0.03}),
     'move': ('run', {'seconds': 0.6, 'heavy': 1.0, 'stride': 0.45, 'lift': 0.18, 'lean': 6.0}),
     'attack': ('swing', {'hand': 'l', 'ahead': 0.35}),
-    'cast': ('heave', {}),
+    'cast': ('heave', {'begin': 1.0}),
     'stun': ('dazed', {'seconds': 1.5, 'low': 0.5}),
     'death': ('knees', {'slump': 0.8, 'back': 0.15}),
     'victory': ('raise', {'out': 0.45}),
