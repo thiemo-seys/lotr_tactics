@@ -44,6 +44,7 @@ These are not in `design.md` yet. They were chosen to remove ambiguity and can b
 | Mana from damage taken | 6% of post-reduction damage taken, rounded down, max 15 per hit |
 | Casting | Targets and areas are locked at the cast; effects land after the ability's wind-up (0.35–0.6 s), or later if they travel (section 10.6); the caster is busy until its part is done, plus 3 ticks (0.1 s) of recovery |
 | Lobs | Lobbed abilities land 23 ticks (0.75 s) after they leave, whatever the distance |
+| Monsters' wind-ups | 0.5 s, or 0.35 s for the Mûmak's charge (section 7.6) |
 | Dashes, leaps and charges | 6 hexes per second (5 ticks per hex); the destination is claimed when it is chosen, and the unit's position becomes it when it sets off; busy until it arrives plus 3 ticks (0.1 s) |
 | Overtime | +10% damage per full second of overtime |
 | Attack Speed limits | Minimum 0.2, maximum 5.0 |

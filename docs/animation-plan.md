@@ -22,7 +22,8 @@ Then the 2★ gear models were rigged, so every unit is rigged at 2★ too. Each
 Still open (Later below):
 - how smooth full boards are on a real GPU, since run 2c and the 2★ play-test only had software WebGL;
 - whether a rigged 2★ model should grow more, which is the user's call;
-- rigging the 3★ book models, which stay static for now.
+- rigging the 3★ book models, which stay static for now;
+- retiming the `attack` and `cast` clips to the wind-ups and melee blows now designed, once the sim has them (Risks below).
 
 ---
 
@@ -30,7 +31,7 @@ Still open (Later below):
 
 - **Models:** the 36 units' models are static: one mesh each, exported without a rig or animations (`art/kit.py`, `finish()`).
 - **Client:** it draws pawns, which turn to face their targets, slide from hex to hex, lunge to strike, fade when untargetable, and sink and fade when they die (`playback.ts`, `scene.ts`).
-- **Sim:** its events already say everything animation needs: `move`, `dash`, `attack`, `cast`, `status` (for stuns), `death` and `end`. Nothing changes in the sim, so every fight plays out exactly as before.
+- **Sim:** its events already say everything animation needs: `move`, `dash`, `attack`, `cast`, `status` (for stuns), `death` and `end`. Nothing changes in the sim, so every fight plays out exactly as before. The design has moved on since: blows and abilities will land after a wind-up, with new event fields (`sim-spec.md` sections 9, 10.6 and 14), and the sim and the clips will follow.
 - **Blender:** 4.5.15 LTS, whose glTF add-on (4.5.51) matches the one the committed models were exported with, and which rebuilds them byte for byte. It is installed in the cloud session's container at `/usr/local/bin/blender`. CI has no Blender, so the `.glb` files stay committed.
 
 ## Approach
@@ -93,7 +94,7 @@ Before workflow 2, the user looks at Gimli in three ways: the contact sheets, sc
 The user approved Gimli and decided, from what the play-test found (`viewer-spec.md` sections 4 and 5 now say so):
 
 1. **Facing:** a unit faces the way it goes while a step or dash moves it, and turns back to its target after, each turn taking 3 ticks. Facing the target throughout made 42% of steps run sideways or backwards.
-2. **Cuts:** `attack`, `cast` and a dash's held stride start at full weight. The 3-tick fade blended away most of the chop's wind-up. Every other change still fades.
+2. **Cuts:** `attack`, `cast` and a dash's held stride start at full weight. The 3-tick fade blended away most of the chop's wind-up. Every other change still fades. With dashes that take time, the design has since dropped the held stride: a dash will run `move` from when it sets off (`viewer-spec.md` section 5).
 3. **Death:** the sink and fade start halfway through the `death` clip, so a body is fading when another unit steps into its hex, which happened in a third of deaths.
 4. **Stun:** an attack or cast on the tick a stun starts plays before the stun shows.
 5. **Size:** under 200,000 bytes, or 300,000 for Riders and Large units, which have more triangles and bones.
@@ -156,7 +157,7 @@ The kit and the library stay as they are for models already rigged. A batch may 
 ## Risks
 
 - **Blender versions** export differently. Keep to 4.5 LTS. The models test checks the committed files, since CI can't rebuild them.
-- **Blows have no wind-up.** The sim's attack lands on its event, so clips strike 0.1 s in. A slower swing would land after its damage number. `attack` cuts in at full weight, so its first frame is the wind-up.
+- **Blows have no wind-up.** The sim's attack lands on its event, so clips strike 0.1 s in. A slower swing would land after its damage number. `attack` cuts in at full weight, so its first frame is the wind-up. The design has moved on: a melee blow will land 0.22 s after its attack, and an ability at the end of its wind-up, 0.35 to 0.6 s after its cast (`sim-spec.md` sections 9 and 10.6). Once the sim does, the clips are to strike then (`viewer-spec.md` section 4, Rigs and clips).
 - **Fast attackers,** with stacks, attack up to about 2.5 times a second, faster than an attack clip lasts. Each attack restarts the clip, so every one still shows its strike.
 - **Room in a hex.** Death clips end low rather than lying full length. A fast blow can swing out of the hex between two frames that are both inside it, since the viewer turns each bone the short way round from one frame to the next. `finish()` checks between frames too, and `fit(between=True)` or `tweened()` draws such blows in, with options on the blows where that wasn't enough. No rigged model reaches outside the hex now, on frames or between them.
 - **Size and speed.** A rigged model stays under 200,000 bytes, or 300,000 for Riders and Large units, and a rigged gear model under 225,000 or 337,500, with one mixer per unit. Run 2c checked full boards with software WebGL only, so how smooth they are on a real GPU is still to check (Later).
