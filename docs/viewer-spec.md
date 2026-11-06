@@ -45,11 +45,12 @@ packages/client/
     layout.ts      hex and bench positions, and finding the place under a point
     playback.ts    stepping the fight, what to draw at a moment, and what each unit has done, for animation.ts (no Three.js, no DOM)
     animation.ts   which clip each unit plays at a display time, and how far into it (no Three.js, no DOM)
+    effects.ts     which effects of abilities, hits and statuses are live at a display time, and how far through (section 5, Effects; no Three.js, no DOM)
     drawing.ts     when the scene draws a frame, and when pawns swap for their models (no Three.js, no DOM)
     frame-cap.ts   which of the browser's frames run while the frame rate is capped (no Three.js, no DOM)
     models.ts      loading the models, each file once, and a copy for each unit with its own materials and clips
     stars.ts       which model, scale, label height and colours a star level gets (no Three.js, no DOM)
-    look.ts        the camera's views and limits, the arena, lights, fog, blur, grade and the tiles' stone pattern (no Three.js, no DOM)
+    look.ts        the camera's views and limits, the arena, lights, fog, blur, grade, the tiles' stone pattern, and the effects' colours, sizes and times (no Three.js, no DOM)
     arena.ts       loading the arena
     post.ts        the blur, grade and vignette laid over each frame
     tiles.ts       the stone pattern on the board's hexes, in their shader
@@ -86,7 +87,7 @@ packages/client/
   test/
 ```
 
-- flow.ts, playback.ts, animation.ts, drawing.ts, frame-cap.ts, stars.ts, look.ts and the modules from units.ts to log.ts use neither Three.js nor the DOM, so they are tested (section 7). models.ts and arena.ts, which load the models and the arena, post.ts and tiles.ts, and scene.ts and the modules in ui/ and play/, which draw what those work out, are checked in a browser.
+- flow.ts, playback.ts, animation.ts, effects.ts, drawing.ts, frame-cap.ts, stars.ts, look.ts and the modules from units.ts to log.ts use neither Three.js nor the DOM, so they are tested (section 7). models.ts and arena.ts, which load the models and the arena, post.ts and tiles.ts, and scene.ts and the modules in ui/ and play/, which draw what those work out, are checked in a browser.
 - **Look:** both pages share one design system in style.css: a deep slate background with gold accents; tokens for colours, spacing, radii, shadows and motion; buttons (primary, secondary, ghost, danger and icon-only), fields, panels and chips. Headings use Cinzel and everything else Inter, both bundled from `@fontsource` packages, so the built client needs nothing from the network. Text has a contrast of at least 4.5:1, focus shows a gold ring, and motion stops when the system asks for reduced motion.
 - **Icons:** inline SVGs from icons.ts, all drawn on one 24-unit grid with a rounded stroke in `currentColor`. Each trait and item component has its own icon, keyed by its id, so a new one fails the typecheck until it has an icon. Icons next to text are hidden from screen readers; buttons with only an icon have a label.
 - **Tooltips:** hovering or focusing anything with a tip shows one card for it (ui/tooltip.ts), laid out from tips.ts: an icon, name and subtitle, a recipe, stats, effects, a trait's breakpoints, a key, and a hint or the reason a button can't be used. It stays on screen, follows chips on moving units, never takes the mouse, and hides while something is dragged. Buttons that can't be used now are marked `aria-disabled` rather than disabled, so they can still say why.
@@ -122,7 +123,7 @@ The board stands in an arena, as a lens with a shallow focus would see it: the b
 
 ## 4. Units
 
-- **Body:** the unit's model for its star level (Models and Star levels below), standing on its tile, with its `team` material in its livery colour (Livery below). A unit looks the same on either side. Its health bar, green for the near side and red for the far side, is what tells the sides apart, helped by the border of its name plate, red for the far side, and the rings of its casts, blue for the near side and red for the far side (section 5). `public/models/` is listed when the client is built, so a missing model is never requested. Monsters and summons, which have no models yet, and any unit whose model is missing or still loading, are low-poly pawns in one stone colour, the same on both sides. Large pawns are drawn bigger; summons other than the Eye's Nazgûl are smaller and have no name.
+- **Body:** the unit's model for its star level (Models and Star levels below), standing on its tile, with its `team` material in its livery colour (Livery below). A unit looks the same on either side. Its health bar, green for the near side and red for the far side, is what tells the sides apart, helped by the border of its name plate, red for the far side. `public/models/` is listed when the client is built, so a missing model is never requested. Monsters and summons, which have no models yet, and any unit whose model is missing or still loading, are low-poly pawns in one stone colour, the same on both sides. Large pawns are drawn bigger; summons other than the Eye's Nazgûl are smaller and have no name.
 - **Overlay** above each unit (ui/labels.ts):
   - a name plate with its star badge, one icon for the star level (icons.ts): the Star of Elendil, a four-pointed bronze star at 1★, an eight-pointed silver star round a dark setting at 2★, and a gold sunburst of sixteen points with a white gem and a soft glow at 3★; summons have no badge, and those without a name no plate. The same badge, one per copy, marks the copies a person owns on the shop's cards and in a trait's tooltip
   - its items as chips, each naming its effect when hovered, and the One Ring with its Corruption on the Ring's bearer
@@ -188,9 +189,9 @@ Every unit's 1★ model is rigged and carries its own animations, which the view
 | Clip | When it plays (section 5) | How | Length *(placeholder)* | What it shows |
 |---|---|---|---|---|
 | `idle` | when nothing else applies | loops | 1.5 to 3 s | breathing and a small shift of weight, weapon ready |
-| `move` | stepping or dashing | loops, one cycle per hex step | 0.4 to 1 s | a run, two footfalls a cycle, in the air with the legs apart a quarter of the way through, the stride a dash holds |
-| `attack` | from each basic attack | once | 0.4 to 0.9 s | the blow lands, or the shot leaves, 0.1 s (3 ticks) in, then it recovers |
-| `cast` | from each cast | once | 0.3 to 0.8 s | its ability, at its height 0.1 to 0.2 s in |
+| `move` | stepping or dashing | loops, one cycle per hex step | 0.4 to 1 s | a run, two footfalls a cycle, in the air with the legs apart a quarter of the way through |
+| `attack` | from each basic attack | once | 0.4 to 0.9 s | the blow lands 0.22 s (7 ticks) in, or the shot leaves 0.1 s (3 ticks) in, then it recovers |
+| `cast` | from each cast | once | 0.3 to 0.8 s | its ability, at its height at the end of its wind-up, 0.35 to 0.6 s in |
 | `stun` | while stunned | loops | 0.5 to 1.5 s | dazed: swaying, weapon lowered |
 | `death` | from its death | once | 0.3 to 0.5 s | falls, ending low and still inside its hex |
 | `victory` | the winners, after the end | once, then holds | 0.5 to 1 s | weapon raised |
@@ -198,7 +199,8 @@ Every unit's 1★ model is rigged and carries its own animations, which the view
 - Each clip fits the unit: the attack swings, thrusts, shoots or throws its own weapon, and the cast fits its ability (`design.md` section 5). A looping clip ends where it starts.
 - A clip turns bones. It moves the hips, or a rider's `mount_body`, and the bones of a model's own that it places: `robe`, `string`, `arrow`, `stone`, `bird` and `boulder`. It has no track for a bone that stays at rest all through it, and none moves `root`, since the viewer places the model.
 - A melee blow lands 7 ticks (0.22 s) after its `attack` event, on its `hitTick` (`sim-spec.md` section 9), so the blow in `attack` falls 0.22 s into the clip, where the lunge (section 5) is at its height. A ranged attack's shot leaves 3 ticks in, as before.
-- An ability's effects leave or land at its release, `releaseTick`, its wind-up after the `cast` event (`sim-spec.md` section 10.6). The wind-up is the ability's own, from 0.35 to 0.6 s, and each unit has one ability, so its `cast` clip strikes, looses, throws or raises its horn at that time.
+- An ability's effects leave or land at its release, `releaseTick`, its wind-up after the `cast` event (`sim-spec.md` section 10.6). The wind-up is the ability's own, from 0.35 to 0.6 s, and each unit has one ability, so its `cast` clip strikes, looses, throws or raises its horn at that time. For a dash or charge, that is when it sets off, and `move` carries it from there (section 5, Animation).
+- The design has moved on from today's clips, which strike 0.1 s in and are at their height 0.1 to 0.2 s in, as the sim had blows and casts land at once. They will be retimed, with the checks in `finish()` (`art/README.md`), when the sim's timing is built.
 - `attack` and `cast` start at full weight, without a fade (section 5), so their first frame is seen: an attack's is its wind-up, the weapon drawn back.
 - **Limits** *(placeholders)*: a rigged unit's `.glb` stays under 200,000 bytes, or 300,000 for a Rider or a Large unit. A rigged gear model may have 12.5% more, as its triangle budget does (Star levels below): 225,000 bytes, or 337,500. The model should stay inside its hex (Size above) and above the ground in every frame, and end its `death` low. Between frames, as the viewer shows them (section 5), it should stay inside its hex too, and no more than 0.01 under the ground, since a foot rolling on the ground dips a few millimetres there, which the board hides. `finish()` warns when one doesn't.
 - **Build:** the kit builds the skeleton from joints a script gives, binds each part to a bone as it is made, and builds the clips from a shared library, from which a script picks a style for each clip or adds its own. `finish()` checks the bones, the binding and the clips, and the export keeps builds reproducible and writes the model's `reach` into its armature's extras (Star levels below). A model without a rig builds exactly as before. `art/clash.py` checks a rigged model for what its hands carry passing through its head or chest.
