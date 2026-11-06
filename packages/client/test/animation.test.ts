@@ -773,21 +773,21 @@ describe('victory', () => {
   });
 
   it('comes before a stun', () => {
-    const p = presets('rings', 'items', 4);
-    // With seed 4, team B's Dáin (id 8) is stunned by team A's Gandalf (id 5) on 514 until 574, well after his last
-    // attack, on 476, whose clip ended on 503. Team B wins on 552.
-    expect(p.combat.state.units[8]).toMatchObject({ unitId: 'dain', team: 'B' });
-    expect(startingWithin(stunsOf(p, 8), 470, 600)).toEqual([[514, 574]]);
-    expect(within(ticksOf(p, 'attack', 8), 470, 600)).toEqual([476]);
-    expect(within(ticksOf(p, 'cast', 8), 470, 600)).toEqual([]);
-    expect(startingWithin(stepsOf(p, 8), 476, 600)).toEqual([]);
-    expect(endOf(p)).toEqual({ tick: 552, outcome: 'B' });
-    expectPlaying(pose(p, 8, 530), 'stun', 16 / 30);
-    // At 553: victory 1 tick in, over the stun 39 ticks in: 1.3 s, wrapped at 0.8 s: 0.5 s.
-    expectFading(pose(p, 8, 553), 'victory', 1 / 30, 'stun', 39 / 30 - 0.8, 1 / 3);
-    // Still stunned at 560, but playing victory, 8 ticks in; held on its last frame by 570.
-    expectPlaying(pose(p, 8, 560), 'victory', 8 / 30);
-    expectPlaying(pose(p, 8, 570), 'victory', 0.5);
+    const p = presets('rings', 'items', 6);
+    // With seed 6, team B's Gimli (id 7) is stunned on 524 until 584, well after his last attack, on 491, whose clip
+    // ended on 518. Team B wins on 576.
+    expect(p.combat.state.units[7]).toMatchObject({ unitId: 'gimli', team: 'B' });
+    expect(startingWithin(stunsOf(p, 7), 480, 600)).toEqual([[524, 584]]);
+    expect(within(ticksOf(p, 'attack', 7), 480, 600)).toEqual([491]);
+    expect(within(ticksOf(p, 'cast', 7), 480, 600)).toEqual([]);
+    expect(startingWithin(stepsOf(p, 7), 491, 600)).toEqual([]);
+    expect(endOf(p)).toEqual({ tick: 576, outcome: 'B' });
+    expectPlaying(pose(p, 7, 540), 'stun', 16 / 30);
+    // At 577: victory 1 tick in, over the stun 53 ticks in: 1.77 s, wrapped twice at 0.8 s: 0.17 s.
+    expectFading(pose(p, 7, 577), 'victory', 1 / 30, 'stun', 53 / 30 - 1.6, 1 / 3);
+    // Still stunned at 583, but playing victory, 7 ticks in; held on its last frame by 595.
+    expectPlaying(pose(p, 7, 583), 'victory', 7 / 30);
+    expectPlaying(pose(p, 7, 595), 'victory', 0.5);
   });
 
   it('isn’t played by anyone after a draw', () => {
