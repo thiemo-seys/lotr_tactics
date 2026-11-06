@@ -10,18 +10,19 @@ import {
   UNITS,
   type AbilityDef,
   type AbilityStep,
+  type Delivery,
   type BuffStat,
   type DamageType,
   type Effect,
   type Selector,
   type SummonId,
 } from '../data/units.js';
-import { BOARD_COLS, boardIndex, distance, hexEquals, type Hex } from '../hex.js';
+import { BOARD_COLS, boardIndex, distance, hexEquals, isOnBoard, type Hex } from '../hex.js';
 import { createRng, type Rng } from '../rng.js';
 import type { Star, Team } from '../types.js';
-import { dashHex, lineDashHex, select, summonHex, type Selection } from './abilities.js';
+import { dashHex, isHexSelector, lineDashHex, select, selectsAllies, standingOn, summonHex, type Selection } from './abilities.js';
 import { finalDamage, manaFromDamage, overtimePct, rollAttack } from './damage.js';
-import type { CombatEvent, DamageEvent, Outcome } from './events.js';
+import type { AimDelivery, CastAim, CombatEvent, DamageEvent, DashEvent, Outcome } from './events.js';
 import { HALF_ROWS, createSummon, createUnit, effectsOf, giftAmpPct, hasOrigin, isSummonId, isUnitId, teamSetup, type Unit } from './fighters.js';
 import { isItemId, isRingOfPower } from './items.js';
 import { auraField, damageAmpPct, damageReductionPct, isCritImmune, isGripped, type AmpContext, type Auras } from './modifiers.js';
@@ -81,7 +82,7 @@ export interface UnitState {
   readonly star: Star;
   readonly summon: boolean;
   readonly slot: number;
-  /** Board coordinates. Set to the destination as soon as a step starts. */
+  /** Board coordinates. Set to the destination as soon as a step starts, or a dash or charge sets off. */
   readonly hex: Hex;
   /** The id of the unit's target, if it has one. */
   readonly target: number | null;
@@ -123,21 +124,111 @@ export interface Combat {
 
 const TEAMS: readonly Team[] = ['A', 'B'];
 
-/** How long a cast keeps the caster busy (section 10.1). */
-const CAST_TICKS = toTicks(ABILITIES.castSeconds);
+/** How long the caster stays busy once its part of a cast is done (section 10.6). */
+const RECOVERY_TICKS = toTicks(ABILITIES.recoverySeconds);
 
-/** How long a dash keeps the unit busy (section 2). */
-const DASH_TICKS = toTicks(MOVEMENT.dashBusySeconds);
+/** How long a lobbed ability flies, whatever the distance (section 10.6). */
+const LOB_TICKS = toTicks(ABILITIES.lobSeconds);
+
+/** Ticks between the hits of a multi-hit ability (section 10.6). */
+const HIT_GAP_TICKS = toTicks(ABILITIES.multiHitSeconds);
+
+/** How long after a melee attack fires its blow lands (section 9). */
+const MELEE_HIT_TICKS = toTicks(ATTACKS.meleeHitSeconds);
+
+/** How long a Burglar or Rider stays busy after its leap or charge at combat start arrives (section 12.3). */
+const DASH_RECOVERY_TICKS = toTicks(MOVEMENT.dashRecoverySeconds);
 
 /** The holder and its adjacent allies, for items at combat start (section 12.4). */
 const NEARBY_ALLIES: Selector = { kind: 'alliesWithin', radius: 1 };
+
+/** Ticks for a projectile, a ranged attack's or an ability's, to fly `hexes` (sections 9 and 10.6). */
+function flightTicks(hexes: number): number {
+  return Math.ceil((hexes * TICKS_PER_SECOND) / ATTACKS.projectileHexesPerSecond);
+}
+
+/** Ticks for a dash, leap or charge to cover `hexes` (section 10.4). */
+function dashTicks(hexes: number): number {
+  return Math.ceil((hexes * TICKS_PER_SECOND) / MOVEMENT.dashHexesPerSecond);
+}
+
+/** One of a cast's projectiles or lobs: it lands only if it left, which needs the caster alive then (section 10.6). */
+interface Shot {
+  loosed: boolean;
+}
+
+/** What one of a cast's steps locked, shared by its landings (section 10.6). */
+interface LockedStep {
+  readonly selector: Selector;
+  /** The step affects enemies, rather than the caster and its allies. */
+  readonly enemy: boolean;
+  /** For each hit, the units the step has reached, so it reaches each at most once. */
+  readonly reached: Set<Unit>[];
+  /** Locked units a hit has missed, or that have died: the hits after that do nothing to them. */
+  readonly stopped: Set<Unit>;
+}
+
+/** A step landing on some of what it locked, on one tick (section 10.6). */
+interface Landing {
+  readonly caster: Unit;
+  readonly step: LockedStep;
+  /** The step's effects that land now: all but dashes with the first hit, only the damage and its heal with later ones. */
+  readonly effects: readonly Effect[];
+  /** Which hit of a multi-hit `damage` this is, from 0. */
+  readonly hit: number;
+  /** Locked units, reached if they are alive and, for enemies, targetable. */
+  readonly units: readonly Unit[];
+  /** Locked hexes, reaching the units of the step's side standing on them. */
+  readonly hexes: readonly Hex[];
+  /** A projectile or lob, which lands if it left; null for a strike, which lands if the caster is alive. */
+  readonly shot: Shot | null;
+}
+
+/** What a step lands on one tick and hit, as a cast collects it. */
+interface LandingGroup {
+  readonly tick: number;
+  readonly hit: number;
+  readonly shot: Shot | null;
+  readonly effects: readonly Effect[];
+  readonly units: Unit[];
+  readonly hexes: Hex[];
+}
+
+/** A cast as it is set up (section 10.6, At the cast). */
+interface CastPlan {
+  readonly release: number;
+  /** Where the caster measures from: its hex, or where a dash or charge earlier in the cast will take it. */
+  origin: Hex;
+  /** When strikes land: the release, or the arrival of a dash earlier in the cast. */
+  strikeTick: number;
+  /** When the caster's part of the cast ends. */
+  partEnd: number;
+  /** The dash's departure and the projectiles leaving, which go into the queue before the landings. */
+  readonly goes: QueueEntry[];
+  readonly landings: QueueEntry[];
+  readonly aims: CastAim[];
+  /** The cast's dash or charge, emitted right after the `cast` event. */
+  readonly dashes: DashEvent[];
+}
 
 /** Something due on a later tick (section 6.4, step 2). */
 type QueueEntry =
   /** A ranged basic attack on its way. */
   | { readonly kind: 'projectile'; readonly dueTick: number; readonly source: Unit; readonly target: Unit; readonly damagePct: number }
+  /** A melee basic attack's blow (section 9). */
+  | { readonly kind: 'blow'; readonly dueTick: number; readonly source: Unit; readonly target: Unit; readonly damagePct: number }
+  /** A cast's dash or charge sets off at the release, if the caster is alive (section 10.6). */
+  | { readonly kind: 'depart'; readonly dueTick: number; readonly unit: Unit; readonly to: Hex }
+  /** A cast's projectile or lob leaves, if the caster is alive (section 10.6). */
+  | { readonly kind: 'loose'; readonly dueTick: number; readonly caster: Unit; readonly shot: Shot }
+  /** A cast's step lands (section 10.6). */
+  | { readonly kind: 'landing'; readonly dueTick: number; readonly landing: Landing }
+  /** Athelas heals at the release (section 12.4). */
+  | { readonly kind: 'athelas'; readonly dueTick: number; readonly caster: Unit }
   /** Ability steps after a delay. */
-  | { readonly kind: 'delayed'; readonly dueTick: number; readonly caster: Unit; readonly steps: readonly AbilityStep[] };
+  | { readonly kind: 'delayed'; readonly dueTick: number; readonly caster: Unit; readonly steps: readonly AbilityStep[] }
+  /** A Rider's charge damage, when it arrives (section 12.3). */
+  | { readonly kind: 'charge'; readonly dueTick: number; readonly source: Unit; readonly target: Unit; readonly damage: number };
 
 /**
  * The fight itself. Code outside the package uses it through `createCombat`; abilities and traits
@@ -314,24 +405,42 @@ export class Fight implements Combat {
     this.checkWipe();
   }
 
-  /** A Burglar's leap at combat start: next to its target, the farthest enemy (section 12.3). */
+  /**
+   * A Burglar's leap at combat start: next to its target, the farthest enemy, with no wind-up
+   * (section 12.3). It takes its new hex at once and is busy until it lands, plus a moment.
+   */
   private leap(unit: Unit): void {
     const target = this.ensureTarget(unit);
     if (target === null) return;
-    this.dash(unit, dashHex(unit.team, unit.hex, target.hex, this.isFreeFor(unit)));
-    unit.busyUntil = this.tick + DASH_TICKS;
+    const arriveTick = this.dashNow(unit, dashHex(unit.team, unit.hex, target.hex, this.isFreeFor(unit)));
+    unit.busyUntil = arriveTick + DASH_RECOVERY_TICKS;
   }
 
   /**
-   * A Rider's charge at combat start: next to its target, the nearest enemy, dealing trait damage
-   * that can't crit or be dodged if it ends next to it (section 12.3).
+   * A Rider's charge at combat start: next to its target, the nearest enemy, as a Burglar leaps. If
+   * it ends next to the target, its trait damage, which can't crit or be dodged, lands when it
+   * arrives, or at once if it didn't move (section 12.3).
    */
   private charge(unit: Unit, damage: number): void {
     const target = this.ensureTarget(unit);
     if (target === null) return;
-    this.dash(unit, dashHex(unit.team, unit.hex, target.hex, this.isFreeFor(unit)));
-    unit.busyUntil = this.tick + DASH_TICKS;
-    if (distance(unit.hex, target.hex) === 1) this.dealDamage(unit, target, damage, 'physical', false, 'trait');
+    const arriveTick = this.dashNow(unit, dashHex(unit.team, unit.hex, target.hex, this.isFreeFor(unit)));
+    unit.busyUntil = arriveTick + DASH_RECOVERY_TICKS;
+    if (distance(unit.hex, target.hex) !== 1) return;
+    if (arriveTick === this.tick) this.dealDamage(unit, target, damage, 'physical', false, 'trait');
+    else this.queue.push({ kind: 'charge', dueTick: arriveTick, source: unit, target, damage });
+  }
+
+  /**
+   * A leap or charge at combat start, which sets off at once (section 10.4): the unit's hex becomes
+   * the destination now. Returns the tick it arrives, now if it stays put.
+   */
+  private dashNow(unit: Unit, to: Hex | null): number {
+    if (to === null || hexEquals(to, unit.hex)) return this.tick;
+    const arriveTick = this.tick + dashTicks(distance(unit.hex, to));
+    this.events.push({ type: 'dash', tick: this.tick, unit: unit.id, from: unit.hex, to, departTick: this.tick, arriveTick });
+    unit.hex = to;
+    return arriveTick;
   }
 
   /**
@@ -479,21 +588,69 @@ export class Fight implements Combat {
     );
   }
 
-  /** Resolves the projectiles and delayed steps due this tick, in creation order (section 6.4, step 2). */
+  /**
+   * Resolves everything due this tick, in creation order (section 6.4, step 2): blows and
+   * projectiles, casts' dashes, projectiles and landings, Athelas, delayed steps and Rider charges.
+   */
   private resolveQueue(): void {
-    const due = this.queue.filter((e) => e.dueTick === this.tick);
-    this.queue = this.queue.filter((e) => e.dueTick !== this.tick);
-    for (const entry of due) {
-      if (this.outcome !== null) return;
-      if (entry.kind === 'projectile') {
+    while (this.outcome === null) {
+      const due = this.queue.filter((e) => e.dueTick === this.tick);
+      if (due.length === 0) return;
+      this.queue = this.queue.filter((e) => e.dueTick !== this.tick);
+      for (const entry of due) {
+        if (this.outcome !== null) return;
+        this.resolve(entry);
+      }
+    }
+  }
+
+  private resolve(entry: QueueEntry): void {
+    switch (entry.kind) {
+      case 'projectile':
         // A projectile at a target that died or became untargetable is wasted. One whose attacker
         // died still lands.
         if (isTargetable(entry.target)) this.hit(entry.source, entry.target, entry.damagePct);
-      } else if (entry.caster.alive) {
-        // Delayed steps belong to the caster's ability, so they don't happen once it has died.
-        this.runSteps(entry.caster, entry.steps);
+        return;
+      case 'blow':
+        if (this.blowLands(entry.source, entry.target)) this.hit(entry.source, entry.target, entry.damagePct);
+        return;
+      case 'depart': {
+        // A caster that died during its wind-up never sets off, and its claim lapses.
+        const { unit } = entry;
+        unit.claim = null;
+        if (unit.alive) unit.hex = entry.to;
+        return;
       }
+      case 'loose':
+        if (entry.caster.alive) entry.shot.loosed = true;
+        return;
+      case 'landing':
+        this.land(entry.landing);
+        return;
+      case 'athelas':
+        if (entry.caster.alive) this.athelas(entry.caster);
+        return;
+      case 'delayed':
+        // Delayed steps belong to the caster's ability, so they don't happen once it has died.
+        if (entry.caster.alive) this.runDelayed(entry.caster, entry.steps);
+        return;
+      case 'charge':
+        // A Rider that died on the way never arrives.
+        if (entry.source.alive && isTargetable(entry.target)) {
+          this.dealDamage(entry.source, entry.target, entry.damage, 'physical', false, 'trait');
+        }
+        return;
     }
+  }
+
+  /**
+   * Whether a melee blow lands (section 9): the attacker is alive, and the target is alive, still
+   * targetable to it and within its Range. An ally it attacks in Betrayal is always targetable to
+   * it, and so is the Ring's bearer to the Eye's Nazgûl.
+   */
+  private blowLands(source: Unit, target: Unit): boolean {
+    if (!source.alive || !target.alive || distance(source.hex, target.hex) > source.stats.range) return false;
+    return target.team === source.team || source.hunts === target || isTargetable(target);
   }
 
   /** A unit's action for the tick (section 6.4, step 4). */
@@ -512,7 +669,6 @@ export class Fight implements Combat {
     if (target === null) return;
 
     if (distance(unit.hex, target.hex) > unit.stats.range) {
-      const occupied = new Set(this.living().map((u) => boardIndex(u.hex)));
       const plan = planMove(
         unit.team,
         unit.hex,
@@ -521,7 +677,7 @@ export class Fight implements Combat {
         this.targetableEnemies(unit),
         this.living(enemyOf(unit.team)),
         this.targetingRules(unit),
-        (hex) => !occupied.has(boardIndex(hex)),
+        this.isFreeFor(unit),
       );
       if (plan === null) return; // No enemy is reachable, so the unit waits.
       unit.target = plan.target.id;
@@ -546,47 +702,234 @@ export class Fight implements Combat {
   }
 
   /**
-   * Casts an ability (section 10.1): mana resets to 0, the steps resolve now (delayed ones go into
-   * the queue), and the caster is busy and gains no mana for the cast time.
+   * Casts an ability (sections 10.1 and 10.6). Mana resets to 0, and each step that isn't delayed
+   * selects and locks its units or hexes now; a dash or charge chooses and claims its destination.
+   * The dash's departure, the projectiles leaving, the landings, Athelas and delayed steps go into
+   * the queue, in that order, and the caster is busy, gaining no mana, until its part is done plus
+   * the recovery.
    */
   private cast(unit: Unit, ability: AbilityDef): void {
     unit.mana = 0;
-    unit.busyUntil = this.tick + CAST_TICKS;
-    unit.castingUntil = unit.busyUntil;
-    this.events.push({ type: 'cast', tick: this.tick, unit: unit.id, ability: ability.name });
-    this.runSteps(unit, ability.steps);
-    // Athelas, once the ability has resolved.
-    for (const { effect } of effectsOf(unit, 'healOnCast')) {
-      if (this.outcome !== null) continue;
-      const ally = this.selectFor(unit, { kind: 'lowestHealthPctAllies', count: 1 }).units[0];
-      if (ally !== undefined) this.heal(unit, ally, effect.amount);
-    }
+    const release = this.tick + toTicks(ability.windupSeconds);
+    const plan: CastPlan = { release, origin: unit.hex, strikeTick: release, partEnd: release, goes: [], landings: [], aims: [], dashes: [] };
+    const delayed: QueueEntry[] = [];
+    ability.steps.forEach((step, index) => {
+      if ('delaySeconds' in step) {
+        delayed.push({ kind: 'delayed', dueTick: release + toTicks(step.delaySeconds), caster: unit, steps: step.steps });
+      } else {
+        this.lockStep(unit, ability.delivery, step, index, plan);
+      }
+    });
+    const readyTick = plan.partEnd + RECOVERY_TICKS;
+    unit.busyUntil = readyTick;
+    unit.castingUntil = readyTick;
+    this.events.push({ type: 'cast', tick: this.tick, unit: unit.id, ability: ability.name, releaseTick: release, readyTick, aims: plan.aims });
+    this.events.push(...plan.dashes);
+    this.queue.push(...plan.goes, ...plan.landings);
+    if (effectsOf(unit, 'healOnCast').length > 0) this.queue.push({ kind: 'athelas', dueTick: release, caster: unit });
+    this.queue.push(...delayed);
   }
 
-  private runSteps(caster: Unit, steps: readonly AbilityStep[]): void {
+  /**
+   * One step of a cast (section 10.6): selects and locks what it reaches, works out when it lands
+   * on each locked unit or hex by its delivery, and adds its landings and aim to the plan.
+   */
+  private lockStep(unit: Unit, abilityDelivery: Delivery, step: Extract<AbilityStep, { select: Selector }>, index: number, plan: CastPlan): void {
+    const { release } = plan;
+    const selection = this.selectFor(unit, step.select, plan.origin);
+    const byHex = isHexSelector(step.select);
+    const locked: LockedStep = { selector: step.select, enemy: !selectsAllies(step.select), reached: [], stopped: new Set() };
+    const hits = step.effects.reduce((n, e) => (e.kind === 'damage' ? Math.max(n, e.hits ?? 1) : n), 1);
+    const gap = (hit: number) => hit * HIT_GAP_TICKS;
+    const isDash = (e: Effect) => e.kind === 'dashAdjacentTo' || e.kind === 'dashThroughLine';
+    // The other effects land with the first hit; later hits are the damage and its heal (Multi-hit).
+    const firstHit = step.effects.filter((e) => !isDash(e));
+    const laterHits = step.effects.filter((e) => e.kind === 'damage' || e.kind === 'healFromDamage');
+
+    /** The step's landings, in the order they were added; those on one tick and hit with the same effects land together. */
+    const groups = new Map<string, LandingGroup>();
+    const add = (tick: number, hit: number, shot: Shot | null, target: Unit | Hex, effects: readonly Effect[], part = 0) => {
+      const key = `${tick}/${hit}/${part}`;
+      let group = groups.get(key);
+      if (group === undefined) {
+        group = { tick, hit, shot, effects, units: [], hexes: [] };
+        groups.set(key, group);
+      }
+      if ('id' in target) group.units.push(target);
+      else group.hexes.push(target);
+    };
+    /** When the step first reaches each locked unit or hex, for its aim. */
+    const firstLand = new Map<Unit | Hex, number>();
+    /** Lands every hit on each locked unit or hex, the first on the tick `firstTick` gives, called once each in order. */
+    const landAll = (firstTick: (target: Unit | Hex) => number, shots: readonly Shot[] = []) => {
+      for (const target of byHex ? selection.hexes : selection.units) {
+        const tick = firstTick(target);
+        firstLand.set(target, tick);
+        for (let hit = 0; hit < hits; hit++) add(tick + gap(hit), hit, shots[hit] ?? null, target, hit === 0 ? firstHit : laterHits);
+      }
+    };
+    const hexOf = (target: Unit | Hex): Hex => ('id' in target ? target.hex : target);
+
+    let delivery: AimDelivery;
+    const dashAt = step.effects.findIndex((e) => e.kind === 'dashAdjacentTo');
+    if (dashAt >= 0) {
+      // A dash to a unit, which becomes the caster's target at the cast (section 8). The effects
+      // after it, and the later steps, land when it arrives.
+      delivery = 'dash';
+      const target = selection.units[0];
+      let arriveTick = release;
+      if (target !== undefined) {
+        unit.target = target.id;
+        arriveTick = this.claimDash(unit, plan, dashHex(unit.team, plan.origin, target.hex, this.isFreeFor(unit)));
+      }
+      const before = step.effects.slice(0, dashAt).filter((e) => !isDash(e));
+      const after = step.effects.slice(dashAt + 1).filter((e) => !isDash(e));
+      for (const u of selection.units) {
+        firstLand.set(u, arriveTick);
+        if (before.length > 0) add(plan.strikeTick, 0, null, u, before, 1);
+        add(arriveTick, 0, null, u, after);
+        for (let hit = 1; hit < hits; hit++) add(arriveTick + gap(hit), hit, null, u, laterHits);
+      }
+      plan.strikeTick = arriveTick;
+      plan.partEnd = Math.max(plan.partEnd, arriveTick + gap(hits - 1));
+    } else if (step.effects.some((e) => e.kind === 'dashThroughLine')) {
+      // A charge strikes each hex of its line as it reaches it, 5 ticks a hex from the release.
+      delivery = 'charge';
+      const from = plan.origin;
+      this.claimDash(unit, plan, lineDashHex(selection.hexes, this.isFreeFor(unit)));
+      const reach = (target: Unit | Hex) => release + dashTicks(distance(from, hexOf(target)));
+      landAll(reach);
+      for (const hex of selection.hexes) plan.partEnd = Math.max(plan.partEnd, reach(hex) + gap(hits - 1));
+    } else if (!locked.enemy || abilityDelivery === 'strike') {
+      // Steps on the caster and its allies always land as a strike.
+      delivery = 'strike';
+      const tick = plan.strikeTick;
+      landAll(() => tick);
+      plan.partEnd = Math.max(plan.partEnd, tick + gap(hits - 1));
+    } else if (abilityDelivery === 'lob') {
+      delivery = 'lob';
+      landAll(() => release + LOB_TICKS, this.loose(unit, plan, hits));
+    } else {
+      // Projectiles, timed by distances at the cast: to each unit, hop by hop along a bounce's
+      // chain, or to each hex of a line.
+      delivery = 'projectile';
+      const from = plan.origin;
+      const shots = this.loose(unit, plan, hits);
+      if (step.select.kind === 'bounce') {
+        let flown = 0;
+        let last = from;
+        landAll((target) => {
+          flown += distance(last, hexOf(target));
+          last = hexOf(target);
+          return release + flightTicks(flown);
+        }, shots);
+      } else {
+        landAll((target) => release + flightTicks(distance(from, hexOf(target))), shots);
+      }
+    }
+
+    for (const { tick, ...group } of groups.values()) {
+      plan.landings.push({ kind: 'landing', dueTick: tick, landing: { caster: unit, step: locked, ...group } });
+    }
+    plan.aims.push({
+      step: index,
+      select: step.select.kind,
+      side: locked.enemy ? 'enemy' : 'ally',
+      delivery,
+      units: byHex ? [] : selection.units.map((u) => ({ unit: u.id, landTick: firstLand.get(u)! })),
+      hexes: byHex ? selection.hexes.filter(isOnBoard).map((hex) => ({ hex, landTick: firstLand.get(hex)! })) : [],
+      hits,
+      hitGap: hits > 1 ? HIT_GAP_TICKS : 0,
+      centre: selection.centre,
+    });
+  }
+
+  /**
+   * Claims a cast's dash or charge destination, which the caster sets off for at the release
+   * (section 10.4); later steps measure from it. Returns when it arrives: the release if it stays put.
+   */
+  private claimDash(unit: Unit, plan: CastPlan, to: Hex | null): number {
+    if (to === null || hexEquals(to, unit.hex)) return plan.release;
+    const arriveTick = plan.release + dashTicks(distance(unit.hex, to));
+    unit.claim = to;
+    plan.dashes.push({ type: 'dash', tick: this.tick, unit: unit.id, from: unit.hex, to, departTick: plan.release, arriveTick });
+    plan.goes.push({ kind: 'depart', dueTick: plan.release, unit, to });
+    plan.origin = to;
+    return arriveTick;
+  }
+
+  /** A projectile or lob for each hit, loosed 3 ticks apart from the release while the caster lives (section 10.6). */
+  private loose(caster: Unit, plan: CastPlan, hits: number): Shot[] {
+    return Array.from({ length: hits }, (_, hit) => {
+      const shot: Shot = { loosed: false };
+      const dueTick = plan.release + hit * HIT_GAP_TICKS;
+      plan.goes.push({ kind: 'loose', dueTick, caster, shot });
+      plan.partEnd = Math.max(plan.partEnd, dueTick);
+      return shot;
+    });
+  }
+
+  /**
+   * A step lands (section 10.6): on its locked units that are still alive and, for enemies,
+   * targetable, or on the units of its side standing on its locked hexes now, each at most once.
+   * A strike needs the caster alive; a projectile or lob needs to have left.
+   */
+  private land(landing: Landing): void {
+    const { caster, step } = landing;
+    if (landing.shot === null ? !caster.alive : !landing.shot.loosed) return;
+    let targets: Unit[];
+    if (isHexSelector(step.selector)) {
+      const candidates = step.enemy ? this.targetableEnemies(caster) : this.living(caster.team);
+      const reached = (step.reached[landing.hit] ??= new Set());
+      targets = standingOn(step.selector, landing.hexes, candidates).filter((u) => !reached.has(u));
+      for (const u of targets) reached.add(u);
+    } else {
+      targets = landing.units.filter((u) => {
+        if (step.stopped.has(u)) return false;
+        const reachable = u.alive && (!step.enemy || isTargetable(u));
+        if (!reachable) step.stopped.add(u);
+        return reachable;
+      });
+    }
+    this.applyEffects(caster, landing.effects, targets);
+  }
+
+  /** Delayed steps (section 10.6): they select when they run and land at once. */
+  private runDelayed(caster: Unit, steps: readonly AbilityStep[]): void {
     for (const step of steps) {
       if (this.outcome !== null) return;
       if ('delaySeconds' in step) {
         this.queue.push({ kind: 'delayed', dueTick: this.tick + toTicks(step.delaySeconds), caster, steps: step.steps });
       } else {
-        this.runStep(caster, step.select, step.effects);
+        this.applyEffects(caster, step.effects, this.selectFor(caster, step.select).units);
       }
     }
   }
 
+  /** Athelas: the ally with the lowest Health % heals, at the release of the holder's ability (section 12.4). */
+  private athelas(unit: Unit): void {
+    for (const { effect } of effectsOf(unit, 'healOnCast')) {
+      if (this.outcome !== null) return;
+      const ally = this.selectFor(unit, { kind: 'lowestHealthPctAllies', count: 1 }).units[0];
+      if (ally !== undefined) this.heal(unit, ally, effect.amount);
+    }
+  }
+
   /**
-   * One ability step (section 10.3): select the units, then apply each effect in turn to every
-   * selected unit that is still alive.
+   * Applies a step's effects (section 10.3): each in turn to every unit it reaches that is still
+   * alive, before the next. Each `damage` is one hit; `healFromDamage` heals from what they dealt.
+   * Dashes and charges were set up at the cast.
    */
-  private runStep(caster: Unit, selector: Selector, effects: readonly Effect[]): void {
-    const { units, hexes } = this.selectFor(caster, selector);
-    /** Damage this step has dealt so far, for `healFromDamage`. */
+  private applyEffects(caster: Unit, effects: readonly Effect[], units: readonly Unit[]): void {
+    /** Damage dealt so far, for `healFromDamage`. */
     let dealt = 0;
     for (const effect of effects) {
       if (this.outcome !== null) return;
       switch (effect.kind) {
         case 'damage':
-          for (const target of units) dealt += this.abilityDamage(caster, target, effect);
+          for (const target of units) {
+            if (this.outcome === null && target.alive) dealt += this.abilityDamage(caster, target, effect);
+          }
           break;
         case 'shield': {
           const amount = abilityValue('S', effect.pct, caster.cost, caster.star, caster.stats.abilityPower);
@@ -601,16 +944,8 @@ export class Fight implements Combat {
         case 'healFromDamage':
           this.heal(caster, caster, (dealt * effect.pct) / 100);
           break;
-        case 'dashAdjacentTo': {
-          // The unit dashed to becomes the caster's target (section 8).
-          const target = units[0];
-          if (target === undefined || !target.alive) break;
-          this.dash(caster, dashHex(caster.team, caster.hex, target.hex, this.isFreeFor(caster)));
-          caster.target = target.id;
-          break;
-        }
+        case 'dashAdjacentTo':
         case 'dashThroughLine':
-          this.dash(caster, lineDashHex(hexes, this.isFreeFor(caster)));
           break;
         case 'summon':
           for (let i = 0; i < effect.count; i++) this.summon(caster.team, caster, caster.hex, effect.unit, gruntStats(this.stage));
@@ -621,32 +956,28 @@ export class Fight implements Combat {
     }
   }
 
-  /** The units a selector picks for a unit, as for its ability (section 10.3). */
-  private selectFor(unit: Unit, selector: Selector): Selection<Unit> {
+  /** The units a selector picks for a unit, as for its ability, measuring from `origin` (section 10.3). */
+  private selectFor(unit: Unit, selector: Selector, origin: Hex = unit.hex): Selection<Unit> {
     return select(selector, {
       caster: unit,
       allies: this.living(unit.team),
       enemies: this.targetableEnemies(unit),
       target: () => this.ensureTarget(unit),
+      origin,
     });
   }
 
   /**
-   * Ability damage (sections 9.1 and 10.2): it can't be dodged, and crits only if the ability says
-   * so or the caster holds Sting (section 12.4). Returns the damage dealt.
+   * One hit of ability damage (sections 9.1 and 10.2): it can't be dodged, and crits only if the
+   * ability says so or the caster holds Sting (section 12.4). Returns the damage dealt.
    */
   private abilityDamage(caster: Unit, target: Unit, effect: Extract<Effect, { kind: 'damage' }>): number {
     const value = abilityValue('D', effect.pct, caster.cost, caster.star, caster.stats.abilityPower);
     const bonusPct = effect.bonusVs !== undefined && hasOrigin(target, effect.bonusVs.origin) ? effect.bonusVs.multiplierPct : 100;
     const canCrit = effect.canCrit === true || effectsOf(caster, 'abilityCrit').length > 0;
-    let dealt = 0;
-    for (let hit = 0; hit < (effect.hits ?? 1); hit++) {
-      if (!target.alive || this.outcome !== null) break;
-      const crit = canCrit && rollAttack(this.rng, caster.stats.critChancePct, 0).crit && !isCritImmune(target);
-      const raw = (value * bonusPct * (crit ? caster.stats.critDamagePct : 100)) / 10_000;
-      dealt += this.dealDamage(caster, target, raw, effect.type, crit, 'ability');
-    }
-    return dealt;
+    const crit = canCrit && rollAttack(this.rng, caster.stats.critChancePct, 0).crit && !isCritImmune(target);
+    const raw = (value * bonusPct * (crit ? caster.stats.critDamagePct : 100)) / 10_000;
+    return this.dealDamage(caster, target, raw, effect.type, crit, 'ability');
   }
 
   /** Heals a unit, rounded and capped at max Health (section 9.2). Emits nothing if no Health is restored. */
@@ -656,15 +987,6 @@ export class Fight implements Combat {
     if (restored <= 0) return;
     target.health += restored;
     this.events.push({ type: 'heal', tick: this.tick, source: source.id, target: target.id, amount: restored });
-  }
-
-  /** Moves a unit instantly (section 10.4). It stays put if there is nowhere to go. */
-  private dash(unit: Unit, to: Hex | null): void {
-    if (to === null || hexEquals(to, unit.hex)) return;
-    const from = unit.hex;
-    unit.hex = to;
-    unit.busyUntil = Math.max(unit.busyUntil, this.tick + DASH_TICKS);
-    this.events.push({ type: 'dash', tick: this.tick, unit: unit.id, from, to });
   }
 
   /**
@@ -677,19 +999,29 @@ export class Fight implements Combat {
     // The next free slot: slots run from 0 with no gaps, dead units keeping theirs.
     const slot = this.units.filter((u) => u.team === team).length;
     const unit = createSummon(this.units.length, team, slot, unitId, hex, base);
+    // It acts from the next tick, though an ability's summons appear in the queue, before units act.
+    unit.busyUntil = this.tick + 1;
     this.addUnit(unit, owner);
     return unit;
   }
 
-  /** A hex is free if it is on the board with no living unit on it. With `mover`, its own hex counts as free. */
+  /**
+   * A hex on the board is free if no living unit stands on it or has claimed it for a dash or
+   * charge still winding up (section 10.4). With `mover`, its own hex counts as free. Callers check
+   * that the hex is on the board.
+   */
   private isFreeFor(mover: Unit | null): (hex: Hex) => boolean {
-    const occupied = new Set(this.living().filter((u) => u !== mover).map((u) => boardIndex(u.hex)));
-    return (hex) => !occupied.has(boardIndex(hex));
+    const taken = new Set<number>();
+    for (const u of this.units) {
+      if (!u.alive || u === mover) continue;
+      taken.add(boardIndex(u.hex));
+      if (u.claim !== null) taken.add(boardIndex(u.claim));
+    }
+    return (hex) => !taken.has(boardIndex(hex));
   }
 
   /** Fires a basic attack (section 9), and the extra ones from Bows of the Galadhrim (section 12.4). */
   private attack(unit: Unit, target: Unit): void {
-    const hitTick = this.announceAttack(unit, target);
     const manaPerAttack = effectsOf(unit, 'manaOnAttack').reduce((mana, { effect }) => mana + effect.amount, 0);
     this.gainMana(unit, MANA.perAttack + manaPerAttack);
     // The cooldown after this attack already counts its Archer and Grond stacks.
@@ -713,29 +1045,25 @@ export class Fight implements Combat {
         : this.selectFor(unit, { kind: 'nearestEnemies', count: Infinity }).units.filter(
             (u) => u !== target && distance(u.hex, unit.hex) <= unit.stats.range,
           );
-    this.land(unit, target, hitTick, 100);
-    // A melee holder can die to an Oakenshield on its first hit, and then fires no more.
+    this.fire(unit, target, 100);
+    // The extra attacks fire after the main one. A melee holder's blows land in that order, so one
+    // that dies to an Oakenshield on its first blow wastes the rest (section 12.4).
     bows.forEach((damagePct, i) => {
       const other = others[i];
-      if (other === undefined || this.outcome !== null || !unit.alive || !isTargetable(other)) return;
-      this.land(unit, other, this.announceAttack(unit, other), damagePct);
+      if (other !== undefined) this.fire(unit, other, damagePct);
     });
   }
 
-  /** Emits an `attack` event and returns the tick it hits: now for melee, later for a projectile. */
-  private announceAttack(unit: Unit, target: Unit): number {
+  /**
+   * Fires one basic attack at `target` (section 9): emits its `attack` event and queues its melee
+   * blow, which lands 7 ticks later, or its projectile. `damagePct` is 50 for the extra attacks of
+   * a Bow of the Galadhrim.
+   */
+  private fire(unit: Unit, target: Unit, damagePct: number): void {
     const ranged = unit.stats.range >= 2;
-    const hitTick = ranged
-      ? this.tick + Math.ceil((distance(unit.hex, target.hex) * TICKS_PER_SECOND) / ATTACKS.projectileHexesPerSecond)
-      : this.tick;
+    const hitTick = this.tick + (ranged ? flightTicks(distance(unit.hex, target.hex)) : MELEE_HIT_TICKS);
     this.events.push({ type: 'attack', tick: this.tick, unit: unit.id, target: target.id, ranged, hitTick });
-    return hitTick;
-  }
-
-  /** A melee attack hits now; a ranged one goes into the queue as a projectile. */
-  private land(unit: Unit, target: Unit, hitTick: number, damagePct: number): void {
-    if (hitTick > this.tick) this.queue.push({ kind: 'projectile', dueTick: hitTick, source: unit, target, damagePct });
-    else this.hit(unit, target, damagePct);
+    this.queue.push({ kind: ranged ? 'projectile' : 'blow', dueTick: hitTick, source: unit, target, damagePct });
   }
 
   /**

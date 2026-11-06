@@ -1,4 +1,4 @@
-import { TICKS_PER_SECOND, createCombat, type PlacedUnit, type UnitId } from '@lotr-tactics/sim';
+import { TICKS_PER_SECOND, createCombat, type Combat, type PlacedUnit, type UnitId } from '@lotr-tactics/sim';
 import { describe, expect, it } from 'vitest';
 import { PRESETS } from '../src/boards.js';
 import { hexToWorld, lerpPoint } from '../src/layout.js';
@@ -10,6 +10,35 @@ function placed(unitId: UnitId, col: number, row: number): PlacedUnit {
 
 function playback(A: readonly PlacedUnit[], B: readonly PlacedUnit[], seed = 1): Playback {
   return new Playback(createCombat({ seed, stage: 2, teams: { A, B } }));
+}
+
+/** Khamûl (id 0) against two Gimlis, seed 1: he casts Shadow ride on 174 and dashes away. */
+function khamulRides(): Combat {
+  return createCombat({ seed: 1, stage: 2, teams: { A: [placed('khamul', 3, 3)], B: [placed('gimli', 3, 3), placed('gimli', 4, 3)] } });
+}
+
+/** The fight, with a `death` event for `unit` added after the sim's own events on `tick`, which the sim's state doesn't know of. */
+function withDeath(fight: Combat, unit: number, tick: number): Combat {
+  const events = [...fight.events];
+  return {
+    get tick() {
+      return fight.tick;
+    },
+    get state() {
+      return fight.state;
+    },
+    get events() {
+      return events;
+    },
+    step() {
+      const stepped = fight.step();
+      if (fight.tick === tick) stepped.push({ type: 'death', tick, unit });
+      events.push(...stepped);
+      return stepped;
+    },
+    isOver: () => fight.isOver(),
+    result: () => fight.result(),
+  };
 }
 
 describe('Playback timing', () => {
@@ -63,6 +92,53 @@ describe('what is drawn', () => {
     expect(halfway.x).toBeCloseTo(lerpPoint(from, to, 0.5).x, 10);
     expect(halfway.z).toBeCloseTo(lerpPoint(from, to, 0.5).z, 10);
     expect(p.position(0, move.arriveTick)).toEqual(to);
+  });
+
+  it('holds a dashing unit on its hex through the wind-up, then moves it from departTick to arriveTick', () => {
+    // Khamûl (id 0) casts Shadow ride on 174, choosing a hex 3 away. His wind-up ends on 185, when he sets off, and he
+    // arrives on 200, at 5 ticks a hex (sim-spec 10.6); the dash comes with the cast (sim-spec 14).
+    const p = new Playback(khamulRides());
+    p.playing = false;
+    while (p.combat.tick < 174) p.step();
+    const dash = p.combat.events.find((e) => e.type === 'dash' && e.unit === 0);
+    if (dash?.type !== 'dash') throw new Error('Khamûl should dash on 174.');
+    expect(dash).toMatchObject({ tick: 174, departTick: 185, arriveTick: 200 });
+    const from = hexToWorld(dash.from);
+    const to = hexToWorld(dash.to);
+    // Section 5, Positions: on `from` until it sets off, even once the dash is known.
+    for (const time of [170, 174, 180, 184.5]) expect(p.position(0, time)).toEqual(from);
+    while (p.combat.tick < 210) p.step();
+    for (const time of [174, 180, 184.5, 185]) expect(p.position(0, time)).toEqual(from);
+    // Then evenly to `to`, arriving on 200.
+    for (const share of [0.25, 0.5, 0.9]) {
+      const at = p.position(0, 185 + 15 * share);
+      expect(at.x).toBeCloseTo(lerpPoint(from, to, share).x, 10);
+      expect(at.z).toBeCloseTo(lerpPoint(from, to, share).z, 10);
+    }
+    expect(p.position(0, 200)).toEqual(to);
+    expect(p.position(0, 210)).toEqual(to);
+    expect(p.history(0).steps).toEqual([{ tick: 185, endTick: 200, dash: true, from, to }]);
+  });
+
+  it('never sets off a dash whose unit dies before departTick, and keeps one whose unit dies after', () => {
+    // As above, with a death added before Khamûl sets off, on 180, or after, on 190. A unit that dies during its wind-up
+    // never sets off (sim-spec 14), and stays on its hex. (Here the sim's state, which the playback reads, has him set
+    // off either way; he does only if the death comes after.)
+    for (const [deathTick, sets] of [
+      [180, false],
+      [190, true],
+    ] as const) {
+      const p = new Playback(withDeath(khamulRides(), 0, deathTick));
+      p.playing = false;
+      while (p.combat.tick < 210) p.step();
+      const dash = p.combat.events.find((e) => e.type === 'dash' && e.unit === 0);
+      if (dash?.type !== 'dash') throw new Error('Khamûl should dash on 174.');
+      const from = hexToWorld(dash.from);
+      const to = hexToWorld(dash.to);
+      expect(p.position(0, 184)).toEqual(from);
+      expect(p.position(0, 210)).toEqual(sets ? to : from);
+      expect(p.history(0).steps.length).toBe(sets ? 1 : 0);
+    }
   });
 
   it('flies projectiles from the archer to the target, landing on the hit tick', () => {

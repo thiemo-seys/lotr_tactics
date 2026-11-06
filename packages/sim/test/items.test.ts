@@ -332,10 +332,13 @@ describe('items in the fight', () => {
     const gimli = unitOf(fight, 'gimli', 'B');
     const merry = unitOf(fight, 'merry');
     while (!fight.isOver() && !ofType(fight.events, 'cast').some((e) => e.unit === merry.id)) fight.step();
+    // Barrow-blade lands at the release, 12 ticks after the cast (sim-spec 10.6).
+    stepTo(fight, fight.tick + 12);
+    expect(ofType(fight.events, 'status').some((e) => e.source === merry.id && e.target === gimli.id && e.stat === 'magicResist')).toBe(true);
     expect(gimli.stats.magicResist).toBeCloseTo((gimli.base.magicResist * 70) / 100);
   });
 
-  it('Athelas: after a cast, heals the ally with the lowest Health % for up to 200', () => {
+  it('Athelas: at the release of a cast, heals the ally with the lowest Health % for up to 200', () => {
     const { fight, events } = runAll(input([placed('merry', 3, 3, 1, ['athelas']), placed('sam', 2, 3)], [placed('gimli', 3, 3, 2)]));
     const merry = unitOf(fight, 'merry');
     const casts = ofType(events, 'cast').filter((e) => e.unit === merry.id);
@@ -343,7 +346,8 @@ describe('items in the fight', () => {
     const heals = ofType(events, 'heal').filter((e) => e.source === merry.id);
     expect(heals.length).toBeGreaterThan(0);
     for (const heal of heals) {
-      expect(casts.some((c) => c.tick === heal.tick)).toBe(true);
+      // Merry's wind-up is 0.4 s, 12 ticks (sim-spec 10.6).
+      expect(casts.some((c) => c.tick + 12 === heal.tick)).toBe(true);
       expect(heal.amount).toBeLessThanOrEqual(200);
       expect(fight.state.units[heal.target]!.team).toBe('A');
     }
