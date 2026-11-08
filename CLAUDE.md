@@ -9,6 +9,7 @@ Browser-based, 8-player auto battler in the style of Teamfight Tactics, with Lor
 - `docs/viewer-spec.md`: spec for the fight viewer in `packages/client`.
 - `docs/game-spec.md`: implementation spec for the game around the fights: shop, economy, rounds and bots.
 - `docs/server-spec.md`: spec for online play: lobbies, the match runner, the protocol and the Node server in `packages/server`.
+- `docs/accounts-spec.md`: spec for player accounts: guests and Google sign-in, Postgres, match history, the ranked queue with ratings and points, parties and friends, and draining the server on a deploy.
 - `docs/animation-plan.md`: the plan for rigging and animating the units, in two workflows, with where it has got to.
 
 ## Status
@@ -22,6 +23,8 @@ The art style is chosen: Faceted low-poly (`docs/viewer-spec.md` section 4), fro
 The game around the fights (`docs/game-spec.md`), the shop, economy, rounds and bots, is in `packages/sim`: the pool and shop rolls (`game/pool.ts`), and each player's bench, board, merging, items, Gifts, gold and XP (`game/player.ts`, with places on the bench and board in `game/places.ts` and Gift offers in `game/gifts.ts`), with the numbers in `data/economy.ts` and `data/gifts.ts`; PvE monsters in the combat (`data/monsters.ts`, `sim-spec.md` section 7.6); and the rounds (`game/game.ts`: `createGame`, actions, fights, damage, eliminations; whether an action is allowed, which bots and the client also ask, in `game/rules.ts`; `game/matchmaking.ts`, `game/council.ts`, `game/schedule.ts`; data in `data/rounds.ts` and `data/pve.ts`); the One Ring (its state and changes in `game/ring.ts`, driven by `game/game.ts`, numbers in `data/ring.ts`); the Rings of Power (their supply in `game/ring-supply.ts`, Council offers and fate with the One in `game/game.ts`, the Seven's gold in `game/player.ts`, numbers in `data/items.ts` and `data/rounds.ts`); bots (`bots/bot.ts`, tuned in `data/bots.ts`, driven through a game by `bots/autopilot.ts`, which the server's matches use too) with a balance runner (`scripts/balance.ts`); and the client's play page. That covers it apart from tuning.
 
 Online play (`docs/server-spec.md`), lobbies with bots in the empty seats, is in `packages/server`: the match runner (`match.ts`: steps, timers, Ready votes, bots in empty and disconnected seats), per-seat views (`view.ts`), lobbies (`lobby.ts`, `lobbies.ts`) and the protocol (`protocol.ts`), with timers and limits in `config.ts`; the Node server (`server.ts`, `main.ts`: WebSockets at `/ws`, and the built client); and the client's menu, lobby screen and online games. That covers the milestone. It deploys with Docker: the `Dockerfile`, and `compose.yaml` with Caddy for HTTPS (`Caddyfile`). Everything in `packages/server/src` apart from `server.ts` and `main.ts` also runs in the browser, so it takes time and randomness from a `Host` and uses no Node APIs; ESLint enforces this.
+
+Accounts (`docs/accounts-spec.md`) are specified but not built: guest accounts claimed with Google, Postgres, history and stats, the ranked queue with parties of 2, filler bots, a hidden OpenSkill rating and visible points, friends, and draining on a deploy. Their Node-only code is to go in `packages/server/src/node/`, which ESLint will treat like `server.ts` and `main.ts`.
 
 ## Commands
 

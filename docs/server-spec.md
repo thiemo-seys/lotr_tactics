@@ -20,8 +20,9 @@ Implementation spec for online play: lobbies, a server that runs games authorita
 
 **Out of scope (later)**
 
-- Accounts, ranking, a public list of lobbies and a matchmaking queue.
-- Saving games. Lobbies live in memory, so a restart ends every game.
+- Accounts, ranking, the ranked queue, parties and friends: specified in [`accounts-spec.md`](accounts-spec.md), which changes parts of this spec (its section 12).
+- A public list of lobbies.
+- Saving games. Lobbies live in memory, so a restart ends every game. `accounts-spec.md` section 10 drains the server instead, so games in progress finish before a restart.
 - Several server processes.
 - Watching other players' fights in the client. Their boards can be looked at in a Council and in planning (`game-spec.md` section 12), from the views, which include them.
 - Chat and emotes.
@@ -168,6 +169,8 @@ type PublicPlayer = Omit<PlayerView, 'shop' | 'shopLocked' | 'xp' | 'giftOffer' 
 
 ## 7. Lobbies
 
+With accounts (`accounts-spec.md` section 12), names come from accounts and seats belong to accounts instead of tokens; the queue makes ranked lobbies alongside these private ones.
+
 - **Codes:** 5 characters from `ABCDEFGHJKMNPQRSTUVWXYZ23456789`, which leaves out characters that look alike. Codes are not case-sensitive and are unique among open lobbies.
 - **Seats:** 8, numbered 0 to 7. A person joining takes the lowest free seat. Leaving before the start frees the seat.
 - **Names:** trimmed, with control characters removed, and cut to 20 characters. An empty name becomes "Player n", where n is the seat plus 1.
@@ -181,7 +184,7 @@ type PublicPlayer = Omit<PlayerView, 'shop' | 'shopLocked' | 'xp' | 'giftOffer' 
 
 ## 8. Protocol
 
-JSON text messages over one WebSocket.
+JSON text messages over one WebSocket. `accounts-spec.md` section 11 changes these messages and adds an HTTP API.
 
 **Client to server**
 
@@ -237,12 +240,14 @@ interface SeatView {
   - A connection that sends more than 100 messages in 5 seconds is closed.
   - Connections are pinged every 30 seconds and dropped if they don't answer.
 - A dropped connection counts as a disconnect (section 5.2).
-- SIGINT and SIGTERM close the server, which ends every game.
+- SIGINT and SIGTERM close the server, which ends every game. With accounts, they drain it first (`accounts-spec.md` section 10).
 - **Deployment:** the `Dockerfile` builds the client and runs the server from its source with `tsx`, as the `node` user, on `PORT`. `compose.yaml` runs it behind Caddy (`Caddyfile`), which serves HTTPS for the domain in `DOMAIN`, redirects HTTP, passes `/ws` through, compresses text and `.glb` models, and caches the hashed files in `/assets/` for a year. Only Caddy's ports 80 and 443 are open on the host. The steps are in `README.md`.
 
 ---
 
 ## 10. Client
+
+`accounts-spec.md` section 14 changes the menu and reconnecting, and adds the account's screens.
 
 The play page (`game-spec.md` section 12) talks to a `Connection`. The connection sends `ClientMessage`s and delivers `ServerMessage`s, either from a WebSocket or from a match running in the page. The page shows only what the messages tell it. `session.ts` is replaced by the connections.
 
