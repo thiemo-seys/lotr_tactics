@@ -1009,14 +1009,14 @@ kbd {
 }
 
 /* Units waiting for a bench slot. */
-.stat.waiting {
+.stat.bench-queue {
   color: var(--gold-ink);
   background: var(--gold-gradient);
   border-color: #f6dc8e;
   animation: attention 1.6s var(--ease) infinite;
 }
 
-.stat.waiting .icon {
+.stat.bench-queue .icon {
   color: var(--gold-ink);
 }
 

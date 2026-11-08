@@ -253,6 +253,31 @@ describe('filling the board', () => {
     expect(player.boardCount()).toBe(4);
   });
 
+  it('lets a waiting unit onto the bench once the board is filled, but not onto the board', () => {
+    const { player, pool } = setup();
+    player.level = 2;
+    const bench: UnitId[] = ['sam', 'merry', 'pippin', 'beregond', 'hama', 'grishnakh', 'sharku', 'gorbag', 'frodo'];
+    bench.forEach((id, slot) => give(player, pool, { bench: slot }, id, 1, 10 + slot));
+    pool.take('gimli');
+    player.gain('gimli');
+    expect(player.waiting).toEqual(['gimli']);
+    player.fillBoard();
+    expect(player.waiting).toEqual([]);
+    expect(player.bench.some((u) => u?.unitId === 'gimli')).toBe(true);
+    expect(player.board.some((u) => u?.unitId === 'gimli')).toBe(false);
+    expect(player.boardCount()).toBe(2);
+  });
+
+  it('lets a waiting unit onto the bench when a bench unit is removed', () => {
+    const { player, pool } = setup();
+    for (let slot = 0; slot < PLAYER.benchSize; slot++) give(player, pool, { bench: slot }, 'sam', 1, 10 + slot);
+    pool.take('gimli');
+    player.gain('gimli');
+    player.remove(13);
+    expect(player.waiting).toEqual([]);
+    expect(player.bench[3]!.unitId).toBe('gimli');
+  });
+
   it('gives the board as fight input', () => {
     const { player, pool } = setup();
     give(player, pool, { col: 6, row: 0 }, 'legolas', 2);
