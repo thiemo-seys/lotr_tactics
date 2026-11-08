@@ -2,7 +2,7 @@
 
 Implementation spec for player accounts: who a person is across visits, signing in with Google, match history and stats, the ranked queue with its ratings and leaderboard, parties and friends. It builds on online play (`server-spec.md`), which it changes where section 12 says so. This is step 6 of the build order (`design.md` section 11).
 
-**Built so far: step 1**, guest accounts, Postgres, seats by account, and match history and stats for private-lobby games: sections 3 to 5, 6.1 and 6.3 (all accounts are guests, so no name is unique yet), 9 without ranked, 11 for the requests and messages marked built, 12 without the queue and draining, and 15 without Google and draining. The rest is still to build: Google sign-in and claimed accounts' unique names (6.2, 6.3), deleting accounts (6.4), parties and the queue (7), rating and points (8), draining (10), friends, and the client's account screens (14).
+**Built so far: step 1**, guest accounts, Postgres, seats by account, and match history and stats for private-lobby games: sections 3 to 5, 6.1 and 6.3 (all accounts are guests, so no name is unique yet), 9 without ranked, 11 for the requests and messages marked built, 12 without the queue and draining, 14 for guests (the menu's account, the account panel without deleting, the profile with history and final boards, guest marks, `replaced` and reconnecting), and 15 without Google and draining. The rest is still to build: Google sign-in and claimed accounts' unique names (6.2, 6.3), deleting accounts (6.4), parties and the queue (7), rating and points (8), draining (10), friends, and the client's screens for them (14).
 
 - `design.md` is the source of truth for the rules of ranked play (`design.md` section 10, Accounts and ranked play). This spec adds the implementation detail and the defaults needed to build it.
 - Every number here is a *placeholder*. They live in `packages/server/src/config.ts`, not in logic.
@@ -572,22 +572,32 @@ Not built now, so the server can open up later:
 
 The play page (`game-spec.md` section 12, `server-spec.md` section 10). The account is loaded with `GET /api/me` before the menu shows.
 
+**Built so far, for guests:** the menu's account, the account panel without deleting, the profile with stats, history and final boards, guest marks, `replaced` with Use here, and reconnecting by account. Each of the rest comes with its step, and nothing of it is shown before then, not even disabled: Sign in with Google, Ranked, the leaderboard, the queue, the party, friends, deleting, notices and the ranked game over.
+
 - **Menu:**
   - The name field goes. In its place, the account's name with the guest mark, a pencil to rename, and Sign in with Google for guests (hidden if `googleEnabled` is false).
   - Play against bots, Create lobby and Join stay.
   - **Ranked**, for claimed accounts: Find game, or Find game with your party. Guests see it disabled, with "Sign in with Google to play ranked."
-  - Buttons for Profile, Leaderboard and Friends.
+  - Buttons for Profile, Leaderboard and Friends, and for the account panel.
+- **Loading the account:** the menu waits for `GET /api/me`, up to 8 seconds. If it fails (no answer, or an answer that isn't the API, as from a page served without the game server), the menu has no account, Profile or Account, offers Play against bots, and says online play is unavailable and why, with Try again, which asks again.
+- **Online play connects at page start:** once the account has loaded, the page opens the WebSocket while the menu is on screen, so `hello` can put the person back into their game after a reload or on another device (`server-spec.md` section 10, Reconnecting). Create and Join work once `hello` has arrived; until then they say the page is connecting. An offline game closes the WebSocket, so `hello` can't take the person out of it, and going back to the menu opens it again.
+- **One lobby per account:** the page follows the lobby the account has a seat in, from `hello`'s `game`, `joined`, `left` and a refused `rejoin`. While it has one, Create and Join send `rejoin` for it instead, so they take the person back rather than being refused (section 12).
+- **Renaming:** the pencil turns the name into a field, with Save and Cancel; Enter saves and Escape cancels. The page checks the name with `checkName` (section 6.3) before sending it, keeping the same name sends nothing, and the server's reason shows under the field when it refuses. The new name shows on the menu, in the account panel and on the person's own profile; the server renames them in their lobby.
 - **Queue:** while queued, a bar over the menu shows the wait and how many are queued, with Cancel. When matched, the page goes straight into the game.
 - **Party:** a small panel on the menu with the party's members, Invite (by name or from friends) and Leave. Invites arrive as a toast with Accept and Decline.
 - **Friends panel:** friends with presence, requests in and out, Add by name, and for each friend Invite to party, Invite to lobby (while in a private lobby) and View profile. Lobby invites arrive as a toast with Join.
-- **Profile:** name, stats (section 9.3), points and rank, and the history, with each match opening to all 8 final boards. Names in a history link to those profiles.
+- **Profile:** opened from the menu's Profile button, in place of the menu, with Back (Escape too).
+  - The name with its guest mark, points and rank, and the stats (section 9.3) as tiles: games, wins, top-4 rate, average place, and games bearing the One Ring, with a dash for the rates before any game; then the most played units, as portraits (their origin's icon on their cost's colour), and the most played traits, each with its number of games.
+  - The history, newest first, 20 matches at a time with Load more while the last page was full (through `before`). A match's row shows the place with a medal for the top three, the kind, the round it ended on, when it ended (today, yesterday, or the date), how long it took, Left if the person left before the end, the points change in a ranked game, and the units of their final board.
+  - A row opens to all 8 final boards, by place: the place, the name with its guest mark and Left, the level, the active traits as badges in the trait tracker's tones with their counts, and the units, strongest first (by star level, then cost, then name), each with its star badge, its items as chips, and the One Ring on the unit that wore it in that fight. Units, items and traits have their usual tooltips. The board of the profile's owner is marked. Units, items and traits the game no longer has are left out.
+  - The names of other people with accounts open their profiles on top, and Back returns to the one before. Bots and deleted accounts ("Deleted player") have no link. Someone else's history is asked for only once their profile has loaded. A 404 shows in the profile: for someone shown as a guest, that a guest's profile and history are shown only to them; otherwise, that the player has no profile to show.
 - **Leaderboard:** the top 100 and your own rank.
-- **Account panel:** rename, sign out, sign out everywhere, delete account.
-- **In a game:** the players list and lobby cards show guest marks. Ranked games show "Ranked" in the HUD.
+- **Account panel:** opened from the menu's Account button, in place of the menu. The name in a field with Save, what kind of account it is (a guest's lives in the browser's cookies, and signing out or clearing them loses it and its history), sign out, sign out everywhere, and delete account. Signing out asks first, and for a guest says they can't sign back in. The page closes its WebSocket, which belongs to the old account, signs out, gets a new guest from `GET /api/me`, connects again and says who the person is now. A page elsewhere that was signed out everywhere loses its connection and says online play is unavailable; Try again gives it a new guest.
+- **In a game:** the players list and lobby cards show guest marks, and so do the game-over standings, for people other than the person (whose row says You). An offline game's You has no account and no mark. Ranked games show "Ranked" in the HUD.
 - **Game over** of a ranked game shows the points change once `ranked` arrives.
-- **Notices** (`notice`, `replaced`) show as a banner. On `replaced`, the page offers Use here, which reconnects.
-- **Reconnecting** works as in `server-spec.md` section 10, but rejoins by account instead of a token.
-- The logic for these screens (queue status, the party, presence, formatting history) goes in modules without the DOM, as the play page's others do.
+- **Notices** (`notice`, `replaced`) show as a banner at the top of the page. On `replaced`, the page goes back to the menu, doesn't reconnect, and its banner says the game is open in another tab or on another device, with Use here, which connects again: the server moves the seat to the new connection and `hello` names the game, so the page goes straight back in. Create and Join wait for Use here meanwhile. The banner doesn't show over an offline game.
+- **Reconnecting** works as in `server-spec.md` section 10, but rejoins by account instead of a token. A `round` the page is already showing, which a rejoin from the same page sends again, doesn't start its fight over.
+- The logic for these screens (queue status, the party, presence, formatting history) goes in modules without the DOM, as the play page's others do: `account.ts` (the API as the page calls it, and the account and online play as the page knows them) and `profile.ts` (stats, history, final boards, and moving between profiles), drawn by `play/account.ts` and `play/profile.ts`.
 
 ---
 
@@ -627,4 +637,4 @@ The play page (`game-spec.md` section 12, `server-spec.md` section 10). The acco
 - Two clients with claimed accounts queue, wait out the filler timer, play a ranked game to the end, and both see the points change.
 
 **Client**
-- In a browser: a guest renames, plays a private lobby game, and sees it in their history. Ranked is disabled for the guest.
+- In a browser: a guest renames, plays a private lobby game, and sees it in their history with its final boards. A reload mid-game puts them back in, and a second tab takes the game until the first uses it here. Once the queue is built, Ranked is disabled for the guest.

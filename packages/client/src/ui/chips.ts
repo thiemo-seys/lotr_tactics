@@ -6,7 +6,7 @@ import { ITEMS, TRAITS, isRingOfPower, type ComponentId, type ItemId, type Trait
 import { COMPONENT_ICONS, TRAIT_ICONS } from '../icons.js';
 import { COMPONENT_COLOURS, RING_COLOURS } from '../items.js';
 import { ringTier } from '../ring.js';
-import { itemTip, ringTip } from '../tips.js';
+import { itemTip, ringTip, textTip } from '../tips.js';
 import type { TraitTone } from '../traits.js';
 import { el, icon } from './dom.js';
 import { setTip } from './tooltip.js';
@@ -63,4 +63,11 @@ export function traitTag(trait: TraitId): HTMLElement {
 /** A cost in gold, with the coin icon. */
 export function goldCost(amount: number | string, className = ''): HTMLElement {
   return el('span', `gold-cost${className === '' ? '' : ` ${className}`}`, icon('coin'), el('span', '', String(amount)));
+}
+
+/** The small mark next to a guest's name, wherever a name is shown (docs/accounts-spec.md section 6.3). */
+export function guestMark(): HTMLElement {
+  const mark = el('span', 'guest-mark', 'Guest');
+  setTip(mark, textTip('Guest', 'Playing as a guest, without signing in.'));
+  return mark;
 }

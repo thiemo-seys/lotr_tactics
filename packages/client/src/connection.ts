@@ -111,7 +111,20 @@ async function signIn(): Promise<void> {
   }
 }
 
-/** A WebSocket to the game server that reconnects and rejoins its seat if the connection drops. */
+export interface SocketOptions {
+  /**
+   * The page has just loaded the account with GET /api/me, so the first attempt needn't call it
+   * again; a refused upgrade still does.
+   */
+  readonly signedIn?: boolean;
+}
+
+/**
+ * A WebSocket to the game server that reconnects and rejoins its seat if the connection drops. It
+ * rejoins the seat this tab kept, and the game `hello` names, after a reload or on another device.
+ * After `replaced`, which it passes on, it closes for good without a `closed` event, so two pages
+ * don't take the account from each other in turn.
+ */
 export class SocketConnection implements Connection {
   private socket: WebSocket | null = null;
   /** Messages sent while connecting. */
@@ -122,12 +135,20 @@ export class SocketConnection implements Connection {
   private closing = false;
   /** Whether a refused upgrade has been tried again after GET /api/me. */
   private signedInAgain = false;
+  /** The lobby this socket asked to rejoin as it opened, so `hello` doesn't ask again. */
+  private rejoining: string | null = null;
 
   constructor(
     private readonly url: string,
     private readonly events: ConnectionEvents,
+    options: SocketOptions = {},
   ) {
-    void this.open(false);
+    void this.open(this.seat !== null, options.signedIn === true);
+  }
+
+  /** The lobby this tab has a seat in, as far as it knows. */
+  get seatCode(): string | null {
+    return this.seat?.code ?? null;
   }
 
   send(message: ClientMessage): void {
@@ -142,8 +163,8 @@ export class SocketConnection implements Connection {
     this.socket?.close();
   }
 
-  private async open(rejoin: boolean): Promise<void> {
-    await signIn();
+  private async open(rejoin: boolean, signedIn = false): Promise<void> {
+    if (!signedIn) await signIn();
     if (this.closing) return;
     const socket = new WebSocket(this.url);
     this.socket = socket;
@@ -151,7 +172,8 @@ export class SocketConnection implements Connection {
     socket.addEventListener('open', () => {
       opened = true;
       this.connected = true;
-      if (rejoin && this.seat !== null) socket.send(JSON.stringify({ type: 'rejoin', code: this.seat.code }));
+      this.rejoining = rejoin && this.seat !== null ? this.seat.code : null;
+      if (this.rejoining !== null) socket.send(JSON.stringify({ type: 'rejoin', code: this.rejoining }));
       for (const text of this.queue.splice(0)) socket.send(text);
     });
     socket.addEventListener('message', (event) => {
@@ -159,7 +181,7 @@ export class SocketConnection implements Connection {
       const message = JSON.parse(String(event.data)) as ServerMessage;
       if (message.type === 'hello') {
         // The account has a seat somewhere this page doesn't know of, after a reload or on another device.
-        if (message.game !== null && message.game.code !== this.seat?.code) socket.send(JSON.stringify({ type: 'rejoin', code: message.game.code }));
+        if (message.game !== null && message.game.code !== this.rejoining) socket.send(JSON.stringify({ type: 'rejoin', code: message.game.code }));
       } else if (message.type === 'joined') {
         this.setSeat({ code: message.code });
         this.retries = 0;
@@ -169,8 +191,6 @@ export class SocketConnection implements Connection {
         // Another page took over the account's connection; reconnecting would take it back.
         this.closing = true;
         this.setSeat(null);
-        this.events.closed('You opened the game somewhere else.');
-        return;
       }
       this.events.message(message);
     });

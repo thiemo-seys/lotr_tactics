@@ -1,19 +1,24 @@
 // The play page: a menu, lobbies, and games online or against bots (docs/game-spec.md section 12,
-// docs/server-spec.md section 10). It shows what the game's messages tell it, and sends the
+// docs/server-spec.md section 10), with the person's account, profile and history
+// (docs/accounts-spec.md section 14). It shows what the game's messages tell it, and sends the
 // person's actions back. The HUD, shop bar, panels and dragging are drawn by the modules in play/.
 
 import { ownedUnits } from '@lotr-tactics/sim';
 import type { ServerMessage } from '@lotr-tactics/server';
-import { LocalConnection, SocketConnection, savedSeat, socketUrl, type Connection } from './connection.js';
+import { AccountApi, AccountState } from './account.js';
+import { LocalConnection, SocketConnection, socketUrl } from './connection.js';
 import { PlayFlow } from './flow.js';
 import { yourTeam } from './fights.js';
+import { AccountUi } from './play/account.js';
 import { DragAndDrop } from './play/drag.js';
 import { HudBar } from './play/hud-bar.js';
 import { renderLobby, renderMenu } from './play/menu.js';
 import { renderBanner, renderCouncil, renderGiftOffer, renderOver, renderResults } from './play/panels.js';
 import { ShopBar } from './play/shop-bar.js';
+import { renderProfile } from './play/profile.js';
 import { renderPlayers, renderTraits } from './play/side-panels.js';
 import { renderViewingBar } from './play/viewing-bar.js';
+import { ProfileBrowser } from './profile.js';
 import { FightScene } from './scene.js';
 import { frameCapButton } from './ui/frame-cap.js';
 import { MeterPanel } from './ui/meter.js';
@@ -48,20 +53,47 @@ const meterButton = element('toggle-meter');
 const meter = new MeterPanel(element('meter'), meterButton, false);
 const frameCap = frameCapButton(element('frame-cap'));
 
+const accountPanel = element('account');
+const profilePanel = element('profile');
+const notice = element('notice');
+
 // The board and bench framing in every step, so the board doesn't move between planning and fights.
 const scene = new FightScene(view, 'bench');
-let connection: Connection | null = null;
-let offline = false;
+/** The game server's WebSocket, open while the menu, a lobby or an online game is on screen. */
+let socket: SocketConnection | null = null;
+/** An offline game against bots, which needs no server and no account. */
+let local: LocalConnection | null = null;
+const api = new AccountApi();
+const account = new AccountState();
+const profiles = new ProfileBrowser(api);
+/** What the menu shows: the menu itself, the account panel or a profile. */
+let screen: 'menu' | 'account' | 'profile' = 'menu';
 const flow = new PlayFlow({
-  send: (message) => connection?.send(message),
+  send: (message) => (local ?? socket)?.send(message),
   fight: (playback, team) => {
     scene.show(playback, team);
     setText(speedButton.querySelector('.label')!, '1×');
   },
   menu: backToMenu,
   joined: (code) => {
-    if (!offline) history.replaceState(null, '', `#lobby=${code}`);
+    if (local === null) history.replaceState(null, '', `#lobby=${code}`);
   },
+});
+const accountUi = new AccountUi(account, {
+  rename,
+  signOut,
+  retry: () => void loadAccount(),
+  openProfile: () => {
+    profiles.close();
+    profiles.open(null);
+    screen = 'profile';
+  },
+  openAccount: () => {
+    accountUi.opened();
+    screen = 'account';
+    focusSoon('account-name-input');
+  },
+  closeAccount: () => showMenuScreen('open-account'),
 });
 const hud = new HudBar(flow);
 const shop = new ShopBar(flow, (item, event) => drag.startItem(item, event));
@@ -84,20 +116,22 @@ hoverUnits(view, scene, (pick) => {
 // Menu and lobby
 
 element('play-bots').addEventListener('click', () => playOffline(randomSeed()));
-element('create').addEventListener('click', () => goOnline().send({ type: 'create' }));
+// Create and Join take the person back to their seat if the account already has one.
+element('create').addEventListener('click', () => socket?.send(account.createRequest()));
 element('join').addEventListener('click', () => {
   const code = codeInput.value.trim();
-  if (code === '') {
+  if (code === '' && account.game === null) {
     flow.menuMessage = 'Enter the code of the lobby to join.';
     codeInput.focus();
     return;
   }
-  goOnline().send({ type: 'join', code });
+  socket?.send(account.joinRequest(code));
 });
+element('use-here').addEventListener('click', useHere);
 codeInput.addEventListener('keydown', (event) => {
   if (event.key === 'Enter') element('join').click();
 });
-element('start').addEventListener('click', () => connection?.send({ type: 'start' }));
+element('start').addEventListener('click', () => socket?.send({ type: 'start' }));
 element('leave-lobby').addEventListener('click', leave);
 element('leave-game').addEventListener('click', () => {
   if (flow.show.kind === 'over' || confirm('Leave this game? A bot will play your seat for the rest of it.')) leave();
@@ -125,6 +159,13 @@ speedButton.addEventListener('click', () => {
 });
 skipButton.addEventListener('click', () => flow.skip(performance.now()));
 window.addEventListener('keydown', (event) => {
+  // Escape goes back from a profile or the account panel.
+  if (event.key === 'Escape' && flow.show.kind === 'menu' && screen !== 'menu') {
+    event.preventDefault();
+    if (screen === 'profile') profileBack();
+    else showMenuScreen();
+    return;
+  }
   if (event.target instanceof HTMLInputElement) return;
   // Escape goes back to the person's own board from another player's.
   if (event.key === 'Escape' && flow.viewed() !== null) {
@@ -164,46 +205,122 @@ requestAnimationFrame(function frame(now) {
 
 // Connections
 
-/** An offline game from the URL, a seat to rejoin, or the menu. */
+/**
+ * An offline game from the URL, or the menu once the account has loaded. The account loads either
+ * way, and online play connects when the menu shows, so `hello` can put the person back into a game.
+ */
 function startPage(): void {
   const hash = new URLSearchParams(location.hash.slice(1));
   const seed = Number(hash.get('seed'));
-  const seat = savedSeat();
   if (Number.isInteger(seed) && seed !== 0) playOffline(seed);
-  else if (seat !== null) goOnline().send({ type: 'rejoin', code: seat.code });
   else codeInput.value = hash.get('lobby') ?? '';
+  void loadAccount();
+}
+
+/** Loads the account with GET /api/me, which makes a guest if needed, then connects for online play. */
+async function loadAccount(): Promise<void> {
+  account.loading();
+  account.loaded(await api.me());
+  connectOnline();
+}
+
+/**
+ * Opens the WebSocket, while the account is loaded and no offline game is on. It rejoins the seat
+ * this tab had, and the game `hello` names.
+ */
+function connectOnline(): void {
+  const { kind } = account.online;
+  // Not after the account's game was opened somewhere else, until "Use here", nor while the server is unreachable, until "Try again".
+  if (local !== null || socket !== null || account.me === null || (kind !== 'connecting' && kind !== 'ready')) return;
+  account.connecting();
+  socket = new SocketConnection(socketUrl(), { message: receiveOnline, closed: socketClosed }, { signedIn: true });
+}
+
+function receiveOnline(message: ServerMessage): void {
+  account.receive(message);
+  if (message.type === 'replaced') socket = null;
+  flow.receive(message, performance.now());
+}
+
+/** The WebSocket closed for good: online play is unavailable until the person tries again. */
+function socketClosed(reason: string): void {
+  socket = null;
+  account.closed(reason);
+  // On the menu, its note says why; from a lobby or a game, the menu's message does.
+  backToMenu(flow.show.kind === 'menu' ? flow.menuMessage : reason);
+}
+
+/** "Use here": takes the account's game back from the page that took it. */
+function useHere(): void {
+  if (account.online.kind !== 'replaced') return;
+  account.connecting();
+  connectOnline();
 }
 
 function playOffline(seed: number): void {
-  connection?.close();
-  offline = true;
+  // Online play waits while the person plays offline, so the server's hello can't take them away.
+  socket?.close();
+  socket = null;
+  local?.close();
   flow.reset();
-  connection = new LocalConnection(seed, { message: receive, closed: backToMenu });
-}
-
-function goOnline(): Connection {
-  connection?.close();
-  offline = false;
-  flow.reset('Connecting…');
-  const socket = new SocketConnection(socketUrl(), { message: receive, closed: backToMenu });
-  connection = socket;
-  return socket;
+  screen = 'menu';
+  local = new LocalConnection(seed, { message: (message) => flow.receive(message, performance.now()), closed: backToMenu });
 }
 
 function leave(): void {
-  if (!offline) connection?.send({ type: 'leave' });
+  if (local === null) socket?.send({ type: 'leave' });
   backToMenu('');
 }
 
+/** Back to the menu, with a message there. Online play stays connected, or connects again after an offline game. */
 function backToMenu(message: string): void {
-  connection?.close();
-  connection = null;
+  local?.close();
+  local = null;
   flow.reset(message);
   history.replaceState(null, '', location.pathname);
+  connectOnline();
 }
 
-function receive(message: ServerMessage): void {
-  flow.receive(message, performance.now());
+/** Back to the menu from the account panel or a profile, with the focus on the button that opened it. */
+function showMenuScreen(focus = screen === 'account' ? 'open-account' : 'open-profile'): void {
+  screen = 'menu';
+  profiles.close();
+  focusSoon(focus);
+}
+
+/** Focuses an element once the next frame has shown it. */
+function focusSoon(id: string): void {
+  requestAnimationFrame(() => element(id).focus());
+}
+
+function profileBack(): void {
+  if (!profiles.back()) showMenuScreen('open-profile');
+}
+
+/** Renames the account. Resolves to the server's reason if it refuses. */
+async function rename(name: string): Promise<string | null> {
+  const result = await api.rename(name);
+  if (!result.ok) return result.error;
+  account.update(result.value);
+  profiles.renamed(result.value.id, result.value.name);
+  return null;
+}
+
+/** Signs out this browser or every device, then the page gets a new guest from GET /api/me. */
+async function signOut(everywhere: boolean): Promise<void> {
+  const before = account.me?.name ?? '';
+  // The WebSocket belongs to the account being signed out.
+  socket?.close();
+  socket = null;
+  const result = await api.signOut(everywhere);
+  if (!result.ok) {
+    accountUi.message = result.error;
+    connectOnline();
+    return;
+  }
+  profiles.close();
+  await loadAccount();
+  accountUi.message = account.me === null ? `Signed ${before} out.` : `Signed ${before} out. You are now ${account.me.name}.`;
 }
 
 // Drawing
@@ -213,7 +330,18 @@ function render(now: number): void {
   const planning = step.kind === 'planning';
   // Another player's board, when the person is looking at one instead of their own.
   const viewed = inGame ? flow.viewed() : null;
-  show(menu, step.kind === 'menu');
+  // Anything that takes the person off the menu, such as a game hello names, closes its screens.
+  if (step.kind !== 'menu' && screen !== 'menu') {
+    screen = 'menu';
+    profiles.close();
+  }
+  // The menu waits for the account, so it shows who is playing from the start.
+  const onMenu = step.kind === 'menu' && account.online.kind !== 'loading';
+  show(menu, onMenu && screen === 'menu');
+  show(accountPanel, onMenu && screen === 'account');
+  show(profilePanel, onMenu && screen === 'profile');
+  // Not over an offline game, which the other page doesn't touch.
+  show(notice, account.online.kind === 'replaced' && local === null);
   show(lobbyPanel, step.kind === 'lobby');
   show(backdrop, step.kind === 'menu' || step.kind === 'lobby');
   // The shop works in planning and while the fights play. In a game the bar keeps its place at
@@ -240,8 +368,16 @@ function render(now: number): void {
   if (!shopping || viewed !== null) drag.cancel();
   let bannerShown = false;
 
-  if (step.kind === 'menu') renderMenu(flow);
-  else if (step.kind === 'lobby') renderLobby(flow);
+  if (onMenu && screen === 'menu') {
+    renderMenu(flow);
+    accountUi.renderMenu();
+  } else if (onMenu && screen === 'account') {
+    accountUi.renderPanel();
+  } else if (onMenu && screen === 'profile') {
+    renderProfile(profilePanel, profiles, account.me, { back: profileBack });
+  } else if (step.kind === 'lobby') {
+    renderLobby(flow);
+  }
   hud.render(now);
   if (!inGame) {
     // Behind the menu and the lobby, the board alone, as when the page opens: a game left behind
@@ -273,7 +409,7 @@ function render(now: number): void {
   } else if (step.kind === 'results' || step.kind === 'waiting') {
     renderResults(result, flow, step.round, step.kind === 'waiting');
   } else if (step.kind === 'over') {
-    renderOver(result, flow, offline, {
+    renderOver(result, flow, local !== null, {
       newGame: () => {
         history.replaceState(null, '', location.pathname);
         playOffline(randomSeed());

@@ -4,6 +4,7 @@
 
 import { PLAYER, type GiftId, type RingView } from '@lotr-tactics/sim';
 import type { PublicPlayer, SeatView } from '@lotr-tactics/server';
+import { isGuestSeat } from './account.js';
 import { standings } from './flow.js';
 import { streakOf, type Streak } from './hud.js';
 
@@ -21,6 +22,8 @@ export interface PlayerRow {
   readonly streak: Streak | null;
   readonly ringHolder: boolean;
   readonly bot: boolean;
+  /** Another person playing as a guest (docs/accounts-spec.md section 6.3). */
+  readonly guest: boolean;
   /** A person who has lost their connection; a bot plays for them meanwhile. */
   readonly away: boolean;
   /** Set once the player is out, or has won. */
@@ -56,6 +59,8 @@ export function playerRows(
       streak: streakOf(p.streak),
       ringHolder: ring.state === 'held' && ring.holder === p.seat,
       bot: seat?.kind === 'bot',
+      // The person's own row says You rather than their name.
+      guest: p.seat !== you && isGuestSeat(seat),
       away: seat?.kind === 'person' && !seat.connected,
       placement: p.placement,
       gifts: p.gifts,

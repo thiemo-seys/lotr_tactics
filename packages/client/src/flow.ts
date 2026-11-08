@@ -165,7 +165,8 @@ export class PlayFlow {
         // The connection rejoins the account's game itself, if it has one.
         return;
       case 'replaced':
-        this.hooks.menu('You opened the game somewhere else.');
+        // The page's banner says so, and offers to take the game back.
+        this.hooks.menu('');
         return;
       case 'joined':
         this.you = message.seat;
@@ -458,6 +459,8 @@ export class PlayFlow {
   }
 
   private startRound(round: RoundRecord, now: number): void {
+    // The round on screen again, as a rejoin from this page sends it: the fight plays on.
+    if (this.showsRound(round)) return;
     // After the fights, the next Council or planning starts on the person's own board.
     this.boardSeat = null;
     const fight = yourFight(round, this.you);
@@ -468,6 +471,13 @@ export class PlayFlow {
     const playback = new Playback(createCombat(fight.input));
     this.hooks.fight(playback, yourTeam(fight, this.you));
     this.show = { kind: 'fight', round, fight, playback };
+  }
+
+  /** Whether a round's fight or results are already on screen. */
+  private showsRound(round: RoundRecord): boolean {
+    const { show } = this;
+    if (show.kind !== 'fight' && show.kind !== 'results' && show.kind !== 'waiting') return false;
+    return show.round.stage === round.stage && show.round.round === round.round;
   }
 
   private showResults(round: RoundRecord, now: number): void {

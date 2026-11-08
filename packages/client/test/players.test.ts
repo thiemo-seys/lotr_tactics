@@ -19,6 +19,14 @@ describe('the players list', () => {
     expect(rows[0]).toMatchObject({ name: 'Bot 2', bot: true, away: false, ringHolder: true, hpBand: 'high', streak: { kind: 'win', length: 4 } });
     expect(rows[1]).toMatchObject({ name: 'You', you: true, bot: false, away: false, hpShare: 0.4, hpBand: 'mid', streak: { kind: 'loss', length: 2 } });
     expect(rows[2]).toMatchObject({ away: true, placement: 3, hpShare: 0, hpBand: 'low' });
+    // Other guests are marked; the person's own row says You.
+    expect(rows.map((r) => r.guest)).toEqual([false, false, true]);
+  });
+
+  it('mark no guest in an offline game, where the person has no account', () => {
+    const seats: SeatView[] = [{ kind: 'person', name: 'You', connected: true, player: 'local', guest: true }];
+    const ring: RingView = { state: 'none' } as unknown as RingView;
+    expect(playerRows([player(0, 100)], seats, 1, ring, () => 'You')[0]!.guest).toBe(false);
   });
 
   it('bands HP and gives the top three medals', () => {

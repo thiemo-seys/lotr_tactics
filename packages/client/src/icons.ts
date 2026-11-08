@@ -66,6 +66,12 @@ export const ICONS = {
   empty: '<circle cx="12" cy="8" r="4" stroke-dasharray="2.5 2.2"/><path d="M4.5 20.5c.6-4 3.6-6.5 7.5-6.5s6.9 2.5 7.5 6.5" stroke-dasharray="2.5 2.2"/>',
   ability: '<path class="f" d="M12 2.5l2 6.3 6.3-1.6-4.3 4.8 4.3 4.8-6.3-1.6-2 6.3-2-6.3-6.3 1.6 4.3-4.8-4.3-4.8 6.3 1.6z"/><circle cx="12" cy="12" r="2.2"/>',
   cross: '<path d="M6.5 6.5l11 11M17.5 6.5l-11 11"/>',
+  // Accounts and profiles
+  pencil: '<path class="f" d="M4.5 19.5l.9-4.2L15.6 5.1a2.1 2.1 0 0 1 3 0l.3.3a2.1 2.1 0 0 1 0 3L8.7 18.6z"/><path d="M13.6 7.1l3.3 3.3"/>',
+  profile: '<rect class="f" x="3" y="5" width="18" height="14" rx="2.5"/><circle cx="8.8" cy="10.8" r="2.2"/><path d="M5.6 16c.5-1.5 1.7-2.3 3.2-2.3s2.7.8 3.2 2.3M14.5 10h4M14.5 13.5h3"/>',
+  history: '<path d="M4.6 12a7.5 7.5 0 1 0 2.2-5.3L4.6 9"/><path d="M4.6 4.6V9H9M12 8v4.2l2.8 1.8"/>',
+  chevron: '<path d="M7.5 9.5l4.5 4.5 4.5-4.5"/>',
+  back: '<path d="M19 12H5.5M11 6l-6 6 6 6"/>',
   alert: '<circle class="f" cx="12" cy="12" r="9"/><path d="M12 7.5v5.5M12 16.4v.1"/>',
   // The One Ring and the Rings of Power
   'one-ring': `${band(13)}<path class="s" d="M19.5 1.9Q20 4 22.1 4.5Q20 5 19.5 7.1Q19 5 16.9 4.5Q19 4 19.5 1.9z"/>`,

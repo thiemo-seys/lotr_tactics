@@ -57,7 +57,7 @@ describe('the play flow', () => {
     flow.receive({ type: 'left', reason: 'You left the lobby.' }, 0);
     flow.receive({ type: 'replaced' }, 0);
     flow.receive({ type: 'refused', request: 'join', reason: 'That lobby is full.' }, 0);
-    expect(calls.menus).toEqual(['', 'You opened the game somewhere else.', 'That lobby is full.']);
+    expect(calls.menus).toEqual(['', '', 'That lobby is full.']);
   });
 
   it('sends only picks in a Council, and nothing outside the game', () => {
@@ -241,6 +241,24 @@ describe("while the person's fight plays", () => {
       { type: 'act', action: { type: 'reroll' } },
       { type: 'act', action: { type: 'buyXp' } },
     ]);
+  });
+
+  it('keep playing the fight when the same round arrives again, as a rejoin from this page sends it', () => {
+    const { flow, calls } = recorded();
+    flow.receive({ type: 'state', state: state('planning', 2, 1, 100) }, 0);
+    flow.receive({ type: 'round', round: record(0, 1) }, 10);
+    flow.receive({ type: 'state', state: state('fight', 2, 1, 93) }, 10);
+    const shown = flow.show;
+    flow.update(0.5, 500);
+    flow.receive({ type: 'round', round: record(0, 1) }, 600);
+    expect(flow.show).toBe(shown);
+    expect(calls.fights).toHaveLength(1);
+    // Nor do its results start again.
+    flow.skip(700);
+    const results = flow.show;
+    flow.receive({ type: 'round', round: record(0, 1) }, 800);
+    expect(flow.show).toBe(results);
+    expect(calls.fights).toHaveLength(1);
   });
 
   it('show the latest view when the page never saw the planning, as on joining mid-fight', () => {

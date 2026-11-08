@@ -272,10 +272,13 @@ interface SeatView {
 
 The play page (`game-spec.md` section 12) talks to a `Connection`. The connection sends `ClientMessage`s and delivers `ServerMessage`s, either from a WebSocket or from a match running in the page. The page shows only what the messages tell it. `session.ts` is replaced by the connections.
 
-- **Menu**, shown when `play.html` opens without a hash, over the board dimmed and blurred, under the game's title. The board is empty behind it and behind the lobby screen, since leaving a game clears it, so nothing there moves or is drawn. The menu has:
+- **Menu**, shown when `play.html` opens without a hash, once the account has loaded (`accounts-spec.md` section 14), over the board dimmed and blurred, under the game's title. The board is empty behind it and behind the lobby screen, since leaving a game clears it, so nothing there moves or is drawn. The menu has:
+  - the account's name, with its guest mark and a pencil to rename;
   - Play against bots, the main button;
   - Create lobby;
-  - Join, with a code field.
+  - Join, with a code field;
+  - while online play is unavailable or connecting, a note saying so, with Try again when unavailable;
+  - Profile and Account, which open the profile and the account panel in its place.
 - **Links:**
   - `play.html#seed=7` starts an offline game with that seed straight away, as before.
   - `play.html#lobby=CODE` opens the menu with the code filled in.
@@ -292,11 +295,13 @@ The play page (`game-spec.md` section 12) talks to a `Connection`. The connectio
 - **Offline:** a `LocalConnection` creates a lobby in the page, with one person called You (the `local` player, with no account), and starts it at once. It reports no result. Its host uses the browser's clock. With nobody else in the game, Ready and skipping end steps at once, so it plays like the old offline game.
 - **Reconnecting:**
   - Before opening the WebSocket, the client calls `GET /api/me`, which makes a guest if the browser has no session. If the upgrade is refused, it calls it again and retries once.
-  - The client keeps the lobby code in session storage.
-  - If the WebSocket closes during a game, the client reconnects after 1, 2, 4 and 8 seconds and rejoins.
-  - Reloading the page rejoins too, and so does a `hello` naming a game the page doesn't know.
+  - The page opens the WebSocket as soon as the account has loaded and the menu is on screen, not only for Create or Join, and keeps it open on the menu, in lobbies and in online games. An offline game closes it, and going back to the menu opens it again.
+  - The client keeps the lobby code in session storage, and rejoins it as the WebSocket opens.
+  - If the WebSocket closes during a game, the client reconnects after 1, 2, 4 and 8 seconds and rejoins. If it closes on the menu, or reconnecting fails, online play is unavailable until Try again.
+  - Reloading the page rejoins too, and so does a `hello` naming a game other than the one the page rejoined as it opened, after a reload, in another tab or on another device.
   - If the lobby is gone, the client returns to the menu with a message.
-  - On `replaced`, the client goes back to the menu with a message and doesn't reconnect, so two pages don't take the account from each other in turn.
+  - On `replaced`, the client goes back to the menu and doesn't reconnect, so two pages don't take the account from each other in turn. A banner says the game is open somewhere else, with Use here, which connects again and takes the seat back (`accounts-spec.md` section 14).
+  - A `round` the page is already showing, as a rejoin sends it again, doesn't start its fight over.
 - **Game over:** the final standings with names, and Back to menu. A person who is out sees their place and the live standings until the game ends.
 
 ---
