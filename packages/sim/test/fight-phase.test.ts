@@ -185,6 +185,27 @@ describe('the fight phase', () => {
     expect(p.bench[3]).toMatchObject({ star: 1 });
   });
 
+  it('makes the waiting 1★ merges before the 2★ ones', () => {
+    const game = pvpGame(33);
+    const p = playerOf(game, 0);
+    p.gold = 50;
+    // A full board, so the fights don't fill it from the bench.
+    p.level = 3;
+    const unitId = p.shop.find((id) => id !== null)!;
+    const id = field(game, 0, unitId, { col: 1, row: 3 }, { star: 2 });
+    field(game, 0, unitId, { col: 3, row: 3 });
+    field(game, 0, unitId, { col: 5, row: 3 });
+    field(game, 0, unitId, { bench: 1 }, { star: 2 });
+    field(game, 0, unitId, { bench: 2 }, { star: 2 });
+    game.fight();
+    expect(game.act(0, { type: 'buy', slot: p.shop.indexOf(unitId) })).toEqual({ ok: true });
+    game.advance();
+    // The 1★ copies make a 2★ on the board, which merges with the board 2★ and the first bench
+    // 2★ into a 3★, leaving the spare 2★ on the bench. 2★ first would leave it on the board.
+    expect(p.board.filter((u) => u?.unitId === unitId)).toEqual([expect.objectContaining({ id, star: 3 })]);
+    expect(p.bench.filter((u) => u?.unitId === unitId).map((u) => u!.star)).toEqual([2]);
+  });
+
   it("doesn't let a full bench buy a copy that would merge only with a board copy while the fights play", () => {
     const game = pvpGame(31);
     const p = playerOf(game, 0);
