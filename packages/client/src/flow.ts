@@ -170,13 +170,15 @@ export class PlayFlow {
         this.lobby = message.lobby;
         if (!message.lobby.started) this.show = { kind: 'lobby' };
         return;
-      case 'state':
+      case 'state': {
+        const previous = this.state;
         this.state = message.state;
         this.stateAt = now;
         if (message.state.step.kind === 'planning') this.planned = message.state;
         this.startTimer(message.state);
-        this.follow(message.state);
+        this.follow(message.state, previous);
         return;
+      }
       case 'round':
         this.startRound(message.round, now);
         return;
@@ -427,7 +429,7 @@ export class PlayFlow {
   // Steps
 
   /** Moves to the server's step. A fight that is still playing is cut short. */
-  private follow(next: MatchView): void {
+  private follow(next: MatchView, previous: MatchView | null): void {
     switch (next.step.kind) {
       case 'over':
         this.show = { kind: 'over' };
@@ -436,10 +438,10 @@ export class PlayFlow {
       case 'council':
       case 'planning':
         if (next.me.placement !== null) this.show = { kind: 'over' };
-        else if (this.show.kind !== next.step.kind) {
+        else if (this.show.kind !== next.step.kind || newRound(previous, next)) {
           this.show = { kind: next.step.kind };
-          // A new step starts on the person's own board. Planning after a Council is the next
-          // round, which no fights came before to bring it back.
+          // A new step starts on the person's own board. Planning after a Council, or after the
+          // start round, is the next round, which no fights came before to bring it back.
           this.boardSeat = null;
         }
         return;
@@ -481,4 +483,9 @@ export function standings<P extends { readonly placement: number | null; readonl
 
 export function ordinal(n: number): string {
   return `${n}${n === 1 ? 'st' : n === 2 ? 'nd' : n === 3 ? 'rd' : 'th'}`;
+}
+
+/** Whether a state is in a later round than the one before it. */
+function newRound(previous: MatchView | null, next: MatchView): boolean {
+  return previous !== null && (previous.stage !== next.stage || previous.round !== next.round);
 }

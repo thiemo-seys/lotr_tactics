@@ -236,7 +236,7 @@ A combined item gives the stats of both its components, plus its effect.
 
 ### Rules
 
-- PvE rounds and the Council of Elrond give components (section 9). A player keeps them until they give them to a unit.
+- Each player starts with a component, and PvE rounds and the Council of Elrond give more (section 9). A player keeps them until they give them to a unit.
 - A unit holds up to 3 items. Giving a component to a unit that already holds a lone component combines the two into the recipe's item, so a unit never holds more than one lone component.
 - During planning, and while the fights play, two components the player holds can also be combined into the recipe's item before giving it to a unit.
 - Items can't be taken off a unit. Selling the unit gives its items back to the player.
@@ -395,7 +395,7 @@ With 5–8 units per cost tier (TFT has about 13), a specific unit appears in th
 
 **Stage 1:**
 
-- 1-1: Council of Elrond
+- 1-1: Start. Each player is given a random 1-cost unit and a random item component, and has a planning round to place the unit and give it the item. There is no fight, no income and no shop yet.
 - 1-2 to 1-4: PvE
 
 **Stage 2 onwards** (7 rounds per stage):
@@ -412,8 +412,8 @@ With 5–8 units per cost tier (TFT has about 13), a specific unit appears in th
 
 ### Council of Elrond
 
-- At 1-1 everyone picks at once.
-- Later Councils: players pick in pairs, lowest HP first.
+- The first Council is at 2-4.
+- Players pick in pairs, lowest HP first.
 - Every Council unit carries an item component, except two from 2-4 on, which carry a Ring of Power, and Bilbo when he brings the One Ring.
 
 ### Gifts of Lothlórien

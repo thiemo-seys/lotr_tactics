@@ -9,9 +9,9 @@ describe('the turn counter', () => {
   it('goes up at each Council group, each planning and the end, and not for actions', () => {
     const game = createGame({ seed: 3, players: 4 });
     expect(game.state.turn).toBe(1);
-    // The first Council is one group of everyone: picking for all four moves on to planning.
+    // The start round ends: on to 1-2's planning.
     game.advance();
-    expect([game.state.phase, game.state.turn]).toEqual(['planning', 2]);
+    expect([game.state.round, game.state.phase, game.state.turn]).toEqual([2, 'planning', 2]);
     game.act(0, { type: 'lock', locked: true });
     expect(game.state.turn).toBe(2);
     skipTo(game, 2, 4);
@@ -36,11 +36,14 @@ describe('the turn counter', () => {
 describe('the autopilot', () => {
   it("says whether the bots' picks ended the Council turn", () => {
     const game = createGame({ seed: 4, players: 4 });
+    skipTo(game, 2, 4);
     const autopilot = new Autopilot(game, 4);
-    expect(autopilot.pick((seat) => seat !== 2)).toBe(false);
-    expect(game.state.council!.options.filter((o) => o.pickedBy !== null)).toHaveLength(3);
+    const [first] = game.state.council!.groups;
+    // Seat `first[1]` is left to pick, so the group's turn goes on.
+    expect(autopilot.pick((seat) => seat !== first![1])).toBe(false);
+    expect(game.state.council!.options.filter((o) => o.pickedBy !== null)).toHaveLength(1);
     expect(autopilot.pick()).toBe(true);
-    expect(game.state.phase).toBe('planning');
+    expect([game.state.phase, game.state.council!.group]).toEqual(['council', 1]);
   });
 
   it('plans starting one seat later each round, for the seats it plays', () => {
@@ -57,7 +60,8 @@ describe('the autopilot', () => {
     const game = createGame({ seed: 6, players: 4 });
     const reports = new Autopilot(game, 6).playUntil(() => game.state.stage === 2 && game.state.round === 2);
     expect([game.state.stage, game.state.round, game.state.phase]).toEqual([2, 2, 'planning']);
-    // 1-2, 1-3, 1-4 and 2-1.
-    expect(reports.map((r) => `${r.stage}-${r.round}`)).toEqual(['1-2', '1-3', '1-4', '2-1']);
+    // 1-1 has no fights, then 1-2, 1-3, 1-4 and 2-1.
+    expect(reports.map((r) => `${r.stage}-${r.round}`)).toEqual(['1-1', '1-2', '1-3', '1-4', '2-1']);
+    expect(reports[0]!.fights).toEqual([]);
   });
 });

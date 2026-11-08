@@ -98,7 +98,7 @@ describe('the play flow', () => {
     };
     connection = new LocalConnection(5, { message, closed: () => {} }, { host, autoUpdate: false });
     await flush();
-    expect([flow.show.kind, flow.you, flow.inGame]).toEqual(['council', 0, true]);
+    expect([flow.show.kind, flow.you, flow.inGame]).toEqual(['planning', 0, true]);
     expect(flow.secondsLeft(host.time)).toBe(Math.ceil(flow.state!.step.ms! / 1000));
 
     let rounds = 0;
@@ -422,6 +422,9 @@ describe("other players' boards", () => {
     flow.viewBoard(2);
     flow.receive({ type: 'state', state: state('planning', 5) }, 3000);
     expect(flow.viewed()?.seat).toBe(2);
+    // The start round goes straight on to the next round's planning, with no fights between them.
+    flow.receive({ type: 'state', state: state('planning', 6) }, 4000);
+    expect([flow.show.kind, flow.viewed()]).toEqual(['planning', null]);
   });
 
   it('can be looked at in a Council too, but not once the game is over for the person', () => {

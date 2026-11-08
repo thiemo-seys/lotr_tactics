@@ -6,6 +6,7 @@ import { combine, isComponent, isRingOfPower } from '../combat/items.js';
 import { PLAYER, SHOP, XP } from '../data/economy.js';
 import { MAX_ITEMS, type ComponentId, type ItemId } from '../data/items.js';
 import { RING } from '../data/ring.js';
+import type { RoundType } from '../data/rounds.js';
 import { UNITS, type UnitId } from '../data/units.js';
 import type { Action, CouncilState, Phase } from './game.js';
 import { isIndex, isPlace, ownedUnits, unitAt, type Place } from './places.js';
@@ -22,16 +23,21 @@ export function fail(reason: string): ActionResult {
 
 /** What the rules need to know about the game, beyond the player. */
 export interface ActionContext {
+  readonly type: RoundType;
   readonly phase: Phase;
   readonly council: CouncilState | null;
   readonly ring: RingView;
 }
+
+const SHOP_ACTIONS: ReadonlySet<Action['type']> = new Set(['buy', 'reroll', 'buyXp', 'lock']);
 
 /** Whether a player may take an action now, and why not. The game applies only actions that pass. */
 export function checkAction(player: PlayerView, context: ActionContext, action: Action): ActionResult {
   if (player.placement !== null) return fail('That player is out of the game.');
   if (typeof action !== 'object' || action === null) return fail('Unknown action.');
   if (action.type === 'pick') return checkPick(player, context, action.option);
+  // The start round is for placing the starting kits; the shop opens in the next round.
+  if (context.type === 'start' && SHOP_ACTIONS.has(action.type)) return fail('The shop opens next round.');
   if (context.phase === 'fight') return checkDuringFights(player, action);
   if (context.phase !== 'planning') return fail('Units can only be bought and moved during planning.');
   switch (action.type) {
