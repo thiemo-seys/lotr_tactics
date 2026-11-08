@@ -381,12 +381,13 @@ interface FinalBoard {
   level: number;
   units: { unit: UnitId; star: Star; items: ItemId[] }[];   // the board, not the bench
   traits: { trait: TraitId; count: number; tier: number }[];  // active traits only
-  ringBearer: UnitId | null;   // whoever wore the One Ring, if this seat had it
+  ringBearer: UnitId | null;   // the unit that wore the One Ring in that fight, if any
 }
 ```
 
-- The board is the one the seat fought its last fight with: in the round it went out, or the last round for the winner. The game empties a seat's board when it places it (`game-spec.md` section 9.9, step 6), so `match.ts` can't read it then. It keeps each living seat's board from the fight phase, just after `fight()` (which has picked any Gift left unpicked), before the `advance()` that places seats, and when the bots play the rest at once (`server-spec.md` section 5.1, Everyone out), from `Autopilot.playUntil`'s `afterPlanning` hook.
-- `units` are in board-slot order. A trait's `tier` is 1 at its first breakpoint, 2 at its second and so on, and `traits` are sorted by `count`, most first, then by id. `ringBearer` is the unit bearing the One Ring when the seat held it at that fight.
+- The board is the one the seat fought its last fight with: in the round it went out, or the last round for the winner. The game empties a seat's board when it places it (`game-spec.md` section 9.9, step 6), so `match.ts` can't read it then. Instead it reads each round's boards from that round's fights' input (`RoundReport`): the home seat's team A, and the away seat's team B in a PvP fight (a ghost fight's team B is a copy, and PvE's is monsters). It does this after `fight()` on the timers, and for each round's report when the bots play the rest at once (`server-spec.md` section 5.1, Everyone out). Its levels come from the state just after the round's planning.
+- **Playing out during planning:** the round's planning has already been done, by bots on entering it and for people's seats when their bots took over. So the round is fought as it stands before the bots play the rest, and nobody plans twice. A game played out at once is the game its timers would have given.
+- `units` are in the order the fight placed them. A trait's `tier` is 1 at its first breakpoint, 2 at its second and so on, and `traits` are sorted by `count`, most first, then by id. `ringBearer` is the unit that wore the One Ring in that fight: the one placed with the Ring's Corruption, which is not always the Ring's bearer after the fight, since Gollum can steal it then.
 - `Match` takes an `over` callback, called once when its game ends, from which `Lobby` builds the result; `durationMs` runs from the start to then.
 - Offline games and games that don't finish report nothing. A game cut short by a restart is voided: nothing is written for it.
 

@@ -1,10 +1,10 @@
 // One game on the server: steps, timers, bots and Ready votes (docs/server-spec.md section 5).
 
-import { Autopilot, TICKS_PER_SECOND, createGame, type Action, type ActionResult, type Game } from '@lotr-tactics/sim';
+import { Autopilot, TICKS_PER_SECOND, createGame, type Action, type ActionResult, type Game, type RoundReport } from '@lotr-tactics/sim';
 import { TIMERS } from './config.js';
 import type { Host } from './host.js';
 import type { ServerMessage } from './protocol.js';
-import { finalBoard, type FinalBoard } from './results.js';
+import { fightBoards, type FinalBoard } from './results.js';
 import { matchView, roundRecord, type MatchView, type RoundRecord, type StepKind } from './view.js';
 
 export interface MatchOptions {
@@ -194,7 +194,7 @@ export class Match {
       case 'planning': {
         // The game stays in the round while its fights play, so people can shop.
         const report = this.game.fight();
-        this.keepBoards();
+        this.keepBoards(report);
         // The start round has no fights to show: straight on to the next round.
         if (report.fights.length === 0) {
           this.game.advance();
@@ -228,8 +228,13 @@ export class Match {
 
   /** Plays the rest of the game at once, with bots in every seat. */
   private finish(): void {
-    // Each round's boards once the bots have planned, which are the boards that fight.
-    this.autopilot.playUntil(undefined, () => this.keepBoards());
+    // Planning has already been done for this round: by bots on entering it, and for people's
+    // seats when their bots took over. Fight it as it stands, so nobody plans twice.
+    if (this.step.kind === 'planning') this.keepBoards(this.game.fight());
+    // Each round's levels as it fights, for the boards kept from its report.
+    const levels: number[][] = [];
+    const reports = this.autopilot.playUntil(undefined, (state) => levels.push(state.players.map((p) => p.level)));
+    reports.forEach((report, i) => this.keepBoards(report, levels[i]));
     this.record = null;
     this.end();
   }
@@ -241,10 +246,9 @@ export class Match {
     this.options.over?.();
   }
 
-  /** Keeps the boards of the seats still in the game, as they fight this round. */
-  private keepBoards(): void {
-    const { players, ring } = this.game.state;
-    for (const p of players) if (p.placement === null) this.boards[p.seat] = finalBoard(p, ring);
+  /** Keeps the boards the seats fought with in a round. */
+  private keepBoards(report: RoundReport, levels = this.game.state.players.map((p) => p.level)): void {
+    for (const [seat, board] of fightBoards(report, levels)) this.boards[seat] = board;
   }
 
   // Seats (section 5.2)

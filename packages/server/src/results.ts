@@ -1,7 +1,7 @@
 // What a finished match reports (docs/accounts-spec.md section 9.1): every seat's place and the
 // board it fought its last fight with.
 
-import { teamTraitCounts, traitLevelsOf, type ItemId, type PlayerView, type RingView, type Star, type TraitId, type UnitId } from '@lotr-tactics/sim';
+import { teamTraitCounts, traitLevelsOf, type CombatInput, type ItemId, type RoundReport, type Star, type Team, type TraitId, type UnitId } from '@lotr-tactics/sim';
 
 export interface FinalUnit {
   readonly unit: UnitId;
@@ -18,11 +18,11 @@ export interface FinalTrait {
 
 export interface FinalBoard {
   readonly level: number;
-  /** The board, not the bench, in board-slot order. */
+  /** The board, not the bench, in the order the fight placed it. */
   readonly units: readonly FinalUnit[];
   /** Active traits only, most units first, then by id. */
   readonly traits: readonly FinalTrait[];
-  /** The unit that wore the One Ring, if this seat had it. */
+  /** The unit that wore the One Ring in that fight, if any. */
   readonly ringBearer: UnitId | null;
 }
 
@@ -48,22 +48,35 @@ export interface MatchResult {
   readonly seats: readonly SeatResult[];
 }
 
-/** A player's board as it stands, with its active traits and the One Ring's bearer. */
-export function finalBoard(player: PlayerView, ring: RingView): FinalBoard {
-  const board = player.board.filter((u) => u !== null);
-  const counts = teamTraitCounts(board, player.gifts);
+/**
+ * The boards seats fought with in a round, from its fights' input, so the One Ring's bearer is the
+ * unit that wore it in the fight. A seat's own team is its board: team A for the home seat, team B
+ * for the away seat of a PvP fight. A ghost fight's away team is a copy, and PvE's team B monsters,
+ * so neither is anyone's board. `levels` gives each seat's level, in seat order.
+ */
+export function fightBoards(report: RoundReport, levels: readonly number[]): Map<number, FinalBoard> {
+  const boards = new Map<number, FinalBoard>();
+  for (const fight of report.fights) {
+    boards.set(fight.home, finalBoard(fight.input, 'A', levels[fight.home]!));
+    if (fight.kind === 'pvp' && fight.away !== null) boards.set(fight.away, finalBoard(fight.input, 'B', levels[fight.away]!));
+  }
+  return boards;
+}
+
+/** One team's board in a fight, with its active traits and the One Ring's bearer. */
+export function finalBoard(input: CombatInput, team: Team, level: number): FinalBoard {
+  // A player's team holds only units: monsters fight only as PvE's team B, and summons aren't placed.
+  const placed = input.teams[team];
+  const counts = teamTraitCounts(placed, input.gifts?.[team] ?? []);
   const levels = traitLevelsOf(counts);
   const traits = (Object.entries(levels) as [TraitId, number][])
-    .map(([trait, level]) => ({ trait, count: counts[trait]!, tier: level + 1 }))
+    .map(([trait, tier]) => ({ trait, count: counts[trait]!, tier: tier + 1 }))
     .sort((a, b) => b.count - a.count || (a.trait < b.trait ? -1 : a.trait > b.trait ? 1 : 0));
-  const bearer =
-    ring.holder === player.seat && ring.bearer !== null
-      ? [...board, ...player.bench].find((u) => u?.id === ring.bearer)?.unitId ?? null
-      : null;
+  const bearer = placed.find((u) => u.ring !== undefined);
   return {
-    level: player.level,
-    units: board.map((u) => ({ unit: u.unitId, star: u.star, items: [...u.items] })),
+    level,
+    units: placed.map((u) => ({ unit: u.unitId as UnitId, star: u.star, items: [...u.items] })),
     traits,
-    ringBearer: bearer,
+    ringBearer: bearer === undefined ? null : (bearer.unitId as UnitId),
   };
 }

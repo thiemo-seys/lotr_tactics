@@ -3,6 +3,6 @@
 export interface Host {
   /** Milliseconds, from any fixed start. */
   now(): number;
-  /** A number in [0, 1), for lobby codes, seats and game seeds. */
+  /** A number in [0, 1), for lobby codes and game seeds. */
   random(): number;
 }
