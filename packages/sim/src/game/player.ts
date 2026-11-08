@@ -50,6 +50,11 @@ export interface PlayerView {
   readonly bench: readonly (OwnedUnit | null)[];
   /** Indexed by `boardSlot`, in the player's own perspective. */
   readonly board: readonly (OwnedUnit | null)[];
+  /**
+   * Units gained with no room on the bench, oldest first (section 7.2). Each goes to the bench, or
+   * merges, as soon as it can.
+   */
+  readonly waiting: readonly UnitId[];
   readonly shop: readonly (UnitId | null)[];
   readonly shopLocked: boolean;
   /** Items not on a unit, in the order the player got them. */
@@ -108,6 +113,7 @@ export class Player implements PlayerView {
   streak = 0;
   readonly bench: (OwnedUnit | null)[] = new Array<OwnedUnit | null>(PLAYER.benchSize).fill(null);
   readonly board: (OwnedUnit | null)[] = new Array<OwnedUnit | null>(BOARD_COLS * TEAM_ROWS).fill(null);
+  readonly waiting: UnitId[] = [];
   readonly shop: (UnitId | null)[] = new Array<UnitId | null>(SHOP.size).fill(null);
   shopLocked = false;
   readonly items: ItemId[] = [];
@@ -149,7 +155,8 @@ export class Player implements PlayerView {
     return OK;
   }
 
-  sell(from: Place): ActionResult {
+  /** `fighting` is true while the fights play, when units waiting for room don't merge with board copies. */
+  sell(from: Place, fighting = false): ActionResult {
     const check = checkSell(this, from);
     if (!check.ok) return check;
     const unit = unitAt(this, from)!;
@@ -159,15 +166,18 @@ export class Player implements PlayerView {
     this.items.push(...unit.items);
     // Selling the bearer leaves the Ring with the player, unworn.
     this.context.ring?.unitSold(this.seat, unit.id);
+    this.placeWaiting(fighting);
     return OK;
   }
 
-  move(from: Place, to: Place): ActionResult {
+  /** `fighting` as for `sell`. */
+  move(from: Place, to: Place, fighting = false): ActionResult {
     const check = checkMove(this, from, to);
     if (!check.ok) return check;
     const unit = unitAt(this, from)!;
     this.setAt(from, unitAt(this, to));
     this.setAt(to, unit);
+    this.placeWaiting(fighting);
     return OK;
   }
 
@@ -242,33 +252,41 @@ export class Player implements PlayerView {
 
   /**
    * Gains a 1★ unit already taken from the pool (section 7.2): it merges with two copies the
-   * player owns, or goes to the lowest free bench slot. While the fights play (`fighting`), only
-   * copies on the bench merge; the rest wait for `mergeWaiting`. Returns false, changing nothing,
-   * if neither is possible.
+   * player owns, or goes to the lowest free bench slot. With neither possible it waits for room,
+   * behind any units already waiting. While the fights play (`fighting`), only copies on the bench
+   * merge; the rest wait for `mergeWaiting`.
    */
-  gain(unitId: UnitId, fighting = false): boolean {
-    const pair = this.find(unitId, 1, fighting);
-    if (pair.length >= 2) {
-      this.merge(unitId, 1, pair.slice(0, 2), fighting);
-      return true;
+  gain(unitId: UnitId, fighting = false): void {
+    this.waiting.push(unitId);
+    this.placeWaiting(fighting);
+  }
+
+  /**
+   * Places the units waiting for room, oldest first, each that can merge or find a free bench
+   * slot. A merge frees slots, so it goes round again until nothing more can be placed. While the
+   * fights play (`fighting`), only copies on the bench merge.
+   */
+  placeWaiting(fighting = false): void {
+    for (let i = 0; i < this.waiting.length; ) {
+      if (this.place(this.waiting[i]!, fighting)) {
+        this.waiting.splice(i, 1);
+        i = 0;
+      } else i++;
     }
-    const free = this.bench.indexOf(null);
-    if (free < 0) return false;
-    this.bench[free] = { id: this.context.nextUnitId(), unitId, star: 1, items: [] };
-    return true;
   }
 
   /**
    * Makes the merges that waited for the fights to end (section 7.3): while any unit has three
    * copies at 1★ or 2★, the first three found merge, 1★ before 2★, units in the order `find` lists
-   * their copies.
+   * their copies. The slots they free let units waiting for room in.
    */
   mergeWaiting(): void {
     for (;;) {
       const triple = this.firstTriple();
-      if (triple === null) return;
+      if (triple === null) break;
       this.merge(triple.unitId, triple.star, triple.places);
     }
+    this.placeWaiting();
   }
 
   private firstTriple(): { unitId: UnitId; star: Star; places: Place[] } | null {
@@ -327,6 +345,7 @@ export class Player implements PlayerView {
       this.bench[slot] = null;
       this.setAt(place, unit);
     }
+    this.placeWaiting();
   }
 
   /** Interest on the gold held, then base income (section 8.1). */
@@ -424,6 +443,7 @@ export class Player implements PlayerView {
     this.setAt(place, null);
     this.release(unit);
     this.items.push(...unit.items);
+    this.placeWaiting();
   }
 
   /** Puts every owned unit and the shop back in the pool, for an eliminated player. Their items are lost. */
@@ -434,6 +454,8 @@ export class Player implements PlayerView {
         units[i] = null;
       });
     }
+    for (const unitId of this.waiting) this.context.pool.put(unitId);
+    this.waiting.length = 0;
     this.returnShop();
     this.items.length = 0;
     this.gifts.length = 0;
@@ -455,19 +477,31 @@ export class Player implements PlayerView {
 
   /**
    * Gains a unit of a cost from the pool, drawn like a Council unit, or of the next lower cost
-   * with copies left. One with no room is sold at once.
+   * with copies left.
    */
   private gainFromPool(cost: Cost): void {
     const { pool } = this.context;
     for (let c = cost; c >= 1; c--) {
       if (pool.countOfCost(c as Cost) === 0) continue;
-      const unitId = pool.takeOfCost(c as Cost, this.giftRng);
-      if (!this.gain(unitId)) {
-        this.gold += UNITS[unitId].cost;
-        pool.put(unitId);
-      }
+      this.gain(pool.takeOfCost(c as Cost, this.giftRng));
       return;
     }
+  }
+
+  /**
+   * Merges a new 1★ unit with two copies the player owns (only on the bench while `fighting`), or
+   * puts it in the lowest free bench slot. Returns false, changing nothing, if neither is possible.
+   */
+  private place(unitId: UnitId, fighting: boolean): boolean {
+    const pair = this.find(unitId, 1, fighting);
+    if (pair.length >= 2) {
+      this.merge(unitId, 1, pair.slice(0, 2), fighting);
+      return true;
+    }
+    const free = this.bench.indexOf(null);
+    if (free < 0) return false;
+    this.bench[free] = { id: this.context.nextUnitId(), unitId, star: 1, items: [] };
+    return true;
   }
 
   private setAt(place: Place, unit: OwnedUnit | null): void {

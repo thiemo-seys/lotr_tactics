@@ -49,7 +49,7 @@ These are not in `design.md` yet. They were chosen to remove ambiguity and can b
 | Merged unit | Takes the place of a copy on the board if there is one, otherwise the lowest bench slot |
 | Board below the level | Before a fight, bench units fill the free board places |
 | Council options | 9 units from the pool, each with a random item component. Unit costs depend on the stage |
-| Council with a full bench | A picked unit that can't go on the bench or merge is sold at once |
+| Council with a full bench | A picked unit that can't go on the bench or merge waits for room (7.2) |
 | Council pick time | 15 seconds for a person's pick in the client |
 | Stage 1 damage | No stage damage. Surviving monsters still deal their damage |
 | PvE loot | Given in full whether the player wins or loses |
@@ -61,7 +61,7 @@ These are not in `design.md` yet. They were chosen to remove ambiguity and can b
 | A merge with more than 3 items | The kept copy's items first, then the others' in the order the copies are found; the rest go back to the player |
 | Gift offers | Rolled from each player's own Gift generator, so one player's rerolls don't change another's offer |
 | A Gift offer left unpicked | When planning ends, the player gets one of the three at random |
-| Gift units with no room | Sold at once, like a Council unit |
+| Gift units with no room | Wait for room, like a Council unit (7.2) |
 | Rings of Power at a Council | On the last two options that don't bring the One Ring |
 | An eliminated player's Rings of Power | Back to the supply, while their other items are lost |
 
@@ -122,6 +122,7 @@ Each player has:
 - **Gold, level and XP.** XP counts towards the next level.
 - **Streak:** a signed count of consecutive PvP results: +3 after three wins in a row, −2 after two losses.
 - **Bench:** 9 slots.
+- **Waiting:** units gained with no room on the bench, oldest first (7.2).
 - **Board:** the player's half, in their own perspective (`sim-spec.md` section 5): columns 0–6, rows 0–3, row 3 at the front. At most `level` units.
 - **Shop:** 5 slots and a lock.
 - **Items:** the items they hold that aren't on a unit, in the order they got them, with an item combined from two of them in the place of the one it was combined into (7.7): components, combined items and Rings of Power.
@@ -168,7 +169,9 @@ When a player gains a 1★ unit (by buying it, from the starting kit or from the
 
 1. If they already own two 1★ copies, on the bench or the board, the three merge (7.3). While the fights play (9.4), only copies on the bench count, and a merge it makes cascades only with copies on the bench; the copies that would merge with board copies wait until the fight phase ends.
 2. Otherwise it goes to the lowest free bench slot.
-3. If the bench is full, a Council unit is sold at once (7.5). A purchase can't get here because of the check in 7.1.
+3. If the bench is full, the unit waits for room: it joins the end of the player's waiting units. A purchase can't get here because of the check in 7.1; Council and Gift units can.
+
+Whenever anything changes the bench or the board (a purchase, a sale, a move, a merge, a unit removed, the board filled before a fight, the merges made when the fight phase ends), the waiting units are placed, oldest first: each that can merge with two copies the player owns, or find a free bench slot, is gained as in steps 1 and 2, so while the fights play only copies on the bench count. A merge frees slots, so this goes round again until none can be placed. A new unit joins the end of the queue and is placed the same way, so it never takes a slot ahead of an older one. Units waiting are out of the pool, don't fight, can't be moved, sold or given items, and aren't owned copies for anything else, such as the Ring's bearer (9.11). An eliminated player's waiting units go back to the pool.
 
 ### 7.3 Merging
 
@@ -352,7 +355,7 @@ After all the round's fights:
 3. **Loot** on PvE rounds (9.7), then **the Seven's gold** (9.12), for players above 0 HP.
 4. **The One Ring:** Hobbit fights, then stealing (9.11).
 5. **Recent opponents** (9.5).
-6. **Eliminations:** every player at 0 HP or below is eliminated, in the order and places settled now, when the fight phase ends (9.4). Their bench, board and shop go back to the pool, their Rings of Power to the supply (9.12), and their other items are lost. They take the lowest places still free, ordered by higher HP after the damage, then higher HP before it, then a seeded draw. A Ring they held waits for the next Council (9.11).
+6. **Eliminations:** every player at 0 HP or below is eliminated, in the order and places settled now, when the fight phase ends (9.4). Their bench, board, waiting units and shop go back to the pool, their Rings of Power to the supply (9.12), and their other items are lost. They take the lowest places still free, ordered by higher HP after the damage, then higher HP before it, then a seeded draw. A Ring they held waits for the next Council (9.11).
 7. **Game over:** if one player is left, they place first. If none are left, the places from step 5 cover everyone. Otherwise the next round starts.
 
 ### 9.10 Gifts of Lothlórien
@@ -363,7 +366,7 @@ Gifts are in `design.md` section 9 and `data/gifts.ts`.
 - **Reroll:** once per offer, during planning, the player can replace all three with three new ones, drawn the same way from the tier's Gifts other than the three shown. If too few are left, the draw takes what there is.
 - **Picking:** during planning, the player takes one of the three. The offer is gone, and the Gift is added to their Gifts. A Gift that gives something right away gives it now:
   - **gold, components, combined items or XP**, as the Gift says. Components and combined items are drawn evenly with the Gift generator.
-  - **units:** each is drawn like a Council unit (section 9.6) of the Gift's cost, and gained (7.2). If no copies of that cost are left, the next lower cost with copies is used. A unit with no room is sold at once.
+  - **units:** each is drawn like a Council unit (section 9.6) of the Gift's cost, and gained (7.2). If no copies of that cost are left, the next lower cost with copies is used. A unit with no room waits for it (7.2).
 - **Automatic pick:** when planning ends, before the fights, a player who still has an offer gets one of the three at random, drawn with their Gift generator.
 - **Lasting Gifts** change the rules above: free rerolls (6.3), shop odds (6.3), interest (8.1) and XP each round (9.2).
 - **In the fight:** every fight's input lists each team's Gifts (`sim-spec.md` section 12.5). A ghost has its owner's Gifts; monsters have none.
@@ -497,7 +500,7 @@ The play page, `play.html` in `packages/client`, next to the fight viewer (`view
 
 - **Running the game:** the match runner from `packages/server` (`server-spec.md` section 5), in the page for offline games. Bots pick in a Council as soon as it's their group's turn, and plan at the start of planning, in a rotating order. Once the person is out, the rest of the game plays out at once.
 - **Planning view:** the person's half of the board and their bench, a row of 9 tiles in front of it, in 3D, from the same camera as fights. An HTML overlay in the client's design system (`viewer-spec.md` section 2), with icons throughout:
-  - **HUD:** at the top, HP; the board count, which draws attention while the board has room and the bench has a unit; the streak from `PlayerView.streak`, flames for wins and frost for losses; and the One Ring's status for its holder. In the middle of the top bar, the stage tracker: the stage, then each round of the stage as an icon for its type, in the type's colour, the start round and Council gold, PvP red and diamond-shaped, PvE green and round. Rounds played are dimmed and marked with the person's result once its results have been shown, a tick for a win and a cross for a loss; the round on screen is larger and glows; rounds to come are outlined. Next to them, the round's number and type. Each round names its type and result when hovered. At the bottom, just above the shop bar and staying there during fights: the level with its XP towards the next one, gold, and a timer that drains as the step's time runs out and turns red in its last 5 seconds.
+  - **HUD:** at the top, HP; the board count, which draws attention while the board has room and the bench has a unit; while units wait for a bench slot (7.2), a glowing count of them, whose tooltip names them and says how to make room; the streak from `PlayerView.streak`, flames for wins and frost for losses; and the One Ring's status for its holder. In the middle of the top bar, the stage tracker: the stage, then each round of the stage as an icon for its type, in the type's colour, the start round and Council gold, PvP red and diamond-shaped, PvE green and round. Rounds played are dimmed and marked with the person's result once its results have been shown, a tick for a win and a cross for a loss; the round on screen is larger and glows; rounds to come are outlined. Next to them, the round's number and type. Each round names its type and result when hovered. At the bottom, just above the shop bar and staying there during fights: the level with its XP towards the next one, gold, and a timer that drains as the step's time runs out and turns red in its last 5 seconds.
   - **Shop bar:** Buy XP, Reroll and Lock as icon buttons with their keys and costs; the shop's unit cards, framed and coloured by cost, each with its origin's icon as a portrait, its name, its traits' icons and names, its cost, one star badge per copy the person owns, at its star level (`viewer-spec.md` section 4, overlay), a gold border when the person has a copy on the bench or the board, glowing when buying it would make a 2★ from two 1★ copies at once (while the fights play, two on the bench; `completesMerge`), and, when it can't be bought, the reason from `checkAction`; the person's items; and Ready. The bar works in planning and while the person's fight and its results are on screen, until the next step (9.4); Ready only in planning. In a Council the bar keeps its place, empty, so the board's view keeps its size.
   - **Trait tracker:** on the left, every trait on the board on screen as fights count them, the person's or the one they are looking at (below), from the sim's `teamTraitCounts` and `traitLevelsOf` (`sim-spec.md` section 12.2), so crest Gifts and the Nine's Nazgûl count. Each trait shows its icon, name, how many count, and its breakpoints with the one reached marked. Active traits come first, coloured by level: bronze, then silver, gold at the top breakpoint, and a look of their own for the one-unit traits. The rest are greyed. Hovering a trait says what it does at each breakpoint, from the trait data, and shows every unit with the trait, by cost then name, then for the Nazgûl the player's other units wearing a Ring of the Nine, marked with the ring, framed by cost: lit when a copy is on that board, dimmer when copies are only on the bench, greyed when none are owned, with a star badge per copy owned, at its star level.
   - **Tooltips:** items, the One Ring, Rings of Power, Gifts, traits, unit cards and buttons show a card when hovered or focused: name, recipe, stats and effect from the data, or what a button does and why it can't be used now. The level and Buy XP show the shop odds by cost, as the shop rolls them with any Mirror of Galadriel, for the level now and the next level when its odds differ, marking which go up or down. A unit card in the shop or the Council gives the unit's 1★ stats and what its ability does at 1★.
@@ -539,6 +542,7 @@ The play page, `play.html` in `packages/client`, next to the fight viewer (`view
 
 **Bench, board and merging**
 - Merging on buying, including with a full bench and when copies are on the board, and two levels of merge from one purchase; while the fights play, copies on the board waiting until the fight phase ends.
+- Council and Gift units with no room waiting, oldest first, until a sale, a move, a merge or the board filling frees a slot; copies are conserved while they wait.
 - Where the merged unit goes.
 - Refunds for 1★, 2★ and 3★ units.
 - Moves, swaps and the level limit; filling the board before a fight.
