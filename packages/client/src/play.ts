@@ -15,6 +15,7 @@ import { ShopBar } from './play/shop-bar.js';
 import { renderPlayers, renderTraits } from './play/side-panels.js';
 import { renderViewingBar } from './play/viewing-bar.js';
 import { FightScene } from './scene.js';
+import { frameCapButton } from './ui/frame-cap.js';
 import { MeterPanel } from './ui/meter.js';
 import { blockDisabledClicks, fillIcons, isEnabled, setText, show, toggle } from './ui/dom.js';
 import { fighterTip, ownedUnitTip } from './tips.js';
@@ -48,6 +49,7 @@ const speedButton = element<HTMLButtonElement>('speed');
 const skipButton = element<HTMLButtonElement>('skip');
 const meterButton = element('toggle-meter');
 const meter = new MeterPanel(element('meter'), meterButton, false);
+const frameCap = frameCapButton(element('frame-cap'));
 
 // The board and bench framing in every step, so the board doesn't move between planning and fights.
 const scene = new FightScene(view, 'bench');
@@ -151,6 +153,11 @@ startPage();
 
 let last = performance.now();
 requestAnimationFrame(function frame(now) {
+  // With the cap on, the frames in between are skipped, and the next one run counts their time.
+  if (!frameCap.due(now)) {
+    requestAnimationFrame(frame);
+    return;
+  }
   const seconds = Math.min((now - last) / 1000, 0.1);
   last = now;
   flow.update(seconds, now);
