@@ -356,7 +356,7 @@ After all the round's fights:
 4. **The One Ring:** Hobbit fights, then stealing (9.11).
 5. **Recent opponents** (9.5).
 6. **Eliminations:** every player at 0 HP or below is eliminated, in the order and places settled now, when the fight phase ends (9.4). Their bench, board, waiting units and shop go back to the pool, their Rings of Power to the supply (9.12), and their other items are lost. They take the lowest places still free, ordered by higher HP after the damage, then higher HP before it, then a seeded draw. A Ring they held waits for the next Council (9.11).
-7. **Game over:** if one player is left, they place first. If none are left, the places from step 5 cover everyone. Otherwise the next round starts.
+7. **Game over:** if one player is left, they place first. If none are left, the places from step 6 cover everyone. Otherwise the next round starts.
 
 ### 9.10 Gifts of Lothlórien
 

@@ -52,7 +52,7 @@ Accounts (`docs/accounts-spec.md`) are specified but not built: guest accounts c
 The automated review (`.github/workflows/claude-code-review.yml`) follows this section, and so should anyone reviewing a pull request. Check, most important first:
 
 1. **Determinism.** In `packages/sim/src` and the browser-safe parts of `packages/server/src`, the same input must give the same result:
-   - no `Math.random`, time APIs, trig or `Math.pow` in game logic;
+   - no `Math.random`, time APIs, trig or `Math.pow` in game logic (the ranked rating in `packages/server/src/rating.ts` may use `Math.exp` and the like: it runs once on the server and is stored, never replayed, `docs/accounts-spec.md` section 8);
    - no outcome that depends on the iteration order of unordered data, or on a sort without a full tie-break;
    - no random draw added to, removed from or moved within a generator stream unless the change means to, since it shifts every later draw;
    - geometric choices made in the acting team's perspective.

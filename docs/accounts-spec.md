@@ -14,7 +14,7 @@ Implementation spec for player accounts: who a person is across visits, signing 
 
 - **Identity:** every visitor gets a guest account at once, with no sign-up, kept in a cookie. The account follows them through lobbies, games and reconnects.
 - **Google sign-in** to claim an account, so it works on other devices and can't be lost by clearing cookies.
-- **Names:** claimed accounts have unique names. Guests have names that only claimed accounts reserve (section 6).
+- **Names:** claimed accounts have unique names. Guests have names that only claimed accounts reserve (section 6.3).
 - **Match history and stats** for online games: ranked games and private lobbies.
 - **The ranked queue:** solo or with one friend, filler bots after a wait, a hidden OpenSkill rating for matchmaking and visible points for the leaderboard.
 - **Friends:** requests, presence, and invites to lobbies and parties.
@@ -63,7 +63,7 @@ These are not in `design.md` yet. They were chosen to remove ambiguity and can b
 
 ## 3. Package layout
 
-All of it is in `packages/server`. What touches the database, HTTP, cookies or Google is Node-only, in a new `src/node/` folder that ESLint treats like `server.ts` and `main.ts`. The rest stays browser-safe and synchronous, as in `server-spec.md` section 3, so offline games run unchanged and the logic can be tested with a fake host.
+All of it is in `packages/server`. What touches the database, HTTP, cookies or Google is Node-only, in a new `src/node/` folder that ESLint treats like `server.ts` and `main.ts`. ESLint's browser-safe rule also gains `pg` and `src/node/` among the imports it refuses. The rest stays browser-safe and synchronous, as in `server-spec.md` section 3, so offline games run unchanged and the logic can be tested with a fake host.
 
 ```
 packages/server/
@@ -93,6 +93,7 @@ packages/server/
 ```
 
 - `pnpm dev` and `pnpm start` use Postgres when `DATABASE_URL` is set, and otherwise a `MemoryStore` with a warning in the log, so the game runs with no database for a quick try. Nothing lasts across a restart without Postgres.
+- In `pnpm dev`, Vite passes `/api` and `/auth` on to the game server, as it does `/ws` (`server-spec.md` section 3). The page's origin there is Vite's, `http://localhost:5173`, so that is the `PUBLIC_URL` to set for the `Origin` check and Google's redirect (section 6.2).
 - Google sign-in is off unless `GOOGLE_CLIENT_ID` and `GOOGLE_CLIENT_SECRET` are set. The client hides the button when it's off (section 11.2, `hello`).
 
 ### Settings
@@ -118,6 +119,11 @@ interface Player {
   name: string;               // display name, kept current after a rename
   claimed: boolean;           // signed in with Google
   rating: Rating | null;      // the hidden ranked rating (section 8.1), null until loaded or for guests
+}
+
+interface Rating {
+  readonly mu: number;
+  readonly sigma: number;
 }
 
 interface Client {            // lobby.ts, changed
@@ -246,13 +252,13 @@ OpenID Connect's authorization code flow with PKCE, asking only for the `openid`
 - New guests are named "Guest" and 4 random digits, which needn't be unique.
 - **Renaming:** a claimed account can rename once every 7 days. A guest can rename freely. A name freed by a rename is free at once.
 - Bots keep their names (`server-spec.md` section 7). People can't take a name of the form "Bot n" or "Guest" with digits.
-- `cleanName` in `lobby.ts` stays for bots. People's names come from their accounts, checked when they are set.
+- `cleanName` in `lobby.ts` cleans the name that `create` and `join` carry, and they lose it (section 11.2). People's names come from their accounts, checked when they are set. Bots' names are made in the lobby view, not by `cleanName`.
 
 ### 6.4 Deleting an account
 
 - From the account panel, after typing the account's name to confirm.
 - Deletes the account, its sessions, ratings, friends and requests. In other people's histories its seats stay with the name "Deleted player" and no link.
-- Only possible while the account is not in a game, a queue or a party.
+- Only possible while the account is not in a game, the queue or a party of 2.
 
 ---
 
@@ -263,7 +269,7 @@ Browser-safe, in `queue.ts`, driven by `Lobbies.update()` with the host's clock.
 ### 7.1 Parties
 
 - **Ranked only, for claimed accounts.** A party is 1 or 2 people. Everyone is a party of 1 until they invite someone.
-- **Inviting** is by name, or from the friends list. The invited person must be claimed, online and not in a game, queue or party. An invite lasts 60 seconds. A person has at most one invite out at a time.
+- **Inviting** is by name, or from the friends list. The invited person must be claimed, online and not in a game, the queue or a party of 2. An invite lasts 60 seconds. A person has at most one invite out at a time.
 - **In a game, party members are opponents** in separate seats, like everyone else. The party only decides that they queue and are matched together.
 - Leaving, disconnecting for more than 30 seconds, or starting a game outside the party ends the party. Parties live in memory and end with a restart.
 - Only the party's leader, the one who invited, can queue the party or leave the queue.
@@ -272,7 +278,7 @@ Browser-safe, in `queue.ts`, driven by `Lobbies.update()` with the host's clock.
 
 - **Joining:** a party joins with `queue`. Refused for guests, for anyone in a lobby or game, and while the server drains.
 - **The queue checks every update**, oldest party first:
-  - **A full lobby:** if 8 people can be taken from the queue, the oldest party and the parties closest to it in rating fill a lobby, in order of rating distance, without splitting a party. The rating gap allowed grows with the oldest party's wait: `RANKED.spread` plus `RANKED.spreadPerSecond` for each second. A party's rating is its members' average ordinal (section 8.1).
+  - **A full lobby:** if 8 people can be taken from the queue, the oldest party and the parties closest to it in rating fill a lobby, in order of rating distance, without splitting a party. The rating gap allowed grows with the oldest party's wait: `RANKED.spread` (5) plus `RANKED.spreadPerSecond` (0.1) for each second, in ordinal. A party's rating is its members' average ordinal (section 8.1).
   - **Filler bots:** once the oldest party has waited `RANKED.fillSeconds` (75), and the queue holds at least 2 people who are not all in one party, everyone in the queue up to 8, oldest first without splitting a party, gets a lobby, and bots take the other seats.
   - A party of 2 alone in the queue keeps waiting, however long. So does a single person alone.
 - **Matched:** the queue makes a ranked lobby with the people in random seats (from the host), sends each of them `joined` and starts the game at once. No host, no Start, nobody can join.
@@ -370,7 +376,7 @@ interface FinalBoard {
 }
 ```
 
-- The board is the one the seat had when it was placed: in the round it went out, or at the end for the winner. `match.ts` takes the snapshot when the game gives the seat its place.
+- The board is the one the seat fought its last fight with: in the round it went out, or the last round for the winner. The game empties a seat's board when it places it (`game-spec.md` section 9.9, step 6), so `match.ts` can't read it then. It keeps each living seat's board from the fight phase, before the `advance()` that places seats, and when the bots play the rest at once (`server-spec.md` section 5.1, Everyone out), from `Autopilot.playUntil`'s `afterPlanning` hook.
 - Offline games and games that don't finish report nothing. A game cut short by a restart is voided: nothing is written for it.
 
 ### 9.2 Recording
@@ -470,7 +476,7 @@ type ServerMessage =
   | { type: 'hello'; me: AccountView; game: { code: string } | null }   // first message; game if the account has a seat in a running game
   | { type: 'queue'; status: QueueView | null }
   | { type: 'party'; party: PartyView | null; invites: PartyInvite[] }
-  | { type: 'friends'; online: FriendPresence[] }                        // when a friend's presence changes
+  | { type: 'friends'; online: FriendPresence[]; requests: { in: FriendRef[]; out: FriendRef[] } }   // on connecting, and when presence or requests change
   | { type: 'lobbyInvite'; from: string; name: string; code: string }
   | { type: 'ranked'; seats: { seat: number; before: number; after: number }[] }   // section 8.5
   | { type: 'notice'; text: string }             // section 10
@@ -479,10 +485,11 @@ type ServerMessage =
 interface QueueView { waitedSeconds: number; queued: number }
 interface PartyView { leader: string; members: { id: string; name: string }[] }
 interface PartyInvite { from: string; name: string; expiresInSeconds: number }
+interface FriendRef { id: string; name: string }
 interface FriendPresence { id: string; name: string; status: 'online' | 'queue' | 'lobby' | 'game' }
 ```
 
-- `LobbyView` gains `ranked: boolean`, and each `SeatView` gains `player: string | null` (the account id for people, for links to profiles) and `guest: boolean`.
+- `LobbyView` gains `ranked: boolean`, and its `host` becomes `number | null`, null in a ranked lobby, and each `SeatView` gains `player: string | null` (the account id for people, for links to profiles) and `guest: boolean`.
 - Presence is only sent to friends. Offline friends are left out of `friends`; `GET /api/friends` lists everyone.
 
 ---
@@ -491,7 +498,9 @@ interface FriendPresence { id: string; name: string; status: 'online' | 'queue' 
 
 - **Seats** (`lobby.ts`): a member is a player id, a name and a connection. `rejoin` gives a seat back to a connection with the same player id. The per-lobby tokens and `Host.token` go, and the client stops keeping the code and token in session storage. After a reload or on another device, `hello` says which game the account is in, and the page rejoins it.
 - **One lobby per account:** an account in a lobby, game or queue can't create, join or queue elsewhere. Leaving a started game for good (`leave`) frees the account.
+- **Replaced connections:** the older connection gets `replaced` (section 6.1) instead of `left`, which `server-spec.md` section 8 sends when a seat rejoins from another connection.
 - **Lobby kinds:** `private` (made with `create`, as now) and `ranked` (made by the queue). Private lobbies keep everything in `server-spec.md` section 7, and guests can play them.
+- **Idle started lobbies:** instead of closing 60 seconds after the last person disconnects (`server-spec.md` section 7), a lobby whose game has started plays the rest of its game out at once with bots, as when everyone is out (`server-spec.md` section 5.1), and reports its result. Disconnected people's places count, as in section 7.3. Only a restart voids a game.
 - **Results:** `Lobbies` takes `onResult` in its options and calls it when a lobby's game ends (section 9.1).
 - **Draining:** `Lobbies.drain()` (section 10), and `Lobbies.running` for how many games are still going.
 - **Names** come from players, and are updated in the lobby view if a person renames while in it.
@@ -535,6 +544,7 @@ The play page (`game-spec.md` section 12, `server-spec.md` section 10). The acco
 
 ## 15. Deployment
 
+- The `Dockerfile` copies `packages/server/migrations` into the image, next to `src`, which is all it copies of the server now.
 - `compose.yaml` gains a `db` service, `postgres:17`, with a `pg_data` volume, a health check, and its password from `POSTGRES_PASSWORD` in `.env`. Its port is not opened on the host. The `game` service gets `DATABASE_URL`, `PUBLIC_URL=https://${DOMAIN}`, `TRUST_PROXY=1` and the Google settings from `.env`, depends on `db` being healthy, and has the 50-minute `stop_grace_period`.
 - The Caddyfile needs no change: `/api/*` and `/auth/*` go to the game like everything else. Caddy sets `X-Forwarded-For`.
 - `README.md`, Deploying: the new `.env` values, making the Google client, and backups.
@@ -548,7 +558,7 @@ The play page (`game-spec.md` section 12, `server-spec.md` section 10). The acco
 - **Queue:** 8 people make a full lobby at once. Parties are never split. The rating spread grows with the wait. After 75 seconds, 2 solo people get a lobby with 6 bots. A party of 2 alone, or 1 person alone, keeps waiting. `unqueue` and disconnects remove the party. Guests and people in a lobby are refused.
 - **Parties:** invite, accept, decline, expiry, only one invite out at a time, only claimed and free people, only the leader queues.
 - **Rating:** a 1st place gains and an 8th loses. Bots' rating doesn't change. Party members are rated separately. The same input gives the same output. Points never go below 0 and follow the rating over a run of games.
-- **Results:** a finished private game and a finished ranked game report 8 seats with places 1 to 8 and final boards. A leaver's seat reports their place. Offline games report nothing.
+- **Results:** a finished private game and a finished ranked game report 8 seats with places 1 to 8 and final boards. A leaver's seat reports their place. A started lobby with nobody connected plays out and reports its result. Offline games report nothing.
 - **Seats by account:** rejoin with the same player id works from a new connection, and with another id is refused. One lobby per account.
 - **Draining:** create, join and queue are refused, lobbies that haven't started close, running games finish, and `running` reaches 0.
 

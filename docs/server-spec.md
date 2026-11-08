@@ -55,7 +55,7 @@ These are not in `design.md` yet. They were chosen to remove ambiguity and can b
 
 ## 3. Package layout
 
-`packages/server`, the third package in `design.md` section 10. Everything except `server.ts` and `main.ts` uses neither Node nor the DOM, so the client can run it in the browser for offline games. ESLint enforces this: no Node or `ws` imports and no `process`, `Buffer`, `Date` or timers outside those two files. Time and randomness come in through a `Host` object (section 4).
+`packages/server`, the third package in `design.md` section 10. Everything except `server.ts` and `main.ts` uses neither Node nor the DOM, so the client can run it in the browser for offline games. ESLint enforces this: no Node or `ws` imports and no `process`, `Buffer`, `Date` or timers outside those two files. Time and randomness come in through a `Host` object (section 4). With accounts, a Node-only `src/node/` folder joins them (`accounts-spec.md` section 3).
 
 ```
 packages/server/
@@ -94,6 +94,7 @@ interface Host {
 - The Node server uses `performance.now`, `crypto.randomInt` and `crypto.randomUUID`. An offline game uses `performance.now`, `Math.random` and `crypto.randomUUID`.
 - Nothing has its own timers. The owner calls `update()` about every 100 ms, which runs anything whose time has come. Tests use a fake host and move its clock forward.
 - A game's seed comes from `random`. It is never sent to clients.
+- With accounts, `token` goes, since seats belong to accounts (`accounts-spec.md` section 12).
 
 ---
 
