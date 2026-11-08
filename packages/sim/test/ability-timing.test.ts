@@ -404,6 +404,59 @@ describe('what a cast locks', () => {
     expect(abilityHits(events, theoden)).toEqual([[27, haldir.id, 292]]);
   });
 
+  it('reaches an enemy once per step, though it moves on into a later hex of the charge', () => {
+    // sim-spec 10.6, When a step lands: each unit at most once per step. Khamûl on (3, 3) targets
+    // Beregond on (3, 4); his line (10.4) is (3, 4), (2, 5), (2, 6), axial (1, 4), (0, 5), (-1, 6),
+    // and (2, 6), the farthest free hex, is his destination. Cast on 1, release 12 (0.35 s is 11
+    // ticks), so the hexes are reached on 17, 22 and 27, his hex is (2, 6) from 12, and he is
+    // ready on 27 + 3 = 30. His slow doesn't stop Beregond moving (12.1), unlike Théoden's stun.
+    // Beregond, stunned until 18, is struck on (3, 4) on 17, then on 18 makes Khamûl, 2 away on
+    // (2, 6), his target (section 8) and steps towards him onto (2, 5), the only hex next to both
+    // (section 11). He stands on it from 18 (claiming), so he is on the second hex when it lands on 22.
+    const fight = new Fight(input([placed('khamul', 3, 3)], [b('beregond', 3, 4)]));
+    const [khamul, beregond] = [unitOf(fight, 'khamul', 'A'), unitOf(fight, 'beregond', 'B')];
+    stunUntil(fight, beregond, 18);
+    fill(khamul);
+    const events = stepTo(fight, 17);
+    expect(castsOf(events)).toMatchObject([
+      {
+        tick: 1,
+        unit: khamul.id,
+        releaseTick: 12,
+        readyTick: 30,
+        aims: [
+          {
+            delivery: 'charge',
+            hexes: [
+              { hex: at(3, 4), landTick: 17 },
+              { hex: at(2, 5), landTick: 22 },
+              { hex: at(2, 6), landTick: 27 },
+            ],
+          },
+        ],
+      },
+    ]);
+    expect(dashesOf(events)).toMatchObject([{ unit: khamul.id, to: at(2, 6), departTick: 12, arriveTick: 27 }]);
+    // Struck on the first hex: standing on it on 17.
+    expect(beregond.hex).toEqual(at(3, 4));
+    expect(abilityHits(events, khamul).map(([tick, target]) => [tick, target])).toEqual([[17, beregond.id]]);
+    events.push(...stepTo(fight, 22));
+    expect(ofType(events, 'move').filter((e) => e.unit === beregond.id)).toEqual([
+      { type: 'move', tick: 18, unit: beregond.id, from: at(3, 4), to: at(2, 5), arriveTick: 33 },
+    ]);
+    // Standing on the second hex as it lands.
+    expect(beregond.hex).toEqual(at(2, 5));
+    expect(beregond.alive).toBe(true);
+    events.push(...stepTo(fight, 29));
+    // 0.9 D at cost 3 (10.2): 200 × 0.9 × 1.5 = 270 magic, against Magic Resist 40 (Tank, cost 1,
+    // 7.2): 270 × 100 / 140 = 192.86, which rounds to 193. Once, on 17, and nothing on 22.
+    expect(abilityHits(events, khamul)).toEqual([[17, beregond.id, 193]]);
+    // One slow: 25% for 3 s, from 17 to 17 + 90 = 107 (12.1).
+    expect(ofType(events, 'status').filter((e) => e.source === khamul.id).map((e) => [e.tick, e.target, e.status, e.value, e.expiresTick])).toEqual([
+      [17, beregond.id, 'slow', 25, 107],
+    ]);
+  });
+
   it('reaches only the allies locked at the cast with allAllies', () => {
     // Gothmog's grunts appear at his release, 13, after Galadriel locked her allies on tick 1;
     // her shields land at her release, 19. 0.5 S at cost 5 is 250.
