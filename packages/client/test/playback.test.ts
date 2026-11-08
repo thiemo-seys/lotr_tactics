@@ -1,6 +1,6 @@
-import { TICKS_PER_SECOND, createCombat, type Combat, type PlacedUnit, type UnitId } from '@lotr-tactics/sim';
+import { TICKS_PER_SECOND, createCombat, type Combat, type DashEvent, type PlacedUnit, type UnitId } from '@lotr-tactics/sim';
 import { describe, expect, it } from 'vitest';
-import { PRESETS } from '../src/boards.js';
+import { PRESETS, fightBoards } from '../src/boards.js';
 import { hexToWorld, lerpPoint } from '../src/layout.js';
 import { EFFECT_TICKS, Playback, SHOT_DELAY_TICKS, FLOATING_TEXT, facing, textOffset, type FloatingText } from '../src/playback.js';
 
@@ -144,6 +144,27 @@ describe('what is drawn', () => {
       }
       expect(p.history(0).steps.length).toBe(sets ? 1 : 0);
     }
+  });
+
+  it('never sets off a dash whose wind-up the fight ends in, though display time runs on', () => {
+    // Théoden casts Forth Eorlingas! on 217 (tanks against rings, seed 1), to charge on 228; an ally ends the fight
+    // on 227, so the sim never sets him off (sim-spec 13), and the afterglow runs on past 228.
+    const p = new Playback(createCombat({ seed: 1, stage: 2, teams: fightBoards('tanks', 'rings', 1) }));
+    p.playing = false;
+    let dash: DashEvent | undefined;
+    while (dash === undefined) dash = p.step().find((e): e is DashEvent => e.type === 'dash' && e.departTick > e.tick);
+    const from = hexToWorld(dash.from);
+    expect(p.history(dash.unit).steps.at(-1)).toMatchObject({ tick: dash.departTick, dash: true });
+    p.playing = true;
+    while (!p.combat.isOver()) p.advance(1 / TICKS_PER_SECOND);
+    p.advance(10);
+    const end = p.combat.tick;
+    expect(end).toBeLessThan(dash.departTick);
+    expect(p.time).toBe(end + 30);
+    expect(p.time).toBeGreaterThan(dash.departTick);
+    expect(p.history(dash.unit).steps.some((s) => s.dash && s.tick > end)).toBe(false);
+    for (const time of [end, dash.departTick, (dash.departTick + dash.arriveTick) / 2, p.time]) expect(p.position(dash.unit, time)).toEqual(from);
+    expect(p.position(dash.unit)).toEqual(hexToWorld(p.combat.state.units[dash.unit]!.hex));
   });
 
   it('stops a unit that dies mid-step where it was when it died, so it breaks up there', () => {

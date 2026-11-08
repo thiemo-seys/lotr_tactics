@@ -312,6 +312,15 @@ export class Playback {
         }
         case 'end':
           this.ended = { tick: e.tick, outcome: e.outcome };
+          // Nothing after the end happens (sim-spec section 13): a dash still in its caster's wind-up
+          // never sets off, though display time runs on through the afterglow. One that set off on the
+          // end tick itself has its unit's hex `to` in the state, as for a death above.
+          this.histories.forEach((history, unit) => {
+            const last = history.steps.at(-1);
+            if (last?.dash !== true || last.tick < e.tick) return;
+            const state = this.combat.state.units[unit];
+            if (last.tick > e.tick || (state !== undefined && pointDistance(hexToWorld(state.hex), last.to) > 1e-6)) history.steps.pop();
+          });
           break;
       }
     }
