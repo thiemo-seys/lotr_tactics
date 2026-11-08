@@ -19,9 +19,9 @@ export function renderViewingBar(bar: HTMLElement, flow: PlayFlow): void {
   const unworn = ring !== null && ring.bearer === null ? ring.corruption : null;
   const fielded = p.board.filter((u) => u !== null).length;
   rebuild(bar, JSON.stringify([p.seat, name, bot, p.hp, p.level, p.gold, fielded, p.items, unworn]), () => {
-    const stat = (className: string, tip: string, ...children: (Node | string)[]) => {
+    const stat = (className: string, tip: string | null, ...children: (Node | string)[]) => {
       const pill = el('span', `viewing-stat ${className}`, ...children);
-      setTip(pill, textTip(name, tip));
+      if (tip !== null) setTip(pill, textTip(name, tip));
       return pill;
     };
     const back = el('button', 'btn btn-secondary btn-sm viewing-back', icon('leave'), 'Your board', kbd('Esc'));
@@ -34,9 +34,9 @@ export function renderViewingBar(bar: HTMLElement, flow: PlayFlow): void {
       el(
         'span',
         'viewing-stats',
-        stat('hp', `${plural(Math.max(0, p.hp), 'HP', 'HP')} left.`, icon('hp'), String(Math.max(0, p.hp))),
+        stat('hp', null, icon('hp'), String(Math.max(0, p.hp))),
         stat('level', `Level ${p.level}: ${fielded} of ${plural(p.level, 'unit')} on the board.`, el('b', 'level-badge', String(p.level)), `${fielded}/${p.level}`),
-        stat('gold', `${plural(p.gold, 'gold', 'gold')}.`, icon('gold'), String(p.gold)),
+        stat('gold', null, icon('gold'), String(p.gold)),
       ),
       items.length === 0 ? null : el('span', 'viewing-items', ...items),
       back,
