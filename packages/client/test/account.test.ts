@@ -1,8 +1,8 @@
-import type { AccountView, SeatView } from '@lotr-tactics/server';
+import type { AccountView } from '@lotr-tactics/server';
 import { describe, expect, it } from 'vitest';
-import { AccountApi, AccountState, UNREACHABLE, isGuestSeat, nameToSend, type Fetch } from '../src/account.js';
+import { AccountApi, AccountState, UNREACHABLE, nameToSend, type Fetch } from '../src/account.js';
 
-const me: AccountView = { id: 'a1', name: 'Guest 0427', claimed: false, canRename: true, googleEnabled: false };
+const me: AccountView = { id: 'a1', name: 'Guest 0427', claimed: false, canRename: true, needsName: false, googleEnabled: false };
 
 /** A fetch that records each request and answers with the given response. */
 function fakeFetch(answer: (url: string, init: RequestInit) => Response | Promise<Response>) {
@@ -122,6 +122,20 @@ describe('the account state', () => {
     expect(account.online).toEqual({ kind: 'unavailable', reason: 'Lost the connection to the game server.' });
   });
 
+  it('makes online play unavailable when the account is signed out everywhere or deleted', () => {
+    for (const [reason, text] of [
+      ['everywhere', 'You were signed out on every device.'],
+      ['deleted', 'This account was deleted.'],
+    ] as const) {
+      const account = new AccountState();
+      account.loaded({ ok: true, value: me });
+      account.receive({ type: 'hello', me, game: { code: 'QWERT' } });
+      account.receive({ type: 'signedOut', reason });
+      expect([account.online, account.game]).toEqual([{ kind: 'unavailable', reason: text }, null]);
+      expect(account.onlineReason).toBe(`Online play is unavailable: ${text[0]!.toLowerCase()}${text.slice(1)}`);
+    }
+  });
+
   it("takes a renamed account from the server, and refuses a claimed account's rename within the limit", () => {
     const account = new AccountState();
     account.loaded({ ok: true, value: me });
@@ -144,14 +158,5 @@ describe('names and guest marks', () => {
     expect(nameToSend('Sa', 'Guest 0427')).toEqual({ error: 'A name has 3 to 20 characters.' });
     expect(nameToSend('Bot 7', 'Guest 0427')).toHaveProperty('error');
     expect(nameToSend('Guest 0427 ', 'Guest 0427')).toBeNull();
-  });
-
-  it('mark people playing as guests, but not bots, empty seats or the offline player', () => {
-    const seat = (s: Partial<SeatView>): SeatView => ({ kind: 'person', name: 'Ann', connected: true, player: 'a1', guest: true, ...s });
-    expect(isGuestSeat(seat({}))).toBe(true);
-    expect(isGuestSeat(seat({ guest: false }))).toBe(false);
-    expect(isGuestSeat(seat({ kind: 'bot', player: null, guest: false }))).toBe(false);
-    expect(isGuestSeat(seat({ player: 'local', name: 'You' }))).toBe(false);
-    expect(isGuestSeat(undefined)).toBe(false);
   });
 });

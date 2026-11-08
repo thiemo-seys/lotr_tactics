@@ -2,65 +2,11 @@
 // API as the page calls it, and what the page knows of the account and of online play. No DOM
 // apart from fetch, which tests replace, so it can be tested.
 
-import { NAMES, checkName, localPlayer, type AccountView, type ClientMessage, type FinalBoard, type SeatView, type ServerMessage } from '@lotr-tactics/server';
+import { NAMES, checkName, type AccountView, type ClientMessage, type HistoryPage, type ProfileView, type ServerMessage } from '@lotr-tactics/server';
 
-// What GET /api/profile and GET /api/history return (accounts-spec.md sections 9.3 and 9.4). The
-// server's own types are in its Node-only store, which the page can't import.
-
-export interface PlaceStats {
-  readonly games: number;
-  readonly wins: number;
-  /** Fraction of games in the top 4, 0 with no games. */
-  readonly top4Rate: number;
-  /** Null with no games. */
-  readonly averagePlace: number | null;
-}
-
-export interface Stats {
-  readonly all: PlaceStats;
-  /** The units most often on the final board, most games first. */
-  readonly units: readonly { readonly unit: string; readonly games: number }[];
-  /** The traits most often active on the final board, most games first. */
-  readonly traits: readonly { readonly trait: string; readonly games: number }[];
-  /** Games in which the person bore the One Ring. */
-  readonly ringGames: number;
-}
-
-export interface Profile {
-  readonly id: string;
-  readonly name: string;
-  readonly guest: boolean;
-  readonly stats: Stats;
-}
-
-export interface HistorySeat {
-  readonly seat: number;
-  /** The account, for a link to its profile; null for a bot or a deleted account. */
-  readonly account: string | null;
-  /** As shown in that game. */
-  readonly name: string;
-  readonly guest: boolean;
-  readonly place: number;
-  /** Left the game for good. */
-  readonly left: boolean;
-  readonly board: FinalBoard;
-  /** Ranked people only. */
-  readonly pointsBefore: number | null;
-  readonly pointsAfter: number | null;
-}
-
-export interface HistoryMatch {
-  readonly id: string;
-  readonly kind: 'ranked' | 'private';
-  /** ISO 8601. */
-  readonly startedAt: string;
-  readonly endedAt: string;
-  readonly lastRound: { readonly stage: number; readonly round: number };
-  /** The seat of the account whose history it is. */
-  readonly seat: number;
-  /** All 8, in seat order. */
-  readonly seats: readonly HistorySeat[];
-}
+// What GET /api/profile and GET /api/history return (accounts-spec.md sections 9.3 and 9.4), as
+// the server's browser-safe accounts module has them.
+export type { HistoryMatch, HistorySeat, PlaceStats, ProfileView as Profile, Stats } from '@lotr-tactics/server';
 
 export type ApiResult<T> = { readonly ok: true; readonly value: T } | { readonly ok: false; readonly status: number; readonly error: string };
 
@@ -96,12 +42,12 @@ export class AccountApi {
   }
 
   /** An account's profile, or the person's own with null. */
-  profile(account: string | null): Promise<ApiResult<Profile>> {
+  profile(account: string | null): Promise<ApiResult<ProfileView>> {
     return this.request('GET', `/api/profile${query({ account })}`);
   }
 
   /** A page of an account's matches, newest first, older than the match `before`. */
-  history(account: string | null, before: string | null): Promise<ApiResult<{ readonly matches: readonly HistoryMatch[] }>> {
+  history(account: string | null, before: string | null): Promise<ApiResult<HistoryPage>> {
     return this.request('GET', `/api/history${query({ account, before })}`);
   }
 
@@ -210,6 +156,14 @@ export class AccountState {
         this.online = { kind: 'replaced' };
         this.game = null;
         return;
+      case 'signedOut':
+        // The session has gone too: Try again gets a new guest.
+        this.online = {
+          kind: 'unavailable',
+          reason: message.reason === 'deleted' ? 'This account was deleted.' : 'You were signed out on every device.',
+        };
+        this.game = null;
+        return;
     }
   }
 
@@ -276,12 +230,4 @@ export function nameToSend(raw: string, current: string | null): { readonly name
   if (raw.replace(/\p{Cc}/gu, '').trim() === current) return null;
   const checked = checkName(raw);
   return 'error' in checked ? checked : { name: checked.name };
-}
-
-/**
- * Whether a lobby seat is a person playing as a guest, who gets a guest mark (accounts-spec.md
- * section 6.3). Offline, the person has no account at all, so no mark.
- */
-export function isGuestSeat(seat: SeatView | undefined): boolean {
-  return seat !== undefined && seat.kind === 'person' && seat.guest && seat.player !== localPlayer().id;
 }

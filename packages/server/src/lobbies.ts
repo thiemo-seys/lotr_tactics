@@ -4,7 +4,7 @@
 
 import { LOBBY } from './config.js';
 import type { Host } from './host.js';
-import { Lobby, type Client } from './lobby.js';
+import { Lobby, applyChange, type Client, type PlayerChange } from './lobby.js';
 import { parseClientMessage, type AccountView, type ClientMessage } from './protocol.js';
 import type { MatchResult } from './results.js';
 
@@ -78,11 +78,31 @@ export class Lobbies {
     place.lobby.disconnect(place.seat);
   }
 
-  /** An account was renamed: its connection and its lobby show the new name. */
-  rename(playerId: string, name: string): void {
-    for (const lobby of this.lobbies.values()) lobby.rename(playerId, name);
+  /** An account was renamed or claimed: its connection and its lobby show it. */
+  updatePlayer(playerId: string, change: PlayerChange): void {
+    for (const lobby of this.lobbies.values()) lobby.updatePlayer(playerId, change);
     const client = this.connections.get(playerId);
-    if (client !== undefined) client.player.name = name;
+    if (client !== undefined) applyChange(client.player, change);
+  }
+
+  /**
+   * The code of the lobby, not yet over, in which an account has a seat it hasn't left, or null.
+   * An account can't be deleted while it has one (accounts-spec.md section 6.4).
+   */
+  seatCode(playerId: string): string | null {
+    return this.lobbyOf(playerId)?.code ?? null;
+  }
+
+  /**
+   * The account was signed out everywhere or deleted: its connection is told so, leaves its seat
+   * as a disconnect would, and is closed.
+   */
+  signedOut(playerId: string, reason: 'everywhere' | 'deleted'): void {
+    const client = this.connections.get(playerId);
+    if (client === undefined) return;
+    client.send({ type: 'signedOut', reason });
+    this.disconnect(client);
+    client.close?.();
   }
 
   /**

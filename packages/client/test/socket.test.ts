@@ -33,7 +33,7 @@ class FakeSocket extends EventTarget {
   }
 }
 
-const me = { id: 'a1', name: 'Guest 0427', claimed: false, canRename: true, googleEnabled: false };
+const me = { id: 'a1', name: 'Guest 0427', claimed: false, canRename: true, needsName: false, googleEnabled: false };
 const flush = () => new Promise((done) => setTimeout(done, 0));
 
 function connect(seat: string | null = null) {
@@ -99,6 +99,20 @@ describe('SocketConnection', () => {
     socket().close();
     await vi.advanceTimersByTimeAsync(20_000);
     expect(events.messages.map((m) => m.type)).toEqual(['hello', 'replaced']);
+    expect(events.closed).toEqual([]);
+    expect(FakeSocket.sockets).toHaveLength(1);
+    expect(savedSeat()).toBeNull();
+  });
+
+  it('passes signedOut on and closes for good, without reconnecting or a closed event', async () => {
+    vi.useFakeTimers();
+    const { events, socket } = connect('QWERT');
+    socket().open();
+    socket().receive({ type: 'hello', me, game: { code: 'QWERT' } });
+    socket().receive({ type: 'signedOut', reason: 'everywhere' });
+    socket().close();
+    await vi.advanceTimersByTimeAsync(20_000);
+    expect(events.messages.map((m) => m.type)).toEqual(['hello', 'signedOut']);
     expect(events.closed).toEqual([]);
     expect(FakeSocket.sockets).toHaveLength(1);
     expect(savedSeat()).toBeNull();

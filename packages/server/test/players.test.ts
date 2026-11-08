@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { checkName, localPlayer, nameKey } from '../src/players.js';
+import { checkName, isGuest, localPlayer, nameKey } from '../src/players.js';
 
 describe('account names', () => {
   it('are trimmed, without control characters, and 3 to 20 characters long', () => {
@@ -28,7 +28,10 @@ describe('account names', () => {
     expect(nameKey('ﬁre')).toBe('fire');
   });
 
-  it('give the offline player no account', () => {
+  it('give the offline player no account, so no guest mark', () => {
     expect(localPlayer()).toEqual({ id: 'local', name: 'You', claimed: false, rating: null });
+    expect(isGuest(localPlayer())).toBe(false);
+    expect(isGuest({ id: 'a1', name: 'Ann', claimed: false, rating: null })).toBe(true);
+    expect(isGuest({ id: 'a1', name: 'Ann', claimed: true, rating: null })).toBe(false);
   });
 });

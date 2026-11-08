@@ -23,8 +23,8 @@ describe('the players list', () => {
     expect(rows.map((r) => r.guest)).toEqual([false, false, true]);
   });
 
-  it('mark no guest in an offline game, where the person has no account', () => {
-    const seats: SeatView[] = [{ kind: 'person', name: 'You', connected: true, player: 'local', guest: true }];
+  it('mark no guest in an offline game, where the person has no account and the seat says so', () => {
+    const seats: SeatView[] = [{ kind: 'person', name: 'You', connected: true, player: 'local', guest: false }];
     const ring: RingView = { state: 'none' } as unknown as RingView;
     expect(playerRows([player(0, 100)], seats, 1, ring, () => 'You')[0]!.guest).toBe(false);
   });

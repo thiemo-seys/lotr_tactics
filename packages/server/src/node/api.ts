@@ -1,16 +1,15 @@
 // The HTTP API (docs/accounts-spec.md section 11.1): the asker's account, renaming, signing out,
-// profiles and history. JSON in and out. Node only.
+// deleting the account, profiles and history. JSON in and out. Node only.
 
 import type { IncomingMessage, ServerResponse } from 'node:http';
 import { performance } from 'node:perf_hooks';
+import type { ProfileView } from '../accounts.js';
 import { ACCOUNTS, NAMES } from '../config.js';
 import type { Lobbies } from '../lobbies.js';
-import { checkName } from '../players.js';
+import { checkName, nameKey } from '../players.js';
 import type { AccountView } from '../protocol.js';
 import type { Found, Sessions } from './sessions.js';
-import type { Account, Store } from './store.js';
-
-const DAY_MS = 24 * 60 * 60 * 1000;
+import { canRename, type Account, type Store } from './store.js';
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
 /** Counts events per key in fixed windows, in memory only. */
@@ -85,6 +84,8 @@ export class Api {
           return await this.rename(request, response);
         case 'POST /api/signout':
           return await this.signOut(request, response);
+        case 'POST /api/me/delete':
+          return await this.deleteAccount(request, response);
         case 'GET /api/profile':
           return await this.profile(request, response, url);
         case 'GET /api/history':
@@ -121,10 +122,10 @@ export class Api {
     const checked = checkName(body.name);
     if ('error' in checked) throw new ApiError(400, checked.error);
     const { account } = found;
-    if (!this.canRename(account)) throw new ApiError(400, `You can rename once every ${NAMES.renameDays} days.`);
     const renamed = await this.options.store.rename(account.id, checked.name, checked.key, this.options.sessions.now());
+    if (renamed === 'wait') throw new ApiError(400, `You can rename once every ${NAMES.renameDays} days.`);
     if (renamed === 'taken') throw new ApiError(400, 'That name is taken.');
-    this.options.lobbies.rename(account.id, renamed.name);
+    this.options.lobbies.updatePlayer(account.id, { name: renamed.name });
     send(response, 200, this.view(renamed), found.cookie);
   }
 
@@ -134,8 +135,29 @@ export class Api {
     const body = await readBody(request);
     const everywhere = body.everywhere === true;
     await this.options.sessions.signOut(found, everywhere);
-    // Signed out everywhere, the account's game connection goes too.
-    if (everywhere) this.options.lobbies.client(found.account.id)?.close?.();
+    // Signed out everywhere, the account's game connection is told so and closed.
+    if (everywhere) this.options.lobbies.signedOut(found.account.id, 'everywhere');
+    send(response, 200, { ok: true }, this.options.sessions.clearCookie());
+  }
+
+  /**
+   * Deletes the account, once `confirm` is its name (compared as names are: ignoring case and
+   * spaces), while it has no seat in a lobby or game. Clears the cookie (accounts-spec.md section 6.4).
+   */
+  private async deleteAccount(request: IncomingMessage, response: ServerResponse): Promise<void> {
+    const found = await this.changing(request);
+    const body = await readBody(request);
+    const { account } = found;
+    if (typeof body.confirm !== 'string' || nameKey(body.confirm.trim()) !== account.nameKey) {
+      throw new ApiError(400, "Type the account's name to confirm.");
+    }
+    const { lobbies } = this.options;
+    const code = lobbies.seatCode(account.id);
+    if (code !== null) throw new ApiError(409, `You have a seat in lobby ${code}. Leave it before deleting the account.`);
+    // Its connection goes first, so it can't take a seat meanwhile, and again after, in case one opened.
+    lobbies.signedOut(account.id, 'deleted');
+    await this.options.store.deleteAccount(account.id);
+    lobbies.signedOut(account.id, 'deleted');
     send(response, 200, { ok: true }, this.options.sessions.clearCookie());
   }
 
@@ -144,7 +166,8 @@ export class Api {
     const found = await this.signedIn(request);
     const account = await this.visible(found, url.searchParams.get('account'));
     const stats = await this.options.store.stats(account.id);
-    send(response, 200, { id: account.id, name: account.name, guest: !account.claimed, stats }, found.cookie);
+    const profile: ProfileView = { id: account.id, name: account.name, guest: !account.claimed, stats };
+    send(response, 200, profile, found.cookie);
   }
 
   /** 20 matches at a time, newest first, older than the match `before`. */
@@ -190,17 +213,13 @@ export class Api {
     return request.socket.remoteAddress ?? 'unknown';
   }
 
-  private canRename(account: Account): boolean {
-    if (!account.claimed || account.renamedAt === null) return true;
-    return this.options.sessions.now().getTime() - account.renamedAt.getTime() >= NAMES.renameDays * DAY_MS;
-  }
-
   view(account: Account): AccountView {
     return {
       id: account.id,
       name: account.name,
       claimed: account.claimed,
-      canRename: this.canRename(account),
+      canRename: canRename(account, this.options.sessions.now()),
+      needsName: account.needsName,
       googleEnabled: this.options.googleEnabled,
     };
   }

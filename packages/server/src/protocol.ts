@@ -21,8 +21,14 @@ export interface AccountView {
   readonly name: string;
   /** Signed in with Google. */
   readonly claimed: boolean;
-  /** False within 7 days of a claimed account's last rename. */
+  /** False within 7 days of a claimed account's last rename, unless it needs a new name. */
   readonly canRename: boolean;
+  /**
+   * A claimed account whose name another claimed account holds, or is kept for bots and guests
+   * ("Guest 0427"), as after claiming a guest with it. It holds no name until it renames, which it
+   * can do at once; ranked and friends wait for it (accounts-spec.md section 6.3).
+   */
+  readonly needsName: boolean;
   /** Google sign-in is configured on this server. */
   readonly googleEnabled: boolean;
 }
@@ -59,7 +65,12 @@ export type ServerMessage =
   | { readonly type: 'left'; readonly reason: string }
   | { readonly type: 'refused'; readonly request: ClientMessage['type'] | 'unknown'; readonly reason: string }
   /** The account connected again somewhere else, which took over its seat. This connection closes. */
-  | { readonly type: 'replaced' };
+  | { readonly type: 'replaced' }
+  /**
+   * The account was signed out on every device, or deleted (accounts-spec.md sections 6.1 and 6.4).
+   * This connection closes; its session is gone, so the page needs a new guest to play online.
+   */
+  | { readonly type: 'signedOut'; readonly reason: 'everywhere' | 'deleted' };
 
 /** Longest string accepted in a message. */
 const MAX_TEXT = 200;

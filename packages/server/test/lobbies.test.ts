@@ -2,7 +2,7 @@ import { describe, expect, it } from 'vitest';
 import { LOBBY, TIMERS } from '../src/config.js';
 import { Lobbies, type LobbiesOptions } from '../src/lobbies.js';
 import type { Client } from '../src/lobby.js';
-import type { Player } from '../src/players.js';
+import { localPlayer, type Player } from '../src/players.js';
 import type { AccountView, ServerMessage } from '../src/protocol.js';
 import type { MatchResult } from '../src/results.js';
 import { FakeHost, last } from './helpers.js';
@@ -34,7 +34,7 @@ class FakeClient implements Client {
 let accounts = 0;
 
 function me(client: Client): AccountView {
-  return { id: client.player.id, name: client.player.name, claimed: client.player.claimed, canRename: true, googleEnabled: false };
+  return { id: client.player.id, name: client.player.name, claimed: client.player.claimed, canRename: true, needsName: false, googleEnabled: false };
 }
 
 function setup(options: LobbiesOptions = {}) {
@@ -117,10 +117,64 @@ describe('lobbies', () => {
   it('takes names from accounts, and shows a rename in the lobby', () => {
     const { clients, lobbies, code } = lobbyOf(['frodo', 'sam']);
     expect(clients[1]!.last('lobby')!.lobby.seats.map((s) => s.name).slice(0, 2)).toEqual(['frodo', 'sam']);
-    lobbies.rename('sam', 'Samwise');
+    lobbies.updatePlayer('sam', { name: 'Samwise' });
     expect(clients[0]!.last('lobby')!.lobby).toMatchObject({ code });
     expect(clients[0]!.last('lobby')!.lobby.seats[1]).toMatchObject({ name: 'Samwise', player: 'sam' });
     expect(clients[1]!.player.name).toBe('Samwise');
+  });
+
+  it('drops the guest mark when a person claims their account', () => {
+    const { clients, lobbies } = lobbyOf(['frodo', 'sam']);
+    expect(clients[0]!.last('lobby')!.lobby.seats[1]).toMatchObject({ guest: true });
+    const sent = clients[0]!.inbox.length;
+    lobbies.updatePlayer('sam', { claimed: true });
+    expect(clients[0]!.last('lobby')!.lobby.seats[1]).toMatchObject({ name: 'sam', guest: false });
+    expect(clients[1]!.player.claimed).toBe(true);
+    // Nothing changed, nothing sent.
+    const after = clients[0]!.inbox.length;
+    expect(after).toBeGreaterThan(sent);
+    lobbies.updatePlayer('sam', { claimed: true, name: 'sam' });
+    expect(clients[0]!.inbox.length).toBe(after);
+  });
+});
+
+describe('guest marks', () => {
+  it('are for people without a claimed account, but not the offline player, who has no account', () => {
+    const { connect, say } = setup();
+    const guest = connect(new FakeClient('ann', 'Ann'));
+    say(guest, { type: 'create' });
+    expect(guest.last('lobby')!.lobby.seats[0]).toMatchObject({ kind: 'person', guest: true });
+    const offline = new FakeClient();
+    (offline as { player: Player }).player = localPlayer();
+    connect(offline);
+    say(offline, { type: 'create' });
+    expect(offline.last('lobby')!.lobby.seats[0]).toMatchObject({ kind: 'person', name: 'You', player: 'local', guest: false });
+  });
+});
+
+describe('signing out and deleting', () => {
+  it('know which lobby an account has a seat in, until it leaves or the game ends', () => {
+    const { clients, lobbies, code, say } = lobbyOf(['frodo', 'sam']);
+    expect(lobbies.seatCode('sam')).toBe(code);
+    expect(lobbies.seatCode('merry')).toBeNull();
+    say(clients[1]!, { type: 'leave' });
+    expect(lobbies.seatCode('sam')).toBeNull();
+  });
+
+  it("tell the account's connection it was signed out, then close it as a disconnect", () => {
+    const { clients, lobbies, say, code } = lobbyOf(['frodo', 'sam']);
+    say(clients[0]!, { type: 'start' });
+    lobbies.signedOut('sam', 'everywhere');
+    expect(clients[1]!.last('signedOut')).toEqual({ type: 'signedOut', reason: 'everywhere' });
+    expect(clients[1]!.closed).toBe(true);
+    expect(lobbies.client('sam')).toBeUndefined();
+    // Disconnected, not gone: the seat is still the account's, and its bot plays it.
+    expect(clients[0]!.last('lobby')!.lobby.seats[1]).toMatchObject({ kind: 'person', connected: false });
+    expect(lobbies.seatCode('sam')).toBe(code);
+    // Nothing more comes from it.
+    const sent = clients[1]!.inbox.length;
+    lobbies.signedOut('sam', 'deleted');
+    expect(clients[1]!.inbox.length).toBe(sent);
   });
 });
 

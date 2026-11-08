@@ -1,6 +1,7 @@
 # The game behind Caddy, which gets HTTPS certificates and passes WebSockets through, with Postgres
 # for accounts and match history (docs/accounts-spec.md section 15).
-# On the server: put DOMAIN=your.domain and POSTGRES_PASSWORD=... in .env next to this file, then
+# On the server: put DOMAIN=your.domain and POSTGRES_PASSWORD=... in .env next to this file, and
+# GOOGLE_CLIENT_ID and GOOGLE_CLIENT_SECRET for Google sign-in (README.md, Deploying), then
 # `docker compose up -d --build`.
 
 services:
@@ -16,6 +17,9 @@ services:
       PUBLIC_URL: https://${DOMAIN:?Set DOMAIN in .env, for example DOMAIN=tactics.example.com}
       # Caddy sets X-Forwarded-For, which the rate limits use.
       TRUST_PROXY: "1"
+      # Google sign-in, which is off unless both are set (docs/accounts-spec.md section 6.2).
+      GOOGLE_CLIENT_ID: ${GOOGLE_CLIENT_ID:-}
+      GOOGLE_CLIENT_SECRET: ${GOOGLE_CLIENT_SECRET:-}
     # Only Caddy reaches the game, over the compose network; no port is opened on the host.
     expose:
       - "8080"

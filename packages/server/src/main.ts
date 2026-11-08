@@ -48,6 +48,14 @@ try {
   stop(`PUBLIC_URL must be the site's origin, such as https://tactics.example.com, not ${publicUrl}.`);
 }
 
+// Google sign-in is on with both of its settings (accounts-spec.md section 6.2).
+const googleId = process.env.GOOGLE_CLIENT_ID ?? '';
+const googleSecret = process.env.GOOGLE_CLIENT_SECRET ?? '';
+const google = googleId !== '' && googleSecret !== '' ? { clientId: googleId, clientSecret: googleSecret } : null;
+if (google === null && (googleId !== '' || googleSecret !== '')) {
+  console.warn('Google sign-in is off: it needs both GOOGLE_CLIENT_ID and GOOGLE_CLIENT_SECRET, and only one is set.');
+}
+
 const pool = createPool(databaseUrl);
 try {
   const applied = await migrate(pool);
@@ -68,8 +76,10 @@ const server = await startServer({
   store: new PgStore(pool),
   publicUrl,
   trustProxy: process.env.TRUST_PROXY === '1',
+  google,
 });
 console.log(`LOTR Tactics server on http://localhost:${server.port} for ${publicUrl}${built ? '' : ' (no client build to serve: run pnpm build)'}`);
+console.log(google === null ? 'Google sign-in is off: set GOOGLE_CLIENT_ID and GOOGLE_CLIENT_SECRET to turn it on.' : `Google sign-in is on, redirecting to ${new URL(publicUrl).origin}/auth/google/callback.`);
 
 for (const signal of ['SIGINT', 'SIGTERM'] as const) {
   process.on(signal, () =>

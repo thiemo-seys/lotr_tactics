@@ -73,3 +73,11 @@ export const ACCOUNTS = {
   /** Attempts to write a match's result before it is logged instead. */
   recordAttempts: 4,
 } as const;
+
+/** Google sign-in (docs/accounts-spec.md section 6.2). */
+export const GOOGLE = {
+  /** How long the cookie with the state and the PKCE verifier lasts: the time to sign in at Google. */
+  stateSeconds: 600,
+  /** How long to wait for Google's token endpoint. */
+  timeoutSeconds: 10,
+} as const;

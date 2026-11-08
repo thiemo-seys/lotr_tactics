@@ -238,7 +238,8 @@ function connectOnline(): void {
 
 function receiveOnline(message: ServerMessage): void {
   account.receive(message);
-  if (message.type === 'replaced') socket = null;
+  // The connection closes for good after either, without a `closed` event.
+  if (message.type === 'replaced' || message.type === 'signedOut') socket = null;
   flow.receive(message, performance.now());
 }
 

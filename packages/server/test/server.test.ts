@@ -2,12 +2,11 @@ import { mkdirSync, mkdtempSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
-import { WebSocket } from 'ws';
 import { hashSecret } from '../src/node/sessions.js';
 import { PgStore, type HistoryMatch } from '../src/node/store.js';
-import type { AccountView, ClientMessage, ServerMessage } from '../src/protocol.js';
 import { startServer, type RunningServer } from '../src/server.js';
 import { SKIP_REASON, noteSkipped, testDatabase, type TestDatabase } from './db.js';
+import { web, type SocketClient } from './web.js';
 
 /** The site's origin, as PUBLIC_URL would give it. */
 const ORIGIN = 'http://tactics.test';
@@ -33,106 +32,13 @@ describe.skipIf(SKIP_REASON !== null)('the Node server', () => {
     await db?.close();
   });
 
-  const base = () => `http://127.0.0.1:${server.port}`;
-
-  interface Request {
-    method?: string;
-    cookie?: string | null;
-    origin?: string | null;
-    body?: unknown;
-    /** The address a proxy says the request is from. */
-    from?: string;
-  }
-
-  let addresses = 0;
-
-  async function api(path: string, { method = 'GET', cookie = null, origin = ORIGIN, body, from = `10.0.0.${++addresses}` }: Request = {}) {
-    const headers: Record<string, string> = { 'x-forwarded-for': `${from}, 172.16.0.1` };
-    if (cookie !== null) headers.cookie = cookie;
-    if (origin !== null) headers.origin = origin;
-    const response = await fetch(`${base()}${path}`, { method, headers, body: body === undefined ? undefined : JSON.stringify(body) });
-    return { status: response.status, body: (await response.json()) as Record<string, unknown>, setCookie: response.headers.get('set-cookie') };
-  }
-
-  /** A new guest: its account and its session cookie. */
-  async function guest(): Promise<{ me: AccountView; cookie: string }> {
-    const response = await api('/api/me');
-    expect(response.status).toBe(200);
-    return { me: response.body as unknown as AccountView, cookie: response.setCookie!.split(';')[0]! };
-  }
-
-  /** Opens a WebSocket, resolving to a client, or to the HTTP status of a refused upgrade. */
-  function open(cookie: string | null, origin: string = ORIGIN): Promise<Awaited<ReturnType<typeof clientOf>> | number> {
-    const ws = new WebSocket(`ws://127.0.0.1:${server.port}/ws`, { origin, headers: cookie === null ? {} : { cookie } });
-    const client = clientOf(ws);
-    return new Promise((done) => {
-      ws.once('open', () => done(client));
-      ws.on('error', () => {});
-      ws.once('unexpected-response', (request, response) => {
-        done(response.statusCode ?? 0);
-        request.destroy();
-      });
-    });
-  }
-
-  async function connect(cookie: string) {
-    const client = await open(cookie);
-    if (typeof client === 'number') throw new Error(`The upgrade was refused with ${client}.`);
-    return client;
-  }
-
-  /** A WebSocket client that waits for messages by type. */
-  function clientOf(ws: WebSocket) {
-    const inbox: ServerMessage[] = [];
-    const waiting: (() => void)[] = [];
-    let closed = false;
-    const listeners: ((message: ServerMessage) => void)[] = [];
-    ws.on('message', (data) => {
-      const message = JSON.parse(String(data)) as ServerMessage;
-      inbox.push(message);
-      for (const listen of listeners) listen(message);
-      for (const wake of waiting.splice(0)) wake();
-    });
-    ws.on('close', () => {
-      closed = true;
-      for (const wake of waiting.splice(0)) wake();
-    });
-    let read = 0;
-    return {
-      inbox,
-      get closed() {
-        return closed;
-      },
-      send: (message: ClientMessage) => ws.send(JSON.stringify(message)),
-      listen: (listen: (message: ServerMessage) => void) => listeners.push(listen),
-      /** The next message of a type, after the last one returned, that passes a test. */
-      async next<T extends ServerMessage['type']>(
-        type: T,
-        test: (message: Extract<ServerMessage, { type: T }>) => boolean = () => true,
-      ): Promise<Extract<ServerMessage, { type: T }>> {
-        for (;;) {
-          const i = inbox.findIndex((m, index) => index >= read && m.type === type && test(m as Extract<ServerMessage, { type: T }>));
-          if (i >= 0) {
-            read = i + 1;
-            return inbox[i] as Extract<ServerMessage, { type: T }>;
-          }
-          if (closed) throw new Error(`The connection closed before a ${type} message.`);
-          await new Promise<void>((wake) => waiting.push(wake));
-        }
-      },
-      /** Resolves once the connection has closed. */
-      async gone(): Promise<void> {
-        while (!closed) await new Promise<void>((wake) => waiting.push(wake));
-      },
-      close: () => ws.close(),
-    };
-  }
+  const { base, request: api, guest, open, connect } = web(() => server.port, ORIGIN);
 
   /**
    * Plays a seat as quickly as the server allows: picks the first free option in its Council
    * turns, and is Ready once in every planning and fight step.
    */
-  function autoplay(client: ReturnType<typeof clientOf>): void {
+  function autoplay(client: SocketClient): void {
     const done = new Set<string>();
     client.listen((message) => {
       if (message.type !== 'state') return;
@@ -166,7 +72,14 @@ describe.skipIf(SKIP_REASON !== null)('the Node server', () => {
   describe('the API', () => {
     it('makes a guest with a session cookie, and knows it again by the cookie', async () => {
       const { me, cookie } = await guest();
-      expect(me).toEqual({ id: expect.any(String), name: expect.stringMatching(/^Guest \d{4}$/), claimed: false, canRename: true, googleEnabled: false });
+      expect(me).toEqual({
+        id: expect.any(String),
+        name: expect.stringMatching(/^Guest \d{4}$/),
+        claimed: false,
+        canRename: true,
+        needsName: false,
+        googleEnabled: false,
+      });
       const again = await api('/api/me', { cookie });
       expect(again.body).toEqual(me);
       // Not renewed on the same day, so no new cookie.
@@ -228,8 +141,19 @@ describe.skipIf(SKIP_REASON !== null)('the Node server', () => {
       expect((await api('/api/signout', { method: 'POST', cookie: otherDevice, body: { everywhere: true } })).status).toBe(200);
       expect((await api('/api/profile', { cookie: otherDevice })).status).toBe(401);
       expect((await api('/api/profile', { cookie: first.cookie })).status).toBe(401);
-      // The account's game connection goes too.
+      // The account's game connection is told so, and goes too.
+      expect(await client.next('signedOut')).toEqual({ type: 'signedOut', reason: 'everywhere' });
       await client.gone();
+    });
+
+    it("sends the browser back to the page from Google sign-in while it's off", async () => {
+      const { cookie } = await guest();
+      for (const path of ['/auth/google', '/auth/google/callback?code=x&state=y']) {
+        const response = await api(path, { cookie });
+        expect(response.status).toBe(303);
+        expect(response.location).toBe('/play.html#signin=unavailable');
+      }
+      expect((await api('/auth/elsewhere', { cookie })).status).toBe(404);
     });
 
     it("shows a guest's profile and history only to the guest", async () => {

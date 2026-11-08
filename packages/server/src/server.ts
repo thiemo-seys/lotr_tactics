@@ -13,6 +13,7 @@ import type { Host } from './host.js';
 import { Lobbies } from './lobbies.js';
 import type { Client } from './lobby.js';
 import { Api } from './node/api.js';
+import { GoogleSignIn, type GoogleConfig } from './node/google.js';
 import { recordResult } from './node/record.js';
 import { Sessions } from './node/sessions.js';
 import type { Account, Store } from './node/store.js';
@@ -36,8 +37,12 @@ export interface ServerOptions {
   readonly publicUrl: string;
   /** Behind a proxy that sets X-Forwarded-For, such as Caddy. */
   readonly trustProxy?: boolean;
+  /** The Google OAuth client; without it, Google sign-in is off. */
+  readonly google?: GoogleConfig | null;
   /** The seed for each new lobby's game, for tests. By default, a random one. */
   readonly seed?: () => number;
+  /** The clock for sessions, renames and ID tokens' expiry, for tests. By default, the system's. */
+  readonly now?: () => Date;
 }
 
 export interface RunningServer {
@@ -67,12 +72,18 @@ export function startServer(options: ServerOptions): Promise<RunningServer> {
     seed: options.seed,
     onResult: (result) => void recordResult(store, result),
   });
-  const sessions = new Sessions(store, { secure: origin.startsWith('https:') });
-  const api = new Api({ store, sessions, lobbies, origin, trustProxy: options.trustProxy ?? false, googleEnabled: false });
+  const sessions = new Sessions(store, { secure: origin.startsWith('https:'), now: options.now });
+  const google = new GoogleSignIn({ config: options.google ?? null, origin, store, sessions, lobbies });
+  const api = new Api({ store, sessions, lobbies, origin, trustProxy: options.trustProxy ?? false, googleEnabled: google.enabled });
   const root = options.clientDir === null ? null : resolve(options.clientDir);
   const http = createServer((request, response) => {
-    if (Api.handles(new URL(request.url ?? '/', 'http://host').pathname)) {
+    const path = new URL(request.url ?? '/', 'http://host').pathname;
+    if (Api.handles(path)) {
       void api.handle(request, response);
+      return;
+    }
+    if (GoogleSignIn.handles(path)) {
+      void google.handle(request, response);
       return;
     }
     if (request.method !== 'GET' && request.method !== 'HEAD') {
@@ -155,13 +166,15 @@ function connect(ws: WebSocket, lobbies: Lobbies, alive: WeakMap<WebSocket, bool
     send: (message) => {
       if (ws.readyState === ws.OPEN) ws.send(JSON.stringify(message));
     },
-    close: () => ws.close(1000, 'Replaced'),
+    close: () => ws.close(1000),
   };
   alive.set(ws, true);
   let windowStart = performance.now();
   let messages = 0;
   ws.on('pong', () => alive.set(ws, true));
   ws.on('message', (data, isBinary) => {
+    // Closed by the server, as when replaced or signed out: nothing more from it counts.
+    if (ws.readyState !== ws.OPEN) return;
     const now = performance.now();
     if (now - windowStart >= SERVER.rateSeconds * 1000) {
       windowStart = now;

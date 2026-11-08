@@ -168,6 +168,10 @@ export class PlayFlow {
         // The page's banner says so, and offers to take the game back.
         this.hooks.menu('');
         return;
+      case 'signedOut':
+        // The menu's note says so, with Try again, which gets a new guest.
+        this.hooks.menu('');
+        return;
       case 'joined':
         this.you = message.seat;
         this.menuMessage = '';

@@ -4,7 +4,6 @@
 
 import type { PlayFlow } from '../flow.js';
 import { textTip } from '../tips.js';
-import { isGuestSeat } from '../account.js';
 import { guestMark } from '../ui/chips.js';
 import { el, icon, rebuild, setText, show } from '../ui/dom.js';
 import { setTip } from '../ui/tooltip.js';
@@ -35,7 +34,7 @@ export function renderLobby(flow: PlayFlow): void {
         el(
           'span',
           'seat-text',
-          el('span', 'seat-name-line', el('span', 'seat-name', seat.kind === 'empty' ? 'Empty' : seat.name), isGuestSeat(seat) ? guestMark() : null),
+          el('span', 'seat-name-line', el('span', 'seat-name', seat.kind === 'empty' ? 'Empty' : seat.name), seat.guest ? guestMark() : null),
           el('span', 'seat-status', status),
         ),
         el(
