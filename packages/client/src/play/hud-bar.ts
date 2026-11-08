@@ -169,6 +169,7 @@ function roundNode(stage: number, node: StageNode): HTMLElement {
   item.tabIndex = 0;
   const when = node.state === 'done' ? 'Played.' : node.state === 'current' ? 'This round.' : 'To come.';
   item.setAttribute('aria-label', `Round ${stage}-${node.round}: ${ROUND_NAMES[node.type]}. ${when}${node.outcome === null ? '' : ` ${node.outcome}.`}`);
-  setTip(item, textTip(`Round ${stage}-${node.round} · ${ROUND_NAMES[node.type]}`, ROUND_HINTS[node.type], ...(node.outcome === null ? [when] : [`${when} ${node.outcome}.`])));
+  // Whether it is played, on now or to come shows in how it is drawn, so the tip leaves it out.
+  setTip(item, textTip(`Round ${stage}-${node.round} · ${ROUND_NAMES[node.type]}`, ROUND_HINTS[node.type], ...(node.outcome === null ? [] : [`${node.outcome}.`])));
   return item;
 }

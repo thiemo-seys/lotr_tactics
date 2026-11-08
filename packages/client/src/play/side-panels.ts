@@ -128,8 +128,7 @@ function playerRow(row: PlayerRow, corruption: number, board: RowBoard | null): 
       board.open();
     });
   }
-  const look =
-    board === null ? [] : board.shown ? [row.you ? 'Your board is on screen.' : 'Their board is on screen.'] : [row.you ? 'Click to go back to your board.' : 'Click to see their board and traits.'];
+  const look = board === null || board.shown ? [] : [row.you ? 'Click to go back to your board.' : 'Click to see their board and traits.'];
   setTip(
     item,
     textTip(

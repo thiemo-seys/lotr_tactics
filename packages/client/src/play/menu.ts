@@ -37,14 +37,9 @@ export function renderLobby(flow: PlayFlow): void {
           seat.kind === 'person' ? el('span', `badge ${away ? 'away' : 'online'}`, icon(away ? 'away' : 'connected')) : null,
         ),
       );
-      setTip(
-        card,
-        textTip(
-          seat.kind === 'empty' ? `Seat ${i + 1}` : seat.name,
-          ...(i === l.host ? ['The host, who starts the game.'] : []),
-          seat.kind === 'empty' ? 'A bot takes this seat when the game starts.' : seat.kind === 'bot' ? 'A bot.' : away ? 'Disconnected.' : 'Connected.',
-        ),
-      );
+      // The card says who sits there, so only the host's badge and empty seats, which only the host's lobby message explains, need a tip.
+      if (i === l.host) setTip(card, textTip(seat.name, 'The host, who starts the game.'));
+      else if (seat.kind === 'empty') setTip(card, textTip(`Seat ${i + 1}`, 'A bot takes this seat when the game starts.'));
       return card;
     }),
   );
