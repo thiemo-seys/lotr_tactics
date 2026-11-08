@@ -40,7 +40,7 @@ packages/client/
     play.ts        play page setup: connections, keys, the frame loop, and which panels show
     flow.ts        the play page's steps from the game's messages, what it sends back, the timer, a round's results, what the HUD shows while a fight plays, and whose board is on screen (no Three.js, no DOM)
     connection.ts  offline and WebSocket connections to a game (server-spec.md section 10)
-    account.ts     the account API as the page calls it, and the account and online play as the page knows them (accounts-spec.md section 14; no Three.js, no DOM)
+    account.ts     the account API as the page calls it, the account and online play as the page knows them, and what the page says on coming back from Google (accounts-spec.md section 14; no Three.js, no DOM)
     profile.ts     a profile's stats, history and final boards, and moving between profiles (no Three.js, no DOM)
     fights.ts      which fight in a round is the person's
     boards.ts      preset and random boards
@@ -87,7 +87,7 @@ packages/client/
       viewing-bar.ts  the bar over another player's board, and the way back to the person's own
       panels.ts       the Council, the Gift offer, a round's results, the end, and the fight's banner
       menu.ts         the menu and the lobby screen
-      account.ts      the menu's account, online play's note, and the account panel
+      account.ts      the menu's account, Sign in with Google, the new-name prompt, online play's note, the account panel with deleting, and toasts
       profile.ts      the profile: stats, history and each match's final boards
       drag.ts         dragging units and items, and what the drop would do
   test/
@@ -414,7 +414,7 @@ The parts without Three.js are tested with Vitest:
 - tooltip content, the HUD's values, the players list's rows, a round's results and the timer, and what the HUD, the players list and the trait tracker show while the person's fight plays;
 - the model a star level uses, falling back to the level below, its scale within the hex, and its label height: 1.8 above the ground, clear of the attack and cast clips, and a winner's rise to clear its victory pose (stars.ts);
 - what an ability does in words (abilities.ts), how a shop card marks a unit the person has (shop.ts), the stage tracker's rounds (hud.ts), and that a round's result reaches the stage tracker only once its results have been shown (flow.ts);
-- the account API's requests and answers, failures and timeouts, the account and online play as the page follows them, what Create and Join send while the account has a seat, names checked before sending, and guest marks (account.ts); the WebSocket's rejoining from its seat and from `hello`, `replaced`, and reconnecting (connection.ts); a profile's stats, history rows, times and durations, final boards, history pages and moving between profiles (profile.ts).
+- the account API's requests and answers, failures and timeouts, the account and online play as the page follows them, what Create and Join send while the account has a seat, names checked before sending, and guest marks; who is offered Sign in with Google, what the page says for each sign-in outcome, why a new name is needed and that it comes before Create and Join, and confirming a delete by the account's name (account.ts); the WebSocket's rejoining from its seat and from `hello`, `replaced`, and reconnecting (connection.ts); a profile's stats, history rows, times and durations, final boards, history pages and moving between profiles (profile.ts).
 
 The Three.js scene and the pages are checked by building them and looking at them in a browser.
 

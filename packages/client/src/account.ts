@@ -2,7 +2,18 @@
 // API as the page calls it, and what the page knows of the account and of online play. No DOM
 // apart from fetch, which tests replace, so it can be tested.
 
-import { NAMES, checkName, type AccountView, type ClientMessage, type HistoryPage, type ProfileView, type ServerMessage } from '@lotr-tactics/server';
+import {
+  GOOGLE_SIGN_IN_PATH,
+  NAMES,
+  checkName,
+  nameKey,
+  type AccountView,
+  type ClientMessage,
+  type HistoryPage,
+  type ProfileView,
+  type ServerMessage,
+  type SignInResult,
+} from '@lotr-tactics/server';
 
 // What GET /api/profile and GET /api/history return (accounts-spec.md sections 9.3 and 9.4), as
 // the server's browser-safe accounts module has them.
@@ -39,6 +50,14 @@ export class AccountApi {
 
   signOut(everywhere: boolean): Promise<ApiResult<{ readonly ok: true }>> {
     return this.request('POST', '/api/signout', everywhere ? { everywhere: true } : {});
+  }
+
+  /**
+   * Deletes the account, once `confirm` is its name. The server refuses while the account has a seat
+   * in a lobby (409), and clears the session cookie when it is done (accounts-spec.md section 6.4).
+   */
+  deleteAccount(confirm: string): Promise<ApiResult<{ readonly ok: true }>> {
+    return this.request('POST', '/api/me/delete', { confirm });
   }
 
   /** An account's profile, or the person's own with null. */
@@ -157,7 +176,8 @@ export class AccountState {
         this.game = null;
         return;
       case 'signedOut':
-        // The session has gone too: Try again gets a new guest.
+        // The session has gone too, so the page no longer has this account: Try again gets a new guest.
+        this.me = null;
         this.online = {
           kind: 'unavailable',
           reason: message.reason === 'deleted' ? 'This account was deleted.' : 'You were signed out on every device.',
@@ -185,7 +205,8 @@ export class AccountState {
   get onlineReason(): string | null {
     switch (this.online.kind) {
       case 'ready':
-        return null;
+        // A new name comes before anything else online, apart from going back to a seat the account has.
+        return this.me?.needsName === true && this.game === null ? 'Choose a new name first.' : null;
       case 'loading':
       case 'connecting':
         return 'Connecting to the game server…';
@@ -214,6 +235,79 @@ export class AccountState {
     if (this.me === null) return 'Online play is unavailable.';
     return this.me.canRename ? null : `You can rename once every ${NAMES.renameDays} days.`;
   }
+
+  /**
+   * Whether the page offers Sign in with Google: to a guest, on a server that has it. A claimed
+   * account can't sign in to another Google account; it signs out first.
+   */
+  get canSignIn(): boolean {
+    return this.me !== null && !this.me.claimed && this.me.googleEnabled;
+  }
+
+  /**
+   * Why a claimed account must choose a new name (`needsName`, accounts-spec.md section 6.3), or
+   * null when it needn't: another claimed account holds its name, or it is a guest's name.
+   */
+  get newNameReason(): string | null {
+    const me = this.me;
+    if (me === null || !me.needsName) return null;
+    return 'error' in checkName(me.name)
+      ? `${me.name} is a guest's name. Choose a name of your own to keep with your account.`
+      : `Someone already has the name ${me.name}. Choose a new name to keep with your account.`;
+  }
+}
+
+/** Where Sign in with Google takes the whole page, which leaves it (accounts-spec.md section 6.2). */
+export const SIGN_IN_HREF = GOOGLE_SIGN_IN_PATH;
+
+/** What Sign in with Google gives a guest, in one line. */
+export const SIGN_IN_GIVES = 'Keep your account and its match history on any device.';
+
+/** A message at the top of the page for a while, such as how signing in went. */
+export interface Toast {
+  readonly text: string;
+  /** good: it worked; info: nothing changed; bad: it went wrong; warn: it worked, but something was lost. */
+  readonly tone: 'good' | 'info' | 'warn' | 'bad';
+  /** How long it stays, unless dismissed. */
+  readonly seconds: number;
+}
+
+/**
+ * What the page says on coming back from Google (`#signin=`, read with `readSignIn`), with the
+ * account's name as `GET /api/me` then gives it, or null if it didn't load.
+ */
+export function signInToast(result: SignInResult, name: string | null): Toast {
+  const as = name === null ? '' : ` as ${name}`;
+  switch (result.outcome) {
+    case 'claimed':
+      return { text: "You're signed in with Google. Your name and games are kept, on any device you sign in on.", tone: 'good', seconds: 10 };
+    case 'signedin': {
+      const signedIn = `Signed in with Google${as}.`;
+      if (result.guestGames === 0) return { text: signedIn, tone: 'good', seconds: 8 };
+      const games = result.guestGames === 1 ? 'The game you played as a guest in this browser stays' : `The ${result.guestGames} games you played as a guest in this browser stay`;
+      // It lost something, so it stays longer.
+      return {
+        text: `${signedIn} ${games} with that guest account, which can't be used any more.`,
+        tone: 'warn',
+        seconds: 20,
+      };
+    }
+    case 'cancelled':
+      return { text: `Sign-in was cancelled. You're still playing${as}.`, tone: 'info', seconds: 8 };
+    case 'failed':
+      return { text: "Signing in with Google didn't work. Try again.", tone: 'bad', seconds: 12 };
+    case 'unavailable':
+      return { text: "Google sign-in isn't available on this server.", tone: 'bad', seconds: 12 };
+  }
+}
+
+/**
+ * Whether the text typed to confirm deleting is the account's name, compared as the server compares
+ * names: ignoring case and spaces (accounts-spec.md section 6.4).
+ */
+export function confirmsDelete(typed: string, name: string): boolean {
+  const trimmed = typed.trim();
+  return trimmed !== '' && nameKey(trimmed) === nameKey(name);
 }
 
 function lowerFirst(text: string): string {
@@ -225,9 +319,16 @@ function lowerFirst(text: string): string {
  * server would refuse it, so the person hears at once. The server still checks it, and has the last
  * word, such as a name another account holds.
  */
-export function nameToSend(raw: string, current: string | null): { readonly name: string } | { readonly error: string } | null {
-  // The same name, such as a guest's own "Guest 0427", which a rename couldn't take: nothing to send.
-  if (raw.replace(/\p{Cc}/gu, '').trim() === current) return null;
+export function nameToSend(
+  raw: string,
+  current: string | null,
+  mustChange = false,
+): { readonly name: string } | { readonly error: string } | null {
+  // The same name, such as a guest's own "Guest 0427", which a rename couldn't take: nothing to send,
+  // unless the account must choose a new one.
+  if (!mustChange && raw.replace(/\p{Cc}/gu, '').trim() === current) return null;
   const checked = checkName(raw);
-  return 'error' in checked ? checked : { name: checked.name };
+  if ('error' in checked) return checked;
+  if (mustChange && current !== null && checked.key === nameKey(current)) return { error: 'Someone already has that name. Choose another.' };
+  return { name: checked.name };
 }

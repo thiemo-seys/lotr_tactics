@@ -4,8 +4,8 @@
 // person's actions back. The HUD, shop bar, panels and dragging are drawn by the modules in play/.
 
 import { ownedUnits } from '@lotr-tactics/sim';
-import type { ServerMessage } from '@lotr-tactics/server';
-import { AccountApi, AccountState } from './account.js';
+import { readSignIn, type ServerMessage } from '@lotr-tactics/server';
+import { AccountApi, AccountState, signInToast } from './account.js';
 import { LocalConnection, SocketConnection, socketUrl } from './connection.js';
 import { PlayFlow } from './flow.js';
 import { yourTeam } from './fights.js';
@@ -82,13 +82,17 @@ const flow = new PlayFlow({
 const accountUi = new AccountUi(account, {
   rename,
   signOut,
+  deleteAccount,
   retry: () => void loadAccount(),
   openProfile: () => {
+    // A toast is about the menu: it goes when another screen opens.
+    accountUi.hideToast();
     profiles.close();
     profiles.open(null);
     screen = 'profile';
   },
   openAccount: () => {
+    accountUi.hideToast();
     accountUi.opened();
     screen = 'account';
     focusSoon('account-name-input');
@@ -210,15 +214,22 @@ requestAnimationFrame(function frame(now) {
  * way, and online play connects when the menu shows, so `hello` can put the person back into a game.
  */
 function startPage(): void {
+  // Back from Google (accounts-spec.md section 6.2): the address says how it went, once.
+  const signIn = readSignIn(location.hash);
+  if (signIn !== null) history.replaceState(null, '', location.pathname);
   const hash = new URLSearchParams(location.hash.slice(1));
   const seed = Number(hash.get('seed'));
   if (Number.isInteger(seed) && seed !== 0) playOffline(seed);
   else codeInput.value = hash.get('lobby') ?? '';
-  void loadAccount();
+  void loadAccount().then(() => {
+    if (signIn !== null) accountUi.toast(signInToast(signIn, account.me?.name ?? null));
+  });
 }
 
 /** Loads the account with GET /api/me, which makes a guest if needed, then connects for online play. */
 async function loadAccount(): Promise<void> {
+  // Whatever a toast said was about the account before.
+  accountUi.hideToast();
   account.loading();
   account.loaded(await api.me());
   connectOnline();
@@ -324,6 +335,26 @@ async function signOut(everywhere: boolean): Promise<void> {
   accountUi.message = account.me === null ? `Signed ${before} out.` : `Signed ${before} out. You are now ${account.me.name}.`;
 }
 
+/**
+ * Deletes the account, then the page gets a new guest from GET /api/me, as after signing out.
+ * Resolves to the server's reason if it refuses, such as a seat in a lobby.
+ */
+async function deleteAccount(confirm: string): Promise<string | null> {
+  const before = account.me?.name ?? '';
+  // The WebSocket belongs to the account being deleted.
+  socket?.close();
+  socket = null;
+  const result = await api.deleteAccount(confirm);
+  if (!result.ok) {
+    connectOnline();
+    return result.error;
+  }
+  profiles.close();
+  await loadAccount();
+  accountUi.message = account.me === null ? `Deleted ${before}.` : `Deleted ${before}. You are now ${account.me.name}, a new guest.`;
+  return null;
+}
+
 // Drawing
 
 function render(now: number): void {
@@ -336,6 +367,8 @@ function render(now: number): void {
     screen = 'menu';
     profiles.close();
   }
+  // A toast is about the menu, such as how signing in went: not over a game's shop.
+  if (inGame) accountUi.hideToast();
   // The menu waits for the account, so it shows who is playing from the start.
   const onMenu = step.kind === 'menu' && account.online.kind !== 'loading';
   show(menu, onMenu && screen === 'menu');

@@ -1,6 +1,7 @@
 import type { AccountView } from '@lotr-tactics/server';
 import { describe, expect, it } from 'vitest';
-import { AccountApi, AccountState, UNREACHABLE, nameToSend, type Fetch } from '../src/account.js';
+import { readSignIn } from '@lotr-tactics/server';
+import { AccountApi, AccountState, SIGN_IN_HREF, UNREACHABLE, confirmsDelete, nameToSend, signInToast, type Fetch } from '../src/account.js';
 
 const me: AccountView = { id: 'a1', name: 'Guest 0427', claimed: false, canRename: true, needsName: false, googleEnabled: false };
 
@@ -24,11 +25,13 @@ describe('the account API', () => {
     expect(await api.rename('Samwise')).toEqual({ ok: true, value: me });
     await api.signOut(false);
     await api.signOut(true);
+    await api.deleteAccount('Guest 0427');
     expect(requests).toEqual([
       { url: '/api/me', method: 'GET', body: undefined },
       { url: '/api/me/name', method: 'POST', body: { name: 'Samwise' } },
       { url: '/api/signout', method: 'POST', body: {} },
       { url: '/api/signout', method: 'POST', body: { everywhere: true } },
+      { url: '/api/me/delete', method: 'POST', body: { confirm: 'Guest 0427' } },
     ]);
   });
 
@@ -47,6 +50,9 @@ describe('the account API', () => {
     expect(await api.rename('Frodo')).toEqual({ ok: false, status: 400, error: 'That name is taken.' });
     const missing = new AccountApi(fakeFetch(() => json(404, { error: 'There is no such player.' })).fetcher);
     expect(await missing.profile('b2')).toEqual({ ok: false, status: 404, error: 'There is no such player.' });
+    const seated = 'You have a seat in lobby QWERT. Leave it before deleting the account.';
+    const inLobby = new AccountApi(fakeFetch(() => json(409, { error: seated })).fetcher);
+    expect(await inLobby.deleteAccount('Samwise')).toEqual({ ok: false, status: 409, error: seated });
   });
 
   it("says the server can't be reached when there is no answer, or an answer that isn't the API", async () => {
@@ -131,7 +137,8 @@ describe('the account state', () => {
       account.loaded({ ok: true, value: me });
       account.receive({ type: 'hello', me, game: { code: 'QWERT' } });
       account.receive({ type: 'signedOut', reason });
-      expect([account.online, account.game]).toEqual([{ kind: 'unavailable', reason: text }, null]);
+      // The page no longer has the account, so the menu doesn't say who is playing until Try again.
+      expect([account.me, account.online, account.game]).toEqual([null, { kind: 'unavailable', reason: text }, null]);
       expect(account.onlineReason).toBe(`Online play is unavailable: ${text[0]!.toLowerCase()}${text.slice(1)}`);
     }
   });
@@ -149,6 +156,86 @@ describe('the account state', () => {
     expect(account.renameReason).toBe('You can rename once every 7 days.');
     account.loading();
     expect([account.me, account.online.kind]).toEqual([null, 'loading']);
+  });
+});
+
+describe('signing in with Google', () => {
+  const ready = (view: AccountView) => {
+    const account = new AccountState();
+    account.loaded({ ok: true, value: view });
+    account.receive({ type: 'hello', me: view, game: null });
+    return account;
+  };
+
+  it('is offered to guests only, on a server that has it, leaving the page for the server', () => {
+    expect(ready({ ...me, googleEnabled: true }).canSignIn).toBe(true);
+    expect(ready(me).canSignIn).toBe(false);
+    expect(ready({ ...me, claimed: true, googleEnabled: true }).canSignIn).toBe(false);
+    expect(new AccountState().canSignIn).toBe(false);
+    expect(SIGN_IN_HREF).toBe('/auth/google');
+  });
+
+  it('says how it went for each outcome, and what a guest left behind loses', () => {
+    const claimed = signInToast(readSignIn('#signin=claimed')!, 'Samwise');
+    expect(claimed.tone).toBe('good');
+    expect(claimed.text).toMatch(/signed in with Google.*kept/);
+    expect(signInToast(readSignIn('#signin=signedin')!, 'Frodo')).toMatchObject({ text: 'Signed in with Google as Frodo.', tone: 'good' });
+    const lost = signInToast(readSignIn('#signin=signedin&guestGames=3')!, 'Frodo');
+    expect(lost.tone).toBe('warn');
+    expect(lost.text).toMatch(/^Signed in with Google as Frodo\. The 3 games you played as a guest .* stay with that guest account/);
+    expect(lost.seconds).toBeGreaterThan(claimed.seconds);
+    expect(signInToast(readSignIn('#signin=signedin&guestGames=1')!, 'Frodo').text).toMatch(/The game you played as a guest in this browser stays with/);
+    expect(signInToast(readSignIn('#signin=cancelled')!, 'Guest 0427')).toMatchObject({ text: "Sign-in was cancelled. You're still playing as Guest 0427.", tone: 'info' });
+    // The account didn't load: no name to give.
+    expect(signInToast(readSignIn('#signin=cancelled')!, null).text).toBe("Sign-in was cancelled. You're still playing.");
+    expect(signInToast(readSignIn('#signin=failed')!, null)).toMatchObject({ tone: 'bad', text: expect.stringMatching(/Try again/) });
+    expect(signInToast(readSignIn('#signin=unavailable')!, null)).toMatchObject({ tone: 'bad', text: expect.stringMatching(/isn't available/) });
+  });
+});
+
+describe('a new name', () => {
+  const claimed: AccountView = { ...me, name: 'Frodo', claimed: true, needsName: true };
+
+  it("says why the account must choose one: someone has its name, or it is a guest's", () => {
+    const account = new AccountState();
+    account.loaded({ ok: true, value: claimed });
+    expect(account.newNameReason).toBe('Someone already has the name Frodo. Choose a new name to keep with your account.');
+    account.update({ ...claimed, name: 'Guest 0427' });
+    expect(account.newNameReason).toMatch(/^Guest 0427 is a guest's name/);
+    account.update({ ...claimed, name: 'Samwise', needsName: false });
+    expect(account.newNameReason).toBeNull();
+    account.update({ ...me, needsName: false });
+    expect(account.newNameReason).toBeNull();
+  });
+
+  it('comes before Create and Join, but not before going back to a seat the account has', () => {
+    const account = new AccountState();
+    account.loaded({ ok: true, value: claimed });
+    account.receive({ type: 'hello', me: claimed, game: null });
+    expect(account.onlineReason).toBe('Choose a new name first.');
+    expect(account.renameReason).toBeNull();
+    account.receive({ type: 'joined', code: 'QWERT', seat: 0 });
+    expect(account.onlineReason).toBeNull();
+    account.receive({ type: 'left', reason: 'You left the lobby.' });
+    account.update({ ...claimed, name: 'Samwise', needsName: false });
+    expect(account.onlineReason).toBeNull();
+  });
+
+  it('must differ from the name the account has', () => {
+    expect(nameToSend('Frodo', 'Frodo', true)).toEqual({ error: 'Someone already has that name. Choose another.' });
+    expect(nameToSend(' frodo ', 'Frodo', true)).toEqual({ error: 'Someone already has that name. Choose another.' });
+    expect(nameToSend('Guest 0427', 'Guest 0427', true)).toHaveProperty('error');
+    expect(nameToSend('Samwise', 'Frodo', true)).toEqual({ name: 'Samwise' });
+  });
+});
+
+describe('deleting the account', () => {
+  it('is confirmed by typing its name, compared as the server compares names', () => {
+    expect(confirmsDelete('Samwise', 'Samwise')).toBe(true);
+    expect(confirmsDelete('  samwise ', 'Samwise')).toBe(true);
+    expect(confirmsDelete('Guest0427', 'Guest 0427')).toBe(true);
+    expect(confirmsDelete('Samwis', 'Samwise')).toBe(false);
+    expect(confirmsDelete('   ', 'Samwise')).toBe(false);
   });
 });
 
