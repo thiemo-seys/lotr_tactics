@@ -107,7 +107,7 @@ The match is always in one step:
 | Step | Ends | Then |
 |---|---|---|
 | `council` | When every member of the current group has picked, or after 15 seconds, when `advance()` picks for anyone who hasn't | The next group's `council` turn, or `planning` |
-| `planning` | After 30 seconds, or 45 if anyone has a Gift offer when it starts, or once every connected person still in the game is Ready. It ends with `advance()`, which runs the fights | `fight` |
+| `planning` | After 30 seconds, or 45 if anyone has a Gift offer when it starts, or once every connected person still in the game is Ready. It ends with `fight()`, which runs the fights | `fight`; after the start round (1-1), which has no fights, the runner advances at once to the next `planning`, with no `round` message |
 | `fight` | After the round's longest fight, plus 1, 4 and 2 seconds (section 2), or once every connected person still in the game has finished watching | The game's next phase: `council` or `planning` |
 | `over` | When the lobby closes | |
 
@@ -203,7 +203,7 @@ type ServerMessage =
   | { type: 'joined'; code: string; seat: number; token: string }   // after create, join or rejoin
   | { type: 'lobby'; lobby: LobbyView }      // whenever seats, the host or connections change
   | { type: 'state'; state: MatchView }      // whenever the game, the step or Ready votes change
-  | { type: 'round'; round: RoundRecord }    // when planning ends, just before the fight step's state
+  | { type: 'round'; round: RoundRecord }    // when a round with fights ends its planning, just before the fight step's state
   | { type: 'left'; reason: string }         // the connection is no longer in a lobby
   | { type: 'refused'; request: ClientMessage['type'] | 'unknown'; reason: string };   // 'unknown' for a malformed message
 

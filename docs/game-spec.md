@@ -13,7 +13,7 @@ Implementation spec for the game around the fights: the shop, the economy, the r
 
 - A whole game for 2 to 8 players, from round 1-1 to the last player standing.
 - The shared unit pool, the shop, the bench, board placement, merging and selling.
-- Items: components from the Council and PvE rounds, given to units, where two combine into an item, or combined in the player's items (section 7.7).
+- Items: components from the starting kit, the Council and PvE rounds, given to units, where two combine into an item, or combined in the player's items (section 7.7).
 - Gifts of Lothlórien: offers, rerolls, picks and every Gift's effect outside the fight (section 9.10). The sim runs the ones that act in the fight (`sim-spec.md` section 12.5).
 - The One Ring: its arrival, Corruption, bearers and exits (section 9.11). The sim runs it in fights (`sim-spec.md` section 12.6).
 - Rings of Power: their copies, arrival at Councils, the Seven's gold, and their fate with the One Ring (section 9.12). The sim runs the Three and the Nine in fights (`sim-spec.md` section 12.7).
@@ -37,8 +37,8 @@ These are not in `design.md` yet. They were chosen to remove ambiguity and can b
 | Topic | Default |
 |---|---|
 | Players | 2 to 8 seats, numbered from 0. Bots and people are interchangeable |
-| Starting state | 100 HP, 0 gold, level 1, 0 XP, nothing owned |
-| When income is paid | At the start of every PvP and PvE round. Council rounds pay nothing |
+| Starting state | 100 HP, 0 gold, level 1, 0 XP, and the starting kit (9.1) |
+| When income is paid | At the start of every PvP and PvE round. The start round and Council rounds pay nothing |
 | Interest | Counted on the gold held at the start of the round, before that round's income |
 | Win and streak gold | Paid at the end of each PvP fight |
 | Streaks | Only PvP fights count, ghost fights included. A draw counts as a loss for both players. PvE fights leave streaks unchanged |
@@ -107,7 +107,7 @@ packages/sim/scripts/
 - The game is a function of its config and the ordered list of calls made on it. Replaying the same calls gives the same game, so a server can be authoritative and a client can follow along.
 - Randomness comes from seeded generators, each with its own stream so that one choice can't shift another:
   - each player's **shop generator**, used only for that player's shop rolls, so one player's rerolls don't change what another player's shop rolls;
-  - the **game generator**, for matchmaking, fight seeds, Council options, their Rings of Power and pick order, loot, automatic Council picks and placement ties;
+  - the **game generator**, for the starting kits, matchmaking, fight seeds, Council options, their Rings of Power and pick order, loot, automatic Council picks and placement ties;
   - each player's **Gift generator**, for that player's Gift offers, rerolls, automatic picks and the random rewards of their Gifts.
 - Each stream's seed is `deriveSeed(seed, stream)`, a fixed integer hash of the game seed and the stream number: 0 for the game generator, 1 + seat for shop generators, 20 + seat for Gift generators. Bots use streams from 100 upwards for their own choices.
 - A fight's seed is a 32-bit integer drawn from the game generator.
@@ -164,7 +164,7 @@ Buying a shop slot needs a unit in it, enough gold for its cost, and either a fr
 
 ### 7.2 Gaining a unit
 
-When a player gains a 1★ unit (by buying it or from the Council):
+When a player gains a 1★ unit (by buying it, from the starting kit or from the Council):
 
 1. If they already own two 1★ copies, on the bench or the board, the three merge (7.3). While the fights play (9.4), only copies on the bench count, and a merge it makes cascades only with copies on the bench; the copies that would merge with board copies wait until the fight phase ends.
 2. Otherwise it goes to the lowest free bench slot.
@@ -196,7 +196,7 @@ Before each fight, if a player has fewer than `level` units on the board and uni
 
 Items are in `design.md` section 6 and `data/items.ts`.
 
-- **Getting items:** Council picks and PvE loot add components, and Council picks Rings of Power, to the end of the player's items (sections 9.6, 9.7 and 9.12).
+- **Getting items:** the starting kit (9.1), Council picks and PvE loot add components, and Council picks Rings of Power, to the end of the player's items (sections 9.6, 9.7 and 9.12).
 - **Giving an item** to a unit on the bench or the board, during planning, or on the bench while the fights play (9.4):
   1. If the item is a component and the unit holds a lone component, the two combine into the recipe's item, which takes the lone component's place in the unit's items.
   2. Otherwise the unit must hold fewer than 3 items, and the item goes at the end of them. A Ring of Power can't go to a unit that already wears one.
@@ -239,10 +239,13 @@ At the end of each PvP fight, paid when the fight phase ends (9.4):
 
 From `design.md` section 9:
 
-- Stage 1: 1-1 Council, then 1-2 to 1-4 PvE.
+- Stage 1: 1-1 start, then 1-2 to 1-4 PvE.
 - Stage 2 and later: PvP, PvP, PvP, Council, PvP, PvP, PvE.
 
 The game starts at 1-1 and goes on until at most one player is left.
+
+- **Starting kit:** when the game is created, before 1-1, each player in seat order is given a 1★ unit and an item component, both drawn with the game generator. The unit's cost is drawn evenly from the kit's costs (1-cost only, `STARTING_KIT` in `data/rounds.ts`) that have copies left, and the unit is picked as in 6.2, taken out of the pool and gained (7.2); then the component is drawn evenly from the six.
+- **Start round** (1-1, round type `start`): planning, but with no income, XP, shop or Gift offer, and the One Ring gains no Corruption. Buying, rerolling, buying XP and locking fail with "The shop opens next round."; moving, selling, giving and combining items work as in any planning. When planning ends the board is filled (7.6), but there are no fights: the report has no fights, damage or eliminations, the fight phase is empty, and advancing goes on to 1-2.
 
 ### 9.2 Round start
 
@@ -255,7 +258,7 @@ At the start of a PvP or PvE round, the One Ring gains Corruption if it has a be
 
 Then the shops refresh (6.3). In a Gift round, every living player then gets a Gift offer, in seat order (9.10). Then planning begins.
 
-A Council round sets up the Council instead (9.6).
+A Council round sets up the Council instead (9.6), and the start round only begins planning (9.1).
 
 ### 9.3 Planning
 
@@ -292,9 +295,7 @@ During planning, living players act in any order: buy, sell, reroll, buy XP, loc
   |---|---|---|---|---|---|
   | Unit costs | 1 | 1–2 | 2–3 | 3–4 | 3–5 |
 
-- **Pick order:**
-  - At 1-1, all players pick at once: one group.
-  - Later, living players are sorted by HP, lowest first, with ties in a seeded order, and pick in groups of two in that order.
+- **Pick order:** living players are sorted by HP, lowest first, with ties in a seeded order, and pick in groups of two in that order.
 - **Picking:** a player in the current group who hasn't picked takes any option still there. The unit is gained (7.2) and the component or Ring of Power goes to their items. When everyone in the group has picked, the next group's turn begins.
 - **Running out of time:** when the driver ends a group's turn, everyone in it who hasn't picked gets a random option still there, other than the One Ring's (9.11). Someone with only the Ring's option left gets nothing.
 - After the last group, unpicked options' units go back to the pool, their Rings of Power to the supply (9.12), and the next round starts.
@@ -496,7 +497,7 @@ The play page, `play.html` in `packages/client`, next to the fight viewer (`view
 
 - **Running the game:** the match runner from `packages/server` (`server-spec.md` section 5), in the page for offline games. Bots pick in a Council as soon as it's their group's turn, and plan at the start of planning, in a rotating order. Once the person is out, the rest of the game plays out at once.
 - **Planning view:** the person's half of the board and their bench, a row of 9 tiles in front of it, in 3D, from the same camera as fights. An HTML overlay in the client's design system (`viewer-spec.md` section 2), with icons throughout:
-  - **HUD:** at the top, HP; the board count, which draws attention while the board has room and the bench has a unit; the streak from `PlayerView.streak`, flames for wins and frost for losses; and the One Ring's status for its holder. In the middle of the top bar, the stage tracker: the stage, then each round of the stage as an icon for its type, in the type's colour, Council gold, PvP red and diamond-shaped, PvE green and round. Rounds played are dimmed and marked with the person's result once its results have been shown, a tick for a win and a cross for a loss; the round on screen is larger and glows; rounds to come are outlined. Next to them, the round's number and type. Each round names its type and result when hovered. At the bottom, just above the shop bar and staying there during fights: the level with its XP towards the next one, gold, and a timer that drains as the step's time runs out and turns red in its last 5 seconds.
+  - **HUD:** at the top, HP; the board count, which draws attention while the board has room and the bench has a unit; the streak from `PlayerView.streak`, flames for wins and frost for losses; and the One Ring's status for its holder. In the middle of the top bar, the stage tracker: the stage, then each round of the stage as an icon for its type, in the type's colour, the start round and Council gold, PvP red and diamond-shaped, PvE green and round. Rounds played are dimmed and marked with the person's result once its results have been shown, a tick for a win and a cross for a loss; the round on screen is larger and glows; rounds to come are outlined. Next to them, the round's number and type. Each round names its type and result when hovered. At the bottom, just above the shop bar and staying there during fights: the level with its XP towards the next one, gold, and a timer that drains as the step's time runs out and turns red in its last 5 seconds.
   - **Shop bar:** Buy XP, Reroll and Lock as icon buttons with their keys and costs; the shop's unit cards, framed and coloured by cost, each with its origin's icon as a portrait, its name, its traits' icons and names, its cost, one star badge per copy the person owns, at its star level (`viewer-spec.md` section 4, overlay), a gold border when the person has a copy on the bench or the board, glowing when buying it would make a 2★ from two 1★ copies at once (while the fights play, two on the bench; `completesMerge`), and, when it can't be bought, the reason from `checkAction`; the person's items; and Ready. The bar works in planning and while the person's fight and its results are on screen, until the next step (9.4); Ready only in planning. In a Council the bar keeps its place, empty, so the board's view keeps its size.
   - **Trait tracker:** on the left, every trait on the board on screen as fights count them, the person's or the one they are looking at (below), from the sim's `teamTraitCounts` and `traitLevelsOf` (`sim-spec.md` section 12.2), so crest Gifts and the Nine's Nazgûl count. Each trait shows its icon, name, how many count, and its breakpoints with the one reached marked. Active traits come first, coloured by level: bronze, then silver, gold at the top breakpoint, and a look of their own for the one-unit traits. The rest are greyed. Hovering a trait says what it does at each breakpoint, from the trait data, and shows every unit with the trait, by cost then name, then for the Nazgûl the player's other units wearing a Ring of the Nine, marked with the ring, framed by cost: lit when a copy is on that board, dimmer when copies are only on the bench, greyed when none are owned, with a star badge per copy owned, at its star level.
   - **Tooltips:** items, the One Ring, Rings of Power, Gifts, traits, unit cards and buttons show a card when hovered or focused: name, recipe, stats and effect from the data, or what a button does and why it can't be used now. The level and Buy XP show the shop odds by cost, as the shop rolls them with any Mirror of Galadriel, for the level now and the next level when its odds differ, marking which go up or down. A unit card in the shop or the Council gives the unit's 1★ stats and what its ability does at 1★.
@@ -567,7 +568,7 @@ The play page, `play.html` in `packages/client`, next to the fight viewer (`view
 - XP and levels: automatic levels, passive XP, buying XP, carrying over and the cap at 9.
 
 **Rounds**
-- The schedule for stages 1 to 3.
+- The schedule for stages 1 to 3; the starting kits, and the start round's closed shop and lack of fights.
 - Matchmaking avoids the last 3 opponents when it can, and an odd count gives exactly one ghost fight.
 - Player damage, draws, ghost owners taking no damage, and PvE losses.
 - Eliminations, places for players eliminated together, and the end of the game.
