@@ -161,6 +161,12 @@ export class PlayFlow {
   /** A message from the game, arriving at `now` in milliseconds. */
   receive(message: ServerMessage, now: number): void {
     switch (message.type) {
+      case 'hello':
+        // The connection rejoins the account's game itself, if it has one.
+        return;
+      case 'replaced':
+        this.hooks.menu('You opened the game somewhere else.');
+        return;
       case 'joined':
         this.you = message.seat;
         this.menuMessage = '';

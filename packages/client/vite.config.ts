@@ -41,8 +41,15 @@ export default defineConfig({
   // Relative asset paths, so the built client works from any folder.
   base: './',
   plugins: [modelList()],
-  // pnpm dev runs the game server next to Vite (docs/server-spec.md section 3).
-  server: { proxy: { '/ws': { target: 'ws://localhost:8080', ws: true } } },
+  // pnpm dev runs the game server next to Vite (docs/server-spec.md section 3), with its API and
+  // sign-in (docs/accounts-spec.md section 3).
+  server: {
+    proxy: {
+      '/ws': { target: 'ws://localhost:8080', ws: true },
+      '/api': { target: 'http://localhost:8080' },
+      '/auth': { target: 'http://localhost:8080' },
+    },
+  },
   build: {
     // Three.js with its addons is about 650 kB minified, and the rest of what both pages share about 140 kB.
     chunkSizeWarningLimit: 800,

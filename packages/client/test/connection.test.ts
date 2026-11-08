@@ -5,8 +5,7 @@ import { yourFight, yourTeam } from '../src/fights.js';
 
 /** A host whose clock only moves when the test moves it. */
 function fakeHost(): Host & { time: number } {
-  let tokens = 0;
-  return { time: 0, now() { return this.time; }, random: () => 0.5, token: () => `token-${++tokens}` };
+  return { time: 0, now() { return this.time; }, random: () => 0.5 };
 }
 
 /** Lets the messages queued as microtasks arrive. */
@@ -30,6 +29,7 @@ describe('LocalConnection', () => {
     const started = inbox[2]!;
     const lobby = started.type === 'lobby' ? started.lobby : null;
     expect(lobby!.seats.map((s) => s.name)).toEqual(['You', 'Bot 1', 'Bot 2', 'Bot 3', 'Bot 4', 'Bot 5', 'Bot 6', 'Bot 7']);
+    expect(lobby!.seats[0]).toMatchObject({ kind: 'person', player: 'local' });
     expect(lastState(inbox).step.kind).toBe('planning');
     expect(lastState(inbox).type).toBe('start');
   });

@@ -7,7 +7,6 @@ import type { ServerMessage } from '../src/protocol.js';
 export class FakeHost implements Host {
   time = 0;
   private readonly rng = createRng(1);
-  private tokens = 0;
 
   now(): number {
     return this.time;
@@ -15,10 +14,6 @@ export class FakeHost implements Host {
 
   random(): number {
     return this.rng();
-  }
-
-  token(): string {
-    return `token-${++this.tokens}`;
   }
 
   /** Moves the clock on by some seconds, to the nearest millisecond. */

@@ -2,6 +2,8 @@
 
 Implementation spec for player accounts: who a person is across visits, signing in with Google, match history and stats, the ranked queue with its ratings and leaderboard, parties and friends. It builds on online play (`server-spec.md`), which it changes where section 12 says so. This is step 6 of the build order (`design.md` section 11).
 
+**Built so far: step 1**, guest accounts, Postgres, seats by account, and match history and stats for private-lobby games: sections 3 to 5, 6.1 and 6.3 (all accounts are guests, so no name is unique yet), 9 without ranked, 11 for the requests and messages marked built, 12 without the queue and draining, and 15 without Google and draining. The rest is still to build: Google sign-in and claimed accounts' unique names (6.2, 6.3), deleting accounts (6.4), parties and the queue (7), rating and points (8), draining (10), friends, and the client's account screens (14).
+
 - `design.md` is the source of truth for the rules of ranked play (`design.md` section 10, Accounts and ranked play). This spec adds the implementation detail and the defaults needed to build it.
 - Every number here is a *placeholder*. They live in `packages/server/src/config.ts`, not in logic.
 - Accounts are built for a small group of friends first, but nothing here should need rework when the server opens to the public. What is left for then is in section 13.
@@ -42,7 +44,7 @@ These are not in `design.md` yet. They were chosen to remove ambiguity and can b
 
 | Topic | Default |
 |---|---|
-| Database | Postgres 17, through the `pg` package. One database for the server, set by `DATABASE_URL` |
+| Database | Postgres 17, through the `pg` package. One database for the server, set by `DATABASE_URL`. The server needs it to start; there is no fallback |
 | Guest accounts | Made on the first visit, with no sign-up. Kept in an `HttpOnly` cookie |
 | Sign-in | Google (OpenID Connect, `openid` scope only). Only Google's subject id (`sub`) is stored, never an email |
 | Sessions | A random secret in the cookie, stored hashed. 180 days, renewed on use |
@@ -81,7 +83,6 @@ packages/server/
     node/
       db.ts           the Postgres pool and migrations
       store.ts        the Store interface and PgStore (section 5)
-      memory-store.ts MemoryStore, for tests and for `pnpm dev` without Postgres
       sessions.ts     cookies and sessions
       google.ts       the Google sign-in flow
       api.ts          the HTTP API (section 11.1)
@@ -89,11 +90,15 @@ packages/server/
       record.ts       writing results, ratings and points
   migrations/
     001_accounts.sql  and so on, plain SQL applied in order at start-up
+  scripts/
+    db.ts             `pnpm db`: a Postgres 17 container for development
   test/
 ```
 
-- `pnpm dev` and `pnpm start` use Postgres when `DATABASE_URL` is set, and otherwise a `MemoryStore` with a warning in the log, so the game runs with no database for a quick try. Nothing lasts across a restart without Postgres.
-- In `pnpm dev`, Vite passes `/api` and `/auth` on to the game server, as it does `/ws` (`server-spec.md` section 3). The page's origin there is Vite's, `http://localhost:5173`, so that is the `PUBLIC_URL` to set for the `Origin` check and Google's redirect (section 6.2).
+- **The server always needs Postgres.** Without `DATABASE_URL`, `main.ts` stops with a message saying what to set and how to start a local database. If it can't reach the database or a migration fails, it stops too.
+- **For development**, `pnpm db` starts a Postgres 17 container, `lotr-tactics-db`, on `127.0.0.1:5433` with user, password and database `lotr`, its data in the `lotr-tactics-db` volume. It is safe to run again: it starts the container if it is stopped, leaves it if it runs, and waits until it takes connections. `pnpm dev` and `pnpm start` use it unless `DATABASE_URL` is set (they pass `--dev-db` to `main.ts`; the Docker image doesn't, so a deploy without `DATABASE_URL` stops).
+- Offline games against bots need neither the server nor a database.
+- In `pnpm dev`, Vite passes `/api` and `/auth` on to the game server, as it does `/ws` (`server-spec.md` section 3). The page's origin there is Vite's, `http://localhost:5173`, so that is the `PUBLIC_URL` for the `Origin` check and Google's redirect (section 6.2); `pnpm dev` makes it the default (it passes `--vite` to `main.ts`).
 - Google sign-in is off unless `GOOGLE_CLIENT_ID` and `GOOGLE_CLIENT_SECRET` are set. The client hides the button when it's off (section 11.2, `hello`).
 
 ### Settings
@@ -103,7 +108,7 @@ Read from the environment by `main.ts`:
 | Variable | Use |
 |---|---|
 | `DATABASE_URL` | Postgres connection string, such as `postgres://lotr:secret@db:5432/lotr` |
-| `PUBLIC_URL` | The site's own origin, such as `https://tactics.example.com`. Used for Google's redirect, the `Origin` check and whether cookies are `Secure`. Defaults to `http://localhost:<PORT>` |
+| `PUBLIC_URL` | The site's own origin, such as `https://tactics.example.com`. Used for Google's redirect, the `Origin` check and whether cookies are `Secure`. Defaults to `http://localhost:<PORT>`, or `http://localhost:5173` in `pnpm dev` |
 | `GOOGLE_CLIENT_ID`, `GOOGLE_CLIENT_SECRET` | The Google OAuth client. Secrets go in `.env`, which is not committed |
 | `TRUST_PROXY` | `1` behind Caddy, so `X-Forwarded-For` is used for rate limits |
 
@@ -133,14 +138,16 @@ interface Client {            // lobby.ts, changed
 ```
 
 - Lobby seats belong to a player id, not a token (section 12). Rejoining a game is by account, from any device.
-- An offline game's `LocalConnection` makes a `Player` with id `local`, the name You and `claimed: false`, and its lobby reports no results.
+- An offline game's `LocalConnection` makes a `Player` with id `local`, the name You and `claimed: false` (`localPlayer()`), and its lobby reports no results: its `Lobbies` has no `onResult`.
+- `Client` also has an optional `close()`, which `Lobbies` calls on a connection it replaces (section 6.1).
+- `players.ts` also has the name rules of section 6.3, `checkName` and `nameKey`, so the client can check a name before sending it.
 - When `record.ts` changes a rating, or `api.ts` a name, the Node side updates the `Player` objects of the account's live connection, so the queue and lobby views stay current.
 
 ---
 
 ## 5. Storage
 
-Postgres, with plain SQL migrations in `packages/server/migrations/`, applied in order inside one transaction each at start-up, and recorded in a `schema_migrations` table. A migration that fails stops the server.
+Postgres, with plain SQL migrations in `packages/server/migrations/`, applied in name order inside one transaction each at start-up, and recorded in a `schema_migrations` table (`name`, `applied_at`). A migration that fails stops the server. An advisory lock keeps two servers from migrating at once. The first migration, `001_accounts.sql`, makes `accounts`, `sessions`, `matches` and `match_seats`, with indexes for clean-up and history as well as the ones below; `ratings`, `friends` and `friend_requests` come in later migrations with the steps that use them.
 
 ```sql
 create table accounts (
@@ -212,9 +219,9 @@ create table friend_requests (
 );
 ```
 
-- `store.ts` defines a `Store` interface with one async method per use (find a session, create a guest, claim, rename, record a match, read history, and so on), implemented by `PgStore` and `MemoryStore`. Nothing outside `src/node/` imports `pg`.
+- `store.ts` defines a `Store` interface with one async method per use (find a session, create a guest, claim, rename, record a match, read history, and so on), implemented by `PgStore`. Tests that need a store that fails use a fake of the interface. Nothing outside `src/node/` imports `pg`. Times that rules depend on (session expiry, renewal, seen, clean-up) are passed in, so tests can set them.
 - A match and its ratings are recorded in one transaction (section 9.2).
-- **Clean-up**, once an hour: expired sessions, and guests not seen for 90 days, which deletes their history rows' links (the seats stay, as "Deleted player", for the other people in those games).
+- **Clean-up**, at start-up and once an hour: expired sessions, and guests not seen for 90 days, which deletes their history rows' links (the seats stay, as "Deleted player", for the other people in those games). A seat's `name` is set to "Deleted player" when its account is deleted, since a null `account_id` alone can't tell a deleted person from a bot. An account is seen whenever its session is used (`/api/me`, other API requests and the WebSocket upgrade).
 - **Backups:** `README.md` gains a `pg_dump` line to run from cron, and how to restore.
 
 ---
@@ -224,10 +231,11 @@ create table friend_requests (
 ### 6.1 Guests and sessions
 
 - The play page calls `GET /api/me` before it opens the WebSocket. With no valid session cookie, the server makes a guest account and a session, sets the cookie, and returns the account.
-- **The cookie:** `lt_session`, 32 random bytes in base64url, `HttpOnly`, `SameSite=Lax`, `Path=/`, `Secure` when `PUBLIC_URL` is https, for 180 days. The database stores only its SHA-256. A session used more than a day after it was last renewed gets 180 more days.
+- **The cookie:** `lt_session`, 32 random bytes in base64url, `HttpOnly`, `SameSite=Lax`, `Path=/`, `Secure` when `PUBLIC_URL` is https, for 180 days. The database stores only its SHA-256. A session used more than a day after it was last renewed (its expiry less 180 days) gets 180 more days; an HTTP response that renews it sets the cookie again with the new `Max-Age`. The WebSocket upgrade renews it in the database only, and the next `/api/me` renews the cookie.
 - **The WebSocket** at `/ws` is on the same origin, so its upgrade request carries the cookie. `server.ts` checks the session, and the `Origin` header against `PUBLIC_URL`, before upgrading. Either failing gets HTTP 401 or 403 and no socket. The page then calls `/api/me` again and retries once.
 - **Rate limit:** at most 10 new guests an hour from one address (with `TRUST_PROXY`, the first address in `X-Forwarded-For`). Kept in memory only.
-- **One connection per account:** a new WebSocket for an account closes the older one with `{ type: 'replaced' }`, and the seat or queue place moves to the new one.
+- **One connection per account:** a new WebSocket for an account closes the older one with `{ type: 'replaced' }`, and the seat or queue place moves to the new one. The seat moves without being disconnected, so its bot doesn't step in: the new connection gets `hello`, then `joined`, `lobby` and, in a game, the `round` and `state`, as after a `rejoin`. A seat in a game that is over doesn't move; it is disconnected.
+- **Sign out everywhere** also closes the account's WebSocket, if it has one.
 - **Sign out** deletes the session and clears the cookie. The page then gets a new guest. **Sign out everywhere** deletes all the account's sessions.
 
 ### 6.2 Signing in with Google
@@ -249,9 +257,10 @@ OpenID Connect's authorization code flow with PKCE, asking only for the `openid`
 - 3 to 20 characters after trimming, with control characters removed. Letters and digits of any script, spaces, and `' - _ .`. No two spaces in a row.
 - **Comparing:** the `name_key` is the name in Unicode NFKC, lowercased, with spaces removed. Two names with the same key are the same name.
 - **Claimed accounts' names are unique** by key. **Guests** can take any name no claimed account holds, and two guests can share one. Everywhere a name is shown, a guest's carries a small guest mark.
-- New guests are named "Guest" and 4 random digits, which needn't be unique.
-- **Renaming:** a claimed account can rename once every 7 days. A guest can rename freely. A name freed by a rename is free at once.
-- Bots keep their names (`server-spec.md` section 7). People can't take a name of the form "Bot n" or "Guest" with digits.
+- New guests are named "Guest" and 4 random digits with a space between, such as "Guest 0427", which needn't be unique.
+- **Renaming:** a claimed account can rename once every 7 days. A guest can rename freely. A name freed by a rename is free at once. `renamed_at` is set on every rename, and counts only for claimed accounts.
+- Bots keep their names (`server-spec.md` section 7). People can't take a name of the form "Bot n" or "Guest" with digits: one whose key is `bot` or `guest` followed by digits only.
+- "Letters and digits of any script" are Unicode letters (with their combining marks) and decimal digits. Lengths count characters (code points), not UTF-16 units.
 - `cleanName` in `lobby.ts` cleans the name that `create` and `join` carry, and they lose it (section 11.2). People's names come from their accounts, checked when they are set. Bots' names are made in the lobby view, not by `cleanName`.
 
 ### 6.4 Deleting an account
@@ -376,13 +385,15 @@ interface FinalBoard {
 }
 ```
 
-- The board is the one the seat fought its last fight with: in the round it went out, or the last round for the winner. The game empties a seat's board when it places it (`game-spec.md` section 9.9, step 6), so `match.ts` can't read it then. It keeps each living seat's board from the fight phase, before the `advance()` that places seats, and when the bots play the rest at once (`server-spec.md` section 5.1, Everyone out), from `Autopilot.playUntil`'s `afterPlanning` hook.
+- The board is the one the seat fought its last fight with: in the round it went out, or the last round for the winner. The game empties a seat's board when it places it (`game-spec.md` section 9.9, step 6), so `match.ts` can't read it then. It keeps each living seat's board from the fight phase, just after `fight()` (which has picked any Gift left unpicked), before the `advance()` that places seats, and when the bots play the rest at once (`server-spec.md` section 5.1, Everyone out), from `Autopilot.playUntil`'s `afterPlanning` hook.
+- `units` are in board-slot order. A trait's `tier` is 1 at its first breakpoint, 2 at its second and so on, and `traits` are sorted by `count`, most first, then by id. `ringBearer` is the unit bearing the One Ring when the seat held it at that fight.
+- `Match` takes an `over` callback, called once when its game ends, from which `Lobby` builds the result; `durationMs` runs from the start to then.
 - Offline games and games that don't finish report nothing. A game cut short by a restart is voided: nothing is written for it.
 
 ### 9.2 Recording
 
-- `record.ts` writes the match and its seats. For a ranked game, in the same transaction, it reads the people's ratings for the season with `select ... for update`, runs section 8, and writes ratings, points and the before and after values on the seats.
-- A failed write is retried 3 times, then logged with the whole result as JSON, so it can be replayed by hand.
+- `record.ts` writes the match and its seats, with the match's `ended_at` when the result arrives and `started_at` that less `durationMs`. For a ranked game, in the same transaction, it reads the people's ratings for the season with `select ... for update`, runs section 8, and writes ratings, points and the before and after values on the seats.
+- A failed write is retried 3 times, after 1, 2 and 4 seconds, then logged with the whole result as JSON, so it can be replayed by hand.
 
 ### 9.3 Stats
 
@@ -392,10 +403,45 @@ Worked out from `match_seats` by SQL when asked for, not stored:
 - the 5 units most often on the final board, the 5 traits most often active, and how often the person bore the One Ring;
 - points, rank and placement games left, for ranked.
 
+Each unit and trait counts once a game, most games first, then by id. Built so far, without the ranked parts:
+
+```ts
+interface Stats {
+  all: { games: number; wins: number; top4Rate: number; averagePlace: number | null };  // top4Rate 0 and averagePlace null with no games
+  units: { unit: UnitId; games: number }[];
+  traits: { trait: TraitId; games: number }[];
+  ringGames: number;                                     // games in which the person bore the One Ring
+}
+```
+
 ### 9.4 History
 
 - `GET /api/history?account=<id>&before=<match id>` gives 20 matches at a time, newest first: kind, date, place, points change, the final board, and the other 7 seats' names, places and boards.
-- Anyone can see a claimed account's profile and history. A guest's are shown only to the guest.
+- Anyone can see a claimed account's profile and history. A guest's are shown only to the guest. To anyone else, a guest is 404, as an unknown account is.
+- `account` defaults to the asker. `before` must be a match id (400 if it isn't one); an unknown one gives no matches. Newest first is by `ended_at`, then by id. The response:
+
+```ts
+interface HistoryPage { matches: HistoryMatch[] }
+interface HistoryMatch {
+  id: string;
+  kind: 'ranked' | 'private';
+  startedAt: string; endedAt: string;      // ISO 8601
+  lastRound: { stage: number; round: number };
+  seat: number;                            // the account's own seat
+  seats: HistorySeat[];                    // all 8, in seat order
+}
+interface HistorySeat {
+  seat: number;
+  account: string | null;                  // null for a bot or a deleted account
+  name: string;
+  guest: boolean;
+  place: number;
+  left: boolean;
+  board: FinalBoard;
+  pointsBefore: number | null;             // ranked people only
+  pointsAfter: number | null;
+}
+```
 
 ---
 
@@ -416,16 +462,16 @@ Worked out from `match_seats` by SQL when asked for, not stored:
 
 ### 11.1 HTTP API
 
-JSON over HTTP from `api.ts`, on the same port. Every request that changes anything must have an `Origin` header matching `PUBLIC_URL` and a valid session. Bodies are at most 4 KB.
+JSON over HTTP from `api.ts`, on the same port. Every request that changes anything must have an `Origin` header matching `PUBLIC_URL` and a valid session. Every other request apart from `GET /api/me` needs a valid session too. Bodies are at most 4 KB, and an empty body counts as `{}`. Built so far: `/api/me`, `/api/me/name`, `/api/signout`, `/api/profile` and `/api/history`.
 
 | Request | Does |
 |---|---|
 | `GET /api/me` | The asker's account (`AccountView`), making a guest if there is no session |
-| `POST /api/me/name` `{ name }` | Renames, with the reason if it can't |
-| `POST /api/signout` | Section 6.1. `{ everywhere: true }` for every device |
+| `POST /api/me/name` `{ name }` | Renames, and returns the `AccountView`; or the reason it can't, with 400 |
+| `POST /api/signout` | Section 6.1. `{ everywhere: true }` for every device. Returns `{ ok: true }` and clears the cookie |
 | `POST /api/me/delete` `{ confirm }` | Section 6.4; `confirm` is the account's name |
 | `GET /auth/google`, `GET /auth/google/callback` | Section 6.2 |
-| `GET /api/profile?account=<id>` | Name, guest or not, stats (section 9.3) |
+| `GET /api/profile?account=<id>` | `{ id, name, guest, stats }` (section 9.3) |
 | `GET /api/history?account=<id>&before=<match id>` | Section 9.4 |
 | `GET /api/leaderboard` | Section 8.4 |
 | `GET /api/friends` | Friends with presence, and requests both ways |
@@ -443,7 +489,7 @@ interface AccountView {
 ```
 
 - Errors are `{ error: string }`, with 400 for bad input, 401 without a session, 403 for a wrong `Origin`, 404 for an unknown account, and 429 when rate limited.
-- At most 60 requests a minute from one session.
+- At most 60 requests a minute from one session, `GET /api/me` included.
 
 ### 11.2 WebSocket messages
 
@@ -489,18 +535,20 @@ interface FriendRef { id: string; name: string }
 interface FriendPresence { id: string; name: string; status: 'online' | 'queue' | 'lobby' | 'game' }
 ```
 
-- `LobbyView` gains `ranked: boolean`, and its `host` becomes `number | null`, null in a ranked lobby, and each `SeatView` gains `player: string | null` (the account id for people, for links to profiles) and `guest: boolean`.
+- `LobbyView` gains `ranked: boolean`, and its `host` becomes `number | null`, null in a ranked lobby, and each `SeatView` gains `player: string | null` (the account id for people, for links to profiles) and `guest: boolean` (false for bots and empty seats).
+- Built so far: `create`, `join` and `rejoin` without names and tokens, `hello`, `replaced`, and the `LobbyView` and `SeatView` changes, with `ranked` always false. The queue, party, friends, `ranked` and `notice` messages come with their steps.
+- `hello`'s `game` is the lobby the account has a seat in that it hasn't left and whose game isn't over, whether it has started or not, so a page can rejoin a lobby it was waiting in too.
 - Presence is only sent to friends. Offline friends are left out of `friends`; `GET /api/friends` lists everyone.
 
 ---
 
 ## 12. Changes to online play
 
-- **Seats** (`lobby.ts`): a member is a player id, a name and a connection. `rejoin` gives a seat back to a connection with the same player id. The per-lobby tokens and `Host.token` go, and the client stops keeping the code and token in session storage. After a reload or on another device, `hello` says which game the account is in, and the page rejoins it.
-- **One lobby per account:** an account in a lobby, game or queue can't create, join or queue elsewhere. Leaving a started game for good (`leave`) frees the account.
+- **Seats** (`lobby.ts`): a member is a player id, a name and a connection. `rejoin` gives a seat back to a connection with the same player id; another account gets "You have no seat in that lobby." A `rejoin` from the connection that already has the seat sends it the seat again. The per-lobby tokens and `Host.token` go. The client keeps only the lobby code in session storage, for reconnecting; after a reload or on another device, `hello` says which game the account is in, and the page rejoins it.
+- **One lobby per account:** an account in a lobby, game or queue can't create, join or queue elsewhere ("You already have a seat in lobby CODE."). Leaving a started game for good (`leave`) frees the account, as does its game ending.
 - **Replaced connections:** the older connection gets `replaced` (section 6.1) instead of `left`, which `server-spec.md` section 8 sends when a seat rejoins from another connection.
 - **Lobby kinds:** `private` (made with `create`, as now) and `ranked` (made by the queue). Private lobbies keep everything in `server-spec.md` section 7, and guests can play them.
-- **Idle started lobbies:** instead of closing 60 seconds after the last person disconnects (`server-spec.md` section 7), a lobby whose game has started plays the rest of its game out at once with bots, as when everyone is out (`server-spec.md` section 5.1), and reports its result. Disconnected people's places count, as in section 7.3. Only a restart voids a game.
+- **Idle started lobbies:** instead of closing 60 seconds after the last person disconnects (`server-spec.md` section 7), a lobby whose game has started then plays the rest of its game out at once with bots, as when everyone is out (`server-spec.md` section 5.1), reports its result and closes. Until then, people can still rejoin. Disconnected people's places count, as in section 7.3. Only a restart voids a game. A lobby that hasn't started still closes after the 60 seconds.
 - **Results:** `Lobbies` takes `onResult` in its options and calls it when a lobby's game ends (section 9.1).
 - **Draining:** `Lobbies.drain()` (section 10), and `Lobbies.running` for how many games are still going.
 - **Names** come from players, and are updated in the lobby view if a person renames while in it.
@@ -544,11 +592,11 @@ The play page (`game-spec.md` section 12, `server-spec.md` section 10). The acco
 
 ## 15. Deployment
 
-- The `Dockerfile` copies `packages/server/migrations` into the image, next to `src`, which is all it copies of the server now.
+- The `Dockerfile` copies `packages/server/migrations` into the image, next to `src`, which is all it copies of the server now. The image needs `DATABASE_URL`, and stops without it.
 - `compose.yaml` gains a `db` service, `postgres:17`, with a `pg_data` volume, a health check, and its password from `POSTGRES_PASSWORD` in `.env`. Its port is not opened on the host. The `game` service gets `DATABASE_URL`, `PUBLIC_URL=https://${DOMAIN}`, `TRUST_PROXY=1` and the Google settings from `.env`, depends on `db` being healthy, and has the 50-minute `stop_grace_period`.
 - The Caddyfile needs no change: `/api/*` and `/auth/*` go to the game like everything else. Caddy sets `X-Forwarded-For`.
 - `README.md`, Deploying: the new `.env` values, making the Google client, and backups.
-- CI starts a `postgres:17` service for the tests that need it (section 16), and the image smoke test runs without `DATABASE_URL`, on a `MemoryStore`.
+- CI starts a `postgres:17` service for the tests that need it (section 16), with `DATABASE_URL` set for `pnpm test`. The image smoke test runs the image with a `postgres:17` container beside it on a Docker network, and checks `/play.html` and `/api/me`.
 
 ---
 
@@ -562,7 +610,7 @@ The play page (`game-spec.md` section 12, `server-spec.md` section 10). The acco
 - **Seats by account:** rejoin with the same player id works from a new connection, and with another id is refused. One lobby per account.
 - **Draining:** create, join and queue are refused, lobbies that haven't started close, running games finish, and `running` reaches 0.
 
-**Node side, against Postgres (skipped with a clear message when `DATABASE_URL` isn't set; CI sets it)**
+**Node side, against `PgStore` (skipped with a clear message when `DATABASE_URL` isn't set; CI sets it). Each test file works in a schema of its own, made and dropped by the test, so files can run at once against one database.**
 - Migrations apply on an empty database and are a no-op the second time.
 - Guests, sessions (stored hashed, renewed, expired), sign-out and sign-out everywhere.
 - Names: unique among claimed accounts ignoring case and NFKC, guests sharing a name, a guest who can't claim with a taken name until they rename, the 7-day rename limit.
@@ -570,10 +618,10 @@ The play page (`game-spec.md` section 12, `server-spec.md` section 10). The acco
 - Recording a ranked match updates ratings, points and seats in one transaction, and a failure in the middle leaves nothing.
 - Deleting an account keeps other people's history with "Deleted player".
 - Friends: request, accept, decline, remove, a mutual request accepting itself, the limits.
-- The same tests run against `MemoryStore`, so both stores behave alike.
 
-**Server**
+**Server** (against Postgres, so skipped likewise without `DATABASE_URL`)
 - The WebSocket upgrade is refused without a session or with a wrong `Origin`.
+- Two guests play a private lobby game to the end, after which both have it in `/api/history`.
 - Google's endpoints faked: the callback with a wrong `state` is refused, a new `sub` claims the guest.
 - Two clients with claimed accounts queue, wait out the filler timer, play a ranked game to the end, and both see the points change.
 

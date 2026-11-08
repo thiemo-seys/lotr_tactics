@@ -25,8 +25,6 @@ import { displayName } from './units.js';
 import { initTooltips, updateTip } from './ui/tooltip.js';
 import './style.css';
 
-const NAME_KEY = 'lotr-tactics-name';
-
 const element = <T extends HTMLElement>(id: string) => document.getElementById(id) as T;
 fillIcons(document);
 initTooltips(tipCard);
@@ -43,7 +41,6 @@ const banner = element('banner');
 const backdrop = element('backdrop');
 const traitsPanel = element('traits');
 const playersPanel = element('players');
-const nameInput = element<HTMLInputElement>('name');
 const codeInput = element<HTMLInputElement>('code');
 const speedButton = element<HTMLButtonElement>('speed');
 const skipButton = element<HTMLButtonElement>('skip');
@@ -86,10 +83,8 @@ hoverUnits(view, scene, (pick) => {
 
 // Menu and lobby
 
-nameInput.value = readName();
-nameInput.addEventListener('change', () => saveName(nameInput.value));
 element('play-bots').addEventListener('click', () => playOffline(randomSeed()));
-element('create').addEventListener('click', () => goOnline().send({ type: 'create', name: nameInput.value }));
+element('create').addEventListener('click', () => goOnline().send({ type: 'create' }));
 element('join').addEventListener('click', () => {
   const code = codeInput.value.trim();
   if (code === '') {
@@ -97,7 +92,7 @@ element('join').addEventListener('click', () => {
     codeInput.focus();
     return;
   }
-  goOnline().send({ type: 'join', code, name: nameInput.value });
+  goOnline().send({ type: 'join', code });
 });
 codeInput.addEventListener('keydown', (event) => {
   if (event.key === 'Enter') element('join').click();
@@ -175,7 +170,7 @@ function startPage(): void {
   const seed = Number(hash.get('seed'));
   const seat = savedSeat();
   if (Number.isInteger(seed) && seed !== 0) playOffline(seed);
-  else if (seat !== null) goOnline().send({ type: 'rejoin', ...seat });
+  else if (seat !== null) goOnline().send({ type: 'rejoin', code: seat.code });
   else codeInput.value = hash.get('lobby') ?? '';
 }
 
@@ -294,20 +289,4 @@ function render(now: number): void {
 
 function randomSeed(): number {
   return Math.floor(Math.random() * 0x7fffffff) + 1;
-}
-
-function readName(): string {
-  try {
-    return localStorage.getItem(NAME_KEY) ?? '';
-  } catch {
-    return '';
-  }
-}
-
-function saveName(name: string): void {
-  try {
-    localStorage.setItem(NAME_KEY, name);
-  } catch {
-    // The name just isn't remembered.
-  }
 }

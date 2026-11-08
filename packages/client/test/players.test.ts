@@ -9,9 +9,9 @@ const player = (seat: number, hp: number, placement: number | null = null, strea
 describe('the players list', () => {
   it('orders by standings and marks you, bots, people away and the Ring holder', () => {
     const seats: SeatView[] = [
-      { kind: 'person', name: 'Ann', connected: true },
-      { kind: 'person', name: 'Bo', connected: false },
-      { kind: 'bot', name: 'Bot 2', connected: false },
+      { kind: 'person', name: 'Ann', connected: true, player: 'ann', guest: true },
+      { kind: 'person', name: 'Bo', connected: false, player: 'bo', guest: true },
+      { kind: 'bot', name: 'Bot 2', connected: false, player: null, guest: false },
     ];
     const ring: RingView = { state: 'held', holder: 2, bearer: null, corruption: 3, hobbitFights: 0 };
     const rows = playerRows([player(0, 40, null, -2), player(1, 0, 3), player(2, 85, null, 4)], seats, 0, ring, (s) => (s === 0 ? 'You' : seats[s]!.name));

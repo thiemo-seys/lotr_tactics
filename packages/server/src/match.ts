@@ -4,6 +4,7 @@ import { Autopilot, TICKS_PER_SECOND, createGame, type Action, type ActionResult
 import { TIMERS } from './config.js';
 import type { Host } from './host.js';
 import type { ServerMessage } from './protocol.js';
+import { finalBoard, type FinalBoard } from './results.js';
 import { matchView, roundRecord, type MatchView, type RoundRecord, type StepKind } from './view.js';
 
 export interface MatchOptions {
@@ -15,6 +16,8 @@ export interface MatchOptions {
   readonly host: Host;
   /** Delivers a message to the connected person in a seat. */
   readonly send: (seat: number, message: ServerMessage) => void;
+  /** Called once, when the game ends. */
+  readonly over?: () => void;
 }
 
 interface Step {
@@ -40,6 +43,12 @@ export class Match {
   /** The round shown during a fight step. */
   private record: RoundRecord | null = null;
   private readonly readySeats = new Set<number>();
+  /**
+   * Each seat's board from its latest fight. The game empties a seat's board when it places it,
+   * so these are kept from the fight phase (docs/accounts-spec.md section 9.1).
+   */
+  private readonly boards: (FinalBoard | null)[];
+  private reported = false;
 
   constructor(private readonly options: MatchOptions) {
     const seats = options.people.length;
@@ -47,6 +56,7 @@ export class Match {
     this.autopilot = new Autopilot(this.game, options.seed);
     this.people = [...options.people];
     this.connected = options.people.map((person, seat) => person && options.connected[seat] === true);
+    this.boards = options.people.map(() => null);
   }
 
   /** Starts the first step and sends everyone their view. */
@@ -61,6 +71,18 @@ export class Match {
 
   isOver(): boolean {
     return this.step.kind === 'over';
+  }
+
+  /** The board each seat fought its last fight with, in seat order; null for a seat that never fought. */
+  finalBoards(): readonly (FinalBoard | null)[] {
+    return [...this.boards];
+  }
+
+  /** Plays the rest of the game at once with bots in every seat, as when everyone is out. */
+  playOut(): void {
+    if (this.isOver()) return;
+    this.finish();
+    this.broadcast();
   }
 
   view(seat: number): MatchView {
@@ -141,7 +163,7 @@ export class Match {
     this.record = null;
     for (;;) {
       if (this.game.isOver()) {
-        this.step = { kind: 'over', endsAt: null };
+        this.end();
         return;
       }
       if (this.everyoneOut()) {
@@ -172,6 +194,7 @@ export class Match {
       case 'planning': {
         // The game stays in the round while its fights play, so people can shop.
         const report = this.game.fight();
+        this.keepBoards();
         // The start round has no fights to show: straight on to the next round.
         if (report.fights.length === 0) {
           this.game.advance();
@@ -205,9 +228,23 @@ export class Match {
 
   /** Plays the rest of the game at once, with bots in every seat. */
   private finish(): void {
-    this.autopilot.playUntil();
+    // Each round's boards once the bots have planned, which are the boards that fight.
+    this.autopilot.playUntil(undefined, () => this.keepBoards());
     this.record = null;
+    this.end();
+  }
+
+  private end(): void {
     this.step = { kind: 'over', endsAt: null };
+    if (this.reported) return;
+    this.reported = true;
+    this.options.over?.();
+  }
+
+  /** Keeps the boards of the seats still in the game, as they fight this round. */
+  private keepBoards(): void {
+    const { players, ring } = this.game.state;
+    for (const p of players) if (p.placement === null) this.boards[p.seat] = finalBoard(p, ring);
   }
 
   // Seats (section 5.2)

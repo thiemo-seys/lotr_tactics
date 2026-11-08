@@ -1,15 +1,40 @@
-# The game behind Caddy, which gets HTTPS certificates and passes WebSockets through.
-# On the server: put DOMAIN=your.domain in .env next to this file, then `docker compose up -d --build`.
+# The game behind Caddy, which gets HTTPS certificates and passes WebSockets through, with Postgres
+# for accounts and match history (docs/accounts-spec.md section 15).
+# On the server: put DOMAIN=your.domain and POSTGRES_PASSWORD=... in .env next to this file, then
+# `docker compose up -d --build`.
 
 services:
   game:
     build: .
     restart: unless-stopped
+    depends_on:
+      db:
+        condition: service_healthy
     environment:
       PORT: 8080
+      DATABASE_URL: postgres://lotr:${POSTGRES_PASSWORD:?Set POSTGRES_PASSWORD in .env}@db:5432/lotr
+      PUBLIC_URL: https://${DOMAIN:?Set DOMAIN in .env, for example DOMAIN=tactics.example.com}
+      # Caddy sets X-Forwarded-For, which the rate limits use.
+      TRUST_PROXY: "1"
     # Only Caddy reaches the game, over the compose network; no port is opened on the host.
     expose:
       - "8080"
+
+  db:
+    image: postgres:17
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: lotr
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?Set POSTGRES_PASSWORD in .env}
+      POSTGRES_DB: lotr
+    # Only the game reaches the database; no port is opened on the host.
+    volumes:
+      - pg_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready --username lotr --dbname lotr"]
+      interval: 5s
+      timeout: 5s
+      retries: 12
 
   caddy:
     image: caddy:2
@@ -28,6 +53,8 @@ services:
       - caddy_config:/config
 
 volumes:
+  # Accounts and match history. Back it up (README.md, Deploying).
+  pg_data:
   # Caddy's certificates. Keep them across restarts so Let's Encrypt's rate limits aren't hit.
   caddy_data:
   caddy_config:
