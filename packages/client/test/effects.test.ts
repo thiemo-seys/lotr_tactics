@@ -155,6 +155,120 @@ describe('wind-up', () => {
   });
 });
 
+describe('a caster dying with its projectiles or lobs in flight', () => {
+  it('lands a projectile loosed before its caster dies, with its sparks, and none loosed after', () => {
+    // Legolas's Flurry (tanks against archers, seed 1): released on 172, the first of 5 arrows lands on 177 and
+    // the next are loosed 3 ticks apart. Here he dies on 174, after the first has left and before the second.
+    const probe = fight('tanks', 'archers', 1);
+    const cast = toCast(probe.p, probe.fx, 'Flurry');
+    const aim = cast.aims[0]!;
+    const { unit: target, landTick } = aim.units[0]!;
+    const death = cast.releaseTick + 2;
+    expect(death).toBeLessThan(landTick);
+    expect(death).toBeLessThan(cast.releaseTick + aim.hitGap);
+    const { p, fx } = fight('tanks', 'archers', 1, withDeath(cast.unit, death));
+    toCast(p, fx, 'Flurry');
+    stepTo(p, fx, death);
+    // The first arrow still flies; the rest never leave.
+    const own = fx.missiles.filter((m) => m.from === cast.unit);
+    expect(own.filter((m) => m.end > m.start).map((m) => m.start)).toEqual([cast.releaseTick]);
+    // It lands with its impact, though its caster is dead; the arrows never loosed have none.
+    const sparks = new Set<number>();
+    const glows = new Set<number>();
+    while (p.combat.tick <= landTick + (aim.hits - 1) * aim.hitGap) {
+      stepTo(p, fx, p.combat.tick + 1);
+      for (const b of fx.bursts) if (b.unit === target && b.colour === EFFECTS.sparks.physical) sparks.add(b.start);
+      for (const g of fx.glows) if (g.unit === target && g.size === EFFECTS.impactGlow.size) glows.add(g.start);
+    }
+    expect([...sparks]).toEqual([landTick]);
+    expect([...glows]).toEqual([landTick]);
+  });
+
+  it('lands a lob whose caster dies in its flight, with its sparks, the big moment and the screen flash', () => {
+    // Saruman's Fire of Orthanc (tanks against mixed, seed 1): a 0.5 s wind-up, released on 205, landing on 228.
+    // Here he dies on 206, just after it has left.
+    const probe = fight('tanks', 'mixed', 1);
+    const cast = toCast(probe.p, probe.fx, 'Fire of Orthanc');
+    const land = cast.aims[0]!.hexes[0]!.landTick;
+    const death = cast.releaseTick + 1;
+    const { p, fx } = fight('tanks', 'mixed', 1, withDeath(cast.unit, death));
+    toCast(p, fx, 'Fire of Orthanc');
+    stepTo(p, fx, death);
+    const lob = fx.missiles.find((m) => m.from === cast.unit && m.lob)!;
+    expect(lob).toMatchObject({ start: cast.releaseTick, end: land });
+    const events = stepTo(p, fx, land);
+    const reached = events.filter((e): e is DamageEvent => e.type === 'damage' && e.source === cast.unit && e.kind === 'ability' && e.tick === land).map((e) => e.target);
+    expect(reached.length).toBeGreaterThan(0);
+    const colour = ABILITY_LOOKS['Fire of Orthanc']!.colour;
+    for (const unit of reached) expect(fx.bursts).toContainEqual(expect.objectContaining({ unit, start: land, colour: EFFECTS.sparks.magic }));
+    // The blast, the scorch, and the big moment: shake, hit-stop and the screen's flash.
+    expect(fx.bursts).toContainEqual(expect.objectContaining({ unit: null, start: land, heart: true }));
+    expect(fx.scorches).toContainEqual(expect.objectContaining({ start: land }));
+    expect(fx.shakes).toContainEqual(expect.objectContaining({ start: land, amplitude: EFFECTS.big.shake }));
+    expect(fx.hitStops).toContainEqual(expect.objectContaining({ start: land, units: [cast.unit, ...reached] }));
+    expect(fx.flashes).toContainEqual(expect.objectContaining({ start: land, colour }));
+  });
+});
+
+describe('the end of the fight', () => {
+  it('shows nothing of a cast still winding up as the fight ends: no telegraph, ribbon, shockwave or big moment after it', () => {
+    // Théoden casts Forth Eorlingas! on 217 (tanks against rings, seed 1), to charge on 228; the fight ends on 227.
+    const { p, fx } = fight('tanks', 'rings', 1);
+    const cast = toCast(p, fx, 'Forth Eorlingas!');
+    const colour = ABILITY_LOOKS['Forth Eorlingas!']!.colour;
+    const marks = fx.marks.filter((m) => m.start === cast.tick && m.colour === colour);
+    const gather = fx.gathers.find((g) => g.unit === cast.unit && g.start === cast.tick)!;
+    const ribbon = fx.ribbons.find((r) => r.unit === cast.unit)!;
+    expect(marks.length).toBeGreaterThan(0);
+    while (!p.combat.isOver()) {
+      p.step();
+      fx.update();
+    }
+    const end = p.combat.tick;
+    expect(p.ended?.tick).toBe(end);
+    expect(end).toBeLessThan(cast.releaseTick);
+    expect(p.combat.state.units[cast.unit]!.alive).toBe(true);
+    // What was showing ends with the fight; what was to come never does.
+    for (const m of marks) expect(m.end).toBeLessThanOrEqual(end);
+    expect(gather.end).toBeLessThanOrEqual(end);
+    expect(ribbon.end).toBeLessThanOrEqual(ribbon.start);
+    // Through the afterglow, none of it is drawn.
+    for (const t of [end + 1, end + 15, end + 29]) {
+      p.time = t;
+      fx.update();
+      expect(fx.marks.filter((m) => marks.includes(m))).toEqual([]);
+      expect(fx.gathers).not.toContain(gather);
+      expect(fx.ribbons).not.toContain(ribbon);
+      expect(fx.rings.filter((r) => r.colour === colour)).toEqual([]);
+      expect(fx.shakes.filter((s) => s.start > end)).toEqual([]);
+      expect(fx.hitStops.filter((s) => s.units[0] === cast.unit)).toEqual([]);
+    }
+  });
+
+  it('shows nothing of a projectile cast released after the end: no aim line or missile in the afterglow', () => {
+    // Legolas casts Flurry on 160 (duel against archers, seed 4), to loose it on 172; the fight ends on 162.
+    const { p, fx } = fight('duel', 'archers', 4);
+    const cast = toCast(p, fx, 'Flurry');
+    const lines = fx.aimLines.filter((l) => l.source === cast.unit);
+    const missiles = fx.missiles.filter((m) => m.from === cast.unit);
+    expect(lines.length).toBe(1);
+    expect(missiles.length).toBe(cast.aims[0]!.hits);
+    while (!p.combat.isOver()) {
+      p.step();
+      fx.update();
+    }
+    const end = p.combat.tick;
+    expect(end).toBeLessThan(cast.releaseTick);
+    expect(lines[0]!.end).toBeLessThanOrEqual(end);
+    for (const m of missiles) expect(m.end).toBeLessThanOrEqual(m.start);
+    p.time = end + 20;
+    fx.update();
+    expect(fx.aimLines.filter((l) => l.source === cast.unit)).toEqual([]);
+    expect(fx.missiles.filter((m) => m.from === cast.unit)).toEqual([]);
+    expect(fx.bursts.filter((b) => b.start > end)).toEqual([]);
+  });
+});
+
 describe('travel', () => {
   it('flies a projectile from the caster’s release to its unit, wherever it is, landing on its landTick', () => {
     const { p, fx } = fight('tanks', 'archers', 1);

@@ -35,7 +35,7 @@ const ticks = (seconds: number): number => seconds * T;
 /** Something drawn from `start` until it ends at `end`, in ticks: live while start ≤ t < end. */
 export interface Timed {
   readonly start: number;
-  /** Brought forward if the caster dies before it comes (`cancel`). */
+  /** Brought forward if the caster dies before it comes (`cancel`), or the fight ends first (`finish`). */
   end: number;
 }
 
@@ -273,6 +273,12 @@ export function damageTypeOf(ability: AbilityDef | null): DamageType {
 /** A landing of a cast: the units its events reached on that tick, which decide its sparks and whether it is big. */
 interface Landing {
   readonly tick: number;
+  /**
+   * The tick its caster must be alive to for it to come: the landing itself for a strike, a dash's or
+   * a charge's; a projectile's loosing, or a bounce's, line projectile's or lob's release, as what
+   * has left lands anyway (sim-spec section 10.6, In flight). Of several on one tick, the soonest.
+   */
+  needs: number;
   /** An area of radius `big.flashRadius` or more, or a lob: a big one flashes the screen. */
   flash: boolean;
   readonly reached: number[];
@@ -281,10 +287,15 @@ interface Landing {
   done: boolean;
 }
 
-/** An effect that needs its caster alive until `needs`: one that hasn't come by the caster's death never does. */
+/**
+ * An effect that needs its caster alive until `needs`: one that hasn't come by the caster's death
+ * never does. `comes` is the tick of what it shows coming (a release or a landing): one that hasn't
+ * by the fight's end never does either.
+ */
 interface Owned {
   readonly effect: Timed;
   readonly needs: number;
+  readonly comes: number;
 }
 
 /** A cast whose landings are still to come. */
@@ -599,7 +610,7 @@ export class Effects {
         if (cast?.charge === true && cast.tick === e.tick) {
           const ribbon: Ribbon = { start: e.departTick, end: e.arriveTick + ticks(EFFECTS.ribbon.fade), arrive: e.arriveTick, unit: e.unit, colour: cast.look.colour };
           this.ribbons.push(ribbon);
-          cast.owned.push({ effect: ribbon, needs: e.departTick });
+          cast.owned.push({ effect: ribbon, needs: e.departTick, comes: e.departTick });
         }
         break;
       }
@@ -648,6 +659,9 @@ export class Effects {
         this.endStatuses(e.unit, e.tick);
         break;
       }
+      case 'end':
+        this.finish(e.tick);
+        break;
       default:
         break;
     }
@@ -695,18 +709,25 @@ export class Effects {
       landings: [],
       owned: [],
     };
-    const own = <E extends Timed>(list: E[], effect: E, needs: number): void => {
+    const own: Own = (list, effect, needs, comes) => {
       list.push(effect);
-      cast.owned.push({ effect, needs });
+      cast.owned.push({ effect, needs, comes });
     };
-    own(this.gathers, { start: e.tick, end: e.releaseTick + ticks(EFFECTS.gather.fade), unit: e.unit, colour: look.colour, release: e.releaseTick }, Infinity);
+    own(this.gathers, { start: e.tick, end: e.releaseTick + ticks(EFFECTS.gather.fade), unit: e.unit, colour: look.colour, release: e.releaseTick }, Infinity, e.releaseTick);
 
     for (const aim of e.aims) {
       // Projectiles and lobs that have left land if the caster dies; strikes, dashes and charges need it.
       const flies = aim.delivery === 'projectile' || aim.delivery === 'lob';
       const area = aim.select === 'area' && aim.centre !== null && aim.hexes.some((h) => distance(h.hex, aim.centre!) >= EFFECTS.big.flashRadius);
-      for (const h of aim.hexes) this.landing(cast, h.landTick, area || aim.delivery === 'lob');
-      for (const u of aim.units) for (let k = 0; k < aim.hits; k++) this.landing(cast, u.landTick + k * aim.hitGap, false);
+      for (const h of aim.hexes) this.landing(cast, h.landTick, area || aim.delivery === 'lob', flies ? e.releaseTick : h.landTick);
+      for (const u of aim.units) {
+        for (let k = 0; k < aim.hits; k++) {
+          const land = u.landTick + k * aim.hitGap;
+          // A projectile needs its caster until it is loosed: a bounce's at the release, hit `k`'s `k` gaps after.
+          const loosed = aim.select === 'bounce' ? e.releaseTick : e.releaseTick + k * aim.hitGap;
+          this.landing(cast, land, false, aim.delivery === 'projectile' ? loosed : land);
+        }
+      }
 
       if (aim.side === 'ally') {
         // A wave on the ground from the caster through the hexes; the units reached glow as they are.
@@ -714,7 +735,7 @@ export class Effects {
           const centre = aim.centre === null ? caster : hexToWorld(aim.centre);
           const land = aim.hexes[0]!.landTick;
           const { wave } = EFFECTS;
-          own(this.rings, { start: land, end: land + ticks(wave.seconds), x: centre.x, z: centre.z, from: 0.3, to: reach(centre, aim.hexes), colour: look.colour, strength: wave.strength }, land);
+          own(this.rings, { start: land, end: land + ticks(wave.seconds), x: centre.x, z: centre.z, from: 0.3, to: reach(centre, aim.hexes), colour: look.colour, strength: wave.strength }, land, land);
         }
         continue;
       }
@@ -722,7 +743,7 @@ export class Effects {
       // Telegraph: the hexes, lit until each lands.
       for (const h of aim.hexes) {
         const { x, z } = hexToWorld(h.hex);
-        own(this.marks, { start: e.tick, end: h.landTick + ticks(EFFECTS.telegraph.linger), x, z, land: h.landTick, colour: look.colour, team }, flies ? e.releaseTick : h.landTick);
+        own(this.marks, { start: e.tick, end: h.landTick + ticks(EFFECTS.telegraph.linger), x, z, land: h.landTick, colour: look.colour, team }, flies ? e.releaseTick : h.landTick, h.landTick);
       }
 
       if (aim.delivery === 'projectile' && aim.units.length > 0) this.projectiles(cast, aim, e, own);
@@ -730,13 +751,13 @@ export class Effects {
         // A line projectile flies along its hexes, from the caster to the last.
         const last = aim.hexes.at(-1)!;
         const to = hexToWorld(last.hex);
-        own(this.missiles, { start: e.releaseTick, end: last.landTick, kind: look.projectile ?? 'arrow', colour: look.colour, from: e.unit, to: null, toX: to.x, toZ: to.z, lob: false }, e.releaseTick);
+        own(this.missiles, { start: e.releaseTick, end: last.landTick, kind: look.projectile ?? 'arrow', colour: look.colour, from: e.unit, to: null, toX: to.x, toZ: to.z, lob: false }, e.releaseTick, last.landTick);
       } else if (aim.delivery === 'lob' && aim.hexes.length > 0) {
         const centre = hexToWorld(aim.centre ?? aim.hexes[0]!.hex);
         const land = aim.hexes[0]!.landTick;
-        own(this.missiles, { start: e.releaseTick, end: land, kind: look.projectile ?? 'fireball', colour: look.colour, from: e.unit, to: null, toX: centre.x, toZ: centre.z, lob: true }, e.releaseTick);
+        own(this.missiles, { start: e.releaseTick, end: land, kind: look.projectile ?? 'fireball', colour: look.colour, from: e.unit, to: null, toX: centre.x, toZ: centre.z, lob: true }, e.releaseTick, land);
         const { scorch } = EFFECTS;
-        own(this.scorches, { start: land, end: land + ticks(scorch.seconds), x: centre.x, z: centre.z }, e.releaseTick);
+        own(this.scorches, { start: land, end: land + ticks(scorch.seconds), x: centre.x, z: centre.z }, e.releaseTick, land);
       }
 
       // Impact: a shockwave out to the hexes, from the centre; or at each hex of a line or charge as it
@@ -749,17 +770,17 @@ export class Effects {
         for (const h of aim.hexes) {
           const { x, z } = hexToWorld(h.hex);
           const start = h.landTick + (cone ? ticks(shockwave.sweep) * Math.max(0, Math.hypot(x - caster.x, z - caster.z) - HEX_WIDTH) : 0);
-          own(this.rings, { start, end: start + ticks(shockwave.seconds) * 0.7, x, z, from: 0.2, to: 1.1, colour: look.colour, strength: 1 }, needs || h.landTick);
+          own(this.rings, { start, end: start + ticks(shockwave.seconds) * 0.7, x, z, from: 0.2, to: 1.1, colour: look.colour, strength: 1 }, needs || h.landTick, h.landTick);
         }
       } else {
         const centre = aim.centre === null ? caster : hexToWorld(aim.centre);
         const land = aim.hexes[0]!.landTick;
         const to = reach(centre, aim.hexes);
-        own(this.rings, { start: land, end: land + ticks(shockwave.seconds), x: centre.x, z: centre.z, from: 0.3, to, colour: look.colour, strength: 1 }, needs || land);
+        own(this.rings, { start: land, end: land + ticks(shockwave.seconds), x: centre.x, z: centre.z, from: 0.3, to, colour: look.colour, strength: 1 }, needs || land, land);
         // A second ring a moment behind the first, not as far.
-        own(this.rings, { start: land + 1.5, end: land + 1.5 + ticks(shockwave.seconds) * 1.2, x: centre.x, z: centre.z, from: 0.3, to: to * 0.85, colour: look.colour, strength: 0.3 }, needs || land);
+        own(this.rings, { start: land + 1.5, end: land + 1.5 + ticks(shockwave.seconds) * 1.2, x: centre.x, z: centre.z, from: 0.3, to: to * 0.85, colour: look.colour, strength: 0.3 }, needs || land, land);
         const heart = aim.delivery === 'lob';
-        own(this.bursts, { start: land, end: land + ticks(0.6), unit: null, x: centre.x, y: 0.35, z: centre.z, colour: look.colour, count: Math.min(46, 10 + 6 * aim.hexes.length), speed: 4 + 2 * to, seed: this.bursted++, heart }, needs || land);
+        own(this.bursts, { start: land, end: land + ticks(0.6), unit: null, x: centre.x, y: 0.35, z: centre.z, colour: look.colour, count: Math.min(46, 10 + 6 * aim.hexes.length), speed: 4 + 2 * to, seed: this.bursted++, heart }, needs || land, land);
       }
     }
     this.pending.push(cast);
@@ -767,31 +788,34 @@ export class Effects {
   }
 
   /** An aim of units by projectile: an aim line to each, and one projectile a hit, or a bounce hopping along them. */
-  private projectiles(cast: CastFx, aim: CastAim, e: CastEvent, own: <E extends Timed>(list: E[], effect: E, needs: number) => void): void {
+  private projectiles(cast: CastFx, aim: CastAim, e: CastEvent, own: Own): void {
     const { look, team } = cast;
     const kind = look.projectile ?? 'arrow';
     const bounce = aim.select === 'bounce';
     for (let i = 0; i < aim.units.length; i++) {
       const u = aim.units[i]!;
-      if (!bounce || i === 0) own(this.aimLines, { start: e.tick, end: e.releaseTick, source: e.unit, target: u.unit, colour: look.colour, team }, Infinity);
+      if (!bounce || i === 0) own(this.aimLines, { start: e.tick, end: e.releaseTick, source: e.unit, target: u.unit, colour: look.colour, team }, Infinity, e.releaseTick);
       if (bounce) {
         // Hop `i` from the unit before, as that one is reached.
         const start = i === 0 ? e.releaseTick : aim.units[i - 1]!.landTick;
         const from = i === 0 ? e.unit : aim.units[i - 1]!.unit;
-        own(this.missiles, { start, end: u.landTick, kind, colour: look.colour, from, to: u.unit, toX: 0, toZ: 0, lob: false }, e.releaseTick);
+        own(this.missiles, { start, end: u.landTick, kind, colour: look.colour, from, to: u.unit, toX: 0, toZ: 0, lob: false }, e.releaseTick, u.landTick);
         continue;
       }
       for (let k = 0; k < aim.hits; k++) {
         const start = e.releaseTick + k * aim.hitGap;
-        own(this.missiles, { start, end: u.landTick + k * aim.hitGap, kind, colour: look.colour, from: e.unit, to: u.unit, toX: 0, toZ: 0, lob: false }, start);
+        own(this.missiles, { start, end: u.landTick + k * aim.hitGap, kind, colour: look.colour, from: e.unit, to: u.unit, toX: 0, toZ: 0, lob: false }, start, u.landTick + k * aim.hitGap);
       }
     }
   }
 
-  private landing(cast: CastFx, tick: number, flash: boolean): void {
+  private landing(cast: CastFx, tick: number, flash: boolean, needs: number): void {
     const landing = cast.landings.find((l) => l.tick === tick);
-    if (landing === undefined) cast.landings.push({ tick, flash, reached: [], types: [], done: false });
-    else landing.flash ||= flash;
+    if (landing === undefined) cast.landings.push({ tick, needs, flash, reached: [], types: [], done: false });
+    else {
+      landing.flash ||= flash;
+      landing.needs = Math.min(landing.needs, needs);
+    }
   }
 
   /** A unit an event of a cast's landing reached: its sparks and glow, and whether the landing is big, come once the tick is over. */
@@ -853,16 +877,42 @@ export class Effects {
     if (landing.flash) this.flashes.push({ start: tick, end: tick + ticks(big.flashSeconds), colour: cast.look.colour, strength: big.flash });
   }
 
-  /** The caster died on `tick`: what of its cast needed it alive from then on never comes, and what is showing ends. */
+  /**
+   * The caster died on `tick`: what of its cast needed it alive from then on never comes, and what is
+   * showing ends. Its projectiles and lobs that have left land anyway, with their impacts: the cast
+   * stays pending until they have, and `settle` drops it then.
+   */
   private cancel(cast: CastFx, tick: number): void {
-    for (const { effect, needs } of cast.owned) {
-      if (needs > tick) effect.end = Math.min(effect.end, Math.max(tick, effect.start));
-    }
-    for (const ribbon of this.ribbons) if (ribbon.unit === cast.unit && ribbon.arrive > tick) ribbon.arrive = Math.max(tick, ribbon.start);
-    this.casting[cast.unit] = undefined;
-    const i = this.pending.indexOf(cast);
-    if (i >= 0) this.pending.splice(i, 1);
+    for (const { effect, needs } of cast.owned) if (needs > tick) cut(effect, tick);
+    for (const landing of cast.landings) if (landing.needs > tick) landing.done = true;
+    this.stopRibbons(cast.unit, tick);
   }
+
+  /**
+   * The fight ended on `tick`, and nothing after it happens: what of each pending cast hasn't come by
+   * then never does, and what is showing ends, so none of it plays on in the afterglow. The landings
+   * on `tick` itself still settle, and then every pending cast is dropped (`settle`).
+   */
+  private finish(tick: number): void {
+    for (const cast of this.pending) {
+      for (const { effect, comes } of cast.owned) if (comes > tick) cut(effect, tick);
+      for (const landing of cast.landings) if (landing.tick > tick) landing.done = true;
+    }
+    this.stopRibbons(null, tick);
+  }
+
+  /** A charge stopping on `tick`, a unit's or (for null) every one: its ribbon fades from there. */
+  private stopRibbons(unit: number | null, tick: number): void {
+    for (const ribbon of this.ribbons) if ((unit === null || ribbon.unit === unit) && ribbon.arrive > tick) ribbon.arrive = Math.max(tick, ribbon.start);
+  }
+}
+
+/** Adds an effect of a cast to its list, owned by the cast (Owned). */
+type Own = <E extends Timed>(list: E[], effect: E, needs: number, comes: number) => void;
+
+/** Ends an effect on `tick`, if it hasn't ended by then; one that hasn't started never shows. */
+function cut(effect: Timed, tick: number): void {
+  effect.end = Math.min(effect.end, Math.max(tick, effect.start));
 }
 
 /** How far a ring from `centre` reaches to cover the hexes: past the furthest hex's centre by about half a hex. */
@@ -875,12 +925,12 @@ function reach(centre: Point, hexes: readonly { readonly hex: Hex }[]): number {
   return far + HEX_REACH;
 }
 
-/** Drops the effects that have ended by `time`, in place, so the list stays the same array. */
+/** Drops the effects that have ended by `time`, or never start (`cut`), in place, so the list stays the same array. */
 function prune(list: Timed[], time: number): void {
   let kept = 0;
   for (let i = 0; i < list.length; i++) {
     const effect = list[i]!;
-    if (effect.end > time) list[kept++] = effect;
+    if (effect.end > time && effect.end > effect.start) list[kept++] = effect;
   }
   list.length = kept;
 }
