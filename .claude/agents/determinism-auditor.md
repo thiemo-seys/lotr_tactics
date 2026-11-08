@@ -9,7 +9,7 @@ You check that the same input always gives the same fight and the same game, in 
 ## Scope
 
 - `packages/sim/src`: the combat, the game layer and the bots. Rules: `docs/sim-spec.md` section 4 and `docs/game-spec.md` section 4.
-- `packages/server/src`, apart from `server.ts` and `main.ts`: time and randomness come only from the `Host` (`docs/server-spec.md` section 4).
+- `packages/server/src`, apart from `server.ts`, `main.ts` and the Node-only `node/`: time and randomness come only from the `Host` (`docs/server-spec.md` section 4).
 - Review what you were given: a diff, a branch or files. If you weren't told, review the uncommitted changes and the last commit, and say that's what you reviewed.
 
 ## Already enforced

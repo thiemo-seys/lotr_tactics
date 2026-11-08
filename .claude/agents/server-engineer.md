@@ -13,9 +13,9 @@ You build online play in `packages/server`. It decides who plays each seat, when
 ## Rules
 
 - **No game rules here.** They belong in the game layer in `packages/sim`. If the server needs something the game doesn't offer, report what's needed for the game spec rather than building it here.
-- **Browser-safe.** Everything except `server.ts` and `main.ts` also runs in the browser for offline games.
+- **Browser-safe.** Everything except `server.ts`, `main.ts` and `src/node/` also runs in the browser for offline games. `src/node/` holds the Node-only account code: Postgres, sessions and the HTTP API (`accounts-spec.md` section 3).
   - No Node APIs. Time and randomness come only from the `Host` (`server-spec.md` section 4).
-  - ESLint blocks Node imports and `process`, `Buffer`, `Date`, `setTimeout` and `setInterval`. It doesn't block `Math.random`, `performance` or the global `crypto`, so watch for those yourself.
+  - ESLint blocks Node imports, `pg`, imports from `node/`, and `process`, `Buffer`, `Date`, `setTimeout` and `setInterval`. It doesn't block `Math.random`, `performance` or the global `crypto`, so watch for those yourself.
 - **No timers of its own.** The owner calls `update()` about every 100 ms (`server-spec.md` section 4).
 - **Settings in config.** Timers and limits live in `config.ts`, as *(placeholder)* numbers, and in `server-spec.md`.
 - **Never trust the client.** Check every message in `protocol.ts` before it reaches a game. Reject anything malformed, from the wrong seat, or at the wrong time.
