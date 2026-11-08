@@ -2,7 +2,7 @@
 // view gives them, the streak, the timer and the One Ring's status. No Three.js or DOM, so it can
 // be tested.
 
-import { GIFTS, PLAYER, XP, roundType, roundsInStage, shopOdds, shopOddsLevel, xpForNextLevel, type PlayerView, type RoundType, type TraitHolder } from '@lotr-tactics/sim';
+import { GIFTS, PLAYER, UNITS, XP, roundType, roundsInStage, shopOdds, shopOddsLevel, xpForNextLevel, type PlayerView, type RoundType, type TraitHolder } from '@lotr-tactics/sim';
 import type { PlanningRing } from './flow.js';
 import { ringTier, type RingTier } from './ring.js';
 
@@ -32,6 +32,8 @@ export interface HudStats {
     /** The board has room and the bench has a unit that could fill it. */
     readonly room: boolean;
   };
+  /** The names of the units waiting for a bench slot, oldest first. */
+  readonly waiting: readonly string[];
   readonly streak: Streak | null;
 }
 
@@ -50,6 +52,7 @@ export function hudStats(p: PlayerView, fighting: readonly (TraitHolder | null)[
     xp: p.level < XP.buyFromLevel || need === null ? null : { have: p.xp, need },
     topLevel: p.level >= PLAYER.maxLevel,
     board: { fielded, max: p.level, room: fighting === null && fielded < p.level && p.bench.some((u) => u !== null) },
+    waiting: p.waiting.map((id) => UNITS[id].name),
     streak: streakOf(p.streak),
   };
 }

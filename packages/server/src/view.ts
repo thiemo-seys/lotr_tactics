@@ -55,6 +55,7 @@ export function publicPlayer(p: PlayerView): PublicPlayer {
     streak: p.streak,
     bench: [...p.bench],
     board: [...p.board],
+    waiting: [...p.waiting],
     items: [...p.items],
     gifts: [...p.gifts],
     freeRerolls: p.freeRerolls,

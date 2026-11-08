@@ -104,7 +104,7 @@ describe('the bearer', () => {
     // A third Gimli merges the two; the merged unit keeps the first's id and bears the Ring.
     poolOf(game).take('gimli');
     playerOf(game, 0).gold = 0;
-    expect(playerOf(game, 0).gain('gimli')).toBe(true);
+    playerOf(game, 0).gain('gimli');
     expect(ring.bearer).toBe(a);
     expect(game.act(0, { type: 'sell', from: placeOf(playerOf(game, 0), a)! }).ok).toBe(true);
     expect([ring.state, ring.holder, ring.bearer]).toEqual(['held', 0, null]);

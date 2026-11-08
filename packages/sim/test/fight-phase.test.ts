@@ -6,7 +6,7 @@ import { UNITS } from '../src/data/units.js';
 import { UNIT_IDS } from '../src/game/pool.js';
 import { createGame, type Action, type Game } from '../src/game/game.js';
 import type { OwnedUnit } from '../src/game/places.js';
-import { field, giveItems, playerOf, skipTo } from './fixtures.js';
+import { field, giveItems, playerOf, poolOf, skipTo } from './fixtures.js';
 
 /** A game at 2-1, a PvP round, with each player's board and bench cleared and a shop rolled. */
 function pvpGame(seed: number): Game {
@@ -219,6 +219,30 @@ describe('the fight phase', () => {
     for (let bench = 1; bench < p.bench.length; bench++) field(game, 0, others[bench]!, { bench });
     game.fight();
     expect(game.act(0, { type: 'buy', slot: p.shop.indexOf(unitId) })).toEqual({ ok: false, reason: 'The bench is full.' });
+  });
+
+  it('lets a unit waiting for room onto the bench while the fights play, merging with board copies only once they end', () => {
+    const game = pvpGame(34);
+    const p = playerOf(game, 0);
+    // A full board, so the fights don't fill it from the bench.
+    p.level = 1;
+    const unitId = p.shop.find((id) => id !== null)!;
+    const others = UNIT_IDS.filter((id) => id !== unitId);
+    const id = field(game, 0, unitId, { col: 2, row: 3 });
+    field(game, 0, unitId, { bench: 0 });
+    for (let bench = 1; bench < p.bench.length; bench++) field(game, 0, others[bench]!, { bench });
+    game.fight();
+    // A copy waiting for room, as a Council or Gift unit with a full bench would be.
+    poolOf(game).take(unitId);
+    p.waiting.push(unitId);
+    const board = [...p.board];
+    expect(game.act(0, { type: 'sell', from: { bench: 5 } })).toEqual({ ok: true });
+    expect(p.waiting).toEqual([]);
+    expect(p.bench[5]).toMatchObject({ unitId, star: 1 });
+    expect(p.board).toEqual(board);
+    game.advance();
+    expect(p.board.find((u) => u?.id === id)).toMatchObject({ unitId, star: 2 });
+    expect(p.bench.filter((u) => u?.unitId === unitId)).toEqual([]);
   });
 
   it('only starts from planning', () => {

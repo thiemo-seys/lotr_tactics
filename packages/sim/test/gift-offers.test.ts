@@ -98,7 +98,7 @@ describe('gift rewards', () => {
     expect(player.items.slice(2).some(isComponent)).toBe(false);
   });
 
-  it('give units from the pool, falling back to a lower cost, and sell those with no room', () => {
+  it('give units from the pool, falling back to a lower cost, and hold those with no room', () => {
     const { player, pool } = setup();
     take(player, 'muster-of-rohan');
     const units = player.bench.filter((u) => u !== null);
@@ -107,7 +107,7 @@ describe('gift rewards', () => {
     for (const id of Object.keys(UNITS) as UnitId[]) if (UNITS[id].cost === 5) pool.take(id, pool.count(id));
     take(player, 'return-of-the-king');
     expect(player.bench.filter((u) => u !== null).map((u) => UNITS[u.unitId].cost)).toEqual([3, 3, 4]);
-    // A full bench: the unit is sold at once.
+    // A full bench: the unit waits for room, out of the pool, and takes the first slot that frees up.
     const full = setup();
     for (let slot = 0; slot < 9; slot++) {
       full.pool.take('gimli', copiesIn(1));
@@ -115,8 +115,14 @@ describe('gift rewards', () => {
     }
     const before = full.pool.countOfCost(5);
     take(full.player, 'return-of-the-king');
-    expect(full.player.gold).toBe(5);
-    expect(full.pool.countOfCost(5)).toBe(before);
+    expect(full.player.gold).toBe(0);
+    expect(full.player.waiting).toHaveLength(1);
+    const waiting = full.player.waiting[0]!;
+    expect(UNITS[waiting].cost).toBe(5);
+    expect(full.pool.countOfCost(5)).toBe(before - 1);
+    expect(full.player.move({ bench: 3 }, { col: 0, row: 0 }).ok).toBe(true);
+    expect(full.player.waiting).toEqual([]);
+    expect(full.player.bench[3]!.unitId).toBe(waiting);
   });
 
   it('give free rerolls each round, used before gold', () => {

@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { POOL_COPIES, SHOP } from '../src/data/economy.js';
+import { PLAYER, POOL_COPIES, SHOP } from '../src/data/economy.js';
 import type { ItemId } from '../src/data/items.js';
 import { UNITS, type UnitId } from '../src/data/units.js';
 import { boardSlot, unitAt, type Place } from '../src/game/places.js';
@@ -39,6 +39,7 @@ function copies(pool: Pool, players: readonly Player[]): Map<UnitId, number> {
     for (const unit of [...player.bench, ...player.board]) {
       if (unit !== null) total.set(unit.unitId, total.get(unit.unitId)! + copiesIn(unit.star));
     }
+    for (const id of player.waiting) total.set(id, total.get(id)! + 1);
   }
   return total;
 }
@@ -135,7 +136,7 @@ describe('buying', () => {
 });
 
 describe('gaining a unit', () => {
-  it('returns false and changes nothing when the bench is full and nothing merges', () => {
+  it('waits for room when the bench is full and nothing merges, and goes in when there is room', () => {
     const { player, pool } = setup();
     const others: UnitId[] = ['pippin', 'beregond', 'hama', 'grishnakh', 'sharku', 'gorbag', 'frodo'];
     give(player, pool, { bench: 0 }, 'sam');
@@ -143,11 +144,35 @@ describe('gaining a unit', () => {
     others.forEach((id, i) => give(player, pool, { bench: i + 2 }, id));
     pool.take('merry');
     const before = player.bench.map((u) => u?.unitId);
-    expect(player.gain('merry')).toBe(false);
+    player.gain('merry');
     expect(player.bench.map((u) => u?.unitId)).toEqual(before);
+    expect(player.waiting).toEqual(['merry']);
+    pool.take('pippin');
+    player.gain('pippin');
+    expect(player.waiting).toEqual(['merry', 'pippin']);
+    expect(copies(pool, [player])).toEqual(STARTING_COPIES);
+    // A third Sam merges at once and frees a slot, which the oldest waiting unit takes.
     pool.take('sam');
-    expect(player.gain('sam')).toBe(true);
+    player.gain('sam');
     expect(player.bench[0]!.star).toBe(2);
+    expect(player.bench[1]!.unitId).toBe('merry');
+    expect(player.waiting).toEqual(['pippin']);
+    // Selling a bench unit frees its slot for the next waiting unit.
+    expect(player.sell({ bench: 3 }).ok).toBe(true);
+    expect(player.waiting).toEqual([]);
+    expect(player.bench[3]!.unitId).toBe('pippin');
+    expect(copies(pool, [player])).toEqual(STARTING_COPIES);
+  });
+
+  it('puts waiting units back in the pool when the player is out', () => {
+    const { player, pool } = setup();
+    for (let slot = 0; slot < PLAYER.benchSize; slot++) give(player, pool, { bench: slot }, 'sam');
+    pool.take('gimli');
+    player.gain('gimli');
+    expect(player.waiting).toEqual(['gimli']);
+    player.returnEverything();
+    expect(player.waiting).toEqual([]);
+    expect(copies(pool, [player])).toEqual(STARTING_COPIES);
   });
 });
 
