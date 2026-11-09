@@ -56,6 +56,11 @@
           <button id="rename-open" class="btn btn-ghost btn-sm btn-icon" aria-label="Change your name"><span data-icon="pencil"></span></button>
         </div>
         <p id="rename-message" class="field-message bad" role="alert" hidden></p>
+        <p id="new-name" class="name-callout" role="alert" hidden><span data-icon="alert"></span><span class="name-callout-text"></span></p>
+        <div id="menu-sign-in" class="sign-in-row" hidden>
+          <a class="btn btn-google btn-sm" href="/auth/google"><span data-google-mark></span>Sign in with Google</a>
+          <span class="sign-in-gives"></span>
+        </div>
         <p id="menu-message" class="message" role="status"></p>
         <button id="play-bots" class="btn btn-primary btn-lg btn-block"><span data-icon="pvp"></span>Play against bots</button>
         <div class="divider"><span>or play online</span></div>
@@ -80,16 +85,22 @@
           <h2 id="account-title"><span data-icon="person"></span>Account</h2>
           <button id="account-close" class="btn btn-ghost btn-sm"><span data-icon="back"></span>Menu</button>
         </div>
+        <p id="account-new-name" class="name-callout" role="alert" hidden><span data-icon="alert"></span><span class="name-callout-text"></span></p>
         <form id="account-rename" class="account-field">
           <label class="field-label" for="account-name-input">Name</label>
           <div class="field-row">
             <input id="account-name-input" class="input" maxlength="40" autocomplete="nickname" spellcheck="false" />
             <button id="account-save" type="submit" class="btn btn-secondary">Save</button>
           </div>
+          <p id="account-rename-limit" class="field-message" hidden></p>
           <p id="account-rename-message" class="field-message" role="status" hidden></p>
         </form>
         <p id="account-kind" class="account-kind"></p>
         <div class="account-actions">
+          <div id="account-sign-in" class="account-action sign-in-action" hidden>
+            <div class="account-action-text"><strong>Keep this account</strong><span class="sign-in-gives"></span></div>
+            <a class="btn btn-google" href="/auth/google"><span data-google-mark></span>Sign in with Google</a>
+          </div>
           <div class="account-action">
             <div class="account-action-text"><strong>Sign out</strong><span id="sign-out-text"></span></div>
             <button id="sign-out" class="btn btn-secondary"><span data-icon="leave"></span>Sign out</button>
@@ -100,6 +111,18 @@
           </div>
         </div>
         <p id="account-message" class="message" role="status"></p>
+        <section class="danger-zone" aria-labelledby="delete-title">
+          <h3 id="delete-title"><span data-icon="alert"></span>Delete account</h3>
+          <p id="delete-text" class="danger-text"></p>
+          <form id="delete-form" class="account-field">
+            <label id="delete-label" class="field-label" for="delete-confirm"></label>
+            <div class="field-row">
+              <input id="delete-confirm" class="input" maxlength="40" autocomplete="off" spellcheck="false" />
+              <button id="delete-account" type="submit" class="btn btn-danger"><span data-icon="cross"></span>Delete account</button>
+            </div>
+            <p id="delete-message" class="field-message" role="alert" hidden></p>
+          </form>
+        </section>
       </section>
       <section id="profile" class="panel" aria-labelledby="profile-title" hidden></section>
       <section id="lobby" class="panel" aria-labelledby="lobby-title" hidden>
@@ -135,10 +158,17 @@
       <section id="viewing" class="viewing-bar" aria-label="Another player's board" hidden></section>
       <section id="result" class="panel" aria-live="polite" hidden></section>
       <div id="banner" role="status" hidden></div>
-      <div id="notice" class="notice" role="alert" hidden>
-        <span data-icon="alert"></span>
-        <span class="notice-text">This game is open in another tab or on another device.</span>
-        <button id="use-here" class="btn btn-primary btn-sm">Use here</button>
+      <div class="banners">
+        <div id="notice" class="notice" role="alert" hidden>
+          <span data-icon="alert"></span>
+          <span class="notice-text">This game is open in another tab or on another device.</span>
+          <button id="use-here" class="btn btn-primary btn-sm">Use here</button>
+        </div>
+      </div>
+      <div id="toast" class="toast" role="status" hidden>
+        <span data-icon="ready" class="toast-icon good"></span><span data-icon="alert" class="toast-icon other"></span>
+        <span class="toast-text"></span>
+        <button id="toast-close" class="btn btn-ghost btn-sm btn-icon" aria-label="Dismiss"><span data-icon="cross"></span></button>
       </div>
     </main>
     <div id="player-bar" class="player-bar" hidden>

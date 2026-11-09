@@ -2,7 +2,7 @@
 // replacing children only when what they show changes, and buttons that say why they are disabled.
 
 import type { Star } from '@lotr-tactics/sim';
-import { STAR_BADGE_DEFS, iconSvg, starBadgeSvg, type IconName } from '../icons.js';
+import { GOOGLE_MARK_SVG, STAR_BADGE_DEFS, iconSvg, starBadgeSvg, type IconName } from '../icons.js';
 
 type Child = Node | string | null | undefined | false;
 
@@ -50,11 +50,15 @@ export function starBadge(star: Star, className = ''): SVGSVGElement {
   return copy;
 }
 
-/** Fills `<span data-icon="name">` placeholders in static HTML with their icons. */
+/**
+ * Fills `<span data-icon="name">` placeholders in static HTML with their icons, and
+ * `<span data-google-mark>` with Google's mark.
+ */
 export function fillIcons(root: ParentNode): void {
   for (const slot of root.querySelectorAll<HTMLElement>('[data-icon]')) {
     slot.replaceWith(icon(slot.dataset.icon as IconName, slot.className));
   }
+  for (const slot of root.querySelectorAll<HTMLElement>('[data-google-mark]')) slot.outerHTML = GOOGLE_MARK_SVG;
 }
 
 /** Replaces an element's children only when what they show has changed, so clicks aren't lost. */

@@ -122,7 +122,7 @@ export interface SocketOptions {
 /**
  * A WebSocket to the game server that reconnects and rejoins its seat if the connection drops. It
  * rejoins the seat this tab kept, and the game `hello` names, after a reload or on another device.
- * After `replaced`, which it passes on, it closes for good without a `closed` event, so two pages
+ * After `replaced` or `signedOut`, which it passes on, it closes for good without a `closed` event, so two pages
  * don't take the account from each other in turn.
  */
 export class SocketConnection implements Connection {
@@ -187,8 +187,9 @@ export class SocketConnection implements Connection {
         this.retries = 0;
       } else if (message.type === 'left' || (message.type === 'refused' && message.request === 'rejoin')) {
         this.setSeat(null);
-      } else if (message.type === 'replaced') {
-        // Another page took over the account's connection; reconnecting would take it back.
+      } else if (message.type === 'replaced' || message.type === 'signedOut') {
+        // Another page took over the account's connection, and reconnecting would take it back; or
+        // the account was signed out everywhere or deleted, and has no session to reconnect with.
         this.closing = true;
         this.setSeat(null);
       }

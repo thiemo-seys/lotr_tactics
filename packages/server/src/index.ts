@@ -4,6 +4,7 @@
 export * from './config.js';
 export type * from './host.js';
 export * from './players.js';
+export * from './accounts.js';
 export * from './protocol.js';
 export * from './view.js';
 export * from './results.js';

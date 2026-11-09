@@ -73,12 +73,21 @@ export class Sessions {
 
   /** Makes a guest account and a session for it. Returns the account and the Set-Cookie value. */
   async newGuest(): Promise<{ account: Account; cookie: string }> {
-    const now = this.now();
+    const account = await this.createGuest();
+    return { account, cookie: await this.start(account.id) };
+  }
+
+  /** Makes a guest account, named "Guest" and 4 random digits, without a session. */
+  createGuest(): Promise<Account> {
     const name = guestName();
-    const account = await this.store.createGuest(name, nameKey(name), now);
+    return this.store.createGuest(name, nameKey(name), this.now());
+  }
+
+  /** Makes a new session for an account. Returns its Set-Cookie value. */
+  async start(accountId: string): Promise<string> {
     const secret = randomBytes(32).toString('base64url');
-    await this.store.createSession(hashSecret(secret), account.id, new Date(now.getTime() + SESSION_MS));
-    return { account, cookie: this.cookie(secret) };
+    await this.store.createSession(hashSecret(secret), accountId, new Date(this.now().getTime() + SESSION_MS));
+    return this.cookie(secret);
   }
 
   /** Signs out a session, or every session of its account. */
@@ -96,7 +105,8 @@ export class Sessions {
     return `${SESSION_COOKIE}=${secret}; ${this.attributes()}; Max-Age=${SESSION_MS / 1000}`;
   }
 
-  private attributes(): string {
-    return `HttpOnly; SameSite=Lax; Path=/${this.options.secure ? '; Secure' : ''}`;
+  /** A cookie's attributes: HttpOnly and SameSite=Lax, with Secure when PUBLIC_URL is https. */
+  attributes(path = '/'): string {
+    return `HttpOnly; SameSite=Lax; Path=${path}${this.options.secure ? '; Secure' : ''}`;
   }
 }

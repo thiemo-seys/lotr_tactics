@@ -4,7 +4,6 @@
 
 import { PLAYER, type GiftId, type RingView } from '@lotr-tactics/sim';
 import type { PublicPlayer, SeatView } from '@lotr-tactics/server';
-import { isGuestSeat } from './account.js';
 import { standings } from './flow.js';
 import { streakOf, type Streak } from './hud.js';
 
@@ -60,7 +59,7 @@ export function playerRows(
       ringHolder: ring.state === 'held' && ring.holder === p.seat,
       bot: seat?.kind === 'bot',
       // The person's own row says You rather than their name.
-      guest: p.seat !== you && isGuestSeat(seat),
+      guest: p.seat !== you && seat?.guest === true,
       away: seat?.kind === 'person' && !seat.connected,
       placement: p.placement,
       gifts: p.gifts,

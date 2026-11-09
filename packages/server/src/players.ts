@@ -20,9 +20,20 @@ export interface Player {
   rating: Rating | null;
 }
 
+/** The id of the person in an offline game, who has no account. */
+export const LOCAL_PLAYER_ID = 'local';
+
 /** The person in an offline game, who has no account. */
 export function localPlayer(): Player {
-  return { id: 'local', name: 'You', claimed: false, rating: null };
+  return { id: LOCAL_PLAYER_ID, name: 'You', claimed: false, rating: null };
+}
+
+/**
+ * A person playing as a guest, who gets a guest mark: an account that isn't claimed. The offline
+ * player has no account at all, so isn't one.
+ */
+export function isGuest(player: Player): boolean {
+  return !player.claimed && player.id !== LOCAL_PLAYER_ID;
 }
 
 /**

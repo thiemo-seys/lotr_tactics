@@ -2,7 +2,7 @@
 
 Implementation spec for player accounts: who a person is across visits, signing in with Google, match history and stats, the ranked queue with its ratings and leaderboard, parties and friends. It builds on online play (`server-spec.md`), which it changes where section 12 says so. This is step 6 of the build order (`design.md` section 11).
 
-**Built so far: step 1**, guest accounts, Postgres, seats by account, and match history and stats for private-lobby games: sections 3 to 5, 6.1 and 6.3 (all accounts are guests, so no name is unique yet), 9 without ranked, 11 for the requests and messages marked built, 12 without the queue and draining, 14 for guests (the menu's account, the account panel without deleting, the profile with history and final boards, guest marks, `replaced` and reconnecting), and 15 without Google and draining. The rest is still to build: Google sign-in and claimed accounts' unique names (6.2, 6.3), deleting accounts (6.4), parties and the queue (7), rating and points (8), draining (10), friends, and the client's screens for them (14).
+**Built so far: steps 1 and 2.** Step 1 is guest accounts, Postgres, seats by account, and match history and stats for private-lobby games. Step 2 is Google sign-in, claimed accounts' unique names and deleting accounts, on the server and the play page. Together: sections 3 to 6, 9 without ranked, 11 for the requests and messages marked built, 12 without the queue and draining, 14 without ranked, the leaderboard, parties, friends and notices (the menu's account with Sign in with Google and its result, the new-name prompt, the account panel with deleting, the profile with history and final boards, guest marks, `replaced`, `signedOut` and reconnecting), and 15 without draining. The rest is still to build: parties and the queue (7), rating and points (8), draining (10), friends, and the client's screens for them (14).
 
 - `design.md` is the source of truth for the rules of ranked play (`design.md` section 10, Accounts and ranked play). This spec adds the implementation detail and the defaults needed to build it.
 - Every number here is a *placeholder*. They live in `packages/server/src/config.ts`, not in logic.
@@ -71,6 +71,7 @@ All of it is in `packages/server`. What touches the database, HTTP, cookies or G
 packages/server/
   src/
     players.ts        browser-safe: the Player a connection carries (section 4)
+    accounts.ts       browser-safe: what the account API answers with (sections 6.2, 9.3, 9.4), for the page too
     queue.ts          browser-safe: parties and the ranked queue (section 7)
     rating.ts         browser-safe: OpenSkill and points (section 8)
     results.ts        browser-safe: a finished match's result (section 9.1)
@@ -99,7 +100,7 @@ packages/server/
 - **For development**, `pnpm db` starts a Postgres 17 container, `lotr-tactics-db`, on `127.0.0.1:5433` with user, password and database `lotr`, its data in the `lotr-tactics-db` volume. It is safe to run again: it starts the container if it is stopped, leaves it if it runs, and waits until it takes connections. `pnpm dev` and `pnpm start` use it unless `DATABASE_URL` is set (they pass `--dev-db` to `main.ts`; the Docker image doesn't, so a deploy without `DATABASE_URL` stops).
 - Offline games against bots need neither the server nor a database.
 - In `pnpm dev`, Vite passes `/api` and `/auth` on to the game server, as it does `/ws` (`server-spec.md` section 3). The page's origin there is Vite's, `http://localhost:5173`, so that is the `PUBLIC_URL` for the `Origin` check and Google's redirect (section 6.2); `pnpm dev` makes it the default (it passes `--vite` to `main.ts`).
-- Google sign-in is off unless `GOOGLE_CLIENT_ID` and `GOOGLE_CLIENT_SECRET` are set. The client hides the button when it's off (section 11.2, `hello`).
+- Google sign-in is off unless `GOOGLE_CLIENT_ID` and `GOOGLE_CLIENT_SECRET` are set; with only one of them, the server says so as it starts. The client hides the button when it's off (`AccountView.googleEnabled`, in `GET /api/me` and `hello`).
 
 ### Settings
 
@@ -138,16 +139,16 @@ interface Client {            // lobby.ts, changed
 ```
 
 - Lobby seats belong to a player id, not a token (section 12). Rejoining a game is by account, from any device.
-- An offline game's `LocalConnection` makes a `Player` with id `local`, the name You and `claimed: false` (`localPlayer()`), and its lobby reports no results: its `Lobbies` has no `onResult`.
+- An offline game's `LocalConnection` makes a `Player` with id `local` (`LOCAL_PLAYER_ID`), the name You and `claimed: false` (`localPlayer()`), and its lobby reports no results: its `Lobbies` has no `onResult`. It has no account, so it is not a guest either: `isGuest(player)` is true only for an account that isn't claimed, and `SeatView.guest` comes from it, so the page needs no special case for You.
 - `Client` also has an optional `close()`, which `Lobbies` calls on a connection it replaces (section 6.1).
 - `players.ts` also has the name rules of section 6.3, `checkName` and `nameKey`, so the client can check a name before sending it.
-- When `record.ts` changes a rating, or `api.ts` a name, the Node side updates the `Player` objects of the account's live connection, so the queue and lobby views stay current.
+- When `record.ts` changes a rating, `api.ts` a name, or `google.ts` claims an account, the Node side updates the `Player` objects of the account's live connection (`Lobbies.updatePlayer`), so the queue and lobby views stay current: a claim takes the guest mark off the person's seat at once.
 
 ---
 
 ## 5. Storage
 
-Postgres, with plain SQL migrations in `packages/server/migrations/`, applied in name order inside one transaction each at start-up, and recorded in a `schema_migrations` table (`name`, `applied_at`). A migration that fails stops the server. An advisory lock keeps two servers from migrating at once. The first migration, `001_accounts.sql`, makes `accounts`, `sessions`, `matches` and `match_seats`, with indexes for clean-up and history as well as the ones below; `ratings`, `friends` and `friend_requests` come in later migrations with the steps that use them.
+Postgres, with plain SQL migrations in `packages/server/migrations/`, applied in name order inside one transaction each at start-up, and recorded in a `schema_migrations` table (`name`, `applied_at`). A migration that fails stops the server. An advisory lock keeps two servers from migrating at once. The first migration, `001_accounts.sql`, makes `accounts`, `sessions`, `matches` and `match_seats`, with indexes for clean-up and history as well as the ones below. A migration once deployed is never edited: the next, `002_google.sql`, adds `needs_name` and makes the unique index on names leave out accounts that need a new name (section 6.3). `ratings`, `friends` and `friend_requests` come in later migrations with the steps that use them.
 
 ```sql
 create table accounts (
@@ -155,11 +156,12 @@ create table accounts (
   name          text not null,
   name_key      text not null,              -- the name folded for comparison (section 6)
   google_sub    text unique,                -- null for a guest
+  needs_name    boolean not null default false,   -- claimed, but must pick a new name (section 6.3); 002_google.sql
   created_at    timestamptz not null default now(),
   seen_at       timestamptz not null default now(),
   renamed_at    timestamptz
 );
-create unique index accounts_claimed_name on accounts (name_key) where google_sub is not null;
+create unique index accounts_claimed_name on accounts (name_key) where google_sub is not null and not needs_name;
 
 create table sessions (
   hash          bytea primary key,          -- SHA-256 of the cookie's secret
@@ -221,7 +223,8 @@ create table friend_requests (
 
 - `store.ts` defines a `Store` interface with one async method per use (find a session, create a guest, claim, rename, record a match, read history, and so on), implemented by `PgStore`. Tests that need a store that fails use a fake of the interface. Nothing outside `src/node/` imports `pg`. Times that rules depend on (session expiry, renewal, seen, clean-up) are passed in, so tests can set them.
 - A match and its ratings are recorded in one transaction (section 9.2).
-- **Clean-up**, at start-up and once an hour: expired sessions, and guests not seen for 90 days, which deletes their history rows' links (the seats stay, as "Deleted player", for the other people in those games). A seat's `name` is set to "Deleted player" when its account is deleted, since a null `account_id` alone can't tell a deleted person from a bot. An account is seen whenever its session is used (`/api/me`, other API requests and the WebSocket upgrade).
+- **Clean-up**, at start-up and once an hour: expired sessions, and guests not seen for 90 days, which deletes their history rows' links (the seats stay, as "Deleted player", for the other people in those games). A seat's `name` is set to "Deleted player" (`DELETED_NAME` in `accounts.ts`) when its account is deleted, since a null `account_id` alone can't tell a deleted person from a bot. A match left with no seat linked to an account, which nobody can see any more, is deleted with it. An account is seen whenever its session is used (`/api/me`, other API requests and the WebSocket upgrade).
+- **A game that ends after one of its people was deleted** is still recorded: that seat is written with no link and the name "Deleted player", so the others' result isn't lost to the foreign key.
 - **Backups:** `README.md` gains a `pg_dump` line to run from cron, and how to restore.
 
 ---
@@ -235,20 +238,31 @@ create table friend_requests (
 - **The WebSocket** at `/ws` is on the same origin, so its upgrade request carries the cookie. `server.ts` checks the session, and the `Origin` header against `PUBLIC_URL`, before upgrading. Either failing gets HTTP 401 or 403 and no socket. The page then calls `/api/me` again and retries once.
 - **Rate limit:** at most 10 new guests an hour from one address (with `TRUST_PROXY`, the first address in `X-Forwarded-For`). Kept in memory only.
 - **One connection per account:** a new WebSocket for an account closes the older one with `{ type: 'replaced' }`, and the seat or queue place moves to the new one. The seat moves without being disconnected, so its bot doesn't step in: the new connection gets `hello`, then `joined`, `lobby` and, in a game, the `round` and `state`, as after a `rejoin`. A seat in a game that is over doesn't move; it is disconnected.
-- **Sign out everywhere** also closes the account's WebSocket, if it has one.
+- **Sign out everywhere** also closes the account's WebSocket, if it has one, after sending it `{ type: 'signedOut', reason: 'everywhere' }`, so the page can say "You were signed out" rather than that the connection was lost. The seat is disconnected, as when a connection drops, so its bot plays it. The page doesn't reconnect: it has no session, and Try again gets a new guest.
 - **Sign out** deletes the session and clears the cookie. The page then gets a new guest. **Sign out everywhere** deletes all the account's sessions.
 
 ### 6.2 Signing in with Google
 
-OpenID Connect's authorization code flow with PKCE, asking only for the `openid` scope.
+OpenID Connect's authorization code flow with PKCE, asking only for the `openid` scope, in `node/google.ts` with Node's `fetch` and `crypto` and no other package.
 
-1. `GET /auth/google` makes a `state` and a PKCE verifier, keeps both in a short-lived `HttpOnly` cookie (10 minutes), and redirects to Google with `redirect_uri = PUBLIC_URL + /auth/google/callback`.
-2. `GET /auth/google/callback` checks `state`, swaps the code for tokens at Google's token endpoint with the verifier and the client secret, and reads the ID token. The ID token comes straight from Google over TLS, so its signature needs no separate check, but `iss`, `aud` and `exp` are checked.
+1. `GET /auth/google` makes a `state`, a `nonce` and a PKCE verifier (32 random bytes each, in base64url), keeps all three in a short-lived cookie, and redirects (303) to Google's authorization endpoint with `client_id`, `redirect_uri = PUBLIC_URL + /auth/google/callback`, `response_type=code`, `scope=openid`, the `state`, the `nonce`, `code_challenge` (the verifier's SHA-256 in base64url) with `code_challenge_method=S256`, and `prompt=select_account`, so a person with several Google accounts picks one.
+   - **The cookie:** `lt_google`, holding `state.nonce.verifier`, `HttpOnly`, `SameSite=Lax` (so it comes back on Google's redirect, a top-level navigation), `Path=/auth/google` (so only the callback gets it), `Secure` when `PUBLIC_URL` is https, for `GOOGLE.stateSeconds` (600, 10 minutes). The callback always clears it. A second sign-in started meanwhile replaces it, and the first one's callback fails.
+   - No session is needed to start. It works whether or not Google sign-in is configured: when it isn't, both routes send the browser straight back with `unavailable`.
+2. `GET /auth/google/callback`:
+   - **Checks `state`** against the cookie's, in constant time (`timingSafeEqual`). A missing cookie or a different `state` fails, before anything is sent to Google. This is what stops another site from signing the browser in to an account of its own.
+   - **`error=access_denied`** from Google, when the person says no, gives `cancelled`; any other `error`, or no `code`, gives `failed`.
+   - **Swaps the code for tokens** at Google's token endpoint: a form `POST` with `grant_type=authorization_code`, the `code`, the same `redirect_uri`, `client_id`, `client_secret` and the `code_verifier`, waiting at most `GOOGLE.timeoutSeconds` (10).
+   - **Reads the ID token.** It comes straight from Google over TLS, so its signature needs no separate check (OpenID Connect Core 3.1.3.7), but its claims are checked: `iss` is `https://accounts.google.com` or `accounts.google.com`; `aud` is the client id (or contains it, with `azp` the client id when there are several); `exp` is still to come; `nonce` is the cookie's; and `sub` is a string of 1 to 255 characters. Any of these failing gives `failed`.
 3. With the `sub`:
-   - **No account has that `sub`:** the current guest becomes claimed with it. Its history and name stay. If the guest's name is held by a claimed account, the page asks for a new one (section 6.3) before ranked or friends work.
-   - **An account already has it:** the browser signs in to that account. A new session replaces the guest's. The guest account is not merged; it is left to be cleaned up (section 5). The page says so if the guest had played games.
-4. Redirects back to `/play.html`.
+   - **No account has that `sub`:** the current guest becomes claimed with it. Its history and name stay. If the guest's name is held by a claimed account, or is a guest's name of the form "Guest 0427", the account needs a new name (`needsName`, section 6.3) before ranked or friends work. A browser with no session, or whose account is already claimed with another Google account, gets a new account instead, made as a guest and claimed at once, which needs a name since it has a guest's.
+   - **An account already has it:** the browser signs in to that account. The guest account is not merged; it is left to be cleaned up (section 5). The page says so if the guest had played games, from `guestGames`.
+   - **Two sign-ins at once with one new Google account** both try to claim; the unique `google_sub` lets one through, and the other signs in to the account it claimed.
+   - Either way, **a new session replaces the browser's**: its old session is deleted, even when it was the guest just claimed, so a cookie from before the claim can't reach the claimed account.
+   - A guest who claims while in a lobby, in another tab, loses the guest mark there at once (section 4).
+4. Redirects (303) back to `/play.html#signin=<outcome>`, setting the new session's cookie: `claimed`, `signedin` (with `&guestGames=<n>` when the guest left behind had played `n` online games), `cancelled`, `failed` or `unavailable`. `SignInOutcome`, `signInHash` and `readSignIn` in `accounts.ts` are the page's way to read it. The page starts sign-in by going to `/auth/google` (`GOOGLE_SIGN_IN_PATH`) as a whole page, not with `fetch`, and loads its account with `GET /api/me` as usual on the way back. A page that leaves for Google in a lobby or game drops its connection there, as a reload does.
 
+- **Logs** never hold a code, a token, the secret or a cookie. A failure logs only what went wrong: a `state` that didn't match, the token endpoint's status with Google's error code (such as `invalid_grant`), or which claim of the ID token was wrong.
+- **Testing:** the authorization and token endpoints, and the issuers, can be set in `GoogleConfig` (`ServerOptions.google`), so tests run a fake Google on localhost. `main.ts` always uses Google's.
 - A claimed account can't be unlinked from Google; it can be deleted.
 - Google's client id and secret are made in Google Cloud Console, with `PUBLIC_URL/auth/google/callback` as an allowed redirect. For `pnpm dev`, also `http://localhost:5173/auth/google/callback`. `README.md` gets the steps.
 
@@ -258,16 +272,20 @@ OpenID Connect's authorization code flow with PKCE, asking only for the `openid`
 - **Comparing:** the `name_key` is the name in Unicode NFKC, lowercased, with spaces removed. Two names with the same key are the same name.
 - **Claimed accounts' names are unique** by key. **Guests** can take any name no claimed account holds, and two guests can share one. Everywhere a name is shown, a guest's carries a small guest mark.
 - New guests are named "Guest" and 4 random digits with a space between, such as "Guest 0427", which needn't be unique.
-- **Renaming:** a claimed account can rename once every 7 days. A guest can rename freely. A name freed by a rename is free at once. `renamed_at` is set on every rename, and counts only for claimed accounts.
+- **Renaming:** a claimed account can rename once every 7 days. A guest can rename freely. A name freed by a rename is free at once. `renamed_at` is set on every rename, and counts only for claimed accounts: claiming clears it, so renames as a guest don't count, and the first rename after claiming is free. The limit is checked in the same `update` that renames, so two renames at once can't both get through.
+- **Holding a name:** a claimed account holds its name, and the partial unique index on `name_key` keeps any other claimed account from holding it too, two claims for one name at once included: the second is told the name is taken (`'taken'` from the store, "That name is taken." from the API). A guest renaming checks that no claimed account holds the name, and a rename or claim takes a transaction-scoped advisory lock on the name's key, after the account's row lock, so a guest can't take a name in the moment a claim takes it.
+- **Needing a new name:** a guest who claims with a name a claimed account holds, or with a guest's name such as "Guest 0427", is claimed with `needs_name` set. Such an account holds no name, so the index leaves it out and guests may take its name, and it shows as it is meanwhile. `AccountView.needsName` tells the page, which asks for a new name. Its rename is allowed at once, whatever `renamed_at` says, clears `needs_name`, and from then the account holds its name and the 7-day limit applies. Ranked and friends (`queue`, `partyInvite`, `POST /api/friends/request` and the rest), when they are built, are refused for it with "Choose a new name first.".
 - Bots keep their names (`server-spec.md` section 7). People can't take a name of the form "Bot n" or "Guest" with digits: one whose key is `bot` or `guest` followed by digits only.
 - "Letters and digits of any script" are Unicode letters (with their combining marks) and decimal digits. Lengths count characters (code points), not UTF-16 units.
 - `cleanName` in `lobby.ts` cleans the name that `create` and `join` carry, and they lose it (section 11.2). People's names come from their accounts, checked when they are set. Bots' names are made in the lobby view, not by `cleanName`.
 
 ### 6.4 Deleting an account
 
-- From the account panel, after typing the account's name to confirm.
-- Deletes the account, its sessions, ratings, friends and requests. In other people's histories its seats stay with the name "Deleted player" and no link.
-- Only possible while the account is not in a game, the queue or a party of 2.
+- From the account panel, after typing the account's name to confirm: `POST /api/me/delete { confirm }`, where `confirm` is compared with the account's name as names are compared, by key (section 6.3), so case and spaces don't matter. A wrong or missing `confirm` is 400.
+- Deletes the account, its sessions, ratings, friends and requests (all `on delete cascade`). In other people's histories its seats stay with the name "Deleted player" and no link. Matches nobody else with an account was in go too. Its name is free at once, and its Google account, signing in again, makes a new account.
+- Only possible while the account is not in a game, the queue or a party of 2: while it has a seat in a lobby whose game isn't over (one it hasn't left), whether started or not, it is refused with 409 and "You have a seat in lobby CODE. Leave it before deleting the account.". Leaving a started game for good frees the account, as in section 12.
+- Its WebSocket, if it has one, gets `{ type: 'signedOut', reason: 'deleted' }` and is closed, before the delete so it can't take a seat meanwhile, and again after, in case one opened. The response clears the session cookie, and the page then gets a new guest from `GET /api/me`.
+- A game that ends after the account was deleted, from a seat it took in that moment, is still recorded (section 5).
 
 ---
 
@@ -404,7 +422,7 @@ Worked out from `match_seats` by SQL when asked for, not stored:
 - the 5 units most often on the final board, the 5 traits most often active, and how often the person bore the One Ring;
 - points, rank and placement games left, for ranked.
 
-Each unit and trait counts once a game, most games first, then by id. Built so far, without the ranked parts:
+Each unit and trait counts once a game, most games first, then by id. Built so far, without the ranked parts, in `accounts.ts`, which the page imports too:
 
 ```ts
 interface Stats {
@@ -419,7 +437,7 @@ interface Stats {
 
 - `GET /api/history?account=<id>&before=<match id>` gives 20 matches at a time, newest first: kind, date, place, points change, the final board, and the other 7 seats' names, places and boards.
 - Anyone can see a claimed account's profile and history. A guest's are shown only to the guest. To anyone else, a guest is 404, as an unknown account is.
-- `account` defaults to the asker. `before` must be a match id (400 if it isn't one); an unknown one gives no matches. Newest first is by `ended_at`, then by id. The response:
+- `account` defaults to the asker. `before` must be a match id (400 if it isn't one); an unknown one gives no matches. Newest first is by `ended_at`, then by id. The response, in `accounts.ts` with `ProfileView` (`GET /api/profile`):
 
 ```ts
 interface HistoryPage { matches: HistoryMatch[] }
@@ -463,15 +481,15 @@ interface HistorySeat {
 
 ### 11.1 HTTP API
 
-JSON over HTTP from `api.ts`, on the same port. Every request that changes anything must have an `Origin` header matching `PUBLIC_URL` and a valid session. Every other request apart from `GET /api/me` needs a valid session too. Bodies are at most 4 KB, and an empty body counts as `{}`. Built so far: `/api/me`, `/api/me/name`, `/api/signout`, `/api/profile` and `/api/history`.
+JSON over HTTP from `api.ts`, on the same port. Every request that changes anything must have an `Origin` header matching `PUBLIC_URL` and a valid session. Every other request apart from `GET /api/me` needs a valid session too. Bodies are at most 4 KB, and an empty body counts as `{}`. Built so far: `/api/me`, `/api/me/name`, `/api/signout`, `/api/me/delete`, `/api/profile`, `/api/history`, and `/auth/google` with its callback (in `google.ts`; they are page navigations, not JSON, and need neither an `Origin` nor a session).
 
 | Request | Does |
 |---|---|
 | `GET /api/me` | The asker's account (`AccountView`), making a guest if there is no session |
-| `POST /api/me/name` `{ name }` | Renames, and returns the `AccountView`; or the reason it can't, with 400 |
+| `POST /api/me/name` `{ name }` | Renames, and returns the `AccountView`; or the reason it can't, with 400: a name the rules refuse, "That name is taken.", or "You can rename once every 7 days." |
 | `POST /api/signout` | Section 6.1. `{ everywhere: true }` for every device. Returns `{ ok: true }` and clears the cookie |
-| `POST /api/me/delete` `{ confirm }` | Section 6.4; `confirm` is the account's name |
-| `GET /auth/google`, `GET /auth/google/callback` | Section 6.2 |
+| `POST /api/me/delete` `{ confirm }` | Section 6.4; `confirm` is the account's name. Returns `{ ok: true }` and clears the cookie; 409 while the account has a seat in a lobby |
+| `GET /auth/google`, `GET /auth/google/callback` | Section 6.2: redirects to Google, then back to `/play.html#signin=<outcome>` |
 | `GET /api/profile?account=<id>` | `{ id, name, guest, stats }` (section 9.3) |
 | `GET /api/history?account=<id>&before=<match id>` | Section 9.4 |
 | `GET /api/leaderboard` | Section 8.4 |
@@ -484,12 +502,13 @@ interface AccountView {
   id: string;
   name: string;
   claimed: boolean;
-  canRename: boolean;          // false within 7 days of a claimed account's last rename
+  canRename: boolean;          // false within 7 days of a claimed account's last rename, unless needsName
+  needsName: boolean;          // claimed, with a name another claimed account holds or a guest's: it must rename (section 6.3)
   googleEnabled: boolean;      // sign-in is configured on this server
 }
 ```
 
-- Errors are `{ error: string }`, with 400 for bad input, 401 without a session, 403 for a wrong `Origin`, 404 for an unknown account, and 429 when rate limited.
+- Errors are `{ error: string }`, with 400 for bad input, 401 without a session, 403 for a wrong `Origin`, 404 for an unknown account, 409 for a request that can't be done now (deleting while in a lobby), and 429 when rate limited.
 - At most 60 requests a minute from one session, `GET /api/me` included.
 
 ### 11.2 WebSocket messages
@@ -527,7 +546,8 @@ type ServerMessage =
   | { type: 'lobbyInvite'; from: string; name: string; code: string }
   | { type: 'ranked'; seats: { seat: number; before: number; after: number }[] }   // section 8.5
   | { type: 'notice'; text: string }             // section 10
-  | { type: 'replaced' };                        // section 6.1
+  | { type: 'replaced' }                         // section 6.1
+  | { type: 'signedOut'; reason: 'everywhere' | 'deleted' };   // sections 6.1 and 6.4; the connection then closes
 
 interface QueueView { waitedSeconds: number; queued: number }
 interface PartyView { leader: string; members: { id: string; name: string }[] }
@@ -537,7 +557,9 @@ interface FriendPresence { id: string; name: string; status: 'online' | 'queue' 
 ```
 
 - `LobbyView` gains `ranked: boolean`, and its `host` becomes `number | null`, null in a ranked lobby, and each `SeatView` gains `player: string | null` (the account id for people, for links to profiles) and `guest: boolean` (false for bots and empty seats).
-- Built so far: `create`, `join` and `rejoin` without names and tokens, `hello`, `replaced`, and the `LobbyView` and `SeatView` changes, with `ranked` always false. The queue, party, friends, `ranked` and `notice` messages come with their steps.
+- Built so far: `create`, `join` and `rejoin` without names and tokens, `hello`, `replaced`, `signedOut`, and the `LobbyView` and `SeatView` changes, with `ranked` always false. The queue, party, friends, `ranked` and `notice` messages come with their steps.
+- `signedOut` is sent to the account's connection when it signs out everywhere or is deleted, just before the server closes it. Its seat is disconnected, as when a connection drops. The page doesn't reconnect, since its session has gone, and says why online play is unavailable; Try again gets a new guest.
+- `SeatView.guest` is false for the offline player, who has no account (section 4).
 - `hello`'s `game` is the lobby the account has a seat in that it hasn't left and whose game isn't over, whether it has started or not, so a page can rejoin a lobby it was waiting in too.
 - Presence is only sent to friends. Offline friends are left out of `friends`; `GET /api/friends` lists everyone.
 
@@ -572,10 +594,12 @@ Not built now, so the server can open up later:
 
 The play page (`game-spec.md` section 12, `server-spec.md` section 10). The account is loaded with `GET /api/me` before the menu shows.
 
-**Built so far, for guests:** the menu's account, the account panel without deleting, the profile with stats, history and final boards, guest marks, `replaced` with Use here, and reconnecting by account. Each of the rest comes with its step, and nothing of it is shown before then, not even disabled: Sign in with Google, Ranked, the leaderboard, the queue, the party, friends, deleting, notices and the ranked game over.
+**Built so far:** the menu's account with Sign in with Google and the toast saying how it went, the new-name prompt, the account panel with signing in and deleting, the profile with stats, history and final boards, guest marks, `replaced` with Use here, `signedOut` (online play unavailable, with why), and reconnecting by account. The page's types for the API's answers are the server's, from `accounts.ts`. Each of the rest comes with its step, and nothing of it is shown before then, not even disabled: Ranked, the leaderboard, the queue, the party, friends, notices and the ranked game over.
 
 - **Menu:**
-  - The name field goes. In its place, the account's name with the guest mark, a pencil to rename, and Sign in with Google for guests (hidden if `googleEnabled` is false).
+  - The name field goes. In its place, the account's name with the guest mark, a pencil to rename (disabled within the 7-day limit, its tooltip saying so), and for guests, under it, Sign in with Google with one line on what it gives ("Keep your account and its match history on any device."; Ranked adds to it in its step). It is hidden if `googleEnabled` is false, and for claimed accounts, which sign out first to use another Google account. It is a link to `/auth/google` (`SIGN_IN_HREF`) that leaves the page, in Google's dark button style with Google's mark. It is only on the menu and the account panel, which no game is behind.
+  - **Back from Google**, the page reads `#signin=` with `readSignIn`, clears it from the address before anything else reads the hash, loads the account, and says how it went in a toast at the foot of the page (`signInToast` in `account.ts`): claimed ("You're signed in with Google. Your name and games are kept, on any device you sign in on."), signed in to an existing account ("Signed in with Google as NAME.", and with `guestGames`, that the game or N games played as a guest in this browser stay with that guest account, which can't be used any more), cancelled ("Sign-in was cancelled. You're still playing as NAME."), failed (try again), or unavailable. A toast has a tone (good, info, warn, bad), a close button, and a time: 8 to 12 seconds, 20 for lost guest games. It goes when the account panel or a profile opens, when the account loads again (signing out, deleting) and when a game starts, since it is about the menu.
+  - **A new name:** while `needsName` is true, the menu opens the rename field by itself, without Cancel (Escape doesn't close it either), with a callout saying why: "Someone already has the name NAME. Choose a new name to keep with your account.", or for a guest's name such as "Guest 0427", that it is a guest's name. The account panel shows the same callout over its name field. The same name, by key, is refused before sending ("Someone already has that name. Choose another."). Create and Join wait for it ("Choose a new name first."), apart from going back to a seat the account already has, and so will Ranked and Friends; Play against bots stays. Once renamed, the callout goes and the field closes, wherever the rename was made.
   - Play against bots, Create lobby and Join stay.
   - **Ranked**, for claimed accounts: Find game, or Find game with your party. Guests see it disabled, with "Sign in with Google to play ranked."
   - Buttons for Profile, Leaderboard and Friends, and for the account panel.
@@ -592,7 +616,7 @@ The play page (`game-spec.md` section 12, `server-spec.md` section 10). The acco
   - A row opens to all 8 final boards, by place: the place, the name with its guest mark and Left, the level, the active traits as badges in the trait tracker's tones with their counts, and the units, strongest first (by star level, then cost, then name), each with its star badge, its items as chips, and the One Ring on the unit that wore it in that fight. Units, items and traits have their usual tooltips. The board of the profile's owner is marked. Units, items and traits the game no longer has are left out.
   - The names of other people with accounts open their profiles on top, and Back returns to the one before. Bots and deleted accounts ("Deleted player") have no link. Someone else's history is asked for only once their profile has loaded. A 404 shows in the profile: for someone shown as a guest, that a guest's profile and history are shown only to them; otherwise, that the player has no profile to show.
 - **Leaderboard:** the top 100 and your own rank.
-- **Account panel:** opened from the menu's Account button, in place of the menu. The name in a field with Save, what kind of account it is (a guest's lives in the browser's cookies, and signing out or clearing them loses it and its history), sign out, sign out everywhere, and delete account. Signing out asks first, and for a guest says they can't sign back in. The page closes its WebSocket, which belongs to the old account, signs out, gets a new guest from `GET /api/me`, connects again and says who the person is now. A page elsewhere that was signed out everywhere loses its connection and says online play is unavailable; Try again gives it a new guest.
+- **Account panel:** opened from the menu's Account button, in place of the menu. The name in a field with Save (disabled within the 7-day limit, with the reason under the field), what kind of account it is (a guest's lives in the browser's cookies, and signing out or clearing them loses it and its history; a claimed account's says "Signed in with Google", and that the same Google account signs in to it on any device), for guests "Keep this account" with Sign in with Google, sign out, sign out everywhere, and at the foot a danger-styled Delete account section. That says what deleting does (the account and its history go for good, other players' histories show "Deleted player", a claimed account's Google account would make a new one, and it can't be done with a seat in a lobby or game), and asks for the account's name to be typed; Delete account is enabled once the typed text matches as names are compared (`confirmsDelete`, by key, so case and spaces don't matter). Deleting closes the page's WebSocket first as signing out does, and shows the server's reason under the field when refused (such as "You have a seat in lobby CODE. Leave it before deleting the account."), connecting again. Done, it gets a new guest from `GET /api/me` as signing out does, and says "Deleted NAME. You are now NAME, a new guest." Signing out asks first, and for a guest says they can't sign back in. The page closes its WebSocket, which belongs to the old account, signs out, gets a new guest from `GET /api/me`, connects again and says who the person is now. A page elsewhere that was signed out everywhere, or whose account was deleted, loses its connection, drops the account from the menu (no name, Profile or Account, since its session has gone), and says online play is unavailable and why ("you were signed out on every device", "this account was deleted"); Try again gives it a new guest.
 - **In a game:** the players list and lobby cards show guest marks, and so do the game-over standings, for people other than the person (whose row says You). An offline game's You has no account and no mark. Ranked games show "Ranked" in the HUD.
 - **Game over** of a ranked game shows the points change once `ranked` arrives.
 - **Notices** (`notice`, `replaced`) show as a banner at the top of the page. On `replaced`, the page goes back to the menu, doesn't reconnect, and its banner says the game is open in another tab or on another device, with Use here, which connects again: the server moves the seat to the new connection and `hello` names the game, so the page goes straight back in. Create and Join wait for Use here meanwhile. The banner doesn't show over an offline game.
@@ -633,8 +657,10 @@ The play page (`game-spec.md` section 12, `server-spec.md` section 10). The acco
 **Server** (against Postgres, so skipped likewise without `DATABASE_URL`)
 - The WebSocket upgrade is refused without a session or with a wrong `Origin`.
 - Two guests play a private lobby game to the end, after which both have it in `/api/history`.
-- Google's endpoints faked: the callback with a wrong `state` is refused, a new `sub` claims the guest.
+- Google's endpoints faked (`test/google.test.ts`): the callback with a wrong `state`, or without its cookie, is refused before Google is asked; a new `sub` claims the guest with its history and a new session; an existing `sub` signs in to its account; a person saying no is `cancelled`; ID tokens with the wrong `aud`, `iss`, `nonce` or `exp` are refused; `needsName` after claiming with a held name, and the 7-day limit; deleting refused in a lobby, and done with `signedOut` and "Deleted player".
 - Two clients with claimed accounts queue, wait out the filler timer, play a ranked game to the end, and both see the points change.
 
 **Client**
 - In a browser: a guest renames, plays a private lobby game, and sees it in their history with its final boards. A reload mid-game puts them back in, and a second tab takes the game until the first uses it here. Once the queue is built, Ranked is disabled for the guest.
+- In a browser, with Google faked as in `test/google.test.ts`: a guest signs in and keeps their history and name, without the guest mark; a second browser signing in with the same Google account gets that account, and hears that its guest's games are lost; claiming with a name another claimed account holds asks for a new name, which then can't change for 7 days; cancelling at Google says so and leaves the guest; signing out everywhere tells the other browser; deleting is refused with a seat in a lobby, and works once it is left.
+- Without a browser (`account.ts`): who is offered sign-in, the toast for each outcome, the new-name reasons and that Create and Join wait for the name, and confirming a delete by name.

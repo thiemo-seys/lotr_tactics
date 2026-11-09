@@ -5,7 +5,7 @@ import type { Action, ActionResult } from '@lotr-tactics/sim';
 import { LOBBY } from './config.js';
 import type { Host } from './host.js';
 import { Match } from './match.js';
-import type { Player } from './players.js';
+import { isGuest, type Player } from './players.js';
 import type { LobbyView, SeatView, ServerMessage } from './protocol.js';
 import type { MatchResult, SeatResult } from './results.js';
 
@@ -32,6 +32,26 @@ export interface LobbyOptions {
   readonly seed: number;
   /** Called once when the lobby's game ends. */
   readonly onResult?: (result: MatchResult) => void;
+}
+
+/** What can change about a player while they are connected: a rename, or claiming the account. */
+export interface PlayerChange {
+  readonly name?: string;
+  readonly claimed?: boolean;
+}
+
+/** Applies a change to a player. Returns whether anything changed. */
+export function applyChange(player: Player, change: PlayerChange): boolean {
+  let changed = false;
+  if (change.name !== undefined && player.name !== change.name) {
+    player.name = change.name;
+    changed = true;
+  }
+  if (change.claimed !== undefined && player.claimed !== change.claimed) {
+    player.claimed = change.claimed;
+    changed = true;
+  }
+  return changed;
 }
 
 function fail(reason: string): ActionResult {
@@ -129,11 +149,10 @@ export class Lobby {
     this.match?.setConnected(seat, false);
   }
 
-  /** A person in the lobby renamed: the lobby shows the new name. */
-  rename(playerId: string, name: string): void {
+  /** A person in the lobby renamed or claimed their account: the lobby shows it. */
+  updatePlayer(playerId: string, change: PlayerChange): void {
     const member = this.members.find((m) => m !== null && m.player.id === playerId);
-    if (member === undefined || member === null || member.player.name === name) return;
-    member.player.name = name;
+    if (member === undefined || member === null || !applyChange(member.player, change)) return;
     this.broadcast();
   }
 
@@ -175,7 +194,7 @@ export class Lobby {
 
   view(): LobbyView {
     const seats = this.members.map((m, seat): SeatView => {
-      if (m !== null) return { kind: 'person', name: m.player.name, connected: m.client !== null, player: m.player.id, guest: !m.player.claimed };
+      if (m !== null) return { kind: 'person', name: m.player.name, connected: m.client !== null, player: m.player.id, guest: isGuest(m.player) };
       if (this.started) return { kind: 'bot', name: this.botName(seat), connected: false, player: null, guest: false };
       return { kind: 'empty', name: '', connected: false, player: null, guest: false };
     });

@@ -3,7 +3,8 @@ import { ACCOUNTS } from '../src/config.js';
 import { migrate } from '../src/node/db.js';
 import { recordResult, recordedMatch } from '../src/node/record.js';
 import { SESSION_COOKIE, Sessions, hashSecret, readCookie } from '../src/node/sessions.js';
-import { DELETED_NAME, PgStore, type RecordedMatch, type Store } from '../src/node/store.js';
+import { DELETED_NAME, PgStore, canRename, type RecordedMatch, type Store } from '../src/node/store.js';
+import { nameKey } from '../src/players.js';
 import type { FinalBoard, MatchResult } from '../src/results.js';
 import { SKIP_REASON, noteSkipped, testDatabase, type TestDatabase } from './db.js';
 
@@ -49,13 +50,23 @@ describe.skipIf(SKIP_REASON !== null)('PgStore', () => {
   });
   afterAll(() => db?.close());
 
-  const guest = (name = 'Guest 0001', now = T0) => store.createGuest(name, name.toLowerCase().replace(/ /g, ''), now);
+  const guest = (name = 'Guest 0001', now = T0) => store.createGuest(name, nameKey(name), now);
+  let subs = 0;
+  /** A new Google subject id. */
+  const sub = () => `google-${++subs}-${Math.random()}`;
+  /** A claimed account with a name. */
+  const claimed = async (name: string) => {
+    const account = await store.claim((await guest(name)).id, sub());
+    if (account === 'taken') throw new Error('Not claimed.');
+    return account;
+  };
+  const rename = (id: string, name: string, now = T0) => store.rename(id, name, nameKey(name), now);
 
   describe('migrations', () => {
     it('apply on an empty database and are a no-op the second time', async () => {
       const empty = await testDatabase(false);
       try {
-        expect(await migrate(empty.pool)).toEqual(['001_accounts.sql']);
+        expect(await migrate(empty.pool)).toEqual(['001_accounts.sql', '002_google.sql']);
         expect(await migrate(empty.pool)).toEqual([]);
         const tables = await empty.pool.query<{ table_name: string }>(
           'select table_name from information_schema.tables where table_schema = $1 order by table_name',
@@ -136,6 +147,122 @@ describe.skipIf(SKIP_REASON !== null)('PgStore', () => {
       await sessions.signOut(found, false);
       expect(await sessions.find(header)).toBeNull();
       expect(sessions.clearCookie()).toBe(`${SESSION_COOKIE}=; HttpOnly; SameSite=Lax; Path=/; Max-Age=0`);
+    });
+  });
+
+  describe('claiming with Google', () => {
+    it('claims a guest with a new sub, keeping its name and history', async () => {
+      const a = await guest('Meriadoc');
+      await store.recordMatch(recordedMatch(result([a.id]), T0));
+      const id = sub();
+      expect(await store.accountBySub(id)).toBeNull();
+      const done = await store.claim(a.id, id);
+      expect(done).toMatchObject({ id: a.id, name: 'Meriadoc', claimed: true, needsName: false });
+      expect(await store.accountBySub(id)).toEqual(done);
+      const [match] = await store.history(a.id, null, 20);
+      expect(match!.seats[0]).toMatchObject({ account: a.id, guest: false });
+      expect(await store.games(a.id)).toBe(1);
+    });
+
+    it('refuses to claim an account twice, or with a sub another account has', async () => {
+      const id = sub();
+      const a = await guest('Pippin');
+      expect(await store.claim(a.id, id)).toMatchObject({ claimed: true });
+      expect(await store.claim(a.id, sub())).toBe('taken');
+      expect(await store.claim((await guest('Pippin')).id, id)).toBe('taken');
+      expect((await store.accountBySub(id))!.id).toBe(a.id);
+    });
+
+    it("makes a guest claiming with a name a claimed account holds, or a guest's name, pick a new one", async () => {
+      const holder = await claimed('Faramir');
+      const late = (await store.claim((await guest('FARAMIR')).id, sub())) as Exclude<Awaited<ReturnType<Store['claim']>>, 'taken'>;
+      expect(late).toMatchObject({ name: 'FARAMIR', claimed: true, needsName: true });
+      expect(await store.claim((await guest('Guest 0427')).id, sub())).toMatchObject({ name: 'Guest 0427', needsName: true });
+      // It may rename at once, but not to a name a claimed account holds.
+      expect(canRename(late, T0)).toBe(true);
+      expect(await rename(late.id, 'faramir')).toBe('taken');
+      // It holds no name until it renames: once the holder lets the name go, a guest may take it.
+      await rename(holder.id, 'Captain', T0);
+      expect(await rename((await guest()).id, 'Faramir')).toMatchObject({ name: 'Faramir' });
+      const fixed = await rename(late.id, 'Faramir');
+      expect(fixed).toMatchObject({ name: 'Faramir', needsName: false, renamedAt: T0 });
+      // Now it holds it.
+      expect(await rename((await guest()).id, 'Faramir')).toBe('taken');
+    });
+
+    it('settles two claims for the same name at once: the index keeps it for one', async () => {
+      const [a, b] = [await guest('Arwen'), await guest('arwen')];
+      const both = await Promise.all([store.claim(a.id, sub()), store.claim(b.id, sub())]);
+      expect(both.map((x) => (x as { needsName: boolean }).needsName).sort()).toEqual([false, true]);
+    });
+  });
+
+  describe('names', () => {
+    it('are unique among claimed accounts, ignoring case, spaces and NFKC', async () => {
+      const holder = await claimed('Strider');
+      const g = await guest('Someone');
+      for (const name of ['STRIDER', 'Stri der', 'ＳＴＲＩＤＥＲ']) expect(await rename(g.id, name)).toBe('taken');
+      const other = await claimed('Halbarad');
+      expect(await rename(other.id, 'strider')).toBe('taken');
+      // The holder may change its own name's case.
+      expect(await rename(holder.id, 'STRIDER')).toMatchObject({ name: 'STRIDER' });
+      // A name freed by a rename is free at once.
+      expect(await rename(holder.id, 'Elessar', at(10))).toMatchObject({ name: 'Elessar' });
+      expect(await rename(g.id, 'Strider')).toMatchObject({ name: 'Strider' });
+    });
+
+    it('let guests share a name, and take one a claimed account held before', async () => {
+      const [a, b] = [await guest('Boromir'), await guest('boromir')];
+      expect([a.nameKey, b.nameKey]).toEqual(['boromir', 'boromir']);
+      expect(await rename(a.id, 'Denethor')).toMatchObject({ name: 'Denethor' });
+      expect(await rename(b.id, 'Denethor')).toMatchObject({ name: 'Denethor' });
+    });
+
+    it('let a claimed account rename once every 7 days, and a guest freely', async () => {
+      const g = await guest('Renamer');
+      expect(await rename(g.id, 'Renamer One', T0)).toMatchObject({ name: 'Renamer One' });
+      expect(await rename(g.id, 'Renamer Two', T0)).toMatchObject({ name: 'Renamer Two' });
+      // Renames as a guest don't count once claimed.
+      const c = (await store.claim(g.id, sub())) as { id: string; renamedAt: Date | null };
+      expect(c.renamedAt).toBeNull();
+      expect(await rename(c.id, 'Renamer Three', T0)).toMatchObject({ name: 'Renamer Three', renamedAt: T0 });
+      expect(await rename(c.id, 'Renamer Four', at(6.9))).toBe('wait');
+      expect((await store.account(c.id))!.name).toBe('Renamer Three');
+      expect(canRename((await store.account(c.id))!, at(6.9))).toBe(false);
+      expect(canRename((await store.account(c.id))!, at(7))).toBe(true);
+      expect(await rename(c.id, 'Renamer Four', at(7))).toMatchObject({ name: 'Renamer Four' });
+    });
+  });
+
+  describe('deleting an account', () => {
+    it('deletes it and its sessions, keeping its seats in others\' histories as "Deleted player"', async () => {
+      const [gone, stays] = [await claimed('Saruman'), await guest('Radagast')];
+      await store.createSession(hashSecret('saruman'), gone.id, at(100));
+      const shared = recordedMatch(result([gone.id, stays.id]), at(1));
+      const alone = recordedMatch(result([gone.id]), at(2));
+      await store.recordMatch(shared);
+      await store.recordMatch(alone);
+      expect(await store.deleteAccount(gone.id)).toBe(true);
+      expect(await store.account(gone.id)).toBeNull();
+      expect(await store.accountBySub('anything')).toBeNull();
+      expect(await store.session(hashSecret('saruman'), T0)).toBeNull();
+      const [match] = await store.history(stays.id, null, 20);
+      expect(match!.id).toBe(shared.id);
+      expect(match!.seats[0]).toMatchObject({ account: null, name: DELETED_NAME, guest: false });
+      expect(match!.seats[1]).toMatchObject({ account: stays.id, name: 'Person 1' });
+      // A match nobody else was in goes with it.
+      expect((await db.pool.query('select 1 from matches where id = $1', [alone.id])).rowCount).toBe(0);
+      // Its name is free at once.
+      expect(await rename((await guest()).id, 'Saruman')).toMatchObject({ name: 'Saruman' });
+      expect(await store.deleteAccount(gone.id)).toBe(false);
+    });
+
+    it('records a game that ends after a person in it was deleted, with "Deleted player" in their seat', async () => {
+      const [gone, stays] = [await guest('Gone'), await guest('Stays')];
+      await store.deleteAccount(gone.id);
+      await store.recordMatch(recordedMatch(result([gone.id, stays.id]), T0));
+      const [match] = await store.history(stays.id, null, 20);
+      expect(match!.seats[0]).toMatchObject({ account: null, name: DELETED_NAME });
     });
   });
 

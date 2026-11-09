@@ -29,7 +29,8 @@ describe('LocalConnection', () => {
     const started = inbox[2]!;
     const lobby = started.type === 'lobby' ? started.lobby : null;
     expect(lobby!.seats.map((s) => s.name)).toEqual(['You', 'Bot 1', 'Bot 2', 'Bot 3', 'Bot 4', 'Bot 5', 'Bot 6', 'Bot 7']);
-    expect(lobby!.seats[0]).toMatchObject({ kind: 'person', player: 'local' });
+    // You have no account, so no guest mark.
+    expect(lobby!.seats[0]).toMatchObject({ kind: 'person', player: 'local', guest: false });
     expect(lastState(inbox).step.kind).toBe('planning');
     expect(lastState(inbox).type).toBe('start');
   });

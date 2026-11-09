@@ -20,7 +20,7 @@ Implementation spec for online play: lobbies, a server that runs games authorita
 
 **Out of scope (later)**
 
-- Accounts, ranking, the ranked queue, parties and friends: specified in [`accounts-spec.md`](accounts-spec.md), which changes parts of this spec (its section 12). Its first step is built: guest accounts in Postgres, seats by account, and history and stats for private lobbies. This spec describes the server as it is now, with those changes.
+- Accounts, ranking, the ranked queue, parties and friends: specified in [`accounts-spec.md`](accounts-spec.md), which changes parts of this spec (its section 12). Its first two steps are built: guest accounts in Postgres, seats by account, and history and stats for private lobbies; then Google sign-in, claimed accounts' unique names and deleting accounts. This spec describes the server as it is now, with those changes.
 - A public list of lobbies.
 - Saving games. Lobbies live in memory, so a restart ends every game. `accounts-spec.md` section 10 drains the server instead, so games in progress finish before a restart.
 - Several server processes.
@@ -56,7 +56,7 @@ These are not in `design.md` yet. They were chosen to remove ambiguity and can b
 
 ## 3. Package layout
 
-`packages/server`, the third package in `design.md` section 10. Everything except `server.ts`, `main.ts` and `src/node/` uses neither Node nor the DOM, so the client can run it in the browser for offline games. ESLint enforces this: no Node, `ws` or `pg` imports, nothing from `./node/`, and no `process`, `Buffer`, `Date` or timers outside them. Time and randomness come in through a `Host` object (section 4). The Node-only `src/node/` folder has the database, sessions, the HTTP API and recording results (`accounts-spec.md` section 3).
+`packages/server`, the third package in `design.md` section 10. Everything except `server.ts`, `main.ts` and `src/node/` uses neither Node nor the DOM, so the client can run it in the browser for offline games. ESLint enforces this: no Node, `ws` or `pg` imports, nothing from `./node/`, and no `process`, `Buffer`, `Date` or timers outside them. Time and randomness come in through a `Host` object (section 4). The Node-only `src/node/` folder has the database, sessions, Google sign-in, the HTTP API and recording results (`accounts-spec.md` section 3).
 
 ```
 packages/server/
@@ -65,6 +65,7 @@ packages/server/
     config.ts      timers and limits
     host.ts        the Host interface: time and randomness
     players.ts     the Player a connection carries, and account names
+    accounts.ts    what the account API answers with: profiles, history, stats, the sign-in's result
     protocol.ts    message types, and checking messages from clients
     view.ts        what a seat sees of the game and of a round
     results.ts     a finished match's result, with final boards
@@ -73,7 +74,7 @@ packages/server/
     lobbies.ts     every lobby on a server: codes, joining, connections by account, closing idle lobbies
     server.ts      the Node server: HTTP, static files, the API and WebSockets
     main.ts        reads the settings, migrates the database and starts the server
-    node/          Node only: db.ts, store.ts, sessions.ts, api.ts, record.ts (accounts-spec.md section 3)
+    node/          Node only: db.ts, store.ts, sessions.ts, google.ts, api.ts, record.ts (accounts-spec.md section 3)
   migrations/      plain SQL, applied in order at start-up
   scripts/db.ts    `pnpm db`: a Postgres container for development
   test/
@@ -220,7 +221,8 @@ type ServerMessage =
   | { type: 'round'; round: RoundRecord }    // when a round with fights ends its planning, just before the fight step's state
   | { type: 'left'; reason: string }         // the connection is no longer in a lobby
   | { type: 'refused'; request: ClientMessage['type'] | 'unknown'; reason: string }   // 'unknown' for a malformed message
-  | { type: 'replaced' };                    // the account connected somewhere else, which took over; this connection closes
+  | { type: 'replaced' }                     // the account connected somewhere else, which took over; this connection closes
+  | { type: 'signedOut'; reason: 'everywhere' | 'deleted' };   // the account was signed out everywhere or deleted; this connection closes
 
 interface LobbyView {
   code: string;
@@ -239,20 +241,20 @@ interface SeatView {
 }
 ```
 
-`AccountView` is in `accounts-spec.md` section 11.1. Fields a client sends beyond these, such as the old `name` and `token`, are ignored.
+`AccountView` is in `accounts-spec.md` section 11.1. `guest` is false for the offline player, who has no account. Fields a client sends beyond these, such as the old `name` and `token`, are ignored.
 
 - Anything the client sends that isn't allowed gets `refused` with a reason, and changes nothing. Examples: a message that doesn't match `ClientMessage`, an unknown code, a full or started lobby, `start` from someone who isn't the host, or an action the game refuses.
 - `act` is refused outside the `council` and `planning` steps, and from seats that are out.
 - After `joined`, the server sends `lobby`. Once the game has started, it also sends `state`, and during a fight step, the `round` first. A person who rejoins mid-fight can therefore play the fight from the start.
-- `left` is sent after `leave`. `replaced` is sent when the account's seat or connection moves to another connection.
+- `left` is sent after `leave`. `replaced` is sent when the account's seat or connection moves to another connection. `signedOut` is sent when the account signs out everywhere or is deleted (`accounts-spec.md` sections 6.1 and 6.4); the seat is disconnected, so its bot plays it, and the page doesn't reconnect.
 - On a reconnect, `hello` comes first. If it names a game the page doesn't know, the page sends `rejoin` with its code.
 
 ---
 
 ## 9. Server process
 
-- An HTTP server on `PORT` (default 8080). It serves the files in `packages/client/dist` if they exist, answers `/api/*` (`accounts-spec.md` section 11.1), and upgrades `/ws` to a WebSocket.
-- **Settings:** `PORT`, `DATABASE_URL` (required), `PUBLIC_URL` and `TRUST_PROXY` (`accounts-spec.md` section 3). Start-up applies the migrations, and stops with a message if there is no database.
+- An HTTP server on `PORT` (default 8080). It serves the files in `packages/client/dist` if they exist, answers `/api/*` (`accounts-spec.md` section 11.1) and `/auth/google` with its callback (section 6.2), and upgrades `/ws` to a WebSocket.
+- **Settings:** `PORT`, `DATABASE_URL` (required), `PUBLIC_URL`, `TRUST_PROXY`, and `GOOGLE_CLIENT_ID` with `GOOGLE_CLIENT_SECRET`, without which Google sign-in is off (`accounts-spec.md` section 3). Start-up applies the migrations, and stops with a message if there is no database.
 - **The upgrade** needs an `Origin` header matching `PUBLIC_URL` (403 otherwise) and a valid session cookie (401 otherwise). The connection carries the account's `Player`.
 - Finished games are recorded in Postgres (`accounts-spec.md` section 9.2), and expired sessions and old guests are cleaned up at start-up and every hour.
 - `lobbies.update()` runs every 100 ms.
@@ -262,7 +264,7 @@ interface SeatView {
   - Connections are pinged every 30 seconds and dropped if they don't answer.
 - A dropped connection counts as a disconnect (section 5.2).
 - SIGINT and SIGTERM close the server, which ends every game, then the database pool. Draining comes later (`accounts-spec.md` section 10).
-- **Deployment:** the `Dockerfile` builds the client and runs the server from its source with `tsx`, as the `node` user, on `PORT`. `compose.yaml` runs it with Postgres (`db`, with a `pg_data` volume and `POSTGRES_PASSWORD` from `.env`) behind Caddy (`Caddyfile`), which serves HTTPS for the domain in `DOMAIN`, redirects HTTP, passes `/ws` through, compresses text and `.glb` models, and caches the hashed files in `/assets/` for a year. Only Caddy's ports 80 and 443 are open on the host. The steps are in `README.md`.
+- **Deployment:** the `Dockerfile` builds the client and runs the server from its source with `tsx`, as the `node` user, on `PORT`. `compose.yaml` runs it with Postgres (`db`, with a `pg_data` volume and `POSTGRES_PASSWORD` from `.env`), passes it `GOOGLE_CLIENT_ID` and `GOOGLE_CLIENT_SECRET` from `.env` when they are there, and puts it behind Caddy (`Caddyfile`), which serves HTTPS for the domain in `DOMAIN`, redirects HTTP, passes `/ws` through, compresses text and `.glb` models, and caches the hashed files in `/assets/` for a year. Only Caddy's ports 80 and 443 are open on the host. The steps are in `README.md`.
 
 ---
 
@@ -338,6 +340,7 @@ The play page (`game-spec.md` section 12) talks to a `Connection`. The connectio
 **Server** (against Postgres; skipped with a message without `DATABASE_URL`)
 - Two WebSocket clients on a real server join one lobby, play it to the end, and both find it in their history.
 - The upgrade is refused without a session or with a wrong `Origin`; the API's guests, renames, sign-out and rate limits.
+- Google sign-in against a fake Google on localhost, unique names, and deleting accounts (`accounts-spec.md` section 16).
 
 **Client**
 - An offline game through `LocalConnection` reaches its end.
