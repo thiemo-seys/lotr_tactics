@@ -27,6 +27,9 @@ export type Framing = keyof typeof CAMERA;
  */
 export const CAMERA_LIMITS = { maxPolar: 1.05, minDistance: 8, maxDistance: 24, maxPan: 5 } as const;
 
+/** How high over the bench, in world units, the note that it is full stands (docs/game-spec.md section 12). */
+export const BENCH_NOTE_HEIGHT = 2.6;
+
 /** The arena the board stands in: a .glb in public/arenas, built from packages/client/art/arenas. */
 export const ARENA = 'ruins';
 

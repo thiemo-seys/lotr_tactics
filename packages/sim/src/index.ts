@@ -37,7 +37,7 @@ export { TEAM_ROWS, boardPlace, boardSlot, isPlace, ownedUnits, placeOf, samePla
 export type { BoardPlace, OwnedUnit, Owner, Place } from './game/places.js';
 export { baseIncome, shopOdds, shopOddsLevel, streakGold, xpForNextLevel } from './game/player.js';
 export type { PlayerView } from './game/player.js';
-export { addItem, checkAction, completesMerge } from './game/rules.js';
+export { BENCH_FULL, addItem, checkAction, completesMerge } from './game/rules.js';
 export type { ActionContext, ActionResult } from './game/rules.js';
 export { councilCosts, nextRound, playerDamage, pveRound, roundType, roundsInStage, stageDamage } from './game/schedule.js';
 export { createGame } from './game/game.js';

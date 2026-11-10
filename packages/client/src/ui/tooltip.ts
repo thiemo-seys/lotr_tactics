@@ -15,6 +15,8 @@ let card: HTMLElement | null = null;
 let render: (tip: Tip) => Node[] = () => [];
 let current: Element | null = null;
 let suppressed = false;
+/** An element whose tip stays closed until the pointer goes onto something outside it. */
+let dismissed: Element | null = null;
 /** The element the page says the pointer is on, outside the DOM's own hover: a unit in the 3D view. */
 let pointed: Element | null = null;
 /** Elements whose tip is asked for again while it shows, such as a fighting unit's. */
@@ -52,6 +54,7 @@ export function initTooltips(draw: (tip: Tip) => Node[]): void {
 
   document.addEventListener('pointerover', (event) => {
     if (event.pointerType === 'touch') return;
+    if (dismissed !== null && !(event.target instanceof Node && dismissed.contains(event.target))) dismissed = null;
     const target = tipTarget(event.target);
     if (target === current) return;
     if (target === null) hideTip();
@@ -63,6 +66,7 @@ export function initTooltips(draw: (tip: Tip) => Node[]): void {
     if (to === null || !current.contains(to)) hideTip();
   });
   document.addEventListener('focusin', (event) => {
+    if (dismissed !== null && !(event.target instanceof Node && dismissed.contains(event.target))) dismissed = null;
     const target = tipTarget(event.target);
     if (target !== null && (target as HTMLElement).matches(':focus-visible')) open(target);
   });
@@ -90,6 +94,15 @@ export function pointTip(element: Element | null, tip: Source | null = null, isL
   const before = pointed;
   pointed = element;
   if (current !== element && (current === null || current === before)) open(element);
+}
+
+/**
+ * Hides an element's tip and keeps it closed until the pointer leaves the element, so it doesn't
+ * cover something a click on the element shows, such as the note that the bench is full.
+ */
+export function dismissTip(element: Element): void {
+  dismissed = element;
+  if (current === element) hideTip();
 }
 
 /** No tooltips while `on`, such as during a drag. */
@@ -133,7 +146,7 @@ export function updateTip(): void {
 function tipTarget(target: EventTarget | null): Element | null {
   if (suppressed || !(target instanceof Element)) return null;
   const element = target.closest('[data-tip]');
-  return element !== null && sources.has(element) ? element : null;
+  return element !== null && element !== dismissed && sources.has(element) ? element : null;
 }
 
 function open(element: Element): void {
