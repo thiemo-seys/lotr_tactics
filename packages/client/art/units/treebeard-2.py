@@ -86,7 +86,15 @@ SIDES = {0: 5, 2: 5}  # round each bough; the thin shoots have 4, which keeps hi
 # cast) and as he falls, and the boulder he hurls passed through the right bough's shoot and leaves.
 # So each group is swept back about the X axis through its roots, the moss on his shoulders or the
 # leaves on his head, and drawn in towards them: degrees back, how much of its size, and the pivot.
-SWEEP = {'spine': (20, 0.8, V(0, 0.12, 1.62)), 'leaves': (35, 0.8, V(0, 0.08, 2.31))}
+# The first rigged crown drew both in to 0.8, the boughs swept back 20 degrees and the shoots 35. The
+# room a cast has ahead (docs/viewer-spec.md section 4, Size) doesn't help it, since the boughs reach
+# out past his left shoulder as he heaves, outside the wedge ahead, and his death (`knees`) has none.
+# What does: the shoots from his head, swept back 40 degrees, keep their full size, their leaves
+# behind his head as he bows and kneels; and the boughs, swept back 25 degrees, keep 0.85 of theirs,
+# which keeps them in the hex as he heaves, the boulder clear of the right bough's leaves as he hurls
+# it (0.88 at 20 degrees put it 24 mm in on frame 15.5) and his death ending 1.94 tall, under four
+# fifths of the 2.45 he now stands (0.88 ended it 1.96, too tall).
+SWEEP = {'spine': (25, 0.85, V(0, 0.12, 1.62)), 'leaves': (40, 1.0, V(0, 0.08, 2.31))}
 
 
 def swept(on):

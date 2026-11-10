@@ -4,16 +4,19 @@ levels").
 The 1★ Ringwraith (ringwraith.py) plus one piece, a long sword of steel drawn in the left hand, as the
 Nine came up Weathertop against Frodo: "in their haggard hands were swords of steel" (The Fellowship
 of the Ring, I 11). The haggard hand that reached out with the Black Breath closes round its grip and
-holds it up, the blade leaning back over its left shoulder, so that it rises beside the hood from
-in front and from behind. Its guard and pommel are `trim`, as are the knife's, the clasp,
-the buckle and the bosses on the shoulders. The hood stays dark and faceless: the face is for the 3★.
+holds it up, the blade rising almost upright beside the hood, a little out and back, so that it
+reads as a drawn sword from in front and from behind. Its guard and pommel are `trim`, as are the
+knife's, the clasp, the buckle and the bosses on the shoulders. The hood stays dark and faceless:
+the face is for the 3★.
 
 It is rigged as the 1★ is: this script imports ringwraith.py, builds it with the fist and the sword
 in its left hand in place of the claw, bound to the hand (ringwraith.build()), and finishes it with
 the 1★'s rig, so it has the same bones and clips and moves as it does at 1★ (../README.md, Gear
-models). Main's 2★ model, built before the rig, tipped the knife up a little further, so that the
-static model reached no further than 0.85 from its centre and the client grew it the full 10%; a
-rigged model is scaled by the reach of its clips, so the knife is the 1★'s.
+models), but for the death, in which fit() lifts the hand further to keep the sword out of the
+ground (below). Main's 2★ model, built before the rig, tipped the knife up a little further, so that
+the static model reached no further than 0.85 from its centre and the client grew it the full 10%; a
+2★ model is scaled by its reach as it stands, which the 1★'s cloak and knife already make 0.88, so
+the knife is the 1★'s.
 
     blender --background --factory-startup --python-exit-code 1 --python ringwraith-2.py [-- <out.glb>]
 
@@ -37,13 +40,21 @@ GRIP = 0x1F1D1C  # its black grip
 
 # The gear for 2 stars: a long sword --------------------------------------------------------------
 
-# Drawn in the left hand and held up, leaning back over its left shoulder and a little out, its flat
-# to the front and the back. Main held it leaning forward and out (0.34, -0.12, 0.93), from the claw
+# Drawn in the left hand and held up, almost upright, a little out to its left and back, its flat to
+# the front and the back. Main held it leaning forward and out (0.34, -0.12, 0.93), from the claw
 # reaching out before it; on the rigged 1★ arm, that put its point out of the hex as the Black Breath
 # thrusts the hand at the foe's face, and into the ground as the hand drops by its knee in death, so
-# fit() drew the arm in and turned it up, by up to 103 and 175 degrees. Leaning back, it stays in the
-# hex and out of the ground in every clip, and the clips are the 1★'s, key for key.
-SWORD = V(0.15, 0.6, 0.8).normalized()
+# fit() drew the arm in and turned it up, by up to 103 and 175 degrees. So the first rigged one leaned
+# it back over its shoulder (0.15, 0.6, 0.8), where it stayed in the hex and out of the ground in
+# every clip, the clips the 1★'s key for key; but from the side it lay back behind the hood, and as the
+# Black Breath rears back it pointed straight out behind. Now a cast may reach ahead of the hex
+# (docs/viewer-spec.md section 4, Size), the Black Breath thrusts it at the foe's face as main's did and
+# keeps its room at any lean, and only the death still draws the arm in: upright it would turn the
+# hand up by 109 degrees, main's 175, and a little back as here by 74, its point lifted out of the
+# ground as the hand drops by its knee, which renders show as the sword flung out to its side as it
+# sinks. So it leans back only that much. The cast reaches 1.70 high as it rears back, 11 cm higher
+# than the first one's, which lifts its label in fights 5 cm at 2★ (stars.ts, labelHeight()).
+SWORD = V(0.2, 0.15, 0.97).normalized()
 SWORD_LENGTH = 0.62  # from the guard to the point, which stays below the label
 # Stations along the blade: fraction of its length, half-width and half-thickness.
 SWORD_STATIONS = [(0.0, 0.034, 0.011), (0.8, 0.026, 0.009)]
