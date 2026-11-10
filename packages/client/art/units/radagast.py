@@ -696,8 +696,9 @@ def branch():
 # beside him in his left hand (fit(pole='l')) and carried upright as he runs, the bird on his fist held
 # up before him; the staff pointed at the foe for each shot; for his cast (Flock) the staff and the fist
 # flung up as the bird flies off to the foe and back; dazed, he leans on the staff; falling, he sinks
-# to his knees into his robe as it falls beside him; and he holds it up high as he wins. The robe
-# below his knees hangs plumb under him (robed()).
+# to his knees into his robe as it falls beside him; and he holds it up high as he wins. fit() keeps
+# the staff in each clip's room between frames too (between), where it would swing out past the side
+# of his hex as it comes over to point ahead. The robe below his knees hangs plumb under him (robed()).
 CLIPS = robed(fit({
     'idle': ('ready', {'hand': 'l', 'breath': 0.8, 'sway': 0.7, 'crouch': 0.02}),
     'move': ('run', {'hand': 'l', 'heavy': 0.2, 'stride': 0.4, 'lift': 0.2, 'lean': 8.0, 'off': 'steady'}),
@@ -706,7 +707,7 @@ CLIPS = robed(fit({
     'stun': ('dazed', {'hand': 'l'}),
     'death': ('knees', {'hand': 'l', 'slump': 0.8, 'dropped': True, 'behind': -0.06}),
     'victory': ('raise', {'hand': 'l', 'out': 0.45}),
-}, pole='l', free=('attack', 'cast', 'victory'), ahead=1.0))
+}, pole='l', free=('attack', 'cast', 'victory'), ahead=1.0, between=True))
 RIG = Rig(bones={'robe': ('root', 'robe_top', 'robe_foot'), 'bird': ('hand_r', 'bird_seat', 'bird_top')}, clips=CLIPS)
 
 

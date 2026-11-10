@@ -579,15 +579,16 @@ def reins(mount):
 # horse's head, turned to its left, curls further round to its left as it falls. His blows are
 # drawn back further out on his right (out, wide) and the sword is held high further out (out), so
 # his fist clears his big hood. fit() draws the long sword in where it would reach out of the hex,
-# as it is carried at the gallop and levelled. As his cut comes over the top the sword is turned in
-# across his front and further down (across, early), so it passes level pointing ahead rather than
-# out past his hex between frames, and is swept out past the horse's shoulder only as it comes down.
+# as it is carried at the gallop and levelled. His cut comes over the top and down past the horse's
+# right shoulder as the style has it, the sword passing ahead of him in the room an attack has ahead
+# of his hex (docs/viewer-spec.md section 4, Size); when it had to keep to the hex, it was turned in
+# across his front and further down as it came over (across, early).
 # The victory's rear takes 1.0 s rather than the style's 1.2, so the horse is down and standing by
 # the time the fight's playback stops, 1 s after the end.
 CLIPS = fit({
     'idle': ('saddle', {'breath': 0.8, 'sway': 0.6}),
     'move': ('gallop', {}),
-    'attack': ('cut', {'out': 1.4, 'across': 40.0, 'early': 15.0}),
+    'attack': ('cut', {'out': 1.4}),
     'cast': ('charge', {'wide': 0.15}),
     'stun': ('reel', {'low': 1.0}),
     'death': ('fall', {}),

@@ -541,16 +541,19 @@ def arms():
 
 # His clips (../clips.py): the Orcs' idle and run, as Gorbag's (gorbag.py), both blades swinging as he
 # scuttles; a stab of the long knife, driven out from his hip, and for his cast (Sneak) a lunging stab
-# with his whole crooked body behind it.
+# with his whole crooked body behind it, at the full stretch of his arm and nearly level, into the room
+# a cast has ahead of his hex (docs/viewer-spec.md section 4, Size; it rose more and reached less when
+# it had to keep to the hex). fit() keeps the knife in each clip's room between frames too (between),
+# where the stab, driven further ahead, swings it out past the side of his hex.
 CLIPS = fit({
     'idle': ('ready', {'seconds': 2.0, 'crouch': 0.06}),
     'move': ('run', {'seconds': 0.43, 'heavy': 0.7, 'stride': 0.3, 'lift': 0.25, 'lean': 6.0, 'carry': 'pump'}),
     'attack': ('thrust', {'out': 20.0, 'wide': 0.2}),
-    'cast': ('lunge', {'reach': 0.6, 'rise': 30.0, 'wide': 0.4}),
+    'cast': ('lunge', {'reach': 1.0, 'rise': 10.0, 'wide': 0.4}),
     'stun': ('dazed', {}),
     'death': ('knees', {'lay': 0.12}),
     'victory': ('raise', {'out': 0.4}),
-})
+}, between=True)
 
 
 def build(bandolier=None):
