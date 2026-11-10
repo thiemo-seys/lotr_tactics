@@ -705,6 +705,16 @@ blender --background --factory-startup --python-exit-code 1 --python packages/cl
 
 `--clips` renders a rigged model's clips instead, as `<clip>.png` for each: a contact sheet of its frames, numbered with their times, in three rows seen from the game camera's 45 degrees: from the front (as the far side is seen), from its right, and from behind (as the near side is seen). Short clips show every frame and longer ones a dozen spread over them, with every frame of an attack or a cast from 4 before it strikes, or is at its height, to 1 after, and its later hits, from the armature's `strike` and `hits`. `--clips=attack,cast` renders only those, `--frames=0,3,8` picks the frames, and `--size=400` renders each frame bigger for a closer look. Look for parts that come apart, a weapon through the body or the head, and feet through the floor; `finish()` already warns about frames outside the hex or under the ground, and about the poses between them, and `clash.py` points to frames where a weapon may go through the head or the chest.
 
+### Inspecting clips in the browser
+
+The animation inspector plays a model's clips in Three.js, as the game poses them, so it shows what the contact sheets can't: the poses between frames, the motion at speed and the model at the size the game draws it. With `pnpm dev` running, open `/dev/anim.html` (`docs/animation-plan.md`, Tools). It reloads a model only when the page reloads, so rebuild with `pnpm models <id>`, then reload.
+
+- Pick a unit, its star level and a clip; play it at 0.1× to 2×, scrub the timeline, or step a frame at a time with the arrow keys. Shift and an arrow jumps to the clip's moments, marked on the timeline: an attack's strike, a cast's height and later hits, from the armature's `strike` and `hits`, and where a dying unit breaks into shards.
+- The game camera's two views, from the front and from behind, stand as far off as the game's camera, so the model is as big as on the board; the others look closely, and the mouse turns the camera.
+- The onion skin shows ghosts of the frames before the playhead (blue) and after it (orange). Trails trace the tip of what each hand holds, the soles (a mount's hooves for a Rider) and the head through the clip, four times a frame as Three.js poses it, with a dot on each whole frame and red where a path leaves the limit or goes under the ground.
+- It measures how far the model reaches, how low and how high it goes, now and over the whole clip, against the limit of 0.94 and `finish()`'s 5 mm under the ground; and shows the skeleton, the label's height and the arena.
+- The URL keeps what it shows, so a link to a pose from a camera, with its overlays, opens the same view, and Playwright can screenshot it.
+
 ### Checking clashes
 
 ```bash

@@ -9,6 +9,7 @@ How the units get rigs and animations, who does what, and in what order. The rul
 - [x] Workflow 2: the other 35 units, in three runs: 2a, 2b and 2c.
 - [x] The 2★ gear models: Gimli's, Éomer's and Treebeard's as the pattern, then the other 33 in five batches, and a play-test.
 - [x] The `attack` and `cast` clips retimed to the sim's wind-ups and melee blows (Retiming below).
+- [x] Tools: the animation inspector, version 1 (Tools below).
 
 All 36 units are rigged at 1★: Gimli; in run 2a, Éomer and Sharku on their mounts, Frodo, Sam and Merry, Aragorn, Boromir, Faramir and Beregond, and Balin and Dáin; in run 2b, the Ringwraith, Éowyn and Háma, Legolas, Haldir, Elrond and Galadriel, Gandalf, Saruman and Radagast, Gorbag, Grishnákh, Uglúk, Lurtz and Gothmog, Gamling, Théoden, Khamûl and the Witch-king on their horses, Pippin, Bilbo and Gollum, and Treebeard and Sauron. Run 2c checked them with full boards, a clash check and a play-test, and fixed what it found (Run 2c below). After it, Dáin's two-handed blows were redesigned, Faramir's stun was fixed, and the last blows that swung out of the hex between frames were brought in, so no 1★ model warns now (`art/README.md`, Fitting clips to what a model holds, and Checking clashes).
 
@@ -165,6 +166,22 @@ The sim now lands a melee blow 0.22 s after its attack and an ability at the end
 - **Units that changed.** Gorbag's and Gollum's hits come every 3 frames, as the sim's do, where they had 4 and 5. Haldir's Lórien volley looses its three arrows together, so his cast is a heavy shot from the draw rather than three in a row. Sauron's `reap` and Treebeard's `heave` begin drawn back (`begin` 1), since easing in from rest put the mace and the boulder through their bodies. Treebeard's idle is 2.6 s rather than 3.0, to keep his longer clips within his size: 298,432 of 300,000 bytes, and his gear model 336,616 of 337,500.
 - **Limits.** Every model builds without a warning: inside the hex and out of the ground on every frame and between them, under its size (Radagast's 199,460 of 200,000 bytes is the closest on foot), with its death low. The 3★ book models and the arena rebuilt byte for byte. The label clears the new attack and cast poses as before, since it is worked out from the clips as a model loads.
 - **Clashes.** `clash.py` on the attack and cast of all 72, against the clips before the retime: the same clashes, as deep, on later frames, but for grazes of 4 to 7 mm as the clips ease in from rest (Gothmog's cast, Khamûl's and Sharku's attacks, Merry's cast), Gandalf's sword hand 7 mm deeper into his chest as he heaves the staff slowly up, and Radagast's bird 11 mm deeper into his head as it leaves his fist. Treebeard's hurled boulder still waits inside him until he tears up another.
+
+## Tools
+
+The animation inspector is a page for looking at the clips closely in Three.js, which draws them in the game, rather than in Blender's renders. It is a dev tool: `pnpm dev` serves it at `/dev/anim.html`, and `pnpm build` leaves it out, so it never reaches players (`packages/client/dev/`; a test checks the build's pages).
+
+**Version 1,** built: one unit at a time, at its star level, in its livery (`art/README.md`, Inspecting clips in the browser).
+- Playing, scrubbing and stepping by frame, at 0.1× to 2×, with the clip's moments on the timeline: the strike, the cast's hits and the death's shards.
+- Camera presets: the game camera's from the front and from behind, at its distance, and close views; or the mouse.
+- The onion skin, trails of the hands, feet and head, the skeleton, the hex and its limit, the label's height and the arena.
+- How far the model reaches, how low and how high it goes, now and over the whole clip.
+- Everything it shows kept in the URL, for links to a pose and for screenshots with Playwright.
+- What it works out without the DOM or Three.js is in `dev/anim/state.ts`, tested in `test/anim-inspector.test.ts`.
+
+**Later versions,** not built:
+- Version 2: comparing. A grid of every unit playing one clip together, 1★ beside 2★, and a model beside the one committed in git, before and after a change; and notes on a frame, saved and exported as a list of fixes.
+- Version 3: clips in the game's logic. Sequences played through `animation.ts`, with its fades and cuts, attacks restarting at a fast attack speed, and `move` played as the unit slides from hex to hex, to show feet sliding; and models reloaded as `pnpm models` rebuilds them, or rebuilt as a script is saved, with Blender installed locally.
 
 ## Risks
 

@@ -32,6 +32,7 @@ A browser tool that runs one fight with `packages/sim` and plays it back in 3D. 
 packages/client/
   index.html       the fight viewer
   play.html        the play page (game-spec.md section 12)
+  dev/anim.html    the animation inspector, a dev tool that `pnpm dev` serves and the build leaves out (animation-plan.md, Tools)
   art/             the models' and arenas' Blender scripts, the rig kit, the clip library and the clash check (art/README.md, sections 3 and 4)
   public/models/   one .glb per unit and star level (<id>, <id>-2, <id>-3), built from art/ and committed, which both pages load
   public/arenas/   one .glb per arena, built from art/arenas/ and committed (section 3, Arena)

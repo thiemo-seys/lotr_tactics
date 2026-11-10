@@ -1,0 +1,86 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <meta name="color-scheme" content="dark" />
+    <title>Animation inspector · LOTR Tactics</title>
+  </head>
+  <!-- A dev tool, served by pnpm dev only: the build leaves it out (vite.config.ts). -->
+  <body class="anim">
+    <header class="topbar">
+      <span class="brand"><span data-icon="viewer"></span><span class="brand-text">Animation inspector</span></span>
+      <div class="group">
+        <label class="anim-field">Unit <select id="unit" class="select"></select></label>
+        <fieldset id="star" class="segmented">
+          <legend>Star level</legend>
+          <label><input type="radio" name="star" value="1" /><span>1★</span></label>
+          <label><input type="radio" name="star" value="2" /><span>2★</span></label>
+          <label><input type="radio" name="star" value="3" /><span>3★</span></label>
+        </fieldset>
+        <fieldset id="clip" class="segmented"><legend>Clip</legend></fieldset>
+      </div>
+      <span class="spacer"></span>
+      <div class="group">
+        <label class="anim-field">Camera <select id="camera" class="select"></select></label>
+        <button id="copy-link" class="btn btn-secondary btn-sm"><span data-icon="link"></span><span class="label">Copy link</span></button>
+      </div>
+    </header>
+    <main>
+      <div id="view"></div>
+      <div id="status" class="anim-status" role="status"></div>
+      <aside class="anim-side" aria-label="Overlays and measurements">
+        <section>
+          <h2 class="eyebrow">Overlays</h2>
+          <label class="anim-check"><input type="checkbox" id="hex" />Hex and limit</label>
+          <label class="anim-check"><input type="checkbox" id="bones" />Skeleton</label>
+          <label class="anim-check"><input type="checkbox" id="label" />Label height</label>
+          <label class="anim-check"><input type="checkbox" id="arena" />Arena</label>
+        </section>
+        <section>
+          <h2 class="eyebrow">Onion skin</h2>
+          <div class="anim-row">
+            <span class="anim-key">Ghosts</span>
+            <fieldset id="onion" class="segmented"><legend>Ghosts either side</legend></fieldset>
+          </div>
+          <div class="anim-row">
+            <span class="anim-key">Frames apart</span>
+            <fieldset id="gap" class="segmented"><legend>Frames between ghosts</legend></fieldset>
+          </div>
+        </section>
+        <section>
+          <h2 class="eyebrow">Trails</h2>
+          <label class="anim-check"><input type="checkbox" name="trail" value="hands" />Hands <span class="anim-hint">tip of what each holds</span></label>
+          <label class="anim-check"><input type="checkbox" name="trail" value="feet" />Feet <span class="anim-hint">soles, or a mount's hooves</span></label>
+          <label class="anim-check"><input type="checkbox" name="trail" value="head" />Head</label>
+        </section>
+        <section>
+          <h2 class="eyebrow">Measured</h2>
+          <dl id="measures" class="anim-measures"></dl>
+        </section>
+        <section>
+          <h2 class="eyebrow">Moments</h2>
+          <div id="moments" class="anim-moments"></div>
+        </section>
+        <section class="anim-keys">
+          <h2 class="eyebrow">Keys</h2>
+          <p><kbd>Space</kbd> play or pause · <kbd>←</kbd> <kbd>→</kbd> a frame · <kbd>Shift</kbd>+<kbd>←</kbd> <kbd>→</kbd> a moment ·
+            <kbd>Home</kbd> <kbd>End</kbd> · <kbd>1</kbd>–<kbd>7</kbd> clip · <kbd>[</kbd> <kbd>]</kbd> unit</p>
+        </section>
+      </aside>
+      <footer class="anim-transport">
+        <button id="play" class="btn btn-secondary btn-sm btn-icon" aria-label="Pause"><span data-icon="pause" class="when-playing"></span><span data-icon="play" class="when-paused"></span></button>
+        <button id="back" class="btn btn-secondary btn-sm btn-icon flip" aria-label="Back a frame"><span data-icon="step"></span></button>
+        <button id="forward" class="btn btn-secondary btn-sm btn-icon" aria-label="On a frame"><span data-icon="step"></span></button>
+        <fieldset id="speed" class="segmented"><legend>Speed</legend></fieldset>
+        <div id="timeline" class="anim-timeline" role="slider" tabindex="0" aria-label="Playhead" aria-valuemin="0">
+          <div class="frames"></div>
+          <div class="marks"></div>
+          <div class="head"></div>
+        </div>
+        <span id="clock" class="anim-clock"></span>
+      </footer>
+    </main>
+    <script type="module" src="./anim/main.ts"></script>
+  </body>
+</html>
