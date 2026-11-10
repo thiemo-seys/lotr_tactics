@@ -243,20 +243,25 @@ describe('what is drawn', () => {
     expect(p.projectiles.every((shot) => shot.hitTick > p.time)).toBe(true);
   });
 
-  it('shows damage, absorbed damage and casts as floating text that fades', () => {
+  it('shows damage and absorbed damage as floating text that fades, and no text for casts', () => {
     const p = playback(PRESETS.full, PRESETS.traits);
     p.advance(0.1);
     const kinds = new Set<string>();
+    const shown = new Set<string>();
     for (let i = 0; i < 400 && !p.combat.isOver(); i++) {
       p.advance(1 / TICKS_PER_SECOND);
       for (const text of p.texts) {
         kinds.add(text.kind);
+        shown.add(text.text);
         expect(p.time - text.startTick).toBeLessThan(EFFECT_TICKS.floatingText);
       }
     }
     expect(kinds).toContain('physical');
     expect(kinds).toContain('absorbed');
-    expect(kinds).toContain('cast');
+    // Abilities were cast, and none of their names showed.
+    const casts = p.combat.events.flatMap((e) => (e.type === 'cast' ? [e.ability] : []));
+    expect(casts.length).toBeGreaterThan(0);
+    for (const ability of casts) expect(shown.has(ability)).toBe(false);
   });
 
   it('starts a text on a unit clear of its others, which rise with it, so a multi-hit’s numbers each read', () => {

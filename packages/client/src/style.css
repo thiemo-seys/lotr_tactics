@@ -2016,19 +2016,6 @@ kbd {
   color: #b4bcc8;
 }
 
-.float.cast {
-  padding: 3px 8px 2px;
-  font: 700 11px/1 var(--font-display);
-  color: #fbe7a6;
-  letter-spacing: 0.04em;
-  background: rgba(14, 11, 4, 0.78);
-  border: 1px solid rgba(243, 210, 122, 0.55);
-  border-radius: var(--radius-pill);
-  box-shadow: 0 0 10px rgba(243, 210, 122, 0.25);
-  text-shadow: none;
-  -webkit-text-stroke: 0;
-}
-
 /* ---------------------------------------------------------------- The fight's outcome */
 
 .outcome-banner,

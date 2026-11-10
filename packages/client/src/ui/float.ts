@@ -1,4 +1,4 @@
-// A floating number or cast name over a unit (docs/viewer-spec.md section 5, Numbers and Effects), as
+// A floating number over a unit (docs/viewer-spec.md section 5, Numbers and Effects), as
 // two elements. The outer one is the CSS2DObject's: CSS2DRenderer writes its screen position into the
 // outer element's `transform` every frame, and CSS's `scale` multiplies all of that transform, offset
 // and all, so a number scaled there would start far from its unit and fly in as it shrinks. The pop

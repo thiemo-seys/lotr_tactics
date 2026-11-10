@@ -151,13 +151,6 @@ export interface Hit extends Timed {
   readonly flash: number;
 }
 
-/** Chevrons rising round a unit as a buff starts. `phase` sets apart the buffs that start together. */
-export interface Chevrons extends Timed {
-  readonly unit: number;
-  readonly colour: number;
-  readonly phase: number;
-}
-
 /** A thin ring under a unit while a buff, slow or reduction lasts. A reduction's darkens the ground. */
 export interface StatusRing extends Timed {
   readonly unit: number;
@@ -333,7 +326,6 @@ export class Effects {
   readonly rings: GroundRing[] = [];
   readonly scorches: Scorch[] = [];
   readonly hits: Hit[] = [];
-  readonly chevrons: Chevrons[] = [];
   readonly statusRings: StatusRing[] = [];
   readonly shells: Shell[] = [];
   readonly shakes: Shake[] = [];
@@ -377,7 +369,6 @@ export class Effects {
     this.rings,
     this.scorches,
     this.hits,
-    this.chevrons,
     this.statusRings,
     this.shells,
     this.shakes,
@@ -569,12 +560,6 @@ export class Effects {
     return false;
   }
 
-  /** How far into its rise a chevron is, `index` of the look's count, from 0 to 1; outside it, below 0 or 1 and above. */
-  chevronShare(chevrons: Chevrons, index: number, time = this.playback.time): number {
-    const { buff } = EFFECTS;
-    return (time - chevrons.start - ticks(buff.gap * (index + chevrons.phase * 0.5))) / ticks(buff.seconds);
-  }
-
   /** How big a status ring or shell is, from 0 as it starts to 1, and back to 0 as it ends. */
   grow(effect: Timed, seconds: number, time = this.playback.time): number {
     const span = ticks(seconds);
@@ -641,12 +626,9 @@ export class Effects {
         this.reach(e.source, e.target, e.tick, null);
         // A dead unit shows no status (and the sim gives it none); its marks ended as it died.
         if (this.dead(e.target, e.tick)) break;
+        // Buffs for the rest of the fight (traits and items) show nothing.
         if (e.status === 'buff' && e.stat !== null) {
-          const colour = EFFECTS.buff.colours[e.stat as BuffStat];
-          const phase = this.chevrons.filter((c) => c.unit === e.target && c.start === e.tick).length;
-          this.chevrons.push({ start: e.tick, end: e.tick + ticks(EFFECTS.buff.gap * (EFFECTS.buff.count + phase) + EFFECTS.buff.seconds), unit: e.target, colour, phase });
-          // Buffs for the rest of the fight (traits and items) rise as they start, and keep no ring.
-          if (e.expiresTick !== null) this.statusRing(e.target, 'buff', colour, e.tick, e.expiresTick);
+          if (e.expiresTick !== null) this.statusRing(e.target, 'buff', EFFECTS.buff.colours[e.stat as BuffStat], e.tick, e.expiresTick);
         } else if (e.status === 'slow' && e.expiresTick !== null) {
           this.statusRing(e.target, 'slow', EFFECTS.rings.slow, e.tick, e.expiresTick);
         } else if (e.status === 'reduce' && e.expiresTick !== null) {
@@ -676,13 +658,12 @@ export class Effects {
   /**
    * A unit died on `tick`: its status marks end with it, rather than on its empty hex until the
    * status would have expired. Its rings shrink away over EFFECTS.rings.grow from the death, as they
-   * would at their end; its chevrons stop. Stun stars and shells read the unit's state and history
+   * would at their end. Stun stars and shells read the unit's state and history
    * (`stunInto`, and the scene's `shielded`), so they are gone already.
    */
   private endStatuses(unit: number, tick: number): void {
     const shrink = ticks(EFFECTS.rings.grow);
     for (const ring of this.statusRings) if (ring.unit === unit) ring.end = Math.max(ring.start, Math.min(ring.end, tick + shrink));
-    for (const chevrons of this.chevrons) if (chevrons.unit === unit) chevrons.end = Math.max(chevrons.start, Math.min(chevrons.end, tick));
   }
 
   /** A ring under a unit, or the one it has of that kind lasting longer. */

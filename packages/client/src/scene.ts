@@ -116,7 +116,7 @@ interface ProjectileView extends EffectView {
   readonly mesh: THREE.Mesh;
 }
 
-/** A floating number or cast name. */
+/** A floating number. */
 interface TextView extends EffectView {
   readonly object: CSS2DObject;
   /** Its elements: the positioned one, and the one inside it that pops in (ui/float.ts). */
@@ -1041,9 +1041,9 @@ export class FightScene {
         view.float.lift(lift);
       }
       view.float.opacity(1 - progress * progress);
-      // Numbers pop in; the ability's name in its pill doesn't. On the inner element: scaling the one
-      // CSS2DRenderer positions would scale its offset on screen too (ui/float.ts).
-      view.float.scale(text.kind === 'cast' ? 1 : effects.numberScale(text.startTick));
+      // Numbers pop in. On the inner element: scaling the one CSS2DRenderer positions would scale its
+      // offset on screen too (ui/float.ts).
+      view.float.scale(effects.numberScale(text.startTick));
     }
   }
 

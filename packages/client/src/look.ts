@@ -240,13 +240,8 @@ export const EFFECTS = {
   big: { units: 3, windup: 0.5, shake: 0.14, shakeSeconds: 0.5, hitStop: 0.08, flashRadius: 2, flash: 0.22, flashSeconds: 0.3 },
   /** Gold stars circling a stunned unit's head. */
   stun: { colour: 0xffd34d, count: 3, size: 0.13, radius: 0.36, turnsPerSecond: 1, grow: 0.15 },
-  /** Chevrons rising round a buffed unit as the buff starts, in its stat's colour, and the thin ring under it while it lasts. */
+  /** The thin ring under a unit while a buff lasts, in its stat's colour. */
   buff: {
-    seconds: 0.75,
-    count: 3,
-    gap: 0.12,
-    height: 1.6,
-    size: 0.16,
     colours: { attackDamagePct: 0xff8a4a, attackSpeedPct: 0xffd34d, armor: 0xffc94d, magicResist: 0xb89cff },
   },
   /** Thin rings under slowed and reduced units, icy blue and dark red. */
