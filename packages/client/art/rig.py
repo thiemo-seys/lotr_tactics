@@ -116,6 +116,23 @@ def crowding(co, ahead: bool):
     wedge = -co[:, 1] >= radii * math.cos(math.radians(AHEAD_ANGLE))
     return radii / np.where(wedge, AHEAD_REACH, HEX_RADIUS)
 
+
+def measured(co, ahead: bool):
+    """How far each point is from the centre on the ground, measured against the hex: its distance, and
+    with `ahead`, for an attack or cast, for a point in the wedge ahead (crowding()), its distance times
+    kit.HEX_RADIUS / kit.AHEAD_REACH. So kit.HEX_RADIUS is the edge of the clip's room in every
+    direction, and a fitted clip that keeps what its hands hold `room` (clips.ROOM) from the centre by
+    this measure keeps it the same share inside its room ahead as to its sides. Without `ahead` it is
+    the distance, exactly."""
+    from kit import AHEAD_ANGLE, AHEAD_REACH, HEX_RADIUS  # noqa: PLC0415
+
+    radii = np.hypot(co[:, 0], co[:, 1])
+    if not ahead:
+        return radii
+    wedge = -co[:, 1] >= radii * math.cos(math.radians(AHEAD_ANGLE))
+    return np.where(wedge, radii * (HEX_RADIUS / AHEAD_REACH), radii)
+
+
 CLIENT = os.path.join(os.path.dirname(os.path.abspath(__file__)), '..')
 DATA = os.path.join(CLIENT, '..', 'sim', 'src', 'data')
 
@@ -730,7 +747,8 @@ class Rig:
         base_between = round(self.bottom_between, 4) + 0.0
         print(f'MODEL {model.name}: {len(self.bones)} bones (budget {MAX_BONES[self.kind]}), clips {marks}; '
               f'over every frame, radius {self.radius:.3f} and base {base:+.4f}; between frames, '
-              f'radius {self.radius_between:.3f} and base {base_between:+.4f}')
+              f'radius {self.radius_between:.3f} and base {base_between:+.4f}; '
+              + ', '.join(f'{name} reaches {self.reaches[name][0]:.3f} (frame {self.reaches[name][1]:g})' for name in ACTIONS))
 
     def _measure(self, model) -> None:
         """Keeps each bone's vertices as the model stands, for points() and lowest()."""
@@ -901,6 +919,7 @@ class Rig:
             parts.setdefault(bone, []).append(i)
         self.radius, self.bottom = 0.0, math.inf
         self.radius_between, self.bottom_between = 0.0, math.inf
+        self.reaches = {}  # each clip's furthest from the centre, on frames or between them: (how far, frame)
         for name in CLIPS:
             clip = self.clips[name]
             ahead = name in ACTIONS
@@ -917,6 +936,7 @@ class Rig:
                         co[rows] = (rest[rows] - np.array(m.head)) @ np.array(m.turn.to_matrix()).T + np.array(m.at)
                     radii = np.hypot(co[:, 0], co[:, 1])
                     crowded = crowding(co, ahead)
+                    self.reaches[name] = max(self.reaches.get(name, (0.0, 0)), (float(radii.max()), f + step / BETWEEN))
                     self.radius_between = max(self.radius_between, float(radii.max()))
                     self.bottom_between = min(self.bottom_between, float(co[:, 2].min()))
                     if crowded.max() > 1:
@@ -938,6 +958,7 @@ class Rig:
                             raise RuntimeError(f'{name} frame {f}: Blender poses the model unlike the rig')
                 radii = np.hypot(co[:, 0], co[:, 1])
                 crowded = crowding(co, ahead)
+                self.reaches[name] = max(self.reaches.get(name, (0.0, 0)), (float(radii.max()), f))
                 self.radius = max(self.radius, float(radii.max()))
                 self.bottom = min(self.bottom, float(co[:, 2].min()))
                 if crowded.max() > 1:

@@ -542,18 +542,19 @@ def banner():
         flat(name, points, TREE_FACES, M['mithril'], normal)
 
 
-# His clips (../clips.py), fitted to the long blade and the standard he holds, and kept in his hex
-# between frames too (between). The rally's sword is already turned down and out on the frame before
-# its blow (lead), so the long blade turns less in the frame it comes down in. On the frame before
-# each blow his elbow leads the blade forward and down (elbow) rather than staying up by his head, and
-# his chop's blade is already turned further down there (early), so his arm doesn't swing the sword
-# round out of his hex between that frame and the blow; the chop's sword is lifted back a frame later
-# (slow), so it doesn't swing out past level ahead between frames as it comes up.
+# His clips (../clips.py), fitted to the long blade and the standard he holds, and kept in their room
+# between frames too (between): his hex, and for his chop and his rally up to 1.3 ahead of him
+# (docs/viewer-spec.md section 4, Size). His long blade is turned down and out to his right as each
+# blow lands (steep, out). Both blows come over the top with his elbow up by his head, as the styles
+# have them, the sword passing level ahead of him on its way down; when they had to keep to the hex,
+# his elbow led the blade forward and down on the frame before each blow (elbow), the chop's blade was
+# turned further down there (early) and lifted back a frame later (slow), and the rally's was turned
+# down and out a frame early (lead), so the sword didn't swing out of his hex between frames.
 CLIPS = fit({
     'idle': ('ready', {}),
     'move': ('run', {'heavy': 0.3, 'lean': 10.0}),
-    'attack': ('chop', {'steep': 22.0, 'out': 40.0, 'elbow': 0.75, 'early': 15.0, 'slow': 1}),
-    'cast': ('rally', {'steep': 22.0, 'out': 40.0, 'lead': 1.0, 'elbow': 0.25}),
+    'attack': ('chop', {'steep': 22.0, 'out': 40.0}),
+    'cast': ('rally', {'steep': 22.0, 'out': 40.0}),
     'stun': ('dazed', {'low': 1.0}),
     'death': ('knees', {}),
     'victory': ('raise', {}),

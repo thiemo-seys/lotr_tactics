@@ -590,18 +590,19 @@ def mace_parts():
 # His clips (../clips.py): slow and heavy. He stands breathing slow, the mace upright and the Black
 # Hand raised; strides heavily, the hand held up; strikes overhand with the mace, over the top and
 # dropped steep past his right side before the fist drives it down before him (drop), so it doesn't
-# sweep level out of his hex between frames, his body still turned to his right as it drops so it
-# uncoils into the blow (coil), and lifts it back a frame later (slow), so neither the blow nor the
-# lift swings the mace out of his hex between frames; sweeps it round in a great level arc for his
-# cast (Sweep); sways, dazed, the mace sagging; sinks to his knees into his robe as he falls, the mace
-# laid before him and the hand dropping by his knee; and holds the mace high as he wins. fit() keeps
-# the mace in his hex between frames too (between). The robe below his knees hangs plumb under him
-# (robed()), and his cape swings less than a short one would, never in under him nor out of his hex
-# (draped()).
+# sweep level out of his hex to his right between frames, his body still turned to his right as it
+# drops so it uncoils into the blow (coil), and lifts it back across his front, where the room an
+# attack has ahead of his hex lets the mace pass level (docs/viewer-spec.md section 4, Size; when it
+# had to keep to the hex, it was lifted a frame later: slow); sweeps it round in a great level arc
+# for his cast (Sweep); sways, dazed, the mace sagging; sinks to his knees into his robe as he falls,
+# the mace laid before him and the hand dropping by his knee; and holds the mace high as he wins.
+# fit() keeps the mace in each clip's room between frames too (between). The robe below his knees
+# hangs plumb under him (robed()), and his cape swings less than a short one would, never in under him
+# nor out of his hex (draped()).
 CLIPS = robed(draped(fit({
     'idle': ('ready', {'seconds': 2.8, 'breath': 0.8, 'sway': 0.6, 'crouch': 0.02}),
     'move': ('run', {'heavy': 0.6, 'stride': 0.4, 'lift': 0.2, 'lean': 8.0, 'off': 'high'}),
-    'attack': ('smash', {'drop': 1.0, 'coil': 8.0, 'slow': 1}),
+    'attack': ('smash', {'drop': 1.0, 'coil': 8.0}),
     'cast': ('reap', {'turn': 55.0, 'begin': 1.0}),
     'stun': ('dazed', {'seconds': 1.4, 'low': 0.3, 'off_low': 0.7}),
     'death': ('knees', {'dropped': True, 'behind': 0.0, 'slump': 0.8, 'back': 0.15}),

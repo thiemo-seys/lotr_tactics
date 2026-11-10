@@ -40,6 +40,10 @@ each bone the short way round from one to the next (Rig.between()), so a bone th
 frame swings what hangs from it round in an arc, which can reach out of the hex where neither frame
 does. fit(between=True), or tweened() for a script that doesn't fit its clips, keeps what the hands
 hold, and a mount's feet, in the hex and out of the ground between frames as well (kept_between()).
+
+An attack's or a cast's room reaches further ahead than the hex (rig.crowding(), docs/viewer-spec.md
+section 4, Size), and the fitting tools keep what the hands hold in that room there: in the hex to the
+sides and behind, and up to kit.AHEAD_REACH straight ahead (rig.measured(), ROOM).
 """
 
 import math
@@ -48,7 +52,7 @@ import re
 import numpy as np
 from mathutils import Quaternion, Vector
 
-from rig import BETWEEN, CLIPS, FPS, LIMBS, STRIKE, Clip, V, aligning, turn_of
+from rig import ACTIONS, BETWEEN, CLIPS, FPS, LIMBS, STRIKE, Clip, V, aligning, measured, turn_of
 
 BLOW = 3  # the frame a style keys its blow or shot on, 0.1 s in; timed() moves a melee blow to STRIKE
 
@@ -1724,21 +1728,27 @@ def sound(rig, hand='l', seconds=0.8, height=5, rear=1.0, lift=0.0):
 # takes the specs a Rig takes and gives back, for each clip, a function of the rig, as a script's own
 # would be, that makes the clip with its style and then, in every frame:
 #
-# - draws in each hand that reaches for a target, wherever what it holds would reach out of the hex,
-#   as far as it must to keep it `room` from the centre, so a long blade's blow lands a little closer
-#   in, inside the hex; and lifts it wherever it would go under the ground, as a blade laid down;
+# - draws in each hand that reaches for a target, wherever what it holds would reach out of the
+#   clip's room, as far as it must to keep it `room` from the centre, so a long blade carried or swung
+#   out to the side lands a little closer in, inside the hex; in an attack or a cast (rig.ACTIONS),
+#   whose room reaches further ahead, `room` is measured against it (rig.measured()), so a blow
+#   straight ahead may reach the same share of the way to kit.AHEAD_REACH; and it lifts what the hand
+#   holds wherever it would go under the ground, as a blade laid down;
 # - with `pole`, the hand ('l' or 'r') that holds a pole stood on the ground beside the model (a
 #   standard, a banner, a staff, which hold() describes from the grip up to its top) keeps it planted
 #   where it stands while the model stands, fights and is stunned; carries it upright and clear of
 #   the ground as it runs; lets it tip over as the model falls; and lifts it as the model wins
 #   (holding()). Clips named in `free` leave the pole hand to their style, as a cast that raises a
 #   staff would, and are only kept in the hex and out of the ground;
-# - with `between`, keeps what the hands hold in the hex and out of the ground between frames too, as
-#   the client shows them, where a fast blow would swing it out between two frames (kept_between()).
+# - with `between`, keeps what the hands hold in the clip's room and out of the ground between frames
+#   too, as the client shows them, where a fast blow would swing it out between two frames
+#   (kept_between()).
 #
 #     Rig(clips=fit({'idle': ('ready', {}), 'attack': ('chop', {}), ...}, pole='l', between=True))
 
-ROOM = 0.92  # how far from the centre a fitted clip lets what a hand holds reach: inside the hex
+# How far from the centre a fitted clip lets what a hand holds reach: inside the hex, and in an attack's
+# or a cast's wedge ahead the same share of kit.AHEAD_REACH, 0.92 / 0.94 of 1.3 (1.27), by rig.measured().
+ROOM = 0.92
 SUNK = -0.005  # how far under the ground what a hand holds may dip between frames (kept_between())
 GIVE = 0.005  # how much deeper than the clip kept_between() may take a hand into the head or chest's hull
 
@@ -1872,18 +1882,20 @@ def fit(clips, room=ROOM, pole=None, free=(), bow=None, between=False, **holding
     """A Rig's clips, `{clip: spec}` as Rig takes them, each fitted to the model (above): back comes
     a function of the rig for each. `holding_options` go to holding(). With `bow`, the hand holding a
     bow the model stands at full draw with, the drawing hand stays on the string or lets it down
-    (strung(), An archer at the draw below). With `between`, what the hands hold is kept in the hex
-    and out of the ground between frames too, as the client shows them (kept_between()): for a fast
-    blow, whose arm turns so far in a frame that it would swing what it holds out between two."""
+    (strung(), An archer at the draw below). With `between`, what the hands hold is kept in the clip's
+    room and out of the ground between frames too, as the client shows them (kept_between()): for a
+    fast blow, whose arm turns so far in a frame that it would swing what it holds out between two.
+    An attack's or a cast's room reaches further ahead (rig.ACTIONS, rig.measured())."""
 
     def fitted(rig, clip, spec):
         clip_ = made(rig, clip, spec)
         pose = clip_.pose
+        ahead = clip in ACTIONS
         if pole is not None and clip not in free:
             pose = holding(rig, clip, clip_, pole, **holding_options)
-        pose = kept(rig, pose, room)
+        pose = kept(rig, pose, room, ahead)
         if between:
-            pose = kept_between(rig, clip_.with_pose(pose), room)
+            pose = kept_between(rig, clip_.with_pose(pose), room, ahead=ahead)
         if bow is not None:  # once the bow hand is kept in, so the drawing hand stays on the string
             pose = strung(rig, clip, clip_.with_pose(pose), bow)
         return clip_.with_pose(pose)
@@ -1918,10 +1930,12 @@ def below(rig, bone):
     return out
 
 
-def kept(rig, pose, room=ROOM):
+def kept(rig, pose, room=ROOM, ahead=False):
     """A clip's pose function with, in every frame, each hand that reaches for a target drawn in as
     far as it must to keep what it holds (the parts on it and on the bones hanging from it) `room`
-    from the centre, and lifted as far as it must to keep them out of the ground."""
+    from the centre, and lifted as far as it must to keep them out of the ground. With `ahead`, for an
+    attack or a cast, how far is measured against the clip's room ahead (rig.measured()), so what the
+    hand holds may reach further straight ahead."""
     held = {s: below(rig, f'hand_{s}') for s in ('l', 'r')}
 
     def fitted(frame):
@@ -1935,11 +1949,11 @@ def kept(rig, pose, room=ROOM):
                 p = np.concatenate([posed(rig, motions, b).reshape(-1, 3) for b in held[s]])
                 if not len(p):
                     break
-                radii = np.hypot(p[:, 0], p[:, 1])
+                radii = measured(p, ahead)
                 i = int(radii.argmax())
                 far = float(radii[i])
                 shift = V(0, 0, 0)
-                if far > room + 1e-6:
+                if far > room + 1e-6:  # drawn in towards the centre, which keeps it in the wedge ahead or out of it
                     shift -= (far - room + 1e-4) / far * V(float(p[i, 0]), float(p[i, 1]), 0)
                 low = float(p[:, 2].min())
                 if low < -TOUCH:
@@ -1977,9 +1991,10 @@ def hull_of(points):
     return np.array(normals), np.array(offsets)
 
 
-def kept_between(rig, clip, room=ROOM, steps=BETWEEN, floor=SUNK, bend=150.0):
-    """A clip's pose function kept in the hex and out of the ground between its frames too, as the
-    client shows them (Rig.between()). Three.js turns each bone the short way round from one frame
+def kept_between(rig, clip, room=ROOM, steps=BETWEEN, floor=SUNK, bend=150.0, ahead=False):
+    """A clip's pose function kept in the hex, or with `ahead`, for an attack or a cast, in its room
+    ahead too (rig.measured(), as kept() takes it), and out of the ground between its frames too, as
+    the client shows them (Rig.between()). Three.js turns each bone the short way round from one frame
     to the next, so an arm that swings far in one frame, as a blow does between its last frame drawn
     back and the frame it lands on, carries what its hand holds round in an arc about the shoulder,
     reaching further out than on either frame, which fit() keeps in the hex: a long weapon can reach
@@ -2078,13 +2093,13 @@ def kept_between(rig, clip, room=ROOM, steps=BETWEEN, floor=SUNK, bend=150.0):
 
     def reach(f, s):
         """How far from the centre what hand `s` holds reaches between frames f and f + 1, and on
-        them."""
+        them, measured against the clip's room (rig.measured())."""
         far = 0.0
         for step in range(steps + 1):
             between = motions[f + step // steps] if step in (0, steps) else rig.between(motions[f], motions[f + 1], step / steps)
             p = held_at(between, s)
             if len(p):
-                far = max(far, float(np.hypot(p[:, 0], p[:, 1]).max()))
+                far = max(far, float(measured(p, ahead).max()))
         return far
 
     # Moved in, a little at a time, the furthest first, by whichever way brings it in most without
@@ -2154,7 +2169,7 @@ def kept_between(rig, clip, room=ROOM, steps=BETWEEN, floor=SUNK, bend=150.0):
             ch = frames[g]
             if key.startswith('hand_'):
                 ch[key] = Vector(ch[key]) + moving_hand(rig, motions[g], ch, key[5], V(0, 0, rise))
-                kept(rig, lambda _, ch=ch: ch, room)(g)
+                kept(rig, lambda _, ch=ch: ch, room, ahead)(g)
             else:  # the mount's body, which hangs from the root, and the feet it places on the ground
                 for name in ['mount_body_at'] + [f'mount_{leg}_at' for leg in legs if f'mount_{leg}_at' in ch]:
                     ch[name] = Vector(ch.get(name, (0, 0, 0))) + V(0, 0, rise)
@@ -2169,15 +2184,16 @@ def kept_between(rig, clip, room=ROOM, steps=BETWEEN, floor=SUNK, bend=150.0):
 
 
 def tweened(clips, only=None, room=ROOM):
-    """A Rig's clips, `{clip: spec}` as Rig takes them, kept in the hex and out of the ground between
-    frames as well as on them (kept_between()), for a script that doesn't fit() its clips: all of
-    them, or those named in `only`. Back comes a function of the rig for each, as fit() gives."""
+    """A Rig's clips, `{clip: spec}` as Rig takes them, kept in their room and out of the ground
+    between frames as well as on them (kept_between()), for a script that doesn't fit() its clips: all
+    of them, or those named in `only`, an attack or a cast in its room ahead too (rig.ACTIONS). Back
+    comes a function of the rig for each, as fit() gives."""
 
     def wrapped(rig, clip, spec):
         made_clip = made(rig, clip, spec)
         if only is not None and clip not in only:
             return made_clip
-        return made_clip.with_pose(kept_between(rig, made_clip, room))
+        return made_clip.with_pose(kept_between(rig, made_clip, room, ahead=clip in ACTIONS))
 
     return {clip: (lambda rig, clip=clip, spec=spec: wrapped(rig, clip, spec)) for clip, spec in clips.items()}
 
@@ -2605,7 +2621,7 @@ def drawn_shot(rig, bow, seconds, loose, rise=0.0, recoil=1.0, string='string', 
     k.key(nocked, 'smooth', **w.pointed(-2, -w.slack.length * gather, 0.015, 2, point), spine=V(1, 0, b.yaw(1)),
           head=V(1, 0, 0))
     k.key(n, **b.still())
-    keyed = kept(rig, k)  # in the hex before the drawing hand and the arrow are worked out from it
+    keyed = kept(rig, k, ahead=True)  # in its room before the drawing hand and the arrow are worked out from it
 
     # The string: drawn deeper, then let down as it is loosed, and drawn again once nocked.
     s_keys = Keys().key(0, s=0.0).key(loose - 1, s=-deeper).key(loose, 'linear', s=1.0).key(nocked, s=1.0)
@@ -3189,7 +3205,7 @@ def flurry(rig, bow='l', seconds=0.8, height=3, shots=5, every=3, deeper=0.5, re
     if point:  # pointed at the ground as the hand catches the string again
         k.key(back, 'smooth', **w.pointed(-2, 0.0, 0.01, 10 * recoil, point))
     k.key(n, **b.still())
-    keyed = kept(rig, k)  # in the hex before the drawing hand and the arrow are worked out from it
+    keyed = kept(rig, k, ahead=True)  # in its room before the drawing hand and the arrow are worked out from it
 
     # The string: drawn, let down as each is loosed, caught again a little drawn and drawn for the next;
     # after the last, let down until the hand takes it again, then drawn as the model stands.
@@ -4144,7 +4160,7 @@ def heave(rig, hand='r', seconds=0.8, height=4, boulder='boulder', inside='bould
 
     The boulder is on a bone of the model's own, `boulder`, hanging from the hand from its middle, and
     hold() describes it from the palm to its middle. It flies on out of the hand for a frame after it
-    is let go, as far as the hex lets it, then waits inside the body at the joint `inside` (on the
+    is let go, as far as its room ahead lets it, then waits inside the body at the joint `inside` (on the
     spine), standing in for the one hurled, until the hand tears up another."""
     b = Body(rig, hand)
     n = frames_for(seconds)
@@ -4191,9 +4207,16 @@ def heave(rig, hand='r', seconds=0.8, height=4, boulder='boulder', inside='bould
           hips_at=V(0, -0.04 * leg, -0.07 * leg), hips=V(4, 0, 0), spine=V(14, 0, b.yaw(-2)), head=V(-6, 0, 0))
     k.key(n, **b.still())
     k.key(n, **{f'hand_{hand}_world': 1.0})
-    pose = kept(rig, k, room)
+    pose = kept(rig, k, room, ahead=True)
     points = rig.points(boulder)
     size = float(np.hypot(*(points - np.array(middle))[:, :2].T).max()) if len(points) else 0.0
+
+    def reaching(centre):
+        """How far the boulder reaches with its middle at `centre`, on the ground and measured against
+        the cast's room (rig.measured()): its far side, straight out from the centre."""
+        r = centre.length
+        edge = centre * ((r + size) / r) if r > 1e-9 else centre
+        return float(measured(np.array([[edge.x, edge.y, 0.0]]), True)[0])
 
     def held(f):
         """Where the boulder's middle is and how it is turned in frame f, in the hand."""
@@ -4203,8 +4226,8 @@ def heave(rig, hand='r', seconds=0.8, height=4, boulder='boulder', inside='bould
     hand_bone = f'hand_{hand}'
     (was, _), (at, flung) = held(height - 1), held(height)
     step, out = V(at.x - was.x, at.y - was.y, 0), V(at.x, at.y, 0)
-    on = 1.0  # how much of its last step it flies on, out as far as the hex lets it
-    while on > 0 and (out + on * step).length > room - size:
+    on = 1.0  # how much of its last step it flies on, out as far as its room lets it
+    while on > 0 and reaching(out + on * step) > room:
         on -= 0.05
     flying = out + max(on, 0.0) * step + V(0, 0, at.z + max(at.z - was.z, 0.0) + 0.2)
 
@@ -4413,7 +4436,11 @@ def reap(rig, hand='r', seconds=0.8, height=4, drop=70.0, turn=45.0):
     return Clip(n, k, marks={'height': height})
 
 
-# Blows kept in the hex between frames (units/aragorn.py, eowyn.py, khamul.py, sharku.py, sauron.py)
+# Blows kept in the hex between frames (units/sharku.py, sauron.py)
+#
+# Written for blows that kept to the hex. An attack's or a cast's room now reaches further ahead
+# (rig.measured()), where most of these arcs pass, so Aragorn's, Éowyn's and Khamûl's blows no longer
+# need them; Sharku's cut and Sauron's smash, which still swing out past the side of the hex, do.
 #
 # The client turns each bone the short way round from one frame to the next (Rig.between()), so an
 # arm that turns far in the one frame a blow comes down in swings what it holds round in an arc about

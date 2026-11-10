@@ -591,8 +591,10 @@ CAPE_HEM = V(0, 0.25, 0.315)
 
 # His clips (../clips.py): a Hobbit's run and stance, as Frodo's; a slash of the barrow-blade drawn
 # back wide of his curls and followed through ahead of his belly, as Frodo's; Barrow-blade, a lunge
-# that drives it home from wide by his hip, clear of his belly, rising and short of the hex's edge,
-# for the blade is long; dazed with it barely drooping, since his crouch holds it low already; his
+# that drives it home from wide by his hip, clear of his belly, at the full stretch of his arm and
+# rising a little, the long blade reaching into the room a cast has ahead of his hex
+# (docs/viewer-spec.md section 4, Size; it rose more, short of the hex's edge, when it had to keep to
+# the hex); dazed with it barely drooping, since his crouch holds it low already; his
 # empty guard hand falling out by his knee as he dies, rather than into his belly; and the blade
 # raised wide of his curls.
 RIG = Rig(
@@ -601,7 +603,7 @@ RIG = Rig(
         'idle': ('ready', {}),
         'move': ('run', {'heavy': 0.25, 'stride': 0.7, 'lift': 0.45}),
         'attack': ('swing', {'wide': 0.2, 'ahead': 0.35}),
-        'cast': ('lunge', {'reach': 0.8, 'rise': 25, 'wide': 0.5}),
+        'cast': ('lunge', {'reach': 1.0, 'rise': 10, 'wide': 0.5}),
         'stun': ('dazed', {'droop': 0.1}),
         'death': ('knees', {'dropped': True}),
         'victory': ('raise', {'out': 0.35}),

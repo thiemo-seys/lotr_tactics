@@ -553,16 +553,18 @@ CROWN = V(0, 0.015, 1.414)  # the top of her head, on the parting
 # Her clips (../clips.py): Rohan on foot, as a Man moves, with Aragorn's idle and run (aragorn.py), the
 # shield held up as she runs as Beregond's is (beregond.py). She chops with her sword, from high over
 # her shoulder, wide of her hair, down and out to her right so the blow shows past her from behind,
-# her elbow leading the blade forward and down on the frame before it lands, the blade already
-# turned further down there (elbow, early), and lifting it back a frame later (slow), so the sword
-# doesn't swing out of her hex between frames; her cast (Shieldmaiden) is a parry and a riposte:
+# over the top with her elbow up by her head as the style has it, the sword passing level ahead of
+# her on its way down, in the room an attack has ahead of her hex (docs/viewer-spec.md section 4,
+# Size; when it had to keep to the hex, her elbow led the blade down a frame early, the blade turned
+# further down there and lifted back a frame later: elbow, early, slow); her cast (Shieldmaiden) is a
+# parry and a riposte:
 # the shield up before her face, then the sword driven past it and up at the enemy. Stunned, the
 # raised sword droops to her hip; she dies on her knees with her shield still before her, and wins
 # with the sword held high.
 CLIPS = fit({
     'idle': ('ready', {}),
     'move': ('run', {'heavy': 0.3, 'lean': 10.0, 'off': 'high'}),
-    'attack': ('chop', {'wide': 0.2, 'steep': 10.0, 'out': 25.0, 'elbow': 0.75, 'early': 15.0, 'slow': 1}),
+    'attack': ('chop', {'wide': 0.2, 'steep': 10.0, 'out': 25.0}),
     'cast': ('riposte', {}),
     'stun': ('dazed', {'low': 1.0}),
     'death': ('knees', {'slump': 0.8}),
