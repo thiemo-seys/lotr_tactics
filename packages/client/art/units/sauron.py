@@ -14,17 +14,16 @@ inside the robe below the knees; and the robe below the knees, with the foot of 
 of its own, `robe`, which hangs plumb under him, twists after his knees as he strides and rests on the
 ground as he sinks into it (../clips.py, robed()). His legs are hidden, but his sabatons step out under
 the hem. His great cape hangs from his shoulders on a bone of its own, `cape`, and swings less than a
-short one, never in under him nor out of his hex (draped()). He strikes overhand with the mace, sweeps
-it round in a great level arc for his cast (Sweep), and holds it high as he wins.
+short one, never in under him nor out of his hex (draped()). He strikes overhand with the mace, down
+before him onto the foe in the next hex, sweeps it round in a great level arc for his cast (Sweep), and
+holds it high as he wins.
 
 His fittings use `trim`, which the client colours iron, silver or gold by star level
 (docs/viewer-spec.md section 4, "Star levels"): the stepped edges and rivets of his pauldrons, the
 two clasps that pin his cape to his back, the belt buckle, and the mace's collar, socket and pommel.
-The crown's band stays gold, for it is a crown and not a fitting. The right pauldron has no rivet at
-the front of its outer side, where the mace comes down past it as he smashes: there, it would keep the
-blow from being drawn into his hex between frames. His 2★ model is sauron-2.py, which imports this
-script and builds him with its haute-pieces standing up from his pauldrons (build()), and his 3★
-model sauron-3.py.
+The crown's band stays gold, for it is a crown and not a fitting. His 2★ model is sauron-2.py, which
+imports this script and builds him with its haute-pieces standing up from his pauldrons (build()), and
+his 3★ model sauron-3.py.
 
     blender --background --factory-startup --python-exit-code 1 --python sauron.py [-- <out.glb>]
 
@@ -436,10 +435,6 @@ PAULDRON = [(-0.07, 0.24), (0.015, 0.236), (0.03, 0.208), (0.085, 0.198), (0.1, 
 PAULDRON_BANDS = [0, 1, 0, 1, 0]  # iron lames, trim edges
 PAULDRON_TOP = 0.19
 RIVETS = (0, 1, 2, 3, 7)  # the lowest lame's faces that get a rivet: its outer side, front to back
-# But not the front of the right one's outer side (its face 2), where the mace comes down past his
-# shoulder as he smashes: a rivet there, on his spine, keeps fit() from drawing the blow into his hex
-# between frames.
-MACE_PASS = 2
 
 
 def pauldron(side, s):
@@ -456,8 +451,6 @@ def pauldron(side, s):
         part(f'pauldron-{side}', verts, faces, [M['iron'], M['trim']], face_mats, inside=centre)
         # A rivet in the middle of each outer face of the lowest lame.
         for k in RIVETS:
-            if s < 0 and k == MACE_PASS:
-                continue
             corners = [verts[i] for i in faces[k]]
             middle = sum(corners, Vector()) / 4
             out = newell(corners).normalized()
@@ -588,21 +581,22 @@ def mace_parts():
 
 
 # His clips (../clips.py): slow and heavy. He stands breathing slow, the mace upright and the Black
-# Hand raised; strides heavily, the hand held up; strikes overhand with the mace, over the top and
-# dropped steep past his right side before the fist drives it down before him (drop), so it doesn't
-# sweep level out of his hex to his right between frames, his body still turned to his right as it
-# drops so it uncoils into the blow (coil), and lifts it back across his front, where the room an
-# attack has ahead of his hex lets the mace pass level (docs/viewer-spec.md section 4, Size; when it
-# had to keep to the hex, it was lifted a frame later: slow); sweeps it round in a great level arc
-# for his cast (Sweep); sways, dazed, the mace sagging; sinks to his knees into his robe as he falls,
-# the mace laid before him and the hand dropping by his knee; and holds the mace high as he wins.
-# fit() keeps the mace in each clip's room between frames too (between). The robe below his knees
+# Hand raised; strides heavily, the hand held up; strikes overhand with the mace, up and back over his
+# shoulder, high over his head and down before him onto the foe in the next hex (onto), his right
+# shoulder driven forward and his body bowed into the blow, which, with the lunge the client gives a
+# melee blow, lands the mace's head on a Man's head and shoulder there; then lifts it back across his front.
+# The mace comes down by his middle, inside the room an attack has ahead of his hex
+# (docs/viewer-spec.md section 4, Size), so it needs none of the options that kept the old blow by his
+# knee in his hex between frames (drop, coil); sweeps it round in a great level arc for his cast
+# (Sweep); sways, dazed, the mace sagging; sinks to his knees into his robe as he falls, the mace laid
+# before him and the hand dropping by his knee; and holds the mace high as he wins. fit() keeps the
+# mace in each clip's room between frames too (between). The robe below his knees
 # hangs plumb under him (robed()), and his cape swings less than a short one would, never in under him
 # nor out of his hex (draped()).
 CLIPS = robed(draped(fit({
     'idle': ('ready', {'seconds': 2.8, 'breath': 0.8, 'sway': 0.6, 'crouch': 0.02}),
     'move': ('run', {'heavy': 0.6, 'stride': 0.4, 'lift': 0.2, 'lean': 8.0, 'off': 'high'}),
-    'attack': ('smash', {'drop': 1.0, 'coil': 8.0}),
+    'attack': ('smash', {'onto': True}),
     'cast': ('reap', {'turn': 55.0, 'begin': 1.0}),
     'stun': ('dazed', {'seconds': 1.4, 'low': 0.3, 'off_low': 0.7}),
     'death': ('knees', {'dropped': True, 'behind': 0.0, 'slump': 0.8, 'back': 0.15}),

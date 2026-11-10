@@ -4086,8 +4086,9 @@ def sprawl(rig, hand='r', paw='l', seconds=0.5):
 #
 # Treebeard's beard and the leaves on his head sway after him (swaying()), and his cast hurls the
 # boulder he holds and tears up another from the ground (heave). Sauron's mace is about as long as the
-# hex is wide, too long to swing level in it: his blow comes over the top and down steep (smash), and
-# his sweep turns it round the front tipped steeply down (reap); his long cape lies on his back and
+# hex is wide, too long to swing level in it: his blow comes over the top and down before him onto
+# the foe ahead, where an attack has room (smash's `onto`), and his sweep turns it round the front
+# tipped steeply down (reap); his long cape lies on his back and
 # never swings in under him (draped()). Both slump deep as they die, their hips settled back (knees'
 # `back`), so their heads stay inside the hex.
 
@@ -4316,7 +4317,7 @@ def draped(clips, bone='cape', share=0.5, hang=0.0, slack=0.05, room=ROOM):
 
 
 @style('attack', 'smash')
-def smash(rig, hand='r', seconds=0.6, out=10.0, inward=8.0, drop=0.0, coil=0.0, slow=0):
+def smash(rig, hand='r', seconds=0.6, out=10.0, inward=8.0, drop=0.0, coil=0.0, slow=0, onto=False):
     """An overhand blow with a weapon too long to swing level in the hex, a great mace or maul in one
     hand (Sauron's), its path drawn where it goes: raised up and back over the shoulder, the body turned
     to its side and rearing; swung up over the top with the fist high and drawn back over the shoulder,
@@ -4339,7 +4340,13 @@ def smash(rig, hand='r', seconds=0.6, out=10.0, inward=8.0, drop=0.0, coil=0.0, 
     hex between frames, below): `coil` keeps the body turned that many degrees further to the
     weapon's side on frame 2, the hips half as far, so it uncoils into the blow and the arm swings
     less between frames 2 and 3; `slow` lifts the weapon back that many frames later, so it swings
-    across the front over more frames."""
+    across the front over more frames.
+
+    `onto` brings the blow down before the body onto the foe ahead instead of by the knee, using the
+    room an attack has ahead of the hex (docs/viewer-spec.md section 4, Size), and the other options
+    don't apply to it (smash_onto())."""
+    if onto:
+        return smash_onto(rig, hand, seconds)
     b = Body(rig, hand)
     n = frames_for(seconds)
     leg = b.leg
@@ -4376,6 +4383,65 @@ def smash(rig, hand='r', seconds=0.6, out=10.0, inward=8.0, drop=0.0, coil=0.0, 
         (BLOW + 2, 'out', (13, -9), (4, -5), (0.03, 0.085)),
         (BLOW + 5, 'smooth', (12, -8), (3, -4), (0.03, 0.08)),
         (BLOW + 11 + slow, 'smooth', (2, -2), (0, -1), (0.01, 0.03)),
+    ]
+    for f, ease, spine, hips, (ahead, low) in body:
+        k.key(f, ease, spine=V(spine[0], 0, b.yaw(spine[1])), hips=V(hips[0], 0, b.yaw(hips[1])),
+              hips_at=V(0, -ahead * leg, -low * leg))
+    k.key(0, head=V(5, 0, b.yaw(-8)), cape=V(-4, 0, 0), **b.arm(off, b.wrist(off, 0.0, -0.1, 0.04)))
+    k.key(BLOW, 'in', head=V(-9, 0, b.yaw(6)), cape=V(10, 0, 0), **b.arm(off, b.wrist(off, 0.06, 0.14, -0.04)))
+    k.key(n, **b.still())
+    k.key(n, **{f'hand_{hand}_world': 1.0})
+    return Clip(n, k, marks={'strike': BLOW})
+
+
+def smash_onto(rig, hand, seconds):
+    """smash with `onto` (Sauron's): the blow comes down before the body onto the foe in the next hex,
+    rather than by the knee. Raised up and back over the shoulder as smash raises it, the body turned to
+    the weapon's side and rearing; then the fist high over the head, the head coming over upright; then
+    on frame 3 driven down and forward, the arm reaching ahead and in towards the middle, the head 50
+    degrees below level before the chest, the body bowed into it and turned the other way, so the
+    weapon's shoulder leads; a rebound and a hold, the head still on the foe; then lifted back as smash
+    lifts it, across the front past the belly and up before the chest, to rest.
+
+    The arm swings the head down in a plane by the middle, inside the 30 degrees ahead where an attack
+    may reach 1.3, so it needs neither smash's `drop` nor `coil` to keep it in its room between frames:
+    a weapon swung down the weapon's own side, at the shoulder's width, would reach out past the edge of
+    the wedge, where the room is the hex's. The fist can't reach further ahead than the arm is long, so
+    the body turns the weapon's shoulder forward to carry it there. A melee attack lunges at its blow
+    (docs/viewer-spec.md section 5), which takes the head the rest of the way onto the foe."""
+    b = Body(rig, hand)
+    n = frames_for(seconds)
+    leg = b.leg
+    off = b.off
+    k = Keys(lag={'head': 1, 'cape': 2})
+    k.key(0, **b.still())
+    # (frame, ease, degrees from upright towards the front, the wrist by the shoulder, yaw to its side)
+    path = [
+        (0, 'smooth', -45, (0.15, 0.3, 0.7), -4),  # raised up and back over the shoulder
+        (1, 'in', -30, (0.05, 0.2, 0.82), -2),  # higher, the body rearing
+        (2, 'in', 20, (-0.16, 0.02, 0.96), -4),  # the fist high over the head, the head coming over
+        (BLOW, 'in', 140, (-0.4, -0.88, 0.45), -5),  # down before him onto the foe, the arm reaching
+        (BLOW + 2, 'out', 132, (-0.4, -0.86, 0.5), -5),  # the rebound
+        (BLOW + 5, 'smooth', 135, (-0.38, -0.84, 0.43), -5),
+    ]
+    for f, ease, theta, at, yaw in path:
+        aim, face = arc(theta, b.yaw(yaw))
+        k.key(f, ease, **b.arm(hand, b.near(*at), b.rig.aim(hand, aim, face), (0.8, 0.2, -0.4), world=1.0))
+    # Lifted back as smash lifts it, across the front: its head swung past the belly to the other side
+    # and up before the chest and face.
+    for f, at, way in ((BLOW + 8, (-0.2, -0.82, -0.25), (-0.75, -0.25, -0.6)),
+                       (BLOW + 11, (-0.1, -0.75, -0.4), (-0.45, -0.35, 0.82))):
+        k.key(f, 'smooth', **b.arm(hand, b.near(*at), b.aim(way, (0, -1, 0)), (0.8, 0.2, -0.4), world=1.0))
+    # (frame, ease, spine and hips as pitch and yaw to the weapon's side, hips forward and down as
+    # shares of the leg)
+    body = [
+        (0, 'smooth', (-8, 14), (-2, 6), (-0.02, 0.03)),
+        (1, 'in', (-10, 10), (-3, 5), (-0.02, 0.03)),
+        (2, 'in', (-2, 4), (0, 2), (0.0, 0.05)),
+        (BLOW, 'in', (14, -20), (5, -9), (0.05, 0.1)),
+        (BLOW + 2, 'out', (13, -19), (5, -9), (0.04, 0.095)),
+        (BLOW + 5, 'smooth', (12, -17), (4, -8), (0.04, 0.09)),
+        (BLOW + 11, 'smooth', (2, -2), (0, -1), (0.01, 0.03)),
     ]
     for f, ease, spine, hips, (ahead, low) in body:
         k.key(f, ease, spine=V(spine[0], 0, b.yaw(spine[1])), hips=V(hips[0], 0, b.yaw(hips[1])),
@@ -4440,7 +4506,8 @@ def reap(rig, hand='r', seconds=0.8, height=4, drop=70.0, turn=45.0):
 #
 # Written for blows that kept to the hex. An attack's or a cast's room now reaches further ahead
 # (rig.measured()), where most of these arcs pass, so Aragorn's, Éowyn's and Khamûl's blows no longer
-# need them; Sharku's cut and Sauron's smash, which still swing out past the side of the hex, do.
+# need them; Sharku's cut, which still swings out past the side of the hex, does. Sauron's smash needed
+# `drop` and `coil` until it came down before him onto the foe (`onto`), inside the wedge ahead.
 #
 # The client turns each bone the short way round from one frame to the next (Rig.between()), so an
 # arm that turns far in the one frame a blow comes down in swings what it holds round in an arc about
