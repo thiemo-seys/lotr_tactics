@@ -75,7 +75,7 @@ packages/client/
       tip-card.ts  a tooltip's contents
       chips.ts     item and ring chips, trait badges and costs
       labels.ts    the overlay above each unit
-      float.ts     a floating number or cast name: the element CSS2DRenderer positions, and the one in it that pops in
+      float.ts     a floating number: the element CSS2DRenderer positions, and the one in it that pops in
       unit-hover.ts  the card for the unit under the pointer in the 3D view
       frame-cap.ts   the button that caps the frame rate, and remembering the choice
     play/          the play page's parts
@@ -243,7 +243,7 @@ A unit's star level shows four ways at once, chosen from a study of Frodo, Arago
     - A text that starts on a unit while others of its texts show starts at the lowest height, from the bottom or just above one of them, at least 0.32 from where each of them is then. They all rise at the same pace, so they stay that far apart: texts that start together stack upwards, and so do a multi-hit's numbers a few ticks apart, rather than printing over each other (`textOffset` in playback.ts).
     - Physical damage is orange, magic blue, true white; heals are green.
     - Crits are bigger. Absorbed damage is shown separately.
-  - **Casts:** the ability's name above the caster's label, in a gold pill, and its wind-up, travel and impact (Effects below).
+  - **Casts:** its wind-up, travel and impact (Effects below). The ability's name isn't shown, to keep fights uncluttered.
 - Health, shields, mana and statuses come from `combat.state`, which is the state after the last processed tick.
 - At the end, a banner shows the result and the final tick, in gold for a win and grey for a draw.
 
@@ -357,15 +357,15 @@ How abilities, hits and statuses look: the **punchy** style, chosen on 6 Novembe
   - The camera shakes, by up to 0.14, dying away over 0.5 s; big moments together shake it no further. It moves the camera for the frame only, never the controls' state.
   - **Hit-stop:** the caster and the units it reached hold their clip's pose for 0.08 s, then catch it up over the next 0.08 s at twice its speed, so they are back in step 0.16 s after the hit. Their positions don't hold, nor does anything else. The clock doesn't stop, so playback keeps the sim's pace and an online fight its timing (`server-spec.md` section 5.3).
   - An area of radius 2 or a lob flashes the screen, faintly, in the ability's colour.
-- **Statuses,** while they last, from their `status` events and `combat.state`, and never past their unit's death: as it dies its rings shrink away over 0.15 s and its chevrons stop, as its stun stars and shell go, so nothing is left on its empty hex.
+- **Statuses,** while they last, from their `status` events and `combat.state`, and never past their unit's death: as it dies its rings shrink away over 0.15 s, as its stun stars and shell go, so nothing is left on its empty hex.
   - **Stun:** gold stars circling the head, with the `stun` clip.
-  - **Buff:** chevrons rising round the unit as it starts, in the stat's colour, and a thin ring under it while it lasts. Buffs that last the rest of the fight (traits and items) rise as they start and keep no ring.
+  - **Buff:** a thin ring under the unit while it lasts, in the stat's colour. Buffs that last the rest of the fight (traits and items, such as the Archer trait's and Grond's stacks) show nothing, as they would otherwise come on every attack.
   - **Slow** and **reduction:** a thin ring under the unit while it lasts, icy blue for a slow and dark red for a reduction.
   - **Shield:** a faceted shell round the unit, popping in when the shield starts and rippling when it absorbs damage, until it expires or is used up. It is faint and fits the unit (0.85 of its chest height, plus a little, at most 0.82), so the unit and its swing read through it; its faceted edges carry the look.
   - **Untargetable:** the fade, as before.
 - **Deaths:** halfway through its `death` clip (section 5, Death), where it stands, the unit breaks into faceted shards in its livery colour (a pawn's in its stone), which fly out, fall and shrink away over 0.7 s. It does under reduced motion too, since it shows the death.
 - **Reduced motion:** no shake, hit-stop, screen flash or squash. Telegraphs, flashes, projectiles, status marks and numbers stay, since they show what happens.
-- **Cost:** effects use meshes and materials made once and reused, one instanced mesh for each kind of piece, and two point lights in the scene from the start (unlit until a caster's fire or a lob's blast needs them), so the first of a kind compiles no new shader: the scene compiles them all, for the texture it draws into (section 3, Arena), as it starts. Effects come only on the ticks of the events that make them, so a frame between ticks allocates nothing. The cast ring under a caster is gone; the ability's name stays, in its pill.
+- **Cost:** effects use meshes and materials made once and reused, one instanced mesh for each kind of piece, and two point lights in the scene from the start (unlit until a caster's fire or a lob's blast needs them), so the first of a kind compiles no new shader: the scene compiles them all, for the texture it draws into (section 3, Arena), as it starts. Effects come only on the ticks of the events that make them, so a frame between ticks allocates nothing. The cast ring under a caster, the ability's name in a pill above it and the chevrons rising round a buffed unit are gone, as fights were cluttered.
 
 ---
 

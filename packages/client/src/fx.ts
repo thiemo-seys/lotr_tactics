@@ -239,19 +239,6 @@ function starGeometry(): THREE.BufferGeometry {
   return new THREE.ExtrudeGeometry(shape, { depth: 0.35, bevelEnabled: false }).translate(0, 0, -0.175);
 }
 
-/** A chevron pointing up, for buffs. */
-function chevronGeometry(): THREE.BufferGeometry {
-  const shape = new THREE.Shape();
-  shape.moveTo(-1, -0.2);
-  shape.lineTo(0, 0.6);
-  shape.lineTo(1, -0.2);
-  shape.lineTo(1, -0.75);
-  shape.lineTo(0, 0.05);
-  shape.lineTo(-1, -0.75);
-  shape.closePath();
-  return new THREE.ShapeGeometry(shape);
-}
-
 /** A shield's faceted shell's edges, as thin prisms, so they read thicker than a line and can be instanced. */
 function shellEdgeGeometry(): THREE.BufferGeometry {
   const edges = new THREE.EdgesGeometry(new THREE.IcosahedronGeometry(1, 1));
@@ -289,7 +276,6 @@ const CAPACITY = {
   orbs: 32,
   stones: 24,
   stars: 72,
-  chevrons: 120,
   shells: 24,
   shards: 480,
   dust: 160,
@@ -325,7 +311,6 @@ export class FxView {
   private readonly orbs: Layer;
   private readonly stones: Layer;
   private readonly stars: Layer;
-  private readonly chevrons: Layer;
   private readonly shellFills: Layer;
   private readonly shellEdges: Layer;
   private readonly shards: Layer;
@@ -377,7 +362,6 @@ export class FxView {
     this.orbs = new Layer(new THREE.IcosahedronGeometry(1, 0), new THREE.MeshBasicMaterial(), CAPACITY.orbs);
     this.stones = new Layer(new THREE.DodecahedronGeometry(1, 0), faceted(), CAPACITY.stones);
     this.stars = new Layer(starGeometry(), faceted({ color: EFFECTS.stun.colour, emissive: EFFECTS.stun.colour, emissiveIntensity: 0.9 }), CAPACITY.stars);
-    this.chevrons = new Layer(chevronGeometry(), light({ side: THREE.DoubleSide }), CAPACITY.chevrons, 6);
     this.shellFills = new Layer(new THREE.IcosahedronGeometry(1, 1), light({ side: THREE.DoubleSide }), CAPACITY.shells, 6);
     this.shellEdges = new Layer(shellEdgeGeometry(), light(), CAPACITY.shells, 6);
     this.shards = new Layer(new THREE.TetrahedronGeometry(1, 0), faceted(), CAPACITY.shards);
@@ -398,7 +382,6 @@ export class FxView {
       this.orbs,
       this.stones,
       this.stars,
-      this.chevrons,
       this.shellFills,
       this.shellEdges,
       this.shards,
@@ -706,7 +689,7 @@ export class FxView {
 
   private drawStatuses(fx: Effects, playback: Playback, units: FxUnits, time: number): void {
     // Stars circling a stunned unit's head.
-    const { stun, buff, shield } = EFFECTS;
+    const { stun, shield } = EFFECTS;
     for (let unit = 0; unit < units.count(); unit++) {
       if (!fx.stunInto(this.stun, unit, time)) continue;
       const { age, left } = this.stun;
@@ -720,21 +703,6 @@ export class FxView {
         this.q.setFromEuler(this.e);
         this.matrix.compose(this.p, this.q, this.s.setScalar(stun.size * grow));
         this.stars.put(this.matrix, this.colour.setHex(0xffffff));
-      }
-    }
-    // Chevrons rising round a buffed unit.
-    for (let n = 0; n < fx.chevrons.length; n++) {
-      const c = fx.chevrons[n]!;
-      if (!live(c, time)) continue;
-      const { x, z } = playback.positionInto(this.at, c.unit, time);
-      for (let i = 0; i < buff.count; i++) {
-        const share = fx.chevronShare(c, i, time);
-        if (share < 0 || share >= 1) continue;
-        const a = i * 2.4 + c.phase * 1.2;
-        this.p.set(x + Math.cos(a) * 0.32, 0.3 + buff.height * easeOut(share), z + Math.sin(a) * 0.32);
-        const size = buff.size * (share < 0.15 ? share / 0.15 : 1);
-        this.matrix.compose(this.p, this.billboard, this.s.setScalar(size));
-        this.chevrons.put(this.matrix, this.colour.setHex(c.colour).multiplyScalar(0.95 * (1 - easeIn(share))));
       }
     }
     // A shell round a shielded unit, while it has a shield.

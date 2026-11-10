@@ -46,7 +46,7 @@ export interface Projectile {
   readonly hitTick: number;
 }
 
-export type TextKind = DamageType | 'heal' | 'absorbed' | 'cast';
+export type TextKind = DamageType | 'heal' | 'absorbed';
 
 export interface FloatingText {
   readonly unit: number;
@@ -293,8 +293,7 @@ export class Playback {
           this.addText(e.target, `+${e.amount}`, 'heal', false, e.tick);
           break;
         case 'cast':
-          // The ability's name in its pill; its wind-up, travel and impact are effects.ts's.
-          this.addText(e.unit, e.ability, 'cast', false, e.tick);
+          // Its wind-up, travel and impact are effects.ts's.
           this.addAction(e.unit, e.tick, true);
           break;
         case 'status':

@@ -540,7 +540,7 @@ describe('statuses', () => {
     expect(fx.stunInto(out, stun.target, stun.tick - 1)).toBe(false);
   });
 
-  it('raises chevrons in the stat’s colour as a buff starts, and keeps a ring under the unit while it lasts', () => {
+  it('keeps a ring in the stat’s colour under a unit while a buff lasts', () => {
     const { p, fx } = fight('tanks', 'mixed', 1);
     const cast = toCast(p, fx, 'Horn of Gondor');
     const events = stepTo(p, fx, cast.releaseTick);
@@ -548,15 +548,14 @@ describe('statuses', () => {
     expect(buffs.length).toBeGreaterThan(0);
     for (const b of buffs) {
       if (b.type !== 'status') continue;
-      expect(fx.chevrons.some((c) => c.unit === b.target && c.colour === EFFECTS.buff.colours[b.stat!] && c.start === b.tick)).toBe(true);
       expect(fx.statusRings.some((r) => r.unit === b.target && r.kind === 'buff' && r.end === b.expiresTick)).toBe(true);
     }
-    // Armour and Magic Resist start together, so their chevrons are set apart.
-    const target = (buffs[0] as { target: number }).target;
-    expect(fx.chevrons.filter((c) => c.unit === target && c.start === cast.releaseTick).map((c) => c.phase)).toEqual([0, 1]);
-    const first = fx.chevrons.find((c) => c.unit === target)!;
-    expect(fx.chevronShare(first, 0, first.start)).toBe(0);
-    expect(fx.chevronShare(first, 0, first.start + EFFECTS.buff.seconds * T)).toBe(1);
+    // Armour and Magic Resist start together: one ring, in the colour of the first.
+    const first = buffs[0]!;
+    if (first.type !== 'status' || first.stat === null) throw new Error('Horn of Gondor should buff a stat');
+    const rings = fx.statusRings.filter((r) => r.unit === first.target && r.kind === 'buff');
+    expect(rings).toHaveLength(1);
+    expect(rings[0]!.colour).toBe(EFFECTS.buff.colours[first.stat]);
   });
 
   it('keeps a ring under a slowed unit while the slow lasts', () => {
@@ -568,7 +567,7 @@ describe('statuses', () => {
     expect(fx.statusRings).toContainEqual(expect.objectContaining({ unit: slow.target, kind: 'slow', start: slow.tick, end: slow.expiresTick }));
   });
 
-  it('ends every status mark of a unit as it dies: buff, slow and reduction rings, and chevrons', () => {
+  it('ends every status mark of a unit as it dies: buff, slow and reduction rings', () => {
     // Legolas dies at 161 under Merry's reduction (full against traits, seed 1), which lasts to about 279.
     const { p, fx } = fight('full', 'traits', 1);
     const shrink = EFFECTS.rings.grow * T;
@@ -586,7 +585,6 @@ describe('statuses', () => {
           expect(fx.grow(r, EFFECTS.rings.grow, e.tick + shrink)).toBe(0);
           cut.push(r);
         }
-        for (const c of fx.chevrons) if (c.unit === e.unit) expect(c.end).toBeLessThanOrEqual(e.tick);
       }
       // Nothing new comes for a dead unit either.
       for (const r of fx.statusRings) {
@@ -651,7 +649,7 @@ describe('deaths and frames', () => {
     p.playing = true;
     p.advance(8);
     fx.update();
-    const lists = [fx.marks, fx.missiles, fx.hits, fx.bursts, fx.rings, fx.glows, fx.statusRings, fx.shells, fx.chevrons];
+    const lists = [fx.marks, fx.missiles, fx.hits, fx.bursts, fx.rings, fx.glows, fx.statusRings, fx.shells];
     const lengths = lists.map((l) => l.length);
     expect(lengths.some((n) => n > 0)).toBe(true);
     // A frame between ticks: nothing new, nothing over.
@@ -660,7 +658,7 @@ describe('deaths and frames', () => {
     p.advance(0.1 / T);
     expect(p.combat.tick).toBe(tick);
     fx.update();
-    [fx.marks, fx.missiles, fx.hits, fx.bursts, fx.rings, fx.glows, fx.statusRings, fx.shells, fx.chevrons].forEach((list, i) => expect(list).toBe(lists[i]));
+    [fx.marks, fx.missiles, fx.hits, fx.bursts, fx.rings, fx.glows, fx.statusRings, fx.shells].forEach((list, i) => expect(list).toBe(lists[i]));
     lists.forEach((list, i) => expect(list.length).toBe(lengths[i]));
     // Later, effects that have ended are gone, from the same lists.
     p.advance(2);
