@@ -32,7 +32,7 @@ import { Effects, type HitState, type ScreenState, type Vec3Out } from './effect
 import { FxView, type FxUnits } from './fx.js';
 import { liveryOf } from './livery.js';
 import { EFFECT_TICKS, FLOATING_TEXT, type FloatingText, type MutablePoint, type Playback, type Projectile } from './playback.js';
-import { ATMOSPHERE, CAMERA, CAMERA_LIMITS, EFFECTS, LIGHTS, PAWN_COLOUR, type Framing } from './look.js';
+import { ATMOSPHERE, BENCH_NOTE_HEIGHT, CAMERA, CAMERA_LIMITS, EFFECTS, LIGHTS, PAWN_COLOUR, type Framing } from './look.js';
 import { Post } from './post.js';
 import { stoneTiles } from './tiles.js';
 import { LABEL, LARGE_PAWN_SCALE } from './stars.js';
@@ -327,6 +327,8 @@ export class FightScene {
   /** The planning unit whose label is marked as where a dragged item would go. */
   private marked: number | null = null;
   private readonly ground = new THREE.Plane(new THREE.Vector3(0, 1, 0), 0);
+  /** The note over the bench that says it is full, shown for a moment by its CSS. */
+  private readonly benchNote = document.createElement('div');
   private readonly raycaster = new THREE.Raycaster();
 
   constructor(
@@ -378,6 +380,7 @@ export class FightScene {
     });
     this.buildBoard();
     this.buildBench();
+    this.buildBenchNote();
     this.buildMarker();
     this.scene.add(this.fightLayer, this.benchLayer);
     this.compileEffects();
@@ -768,6 +771,31 @@ export class FightScene {
     }
     this.bench.visible = false;
     this.scene.add(this.bench);
+  }
+
+  /** The note over the middle of the bench, its bottom edge on a point above it. */
+  private buildBenchNote(): void {
+    const note = this.benchNote;
+    note.className = 'bench-note';
+    note.setAttribute('role', 'status');
+    const object = new CSS2DObject(note);
+    object.center.set(0.5, 1);
+    const { z } = benchToWorld(0);
+    object.position.set(0, BENCH_NOTE_HEIGHT, z);
+    this.scene.add(object);
+  }
+
+  /** A buy found the bench full: a note over it says so for a moment. Another one while it shows starts it again. */
+  showBenchFull(): void {
+    const note = this.benchNote;
+    note.classList.remove('shown');
+    note.textContent = '';
+    // Laying the page out again lets the note's animation start over.
+    void note.offsetWidth;
+    note.textContent = 'Your bench is full';
+    note.classList.add('shown');
+    // The note is placed as a frame is drawn.
+    this.redraws.change();
   }
 
   private buildMarker(): void {

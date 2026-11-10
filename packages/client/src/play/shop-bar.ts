@@ -1,16 +1,16 @@
 // The shop bar while planning and while the fights play (docs/game-spec.md section 12): Buy XP, Reroll and Lock, the shop's
 // unit cards, the person's items and the One Ring to drag onto units, and Ready. Dropping a dragged
-// unit on the bar sells it.
+// unit on the bar sells it. Buying with the bench full says so over the bench.
 
 import { SHOP, UNITS, XP, completesMerge, isComponent, ownedUnits, type ActionResult, type PlayerView, type Star, type UnitId } from '@lotr-tactics/sim';
 import type { PlayFlow } from '../flow.js';
 import { shopOddsView } from '../hud.js';
 import { TRAIT_ICONS } from '../icons.js';
 import { actionTip, unitTip } from '../tips.js';
-import { shopMark } from '../shop.js';
+import { shopBuy, shopMark, type ShopBuy } from '../shop.js';
 import { goldCost, itemChip, ringChip, traitTag } from '../ui/chips.js';
 import { el, icon, rebuild, setEnabled, setText, starBadge, toggle } from '../ui/dom.js';
-import { setTip } from '../ui/tooltip.js';
+import { dismissTip, setTip } from '../ui/tooltip.js';
 
 const element = (id: string) => document.getElementById(id) as HTMLElement;
 
@@ -36,6 +36,7 @@ export class ShopBar {
   constructor(
     private readonly flow: PlayFlow,
     private readonly drag: (item: TrayItem, event: PointerEvent) => void,
+    private readonly benchFull: () => void,
   ) {
     const reason = (result: ActionResult) => (result.ok ? null : result.reason);
     setTip(this.buyXp, () => {
@@ -66,6 +67,7 @@ export class ShopBar {
     if (this.drawn.state === flow.state && this.drawn.lobby === flow.lobby && this.drawn.step === flow.show.kind) return;
     this.drawn = { state: flow.state, lobby: flow.lobby, step: flow.show.kind };
     const buys = p.shop.map((_, slot) => flow.check({ type: 'buy', slot }));
+    const kinds = buys.map(shopBuy);
     const mine = ownedUnits(p);
     const owned = p.shop.map((id) => mine.flatMap(({ unit }) => (unit.unitId === id ? [unit.star] : [])));
     // While the fights play, copies on the board merge only once they end.
@@ -74,8 +76,7 @@ export class ShopBar {
     rebuild(this.shop, JSON.stringify([p.shop, buys, owned, merges]), () =>
       p.shop.map((id, slot) => {
         if (id === null) return el('div', 'unit-card empty', icon('board'));
-        const buy = buys[slot]!;
-        return unitCard(id, owned[slot]!, merges[slot]!, buy, () => flow.act({ type: 'buy', slot }));
+        return unitCard(id, owned[slot]!, merges[slot]!, buys[slot]!, kinds[slot]!, (card) => this.buy(slot, card));
       }),
     );
 
@@ -111,6 +112,16 @@ export class ShopBar {
     setText(this.readyLabel, isReady ? (others > 0 ? `Waiting for ${others}` : 'Ready') : 'Ready');
   }
 
+  /** Buys a shop slot, or, if the bench is full, says so over the bench. */
+  private buy(slot: number, card: HTMLElement): void {
+    const kind = shopBuy(this.flow.check({ type: 'buy', slot }));
+    if (kind === 'bench-full') {
+      // The card's tip would cover the note over the bench.
+      dismissTip(card);
+      this.benchFull();
+    } else if (kind === 'buy') this.flow.act({ type: 'buy', slot });
+  }
+
   /** While a unit is dragged over the bar, says that dropping it sells it; null when it isn't. */
   selling(name: string | null): void {
     toggle(this.bar, 'selling', name !== null);
@@ -143,11 +154,14 @@ export class ShopBar {
 
 /**
  * A unit card for the shop: framed and coloured by cost, with its traits, cost, copies owned and,
- * if it can't be bought, why. A unit the person already has on the bench or the board gets a gold
+ * if it can't be bought, why, unless only the bench is full: that card looks as usual, and a click
+ * says so over the bench. A unit the person already has on the bench or the board gets a gold
  * border, which glows when buying it would make a 2★ from two 1★ copies.
  */
-function unitCard(id: UnitId, owned: readonly Star[], merges: boolean, buy: ActionResult, onBuy: () => void): HTMLElement {
+function unitCard(id: UnitId, owned: readonly Star[], merges: boolean, result: ActionResult, kind: ShopBuy, onBuy: (card: HTMLElement) => void): HTMLElement {
   const def = UNITS[id];
+  // A full bench isn't shown on the card.
+  const buy: ActionResult = kind === 'bench-full' ? { ok: true } : result;
   const mark = shopMark(owned, merges);
   const card = el(
     'button',
@@ -168,7 +182,7 @@ function unitCard(id: UnitId, owned: readonly Star[], merges: boolean, buy: Acti
   setEnabled(card, buy.ok);
   // The card already shows the copies owned and why it can't be bought; the tip only adds what a buy would make.
   setTip(card, unitTip(id, buy.ok ? (mark === 'completes' ? { text: 'Buying it makes a 2★.', reason: false } : undefined) : { text: buy.reason, reason: true }));
-  card.addEventListener('click', onBuy);
+  card.addEventListener('click', () => onBuy(card));
   return card;
 }
 

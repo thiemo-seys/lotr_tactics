@@ -64,7 +64,7 @@ packages/client/
     tips.ts        what each tooltip says: items, rings, Gifts, traits, units and actions
     abilities.ts   what an ability does, in words, from its steps and the sim's ability values
     hud.ts         the HUD's stats, streak, timer, One Ring status and stage tracker
-    shop.ts        how a shop card marks a unit the person already has
+    shop.ts        how a shop card marks a unit the person already has, and what a click on one does
     players.ts     the players list's rows
     icons.ts       the icon set, and the icon for each trait, component, Gift tier, round type and status
     log.ts         event log text
@@ -409,7 +409,7 @@ The parts without Three.js are tested with Vitest:
 - trait text and the trait tracker's rows;
 - tooltip content, the HUD's values, the players list's rows, a round's results and the timer, and what the HUD, the players list and the trait tracker show while the person's fight plays;
 - the model a star level uses, falling back to the level below, its scale within the hex, and its label height: 1.8 above the ground, clear of the attack and cast clips, and a winner's rise to clear its victory pose (stars.ts);
-- what an ability does in words (abilities.ts), how a shop card marks a unit the person has (shop.ts), the stage tracker's rounds (hud.ts), and that a round's result reaches the stage tracker only once its results have been shown (flow.ts).
+- what an ability does in words (abilities.ts), how a shop card marks a unit the person has, and that a full bench shows on a click rather than on the card (shop.ts), the stage tracker's rounds (hud.ts), and that a round's result reaches the stage tracker only once its results have been shown (flow.ts).
 
 The Three.js scene and the pages are checked by building them and looking at them in a browser.
 

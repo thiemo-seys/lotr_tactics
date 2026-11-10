@@ -17,6 +17,9 @@ export type ActionResult = { readonly ok: true } | { readonly ok: false; readonl
 
 export const OK: ActionResult = { ok: true };
 
+/** Why a buy is refused when the bench has no free slot, which the client shows its own way. */
+export const BENCH_FULL = 'The bench is full.';
+
 export function fail(reason: string): ActionResult {
   return { ok: false, reason };
 }
@@ -138,7 +141,7 @@ export function checkBuy(player: PlayerView, slot: number, fighting = false): Ac
   const unitId = player.shop[slot];
   if (unitId === null || unitId === undefined) return fail('That shop slot is empty.');
   if (player.gold < UNITS[unitId].cost) return fail('Not enough gold.');
-  if (!player.bench.includes(null) && !completesMerge(player, unitId, fighting)) return fail('The bench is full.');
+  if (!player.bench.includes(null) && !completesMerge(player, unitId, fighting)) return fail(BENCH_FULL);
   return OK;
 }
 
