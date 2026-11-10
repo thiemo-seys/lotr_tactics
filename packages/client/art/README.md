@@ -14,7 +14,7 @@ The game's 3D models of units, monsters and summons, in the Faceted style (`docs
 - `arena.py` and `arenas/`: the arena the board stands in (Arenas below).
 - `style-study/`: the study that chose the style, kept as it was.
 - `star-study/`: the study that chose how star levels show, with its comparison page, kept as it was; [`star-study/ROLLOUT.md`](star-study/ROLLOUT.md) is how every unit got its 2★ and 3★ models.
-- `sauron-study/`: a study, still open, of a dense-faceted Sauron at 1★, 10,000 and 40,000 triangles, in the films' direction, rigged with the 1★ model's skeleton and clips, with its comparison on the board ([`sauron-study/README.md`](sauron-study/README.md)). The game doesn't use it.
+- `sauron-study/`: a study, still open, of a dense-faceted Sauron at 1★, from 3,000 to 40,000 triangles, in the films' direction, rigged with the 1★ model's skeleton and clips, with its comparison on the board ([`sauron-study/README.md`](sauron-study/README.md)). The game doesn't use it.
 
 ## Star levels
 

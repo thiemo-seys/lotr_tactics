@@ -1,12 +1,13 @@
 """Sauron, a dense-faceted study of his 1★ model (README.md in this folder).
 
-The 1★ Sauron (../units/sauron.py) rebuilt at two densities, 10,000 and 40,000 triangles, for the
-board, in the direction of the films' armoured Dark Lord rather than the books': blackened plate with
+The 1★ Sauron (../units/sauron.py) rebuilt at four densities, 3,000, 5,000, 10,000 and 40,000
+triangles, for the board, in the direction of the films' armoured Dark Lord rather than the books': blackened plate with
 worn edges, a tall helm under a crown of blades, great layered pauldrons with blades rising from
 them, a long skirt of plates over his robe, clawed gauntlets and a heavy flanged mace. The shapes are
 this script's own, not the films'. It is still Faceted (docs/viewer-spec.md section 4): flat shading,
-colour from materials and no textures; the density goes into more and sharper facets, every plate's
-edges chamfered in a lighter `edge` material so they catch the light like worn steel.
+colour from materials and no textures; the density goes into more and sharper facets. Every plate's
+edge is a rim in a lighter `edge` material, so it catches the light like worn steel, and from 10,000
+triangles up chamfered in it too.
 
 It keeps the 1★ model's skeleton and clips: it builds the 1★ model to mark his joints, removes its
 parts, and builds its own on the same bones in their place, leaned as the 1★ model is, so he has the
@@ -23,7 +24,7 @@ instead of building: it binds every vertex of each part to its `bone` again, so 
 follows its bone as a solid piece, and joins, rigs, checks and exports it as a build does.
 
     blender --background --factory-startup --python-exit-code 1 --python sauron-dense.py -- \
-        <out.glb> <10k|40k> [--blend=<file.blend>] [--from=<file.blend>]
+        <out.glb> <3k|5k|10k|40k> [--blend=<file.blend>] [--from=<file.blend>]
 
 The model is named `sauron` inside the file, so the rig times its clips from the sim's Sauron and the
 client and board.mjs give it his livery: keep the file's name `sauron.glb`, in a folder per level.
@@ -58,21 +59,37 @@ BLEND = next((a.split('=', 1)[1] for a in ARGS if a.startswith('--blend=')), Non
 SOURCE = next((a.split('=', 1)[1] for a in ARGS if a.startswith('--from=')), None)
 
 # How much of everything there is at each level: points round each form, plates and blades, and how
-# finely the cloth is cut. One design, so the levels differ only in density.
+# finely the cloth is cut, and whether plates' edges are chamfered as well as rimmed (`chamfer`, a
+# share of each chamfer's width; 0 for none). One design, so the levels differ only in density. A
+# `pauldron_rows` of 0 takes every other point of the dome's profile.
 LEVELS = {
+    '3k': dict(
+        budget=3_000, round=8, limb=6, robe=12, foot=8, helm=12, helm_rows=0, crown=7, blade=1,
+        skirt_columns=8, skirt_rows=(0.95, 0.67, 0.39, 0.07), skirt_cut=(2, 1), torso_rows=3,
+        abdomen=1, gorget=1, pauldron_rows=0, pauldron_lames=2, lame_cut=(6, 1), pauldron_blades=2,
+        belt_plates=6, rivets=False, cape=(13, 5), cape_folds=3, flanges=6, flange_points=1,
+        spikes=False, finger_cut=2, fins=1, hammer=0.0, chamfer=0.0,
+    ),
+    '5k': dict(
+        budget=5_000, round=12, limb=6, robe=20, foot=10, helm=16, helm_rows=0, crown=9, blade=2,
+        skirt_columns=10, skirt_rows=(0.95, 0.67, 0.39, 0.07), skirt_cut=(2, 1), torso_rows=4,
+        abdomen=2, gorget=2, pauldron_rows=1, pauldron_lames=3, lame_cut=(10, 1), pauldron_blades=3,
+        belt_plates=8, rivets=False, cape=(17, 7), cape_folds=4, flanges=6, flange_points=1,
+        spikes=False, finger_cut=2, fins=2, hammer=0.0, chamfer=0.0,
+    ),
     '10k': dict(
         budget=10_000, round=12, limb=8, robe=24, foot=10, helm=20, helm_rows=1, crown=9, blade=2,
         skirt_columns=12, skirt_rows=(0.95, 0.67, 0.39, 0.07), skirt_cut=(2, 1), torso_rows=5,
         abdomen=2, gorget=2, pauldron_rows=1, pauldron_lames=3, lame_cut=(10, 1), pauldron_blades=3,
         belt_plates=8, rivets=False, cape=(25, 10), cape_folds=4, flanges=6, flange_points=1,
-        spikes=False, finger_cut=2, fins=2, hammer=0.0,
+        spikes=False, finger_cut=2, fins=2, hammer=0.0, chamfer=1.0,
     ),
     '40k': dict(
         budget=40_000, round=24, limb=14, robe=48, foot=18, helm=40, helm_rows=3, crown=13, blade=5,
         skirt_columns=14, skirt_rows=(0.95, 0.81, 0.67, 0.53, 0.39, 0.23, 0.07), skirt_cut=(5, 4),
         torso_rows=14, abdomen=4, gorget=3, pauldron_rows=3, pauldron_lames=3, lame_cut=(26, 3),
         pauldron_blades=5, belt_plates=16, rivets=True, cape=(69, 38), cape_folds=7, flanges=8,
-        flange_points=3, spikes=True, finger_cut=3, fins=4, hammer=0.0025,
+        flange_points=3, spikes=True, finger_cut=3, fins=4, hammer=0.0025, chamfer=1.0,
     ),
 }
 D = LEVELS[LEVEL]
@@ -146,7 +163,9 @@ def bake(obj):
 def harden(obj, thick=0.0, chamfer=0.0, angle=40.0):
     """A sheet made a plate: `thick` deep, inwards from its faces, with only a rim round its edges
     (its back is hidden against what it lies on), and the edges sharper than `angle` chamfered
-    `chamfer` wide; the rim and the chamfers are the `edge` material, the part's second."""
+    `chamfer` wide, times the level's `chamfer`; the rim and the chamfers are the `edge` material, the
+    part's second."""
+    chamfer *= D['chamfer']
     if thick:
         s = obj.modifiers.new('solid', 'SOLIDIFY')
         s.thickness = thick
@@ -480,11 +499,14 @@ def pauldron(side, s):
     # The dome's profile: along the axis, and out from it; then drawn to a point at its top.
     profile = [(-0.02, 0.25), (0.05, 0.246), (0.11, 0.218), (0.16, 0.168), (0.2, 0.1), (0.222, 0.04)]
     apex = 0.245
-    rows = D['pauldron_rows']  # rows between each of the profile's
+    rows = D['pauldron_rows']  # rows between each of the profile's, or 0 for every other point of it
     stations = []
-    for (t0, r0), (t1, r1) in zip(profile, profile[1:]):
+    if rows == 0:
+        stations = profile[:-1:2] + profile[-1:]
+    for (t0, r0), (t1, r1) in zip(profile, profile[1:]) if rows else ():
         stations += [(t0 + (t1 - t0) * j / rows, r0 + (r1 - r0) * j / rows) for j in range(rows)]
-    stations.append(profile[-1])
+    if rows:
+        stations.append(profile[-1])
 
     def comb(th):  # a ridge from front to back over the top
         return 0.03 * max(0.0, 1 - abs(abs(((th + 180) % 360) - 180) - 90) / (360 / n * 1.01))
@@ -498,12 +520,13 @@ def pauldron(side, s):
         return lerp_table(profile, t)[0]
 
     with bone('spine'):
-        dome_part = sheet(f'pauldron-{side}', dome, n, len(stations) - 1, [M['iron'], M['edge']], inside=c, closed=True)
-        harden(dome_part, 0.016, 0.007, angle=35)
-        tip = at(apex, 0.0, 0)
-        ring = [dome(i / n, 1.0) for i in range(n)]
-        verts = ring + [tip]
-        part(f'pauldron-top-{side}', verts, [(i, (i + 1) % n, n) for i in range(n)], M['iron'], inside=c)
+        # The dome and the point it is drawn to are one piece, so its only rim is round its foot.
+        rings = [[dome(i / n, j / (len(stations) - 1)) for i in range(n)] for j in range(len(stations))]
+        verts, faces, _ = loft(rings)
+        last = (len(stations) - 1) * n
+        verts.append(at(apex, 0.0, 0))
+        faces += [(last + i, last + (i + 1) % n, len(verts) - 1) for i in range(n)]
+        harden(part(f'pauldron-{side}', verts, faces, [M['iron'], M['edge']], inside=c), 0.016, 0.007, angle=35)
         lames = D['pauldron_lames']
         nu, nv = D['lame_cut']
         for k in range(lames):
@@ -534,7 +557,8 @@ def pauldron(side, s):
                     rivet(f'pauldron-rivet-{side}-{k}-{th}', p, math.cos(a) * out + math.sin(a) * front, 0.013)
         # Blades rising from the dome in a fan from his side round behind: where round it (0 out, 90 in
         # front, -90 behind), how long, and how far they lean out.
-        blades = {3: [(-25, 0.36, 0.35), (-70, 0.3, 0.28), (-115, 0.22, 0.22)],
+        blades = {2: [(-30, 0.36, 0.33), (-95, 0.27, 0.25)],
+                  3: [(-25, 0.36, 0.35), (-70, 0.3, 0.28), (-115, 0.22, 0.22)],
                   5: [(10, 0.26, 0.45), (-25, 0.38, 0.35), (-60, 0.34, 0.3), (-95, 0.28, 0.25), (-130, 0.2, 0.2)],
                   }[D['pauldron_blades']]
         for k, (th, length, lean_out) in enumerate(blades):
@@ -597,8 +621,10 @@ def arm(side, shoulder, elbow, wrist):
         vambrace = part(f'vambrace-{side}', verts, faces, [M['iron'], M['gauntlet'], M['edge']], mats_of,
                         inside=kit.nearest_on_line(elbow, wrist))
         # The edge material is this part's third: chamfer it into that slot.
-        b = vambrace.modifiers.new('chamfer', 'BEVEL')
-        b.width, b.segments, b.limit_method, b.angle_limit, b.material = 0.006, 1, 'ANGLE', math.radians(30), 2
+        if D['chamfer']:
+            b = vambrace.modifiers.new('chamfer', 'BEVEL')
+            b.width, b.segments, b.limit_method, b.angle_limit = 0.006 * D['chamfer'], 1, 'ANGLE', math.radians(30)
+            b.material = 2
         bake(vambrace)
         # A pointed couter on the elbow.
         ahead = (Vector(wrist) - Vector(elbow)).normalized()
@@ -808,9 +834,11 @@ def helm():
     faces += [(last + i, last + (i + 1) % n, apex) for i in range(n)]
     mats_of += [0] * n
     obj = part('helm', verts, faces, [M['iron'], M['ember'], M['edge']], mats_of, inside=lambda c: V(0, 0.01, c.z))
-    b = obj.modifiers.new('chamfer', 'BEVEL')
-    b.width, b.segments, b.limit_method, b.angle_limit, b.material = 0.005, 1, 'ANGLE', math.radians(42), 2
-    b.use_clamp_overlap = True
+    if D['chamfer']:
+        b = obj.modifiers.new('chamfer', 'BEVEL')
+        b.width, b.segments, b.limit_method, b.angle_limit = 0.005 * D['chamfer'], 1, 'ANGLE', math.radians(42)
+        b.material = 2
+        b.use_clamp_overlap = True
     bake(obj)
 
 

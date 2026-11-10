@@ -1,11 +1,11 @@
 #!/usr/bin/env bash
 # Builds the study's models from sauron-dense.py into models/<level>/sauron.glb, with Blender 4.5 LTS.
-#   packages/client/art/sauron-study/build.sh [level ...]    10k and 40k when none is given
+#   packages/client/art/sauron-study/build.sh [level ...]    every level when none is given: 3k, 5k, 10k, 40k
 set -euo pipefail
 here="$(cd "$(dirname "$0")" && pwd)"
 levels=("$@")
 if [ ${#levels[@]} -eq 0 ]; then
-  levels=(10k 40k)
+  levels=(3k 5k 10k 40k)
 fi
 for level in "${levels[@]}"; do
   mkdir -p "$here/models/$level"
