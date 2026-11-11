@@ -1,8 +1,11 @@
 // The play page's menu and lobby screen (docs/server-spec.md section 10): the lobby code with a
-// button to copy the join link, and the 8 seats as cards with who sits there.
+// button to copy the join link, and the 8 seats as cards with who sits there, guests marked
+// (docs/accounts-spec.md section 14). The menu's account is drawn by account.ts.
 
 import type { PlayFlow } from '../flow.js';
 import { textTip } from '../tips.js';
+import { isGuestSeat } from '../account.js';
+import { guestMark } from '../ui/chips.js';
 import { el, icon, rebuild, setText, show } from '../ui/dom.js';
 import { setTip } from '../ui/tooltip.js';
 
@@ -29,7 +32,12 @@ export function renderLobby(flow: PlayFlow): void {
         'li',
         `seat ${seat.kind}${you ? ' you' : ''}${away ? ' away' : ''}`,
         el('span', 'seat-icon', icon(kindIcon)),
-        el('span', 'seat-text', el('span', 'seat-name', seat.kind === 'empty' ? 'Empty' : seat.name), el('span', 'seat-status', status)),
+        el(
+          'span',
+          'seat-text',
+          el('span', 'seat-name-line', el('span', 'seat-name', seat.kind === 'empty' ? 'Empty' : seat.name), isGuestSeat(seat) ? guestMark() : null),
+          el('span', 'seat-status', status),
+        ),
         el(
           'span',
           'seat-badges',

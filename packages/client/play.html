@@ -42,11 +42,21 @@
           <h1 id="menu-title" class="game-title">LOTR Tactics</h1>
           <div class="flourish" aria-hidden="true"><i></i><span data-icon="one-ring"></span><i></i></div>
         </div>
+        <div id="account-strip" class="account-strip" hidden>
+          <span class="avatar"><span data-icon="person"></span></span>
+          <div id="account-who" class="account-who">
+            <span class="account-label">Playing as</span>
+            <span class="account-name-line"><span id="account-name" class="account-name"></span><span id="account-guest" class="guest-mark" hidden>Guest</span></span>
+          </div>
+          <form id="rename-form" class="rename-form" hidden>
+            <input id="rename-input" class="input" maxlength="40" autocomplete="nickname" spellcheck="false" aria-label="Your new name" />
+            <button type="submit" class="btn btn-primary btn-sm btn-icon" aria-label="Save the name"><span data-icon="ready"></span></button>
+            <button type="button" id="rename-cancel" class="btn btn-ghost btn-sm btn-icon" aria-label="Keep the name"><span data-icon="cross"></span></button>
+          </form>
+          <button id="rename-open" class="btn btn-ghost btn-sm btn-icon" aria-label="Change your name"><span data-icon="pencil"></span></button>
+        </div>
+        <p id="rename-message" class="field-message bad" role="alert" hidden></p>
         <p id="menu-message" class="message" role="status"></p>
-        <label class="field">
-          <span class="field-label">Your name</span>
-          <input id="name" class="input" maxlength="20" autocomplete="nickname" placeholder="Wanderer" />
-        </label>
         <button id="play-bots" class="btn btn-primary btn-lg btn-block"><span data-icon="pvp"></span>Play against bots</button>
         <div class="divider"><span>or play online</span></div>
         <div class="online">
@@ -56,7 +66,42 @@
             <button id="join" class="btn btn-secondary"><span data-icon="link"></span>Join</button>
           </div>
         </div>
+        <p id="online-note" class="online-note" role="status" hidden>
+          <span data-icon="alert"></span><span class="online-note-text"></span>
+          <button id="online-retry" class="btn btn-ghost btn-sm" hidden><span data-icon="reroll"></span>Try again</button>
+        </p>
+        <div id="menu-links" class="menu-links" hidden>
+          <button id="open-profile" class="btn btn-ghost"><span data-icon="profile"></span>Profile</button>
+          <button id="open-account" class="btn btn-ghost"><span data-icon="person"></span>Account</button>
+        </div>
       </section>
+      <section id="account" class="panel" aria-labelledby="account-title" hidden>
+        <div class="panel-head">
+          <h2 id="account-title"><span data-icon="person"></span>Account</h2>
+          <button id="account-close" class="btn btn-ghost btn-sm"><span data-icon="back"></span>Menu</button>
+        </div>
+        <form id="account-rename" class="account-field">
+          <label class="field-label" for="account-name-input">Name</label>
+          <div class="field-row">
+            <input id="account-name-input" class="input" maxlength="40" autocomplete="nickname" spellcheck="false" />
+            <button id="account-save" type="submit" class="btn btn-secondary">Save</button>
+          </div>
+          <p id="account-rename-message" class="field-message" role="status" hidden></p>
+        </form>
+        <p id="account-kind" class="account-kind"></p>
+        <div class="account-actions">
+          <div class="account-action">
+            <div class="account-action-text"><strong>Sign out</strong><span id="sign-out-text"></span></div>
+            <button id="sign-out" class="btn btn-secondary"><span data-icon="leave"></span>Sign out</button>
+          </div>
+          <div class="account-action">
+            <div class="account-action-text"><strong>Sign out everywhere</strong><span>Signs this account out of every browser and device, and drops its game connection.</span></div>
+            <button id="sign-out-everywhere" class="btn btn-danger"><span data-icon="leave"></span>Sign out everywhere</button>
+          </div>
+        </div>
+        <p id="account-message" class="message" role="status"></p>
+      </section>
+      <section id="profile" class="panel" aria-labelledby="profile-title" hidden></section>
       <section id="lobby" class="panel" aria-labelledby="lobby-title" hidden>
         <div class="lobby-head">
           <div>
@@ -90,6 +135,11 @@
       <section id="viewing" class="viewing-bar" aria-label="Another player's board" hidden></section>
       <section id="result" class="panel" aria-live="polite" hidden></section>
       <div id="banner" role="status" hidden></div>
+      <div id="notice" class="notice" role="alert" hidden>
+        <span data-icon="alert"></span>
+        <span class="notice-text">This game is open in another tab or on another device.</span>
+        <button id="use-here" class="btn btn-primary btn-sm">Use here</button>
+      </div>
     </main>
     <div id="player-bar" class="player-bar" hidden>
       <span id="stat-level" class="pill stat level">

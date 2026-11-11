@@ -5,6 +5,4 @@ export interface Host {
   now(): number;
   /** A number in [0, 1), for lobby codes and game seeds. */
   random(): number;
-  /** An unguessable string, for rejoining. */
-  token(): string;
 }

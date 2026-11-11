@@ -8,8 +8,7 @@ import { traitRows } from '../src/traits.js';
 
 /** A host whose clock only moves when the test moves it. */
 function fakeHost(): Host & { time: number } {
-  let tokens = 0;
-  return { time: 0, now() { return this.time; }, random: () => 0.5, token: () => `token-${++tokens}` };
+  return { time: 0, now() { return this.time; }, random: () => 0.5 };
 }
 
 /** Lets the messages queued as microtasks arrive. */
@@ -33,14 +32,18 @@ function recorded(send: (message: ClientMessage) => void = () => {}) {
 const lobby = (started: boolean): LobbyView => ({
   code: 'ABCDE',
   host: 0,
+  ranked: false,
   started,
-  seats: [{ kind: 'person', name: 'Ann', connected: true }, { kind: 'person', name: 'Bo', connected: false }],
+  seats: [
+    { kind: 'person', name: 'Ann', connected: true, player: 'ann', guest: true },
+    { kind: 'person', name: 'Bo', connected: false, player: 'bo', guest: false },
+  ],
 });
 
 describe('the play flow', () => {
   it('joins a lobby, shows it until the game starts, and goes back to the menu when told', () => {
     const { flow, calls } = recorded();
-    flow.receive({ type: 'joined', code: 'ABCDE', seat: 1, token: 't' }, 0);
+    flow.receive({ type: 'joined', code: 'ABCDE', seat: 1 }, 0);
     expect([flow.you, calls.joined]).toEqual([1, ['ABCDE']]);
     flow.receive({ type: 'lobby', lobby: lobby(false) }, 0);
     expect(flow.show.kind).toBe('lobby');
@@ -52,9 +55,9 @@ describe('the play flow', () => {
     flow.receive({ type: 'refused', request: 'act', reason: 'Not enough gold.' }, 0);
     expect(calls.menus).toEqual([]);
     flow.receive({ type: 'left', reason: 'You left the lobby.' }, 0);
-    flow.receive({ type: 'left', reason: 'You joined this game from somewhere else.' }, 0);
+    flow.receive({ type: 'replaced' }, 0);
     flow.receive({ type: 'refused', request: 'join', reason: 'That lobby is full.' }, 0);
-    expect(calls.menus).toEqual(['', 'You joined this game from somewhere else.', 'That lobby is full.']);
+    expect(calls.menus).toEqual(['', '', 'That lobby is full.']);
   });
 
   it('sends only picks in a Council, and nothing outside the game', () => {
@@ -240,6 +243,24 @@ describe("while the person's fight plays", () => {
     ]);
   });
 
+  it('keep playing the fight when the same round arrives again, as a rejoin from this page sends it', () => {
+    const { flow, calls } = recorded();
+    flow.receive({ type: 'state', state: state('planning', 2, 1, 100) }, 0);
+    flow.receive({ type: 'round', round: record(0, 1) }, 10);
+    flow.receive({ type: 'state', state: state('fight', 2, 1, 93) }, 10);
+    const shown = flow.show;
+    flow.update(0.5, 500);
+    flow.receive({ type: 'round', round: record(0, 1) }, 600);
+    expect(flow.show).toBe(shown);
+    expect(calls.fights).toHaveLength(1);
+    // Nor do its results start again.
+    flow.skip(700);
+    const results = flow.show;
+    flow.receive({ type: 'round', round: record(0, 1) }, 800);
+    expect(flow.show).toBe(results);
+    expect(calls.fights).toHaveLength(1);
+  });
+
   it('show the latest view when the page never saw the planning, as on joining mid-fight', () => {
     const { flow } = recorded();
     flow.receive({ type: 'round', round: record(0, 1) }, 0);
@@ -286,7 +307,13 @@ describe('round results', () => {
   function inGame(placements: (number | null)[], mePlacement: number | null = null) {
     const { flow } = recorded();
     flow.you = 1;
-    flow.lobby = { code: 'ABCDE', host: 0, started: true, seats: placements.map((_, i) => ({ kind: 'bot', name: `Bot ${i}`, connected: false })) };
+    flow.lobby = {
+      code: 'ABCDE',
+      host: 0,
+      ranked: false,
+      started: true,
+      seats: placements.map((_, i) => ({ kind: 'bot', name: `Bot ${i}`, connected: false, player: null, guest: false })),
+    };
     flow.state = {
       players: placements.map((placement, seat) => ({ seat, placement })),
       me: { placement: mePlacement },

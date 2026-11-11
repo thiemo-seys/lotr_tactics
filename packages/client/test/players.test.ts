@@ -9,9 +9,9 @@ const player = (seat: number, hp: number, placement: number | null = null, strea
 describe('the players list', () => {
   it('orders by standings and marks you, bots, people away and the Ring holder', () => {
     const seats: SeatView[] = [
-      { kind: 'person', name: 'Ann', connected: true },
-      { kind: 'person', name: 'Bo', connected: false },
-      { kind: 'bot', name: 'Bot 2', connected: false },
+      { kind: 'person', name: 'Ann', connected: true, player: 'ann', guest: true },
+      { kind: 'person', name: 'Bo', connected: false, player: 'bo', guest: true },
+      { kind: 'bot', name: 'Bot 2', connected: false, player: null, guest: false },
     ];
     const ring: RingView = { state: 'held', holder: 2, bearer: null, corruption: 3, hobbitFights: 0 };
     const rows = playerRows([player(0, 40, null, -2), player(1, 0, 3), player(2, 85, null, 4)], seats, 0, ring, (s) => (s === 0 ? 'You' : seats[s]!.name));
@@ -19,6 +19,14 @@ describe('the players list', () => {
     expect(rows[0]).toMatchObject({ name: 'Bot 2', bot: true, away: false, ringHolder: true, hpBand: 'high', streak: { kind: 'win', length: 4 } });
     expect(rows[1]).toMatchObject({ name: 'You', you: true, bot: false, away: false, hpShare: 0.4, hpBand: 'mid', streak: { kind: 'loss', length: 2 } });
     expect(rows[2]).toMatchObject({ away: true, placement: 3, hpShare: 0, hpBand: 'low' });
+    // Other guests are marked; the person's own row says You.
+    expect(rows.map((r) => r.guest)).toEqual([false, false, true]);
+  });
+
+  it('mark no guest in an offline game, where the person has no account', () => {
+    const seats: SeatView[] = [{ kind: 'person', name: 'You', connected: true, player: 'local', guest: true }];
+    const ring: RingView = { state: 'none' } as unknown as RingView;
+    expect(playerRows([player(0, 100)], seats, 1, ring, () => 'You')[0]!.guest).toBe(false);
   });
 
   it('bands HP and gives the top three medals', () => {

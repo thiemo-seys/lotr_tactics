@@ -29,6 +29,7 @@ Status: early design. Numbers marked *(placeholder)* are starting points for tun
 | Lobby size | 8 players |
 | Game length | About 30 minutes |
 | Max level | 9 |
+| Accounts | A guest account for every visitor, claimed with Google sign-in; ranked play, match history and friends (section 10, Accounts and ranked play) |
 
 ---
 
@@ -615,6 +616,25 @@ PvE rounds drop item components and gold.
 - Hexes drawn as instanced meshes.
 - Units drawn as low-poly models, one for each star level (section 7, Stats), rigged and animated from the fight's events, the 3★ ones static for now ([`viewer-spec.md`](viewer-spec.md) sections 4 and 5); placeholder pawns for monsters and summons until they have models.
 
+### Accounts and ranked play
+
+Specified in [`accounts-spec.md`](accounts-spec.md). All numbers are *(placeholder)*.
+
+- **Accounts:** every visitor gets a guest account at once, with no sign-up. Signing in with Google claims it, so it lasts and works on any device. Claimed accounts have unique names.
+- **What counts:**
+
+  | Game | Rating and points | History and stats |
+  |---|---|---|
+  | Ranked queue | Yes | Yes |
+  | Private lobby, by code | No | Yes |
+  | Offline, against bots | No | No |
+
+- **The ranked queue** is for claimed accounts, solo or in a party of 2. Party members play as opponents in separate seats; the party only queues together.
+- **Filler bots:** after 75 seconds in the queue, the people waiting get a lobby with bots in the other seats, but only if there are at least 2 people who are not all in one party. A party of 2, or one person, alone in the queue keeps waiting.
+- **Rating:** a hidden OpenSkill rating matches players. Visible points, from +40 for 1st to -40 for 8th and moved towards the hidden rating, rank them on the leaderboard. Bots count at a fixed rating.
+- **Leaving** a ranked game: the seat's bot plays on, and the seat's final place counts for its person.
+- **Restarts:** the server stops starting games and lets running ones finish. A game cut short anyway doesn't count.
+
 ### Bots
 
 Built from day one to:
@@ -632,6 +652,7 @@ Built from day one to:
 3. Shop, bench and economy, playable alone against 7 bots (spec: [`game-spec.md`](game-spec.md))
 4. Server lobbies, with bots filling empty seats (spec: [`server-spec.md`](server-spec.md))
 5. Content: traits, items, and later the parked features
+6. Accounts, ranked play and friends (spec: [`accounts-spec.md`](accounts-spec.md))
 
 ---
 

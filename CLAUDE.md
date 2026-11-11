@@ -9,6 +9,7 @@ Browser-based, 8-player auto battler in the style of Teamfight Tactics, with Lor
 - `docs/viewer-spec.md`: spec for the fight viewer in `packages/client`.
 - `docs/game-spec.md`: implementation spec for the game around the fights: shop, economy, rounds and bots.
 - `docs/server-spec.md`: spec for online play: lobbies, the match runner, the protocol and the Node server in `packages/server`.
+- `docs/accounts-spec.md`: spec for player accounts: guests and Google sign-in, Postgres, match history, the ranked queue with ratings and points, parties and friends, and draining the server on a deploy.
 - `docs/animation-plan.md`: the plan for rigging and animating the units, in two workflows, with where it has got to.
 
 ## Status
@@ -21,15 +22,18 @@ The art style is chosen: Faceted low-poly (`docs/viewer-spec.md` section 4), fro
 
 The game around the fights (`docs/game-spec.md`), the shop, economy, rounds and bots, is in `packages/sim`: the pool and shop rolls (`game/pool.ts`), and each player's bench, board, merging, items, Gifts, gold and XP (`game/player.ts`, with places on the bench and board in `game/places.ts` and Gift offers in `game/gifts.ts`), with the numbers in `data/economy.ts` and `data/gifts.ts`; PvE monsters in the combat (`data/monsters.ts`, `sim-spec.md` section 7.6); and the rounds (`game/game.ts`: `createGame`, actions, fights, damage, eliminations; whether an action is allowed, which bots and the client also ask, in `game/rules.ts`; `game/matchmaking.ts`, `game/council.ts`, `game/schedule.ts`; data in `data/rounds.ts` and `data/pve.ts`); the One Ring (its state and changes in `game/ring.ts`, driven by `game/game.ts`, numbers in `data/ring.ts`); the Rings of Power (their supply in `game/ring-supply.ts`, Council offers and fate with the One in `game/game.ts`, the Seven's gold in `game/player.ts`, numbers in `data/items.ts` and `data/rounds.ts`); bots (`bots/bot.ts`, tuned in `data/bots.ts`, driven through a game by `bots/autopilot.ts`, which the server's matches use too) with a balance runner (`scripts/balance.ts`); and the client's play page. That covers it apart from tuning.
 
-Online play (`docs/server-spec.md`), lobbies with bots in the empty seats, is in `packages/server`: the match runner (`match.ts`: steps, timers, Ready votes, bots in empty and disconnected seats), per-seat views (`view.ts`), lobbies (`lobby.ts`, `lobbies.ts`) and the protocol (`protocol.ts`), with timers and limits in `config.ts`; the Node server (`server.ts`, `main.ts`: WebSockets at `/ws`, and the built client); and the client's menu, lobby screen and online games. That covers the milestone. It deploys with Docker: the `Dockerfile`, and `compose.yaml` with Caddy for HTTPS (`Caddyfile`). Everything in `packages/server/src` apart from `server.ts` and `main.ts` also runs in the browser, so it takes time and randomness from a `Host` and uses no Node APIs; ESLint enforces this.
+Online play (`docs/server-spec.md`), lobbies with bots in the empty seats, is in `packages/server`: the match runner (`match.ts`: steps, timers, Ready votes, bots in empty and disconnected seats, and each seat's board from its last fight), per-seat views (`view.ts`), lobbies (`lobby.ts`, `lobbies.ts`: seats by account, one lobby and one connection per account, idle started games played out), the protocol (`protocol.ts`), the players connections carry and name rules (`players.ts`) and finished matches' results (`results.ts`), with timers and limits in `config.ts`; the Node server (`server.ts`, `main.ts`: WebSockets at `/ws`, the HTTP API and the built client); and the client's menu, lobby screen and online games. That covers the milestone. It deploys with Docker: the `Dockerfile`, and `compose.yaml` with Postgres and Caddy for HTTPS (`Caddyfile`). Everything in `packages/server/src` apart from `server.ts`, `main.ts` and `node/` also runs in the browser, so it takes time and randomness from a `Host` and uses no Node APIs; ESLint enforces this, and keeps `pg` and `node/` out of it.
+
+Accounts (`docs/accounts-spec.md`) are built up to step 1: guest accounts with a session cookie, Postgres, seats by account, and match history and stats for private lobbies. The Node-only code is in `packages/server/src/node/`: the pool and migrations (`db.ts`, SQL in `packages/server/migrations/`), the `Store` and `PgStore` (`store.ts`), sessions (`sessions.ts`), the API (`api.ts`: `/api/me`, `/api/me/name`, `/api/signout`, `/api/profile`, `/api/history`) and recording results (`record.ts`). The server needs Postgres to start. Still to build: Google sign-in and claimed accounts' unique names, deleting accounts, the ranked queue with parties of 2, filler bots, a hidden OpenSkill rating and visible points, friends, and draining on a deploy. The play page loads the account before its menu (`account.ts`: the API and the account's state) and shows it with a rename, guest marks, an account panel (`play/account.ts`), and a profile with stats and match history down to each match's 8 final boards (`profile.ts`, `play/profile.ts`).
 
 ## Commands
 
 - `pnpm install`
-- `pnpm dev`: serve the client and the game server: the fight viewer at `/`, the play page at `/play.html`; Vite passes `/ws` on to the game server on port 8080
-- `pnpm start`: build the client, then serve it and the game server on one port (`PORT`, default 8080)
-- `pnpm check`: lint, typecheck, tests and build, the same checks CI runs
-- `docker compose up -d --build`: build and run the game behind Caddy with HTTPS for `DOMAIN` (in `.env`); `docker build -t lotr-tactics .` builds the image alone (`README.md`, Deploying)
+- `pnpm db`: start a Postgres 17 container for development (`lotr-tactics-db`, port 5433, user, password and database `lotr`); safe to run again. The game server needs a database to start
+- `pnpm dev`: serve the client and the game server: the fight viewer at `/`, the play page at `/play.html`; Vite passes `/ws`, `/api` and `/auth` on to the game server on port 8080. It uses the `pnpm db` database unless `DATABASE_URL` is set
+- `pnpm start`: build the client, then serve it and the game server on one port (`PORT`, default 8080), with the `pnpm db` database unless `DATABASE_URL` is set
+- `pnpm check`: lint, typecheck, tests and build, the same checks CI runs. The server's tests against Postgres are skipped unless `DATABASE_URL` is set, as CI sets it: for example `DATABASE_URL=postgres://lotr:lotr@localhost:5433/lotr pnpm check` with `pnpm db` running
+- `docker compose up -d --build`: build and run the game and Postgres behind Caddy with HTTPS for `DOMAIN`, with `POSTGRES_PASSWORD` (both in `.env`); `docker build -t lotr-tactics .` builds the image alone, which needs `DATABASE_URL` to run (`README.md`, Deploying)
 - `pnpm balance [games] [first seed]`: play 8-bot games and print balance statistics
 - `pnpm models [ids]`: rebuild the models' and arenas' `.glb` files from their scripts with Blender 4.5 LTS, which CI doesn't have
 - `pnpm lint`, `pnpm typecheck`, `pnpm test`, `pnpm build`: one at a time
@@ -49,7 +53,7 @@ Online play (`docs/server-spec.md`), lobbies with bots in the empty seats, is in
 The automated review (`.github/workflows/claude-code-review.yml`) follows this section, and so should anyone reviewing a pull request. Check, most important first:
 
 1. **Determinism.** In `packages/sim/src` and the browser-safe parts of `packages/server/src`, the same input must give the same result:
-   - no `Math.random`, time APIs, trig or `Math.pow` in game logic;
+   - no `Math.random`, time APIs, trig or `Math.pow` in game logic (the ranked rating in `packages/server/src/rating.ts` may use `Math.exp` and the like: it runs once on the server and is stored, never replayed, `docs/accounts-spec.md` section 8);
    - no outcome that depends on the iteration order of unordered data, or on a sort without a full tie-break;
    - no random draw added to, removed from or moved within a generator stream unless the change means to, since it shifts every later draw;
    - geometric choices made in the acting team's perspective.
@@ -60,7 +64,7 @@ The automated review (`.github/workflows/claude-code-review.yml`) follows this s
    - broken invariants, such as unit copies and item and ring counts being conserved;
    - player actions or fight input that aren't validated;
    - `client` code that changes a fight instead of showing it;
-   - Node APIs in `packages/server/src` outside `server.ts` and `main.ts`.
+   - Node APIs in `packages/server/src` outside `server.ts`, `main.ts` and `node/`.
 4. **Tests.** A new rule or behaviour has a test that would fail if it broke.
 
 Not worth a comment: style and naming, anything lint, the typecheck or the tests already catch, numbers (they are placeholders until balancing), and problems the pull request doesn't touch.

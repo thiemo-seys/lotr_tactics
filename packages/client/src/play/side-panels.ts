@@ -102,6 +102,7 @@ function playerRow(row: PlayerRow, corruption: number, board: RowBoard | null): 
     'badges',
     row.ringHolder ? el('span', 'badge ring', icon('one-ring')) : null,
     row.streak === null || row.streak.length < 2 ? null : el('span', `badge streak ${row.streak.kind}`, icon(row.streak.kind === 'win' ? 'streak-win' : 'streak-loss'), String(row.streak.length)),
+    row.guest ? el('span', 'badge guest', 'Guest') : null,
     row.away ? el('span', 'badge away', icon('away')) : null,
     board?.shown === true && !row.you ? el('span', 'badge viewing', icon('viewer')) : null,
   );
@@ -135,6 +136,7 @@ function playerRow(row: PlayerRow, corruption: number, board: RowBoard | null): 
       row.name,
       row.placement === 1 ? 'The winner.' : out ? `Out in ${ordinal(row.placement!)} place.` : `${plural(row.hp, 'HP', 'HP')} · level ${row.level}`,
       ...(row.bot ? ['A bot.'] : row.away ? ['Away: a bot plays for them until they are back.'] : []),
+      ...(row.guest ? ['Playing as a guest.'] : []),
       ...(row.streak === null ? [] : [`${plural(row.streak.length, row.streak.kind === 'win' ? 'win' : 'loss', row.streak.kind === 'win' ? 'wins' : 'losses')} in a row.`]),
       ...(row.ringHolder ? [`Holds the One Ring, at Corruption ${corruption}.`] : []),
       ...(row.gifts.length > 0 ? [`Gifts: ${row.gifts.map((g) => GIFTS[g].name).join(', ')}.`] : []),

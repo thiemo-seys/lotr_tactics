@@ -9,6 +9,7 @@
   "scripts": {
     "dev": "pnpm --parallel --filter @lotr-tactics/client --filter @lotr-tactics/server dev",
     "start": "pnpm build && pnpm --filter @lotr-tactics/server start",
+    "db": "pnpm --filter @lotr-tactics/server db",
     "lint": "eslint .",
     "typecheck": "pnpm -r typecheck",
     "test": "pnpm -r test",

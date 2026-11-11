@@ -1,5 +1,8 @@
-# The game server and the built client in one image (docs/server-spec.md section 9).
-# Build: docker build -t lotr-tactics .    Run: docker run -p 8080:8080 lotr-tactics
+# The game server and the built client in one image (docs/server-spec.md section 9). The server
+# needs Postgres at DATABASE_URL (docs/accounts-spec.md section 15), and applies its migrations
+# at start-up.
+# Build: docker build -t lotr-tactics .
+# Run:   docker run -p 8080:8080 -e DATABASE_URL=postgres://user:password@host:5432/lotr lotr-tactics
 
 FROM node:22-slim AS base
 ENV COREPACK_ENABLE_DOWNLOAD_PROMPT=0
@@ -22,6 +25,7 @@ COPY packages/client/package.json packages/client/
 RUN pnpm install --frozen-lockfile --prod --filter @lotr-tactics/server...
 COPY packages/sim/src packages/sim/src
 COPY packages/server/src packages/server/src
+COPY packages/server/migrations packages/server/migrations
 COPY --from=build /app/packages/client/dist packages/client/dist
 
 USER node

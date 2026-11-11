@@ -9,7 +9,8 @@ import { GIFT_TIER_ICONS, ROUND_ICONS, TRAIT_ICONS, type IconName } from '../ico
 import { TIER_NAMES, giftEffects } from '../gifts.js';
 import { medal } from '../players.js';
 import { actionTip, unitTip } from '../tips.js';
-import { itemChip, ringChip, traitTag } from '../ui/chips.js';
+import { isGuestSeat } from '../account.js';
+import { guestMark, itemChip, ringChip, traitTag } from '../ui/chips.js';
 import { el, icon, rebuild, setEnabled, setText, show } from '../ui/dom.js';
 import { setTip } from '../ui/tooltip.js';
 
@@ -185,7 +186,13 @@ export function renderOver(panel: HTMLElement, flow: PlayFlow, offline: boolean,
             'li',
             `${p.seat === flow.you ? 'you' : ''}${p.placement === null ? ' alive' : ''}`,
             rank,
-            el('span', 'who', icon(seats?.[p.seat]?.kind === 'bot' ? 'bot' : 'person'), flow.seatName(p.seat)),
+            el(
+              'span',
+              'who',
+              icon(seats?.[p.seat]?.kind === 'bot' ? 'bot' : 'person'),
+              flow.seatName(p.seat),
+              p.seat !== flow.you && isGuestSeat(seats?.[p.seat]) ? guestMark() : null,
+            ),
             // Only players still in have something to add: their HP.
             el('span', 'state', p.placement === null ? el('span', '', icon('hp'), plural(p.hp, 'HP', 'HP')) : null),
           );

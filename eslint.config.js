@@ -7,7 +7,7 @@ import tseslint from 'typescript-eslint';
 const ALLOWED_MATH = ['floor', 'ceil', 'round', 'trunc', 'min', 'max', 'abs', 'sqrt', 'imul'];
 const WHY = 'the sim must be deterministic (docs/sim-spec.md section 4)';
 // The server's game code also runs in the browser for offline games (docs/server-spec.md section 3).
-const BROWSER_SAFE = 'it also runs in the browser; only server.ts and main.ts may use Node (docs/server-spec.md section 3)';
+const BROWSER_SAFE = 'it also runs in the browser; only server.ts, main.ts and node/ may use Node (docs/server-spec.md section 3, docs/accounts-spec.md section 3)';
 
 export default defineConfig(
   { ignores: ['**/node_modules/', '**/dist/', '**/coverage/'] },
@@ -41,11 +41,16 @@ export default defineConfig(
   },
   {
     files: ['packages/server/src/**/*.ts'],
-    ignores: ['packages/server/src/server.ts', 'packages/server/src/main.ts'],
+    ignores: ['packages/server/src/server.ts', 'packages/server/src/main.ts', 'packages/server/src/node/**'],
     rules: {
       'no-restricted-imports': [
         'error',
-        { patterns: [{ group: ['node:*', 'ws', 'fs', 'path', 'http', 'https', 'crypto', 'url', 'os'], message: `No Node modules: ${BROWSER_SAFE}.` }] },
+        {
+          patterns: [
+            { group: ['node:*', 'ws', 'fs', 'path', 'http', 'https', 'crypto', 'url', 'os', 'pg', 'pg-*'], message: `No Node modules or Postgres: ${BROWSER_SAFE}.` },
+            { group: ['./node', './node/*', '**/node/*'], message: `Nothing from node/: ${BROWSER_SAFE}.` },
+          ],
+        },
       ],
       'no-restricted-globals': [
         'error',
