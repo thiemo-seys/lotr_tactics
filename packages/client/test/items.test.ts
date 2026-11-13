@@ -1,6 +1,26 @@
 import { COMBINED_ITEM_IDS, COMPONENTS, ITEM_IDS, ITEMS, RING_OF_POWER_IDS } from '@lotr-tactics/sim';
 import { describe, expect, it } from 'vitest';
-import { COMPONENT_COLOURS, RING_COLOURS, itemColours, itemInfo, itemText } from '../src/items.js';
+import { COMPONENT_COLOURS, RING_COLOURS, combinesInto, itemColours, itemInfo, itemText } from '../src/items.js';
+
+describe('the item a dragged component makes', () => {
+  it('names the recipe of two components, either way round', () => {
+    expect(combinesInto('blade', 'cloak')).toBe('sting');
+    expect(combinesInto('cloak', 'blade')).toBe('sting');
+  });
+
+  it('makes nothing from a combined item or a Ring of Power', () => {
+    expect(combinesInto('sting', 'blade')).toBeNull();
+    expect(combinesInto('blade', 'sting')).toBeNull();
+    expect(combinesInto('narya', 'blade')).toBeNull();
+  });
+
+  it("combines with a unit's lone component, and makes nothing on a unit without one", () => {
+    expect(combinesInto('blade', ['sting', 'cloak'])).toBe('sting');
+    expect(combinesInto('blade', [])).toBeNull();
+    expect(combinesInto('blade', ['sting'])).toBeNull();
+    expect(combinesInto('sting', ['cloak'])).toBeNull();
+  });
+});
 
 describe('item display', () => {
   it('gives Rings of Power their gold and their stone', () => {
