@@ -18,11 +18,12 @@ export function shopMark(owned: readonly Star[], merges: boolean): ShopMark {
 /**
  * What a shop card shows and does, from the rules' answer to buying it: `buy` buys it; `bench-full`
  * looks like `buy`, with no reason on the card, and a click shows that the bench is full instead;
- * `refused` is greyed out with the reason on the card, and a click does nothing.
+ * `refused` is greyed out with the reason on the card, and a click does nothing. A full bench is
+ * `refused` too while `ownBench` is false, when another player's bench is on screen.
  */
 export type ShopBuy = 'buy' | 'bench-full' | 'refused';
 
-export function shopBuy(result: ActionResult): ShopBuy {
+export function shopBuy(result: ActionResult, ownBench: boolean): ShopBuy {
   if (result.ok) return 'buy';
-  return result.reason === BENCH_FULL ? 'bench-full' : 'refused';
+  return result.reason === BENCH_FULL && ownBench ? 'bench-full' : 'refused';
 }

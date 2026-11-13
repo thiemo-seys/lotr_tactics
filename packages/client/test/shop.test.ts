@@ -15,9 +15,14 @@ describe('shop cards', () => {
   });
 
   it("don't show a full bench, which a click says instead, but show other reasons", () => {
-    expect(shopBuy({ ok: true })).toBe('buy');
-    expect(shopBuy({ ok: false, reason: BENCH_FULL })).toBe('bench-full');
-    expect(shopBuy({ ok: false, reason: 'Not enough gold.' })).toBe('refused');
-    expect(shopBuy({ ok: false, reason: 'That shop slot is empty.' })).toBe('refused');
+    expect(shopBuy({ ok: true }, true)).toBe('buy');
+    expect(shopBuy({ ok: false, reason: BENCH_FULL }, true)).toBe('bench-full');
+    expect(shopBuy({ ok: false, reason: 'Not enough gold.' }, true)).toBe('refused');
+    expect(shopBuy({ ok: false, reason: 'That shop slot is empty.' }, true)).toBe('refused');
+  });
+
+  it("show a full bench on the card while another player's bench is on screen", () => {
+    expect(shopBuy({ ok: false, reason: BENCH_FULL }, false)).toBe('refused');
+    expect(shopBuy({ ok: true }, false)).toBe('buy');
   });
 });

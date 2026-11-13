@@ -10,7 +10,7 @@ import { BOARD_COLS } from '../src/hex.js';
 import { TEAM_ROWS, type OwnedUnit } from '../src/game/places.js';
 import type { PlayerView } from '../src/game/player.js';
 import type { RingView } from '../src/game/ring.js';
-import { checkAction, completesMerge, type ActionContext } from '../src/game/rules.js';
+import { BENCH_FULL, checkAction, completesMerge, type ActionContext } from '../src/game/rules.js';
 
 const NO_RING: RingView = { state: 'waiting', holder: null, bearer: null, corruption: 0, hobbitFights: 0 };
 const PLANNING: ActionContext = { type: 'pvp', phase: 'planning', council: null, ring: NO_RING };
@@ -69,7 +69,7 @@ describe('checking actions', () => {
     expect(reason(view(), { type: 'buy', slot: 1 })).toBe('That shop slot is empty.');
     expect(reason(view({ gold: 0 }), { type: 'buy', slot: 0 })).toBe('Not enough gold.');
     const full = new Array<OwnedUnit | null>(PLAYER.benchSize).fill(null).map((_, i) => owned(i, 'merry'));
-    expect(reason(view({ bench: full }), { type: 'buy', slot: 0 })).toBe('The bench is full.');
+    expect(reason(view({ bench: full }), { type: 'buy', slot: 0 })).toBe(BENCH_FULL);
     // Two 1★ Sams, one on the board and one on the bench, merge with a third.
     const sams = [owned(100, 'sam'), ...full.slice(1)];
     expect(reason(view({ bench: sams, board: board(owned(101, 'sam')) }), { type: 'buy', slot: 0 })).toBe('ok');
@@ -78,7 +78,7 @@ describe('checking actions', () => {
   it('while the fights play, needs a bench slot for a copy that would merge only with a board copy', () => {
     const full = new Array<OwnedUnit | null>(PLAYER.benchSize).fill(null).map((_, i) => owned(i, 'merry'));
     const p = view({ bench: [owned(100, 'sam'), ...full.slice(1)], board: board(owned(101, 'sam')) });
-    expect(reason(p, { type: 'buy', slot: 0 }, { ...PLANNING, phase: 'fight' })).toBe('The bench is full.');
+    expect(reason(p, { type: 'buy', slot: 0 }, { ...PLANNING, phase: 'fight' })).toBe(BENCH_FULL);
     expect(reason(p, { type: 'buy', slot: 0 })).toBe('ok');
     expect(completesMerge(p, 'sam', true)).toBe(false);
     expect(completesMerge(p, 'sam', false)).toBe(true);
