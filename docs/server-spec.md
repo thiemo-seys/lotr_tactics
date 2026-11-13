@@ -107,7 +107,7 @@ The match is always in one step:
 | Step | Ends | Then |
 |---|---|---|
 | `council` | When every member of the current group has picked, or after 15 seconds, when `advance()` picks for anyone who hasn't | The next group's `council` turn, or `planning` |
-| `planning` | After 30 seconds, or 45 if anyone has a Gift offer when it starts, or once every connected person still in the game is Ready. It ends with `fight()`, which runs the fights | `fight`; after the start round (1-1), which has no fights, the runner advances at once to the next `planning`, with no `round` message |
+| `planning` | After 30 seconds, or 45 if anyone has a Gift offer when it starts, or once every connected person still in the game is Ready. It ends with `fight()`, which runs the fights | `fight` |
 | `fight` | After the round's longest fight, plus 1, 4 and 2 seconds (section 2), or once every connected person still in the game has finished watching | The game's next phase: `council` or `planning` |
 | `over` | When the lobby closes | |
 

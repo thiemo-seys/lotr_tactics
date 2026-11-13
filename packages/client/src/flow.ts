@@ -440,8 +440,8 @@ export class PlayFlow {
         if (next.me.placement !== null) this.show = { kind: 'over' };
         else if (this.show.kind !== next.step.kind || newRound(previous, next)) {
           this.show = { kind: next.step.kind };
-          // A new step starts on the person's own board. Planning after a Council, or after the
-          // start round, is the next round, which no fights came before to bring it back.
+          // A new step starts on the person's own board. Planning after a Council is the next
+          // round, which no fights came before to bring it back.
           this.boardSeat = null;
         }
         return;

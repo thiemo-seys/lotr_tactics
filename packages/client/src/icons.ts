@@ -153,7 +153,7 @@ export const GIFT_TIER_ICONS: Readonly<Record<GiftTier, IconName>> = {
   mithril: 'tier-mithril',
 };
 
-export const ROUND_ICONS: Readonly<Record<RoundType, IconName>> = { start: 'board', council: 'council', pvp: 'pvp', pve: 'pve' };
+export const ROUND_ICONS: Readonly<Record<RoundType, IconName>> = { council: 'council', pvp: 'pvp', pve: 'pve' };
 
 /** The statuses a unit's label shows, in order. */
 export const STATUS_ICONS = { stun: 'stun', stunImmune: 'stun-immune', untargetable: 'untargetable' } as const satisfies Record<string, IconName>;

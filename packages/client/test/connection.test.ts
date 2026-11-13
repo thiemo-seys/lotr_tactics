@@ -31,7 +31,7 @@ describe('LocalConnection', () => {
     const lobby = started.type === 'lobby' ? started.lobby : null;
     expect(lobby!.seats.map((s) => s.name)).toEqual(['You', 'Bot 1', 'Bot 2', 'Bot 3', 'Bot 4', 'Bot 5', 'Bot 6', 'Bot 7']);
     expect(lastState(inbox).step.kind).toBe('planning');
-    expect(lastState(inbox).type).toBe('start');
+    expect(lastState(inbox).type).toBe('pve');
   });
 
   it('plays an offline game to the end, finding the person\'s fight each round', async () => {

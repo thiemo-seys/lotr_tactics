@@ -40,10 +40,10 @@ describe('views', () => {
   it("are copies that don't change as the game goes on", () => {
     const t = testMatch(22, [0]);
     const start = t.match.view(0);
+    expect(t.match.act(0, { type: 'reroll' }).ok).toBe(true);
     timeOut(t);
-    expect([start.round, t.match.view(0).round]).toEqual([1, 2]);
-    expect(start.me.shop.every((id) => id === null)).toBe(true);
-    expect(t.match.view(0).me.shop.every((id) => id !== null)).toBe(true);
+    expect([start.phase, t.match.view(0).phase]).toEqual(['planning', 'fight']);
+    expect([start.me.gold, t.match.view(0).me.gold]).toEqual([2, 0]);
   });
 
   it('send rounds without events, and replaying a fight gives the recorded result', () => {

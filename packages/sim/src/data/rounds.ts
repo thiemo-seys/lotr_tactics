@@ -3,11 +3,10 @@
 
 import type { Cost } from './units.js';
 
-/** `start` is 1-1: planning with the starting kits, and no fight. */
-export type RoundType = 'start' | 'council' | 'pvp' | 'pve';
+export type RoundType = 'council' | 'pvp' | 'pve';
 
 export const SCHEDULE: { readonly firstStage: readonly RoundType[]; readonly laterStages: readonly RoundType[] } = {
-  firstStage: ['start', 'pve', 'pve', 'pve'],
+  firstStage: ['pve', 'pve', 'pve'],
   laterStages: ['pvp', 'pvp', 'pvp', 'council', 'pvp', 'pvp', 'pve'],
 };
 

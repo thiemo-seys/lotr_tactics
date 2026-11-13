@@ -71,13 +71,13 @@ describe('createGame', () => {
     expect(() => createGame({ seed: 1, players: 9 })).toThrow();
   });
 
-  it('starts at 1-1 with planning and a starting kit, everyone at 100 HP and no gold', () => {
+  it('starts at 1-1, a PvE round, in planning, with a starting kit, a shop, the first income and level 2', () => {
     const game = createGame({ seed: 1, players: 8 });
-    expect([game.state.stage, game.state.round, game.state.type, game.state.phase]).toEqual([1, 1, 'start', 'planning']);
+    expect([game.state.stage, game.state.round, game.state.type, game.state.phase]).toEqual([1, 1, 'pve', 'planning']);
     expect(game.state.council).toBeNull();
     for (const p of game.state.players) {
-      expect([p.hp, p.gold, p.level, p.xp, p.streak]).toEqual([100, 0, 1, 0, 0]);
-      expect(p.shop.every((id) => id === null)).toBe(true);
+      expect([p.hp, p.gold, p.level, p.xp, p.streak]).toEqual([100, 2, 2, 0, 0]);
+      expect(p.shop.every((id) => id !== null && UNITS[id].cost === 1)).toBe(true);
       const units = p.bench.filter((u) => u !== null);
       expect(units).toHaveLength(1);
       expect(units[0]).toMatchObject({ star: 1, items: [] });
@@ -95,33 +95,16 @@ describe('createGame', () => {
   });
 });
 
-describe('the start round', () => {
-  it('lets players place and equip their starting kit, but not shop or pick', () => {
+describe('the first round', () => {
+  it('lets players place and equip their starting kit and shop at once, but not pick', () => {
     const game = createGame({ seed: 2, players: 8 });
     expect(game.act(0, { type: 'pick', option: 0 }).ok).toBe(false);
-    expect(game.act(0, { type: 'buy', slot: 0 }).ok).toBe(false);
-    expect(game.act(0, { type: 'lock', locked: true }).ok).toBe(false);
     expect(game.act(0, { type: 'equip', item: 0, to: { bench: 0 } })).toEqual({ ok: true });
     expect(game.act(0, { type: 'move', from: { bench: 0 }, to: { col: 3, row: 0 } })).toEqual({ ok: true });
     expect(playerOf(game, 0).board.filter((u) => u !== null)).toHaveLength(1);
     expect(playerOf(game, 0).items).toEqual([]);
-  });
-
-  it('has no fight, damage or income, then starts 1-2 with a shop', () => {
-    const game = createGame({ seed: 3, players: 8 });
-    const units = game.state.players.map((p) => p.bench[0]!.id);
-    const report = game.advance()!;
-    expect(report).toEqual({ stage: 1, round: 1, fights: [], damage: [], eliminated: [], places: [] });
-    expect([game.state.stage, game.state.round, game.state.type, game.state.phase]).toEqual([1, 2, 'pve', 'planning']);
-    for (const p of game.state.players) {
-      expect(p.hp).toBe(100);
-      // The board was filled when planning ended, as before any fight.
-      expect(p.board.filter((u) => u !== null).map((u) => u!.id)).toEqual([units[p.seat]]);
-      expect(p.bench.every((u) => u === null)).toBe(true);
-      expect(p.items).toHaveLength(1);
-      expect([p.level, p.gold]).toEqual([2, 2]);
-      expect(p.shop.every((id) => id !== null && UNITS[id].cost === 1)).toBe(true);
-    }
+    expect(game.act(0, { type: 'buy', slot: 0 })).toEqual({ ok: true });
+    expect(game.act(0, { type: 'lock', locked: true })).toEqual({ ok: true });
     expect(copies(game)).toEqual(STARTING_COPIES);
   });
 });
@@ -129,20 +112,19 @@ describe('the start round', () => {
 describe('stage 1', () => {
   it('fights the PvE boards, gives loot, income and levels, and reaches level 3 at 2-1', () => {
     const game = createGame({ seed: 5, players: 8 });
-    game.advance();
     const report = game.advance()!;
-    expect([report.stage, report.round]).toEqual([1, 2]);
+    expect([report.stage, report.round]).toEqual([1, 1]);
     expect(report.fights).toHaveLength(8);
     for (const [seat, fight] of report.fights.entries()) {
       expect(fight).toMatchObject({ kind: 'pve', home: seat, away: null });
-      expect(fight.input.teams.B.map((u) => u.unitId)).toEqual(PVE_ROUNDS['1-2'].monsters.map((m) => m.unitId));
+      expect(fight.input.teams.B.map((u) => u.unitId)).toEqual(PVE_ROUNDS['1-1'].monsters.map((m) => m.unitId));
       // The starting unit was moved to the board before the fight.
       expect(fight.input.teams.A).toHaveLength(1);
     }
     for (const p of game.state.players) expect(p.items).toHaveLength(2);
     skipTo(game, 2, 1);
     for (const p of game.state.players) {
-      // 2 + 2 + 3 base income, 2 gold of loot at 1-4, then 4 at 2-1, and no interest below 10.
+      // 2 + 2 + 3 base income, 2 gold of loot at 1-3, then 4 at 2-1, and no interest below 10.
       expect([p.level, p.xp, p.gold]).toEqual([3, 2, 13]);
       expect(p.items).toHaveLength(4);
     }
@@ -163,14 +145,12 @@ describe('stage 1', () => {
     const item = game.state.players[0]!.items[0]!;
     expect(game.act(0, { type: 'equip', item: 0, to: { bench: 0 } })).toEqual({ ok: true });
     expect(game.state.players[0]!.bench[0]!.items).toEqual([item]);
-    game.advance();
     const report = game.advance()!;
     expect(report.fights.find((f) => f.home === 0)!.input.teams.A[0]!.items).toEqual([item]);
   });
 
   it('keeps a locked shop', () => {
     const game = createGame({ seed: 6, players: 3 });
-    game.advance();
     game.act(0, { type: 'lock', locked: true });
     const locked = [...game.state.players[0]!.shop];
     const other = [...game.state.players[1]!.shop];

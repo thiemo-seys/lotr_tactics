@@ -7,9 +7,10 @@ function freeOption(t: TestMatch): number {
   return t.match.game.state.council!.options.findIndex((o) => o.pickedBy === null);
 }
 
-/** Lets the start round run out and returns the match at 1-2 planning. */
+/** Plays 1-1 out on the timers and returns the match at 1-2 planning. */
 function toPlanning(seed: number, people = [0]): TestMatch {
   const t = testMatch(seed, people);
+  timeOut(t);
   timeOut(t);
   expect([t.match.game.state.round, t.match.stepKind]).toEqual([2, 'planning']);
   return t;
@@ -25,33 +26,36 @@ function toCouncilTurn(seed: number): TestMatch {
 }
 
 describe('Match steps', () => {
-  it('starts at 1-1 planning with the starting kits, the bots having planned, and a timer for the people', () => {
+  it('starts at 1-1 planning with the starting kits and a shop, the bots having planned, and a timer for the people', () => {
     const t = testMatch(1, [0]);
     const view = last(t.inbox[0]!, 'state')!.state;
-    expect([view.stage, view.round, view.type, view.step]).toEqual([1, 1, 'start', { kind: 'planning', ms: TIMERS.planning * 1000 }]);
+    expect([view.stage, view.round, view.type, view.step]).toEqual([1, 1, 'pve', { kind: 'planning', ms: TIMERS.planning * 1000 }]);
     expect(view.council).toBeNull();
     expect(view.me.bench.filter((u) => u !== null)).toHaveLength(1);
     expect(view.me.items).toHaveLength(1);
+    expect(view.me.shop.every((id) => id !== null)).toBe(true);
+    expect(view.me.gold).toBe(2);
     // The bots have put their units on the board.
-    for (const p of t.match.game.state.players.slice(1)) expect(p.board.filter((u) => u !== null)).toHaveLength(1);
+    for (const p of t.match.game.state.players.slice(1)) expect(p.board.filter((u) => u !== null).length).toBeGreaterThanOrEqual(1);
     // Bots get no messages.
     expect(t.inbox[1]).toEqual([]);
   });
 
-  it('goes from the start round straight to 1-2, with no fight step', () => {
+  it('fights 1-1 once the person is Ready', () => {
     const t = testMatch(15, [0]);
     expect(t.match.ready(0).ok).toBe(true);
-    expect([t.match.game.state.round, t.match.stepKind]).toEqual([2, 'planning']);
-    expect(last(t.inbox[0]!, 'round')).toBeUndefined();
+    expect([t.match.game.state.round, t.match.stepKind]).toEqual([1, 'fight']);
+    expect(last(t.inbox[0]!, 'round')!.round.fights.length).toBeGreaterThan(0);
   });
 
   it('moves on to 1-2 planning, with the bots having planned', () => {
+    const start = testMatch(2, [0]);
+    // Bots buy a unit at 1-1 with their 2 gold; the person still has theirs.
+    for (const p of start.match.game.state.players.slice(1)) expect(p.gold).toBeLessThan(2);
+    expect(start.match.view(0).me.gold).toBe(2);
     const t = toPlanning(2);
     const view = last(t.inbox[0]!, 'state')!.state;
     expect([view.stage, view.round, view.step]).toEqual([1, 2, { kind: 'planning', ms: TIMERS.planning * 1000 }]);
-    // Bots buy a unit at 1-2 with their 2 gold; the person still has theirs.
-    for (const p of t.match.game.state.players.slice(1)) expect(p.gold).toBeLessThan(2);
-    expect(view.me.gold).toBe(2);
   });
 
   it('picks for a person whose Council time runs out', () => {
@@ -167,7 +171,7 @@ describe('Ready votes', () => {
 
 describe('Seats', () => {
   it("plays a disconnected person's seat with its bot, until they rejoin", () => {
-    const t = toPlanning(10);
+    const t = testMatch(10, [0]);
     expect(t.match.game.state.players[0]!.gold).toBe(2);
     t.match.setConnected(0, false);
     // The bot plans at once: it buys a unit with the seat's 2 gold.
@@ -178,10 +182,10 @@ describe('Seats', () => {
     t.match.setConnected(0, true);
     // Rejoining mid-fight sends the round, then the state.
     expect(t.inbox[0]!.map((m) => m.type)).toEqual(['round', 'state']);
-    // The bot leaves the seat alone from now on: 1-3 brings only its income, 2 gold.
+    // The bot leaves the seat alone from now on: 1-2 brings only its income, 2 gold.
     const before = t.match.view(0).me;
     timeOut(t);
-    expect([t.match.stepKind, t.match.game.state.round]).toEqual(['planning', 3]);
+    expect([t.match.stepKind, t.match.game.state.round]).toEqual(['planning', 2]);
     const after = t.match.view(0).me;
     expect(after.gold).toBe(before.gold + 2);
     expect([after.bench, after.board]).toEqual([before.bench, before.board]);
