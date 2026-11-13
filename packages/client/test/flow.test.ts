@@ -169,6 +169,8 @@ describe('the play flow', () => {
       await flush();
     }
     expect(flow.show.kind).toBe('over');
+    // A win ends on its results: the game's last gold is what they showed coming in.
+    if (promised?.gold != null) expect(flow.state!.me.gold).toBe(promised.gold.from + promised.gold.lines.reduce((sum, l) => sum + l.amount, 0));
     expect(flow.me().placement).not.toBeNull();
     expect(rounds).toBeGreaterThan(5);
     expect(readies).toBeGreaterThan(5);
@@ -594,7 +596,7 @@ describe('what a round does to the person', () => {
   const amounts = (change: RoundChange) => change.gold!.lines.map((l) => [l.source, l.amount]);
 
   it("takes the HP lost, then adds the fights' gold, interest on what is held after it, and the next round's base income", () => {
-    const change = roundChange(round(), me(), false);
+    const change = roundChange(round(), me(), false, true);
     expect(change.hp).toEqual({ before: 72, after: 64 });
     expect(change.gold!.from).toBe(34);
     expect(amounts(change)).toEqual([
@@ -606,12 +608,12 @@ describe('what a round does to the person', () => {
   });
 
   it('works out the same from a view after the gold is paid', () => {
-    expect(roundChange(round(), me({ gold: 43 }), true)).toEqual(roundChange(round(), me(), false));
+    expect(roundChange(round(), me({ gold: 43 }), true, true)).toEqual(roundChange(round(), me(), false, true));
   });
 
   it('lists loot and the Seven after a PvE round', () => {
     const pve = round({ round: 7, damage: [], gold: [{ seat: 1, win: 0, streak: 0, loot: 3, rings: 2 }] });
-    expect(amounts(roundChange(pve, me({ gold: 20 }), false))).toEqual([
+    expect(amounts(roundChange(pve, me({ gold: 20 }), false, true))).toEqual([
       ['loot', 3],
       ['rings', 2],
       ['interest', 2],
@@ -621,29 +623,39 @@ describe('what a round does to the person', () => {
 
   it('has no interest or base income when a Council comes next', () => {
     const beforeCouncil = round({ round: 3, damage: [], gold: [{ seat: 1, win: 1, streak: 2, loot: 0, rings: 0 }] });
-    const change = roundChange(beforeCouncil, me({ gold: 47, streak: 4 }), false);
+    const change = roundChange(beforeCouncil, me({ gold: 47, streak: 4 }), false, true);
     expect(amounts(change)).toEqual([
       ['win', 1],
       ['winStreak', 2],
     ]);
     expect(change.hp).toEqual({ before: 64, after: 64 });
-    expect(roundChange(beforeCouncil, me({ gold: 50, streak: 4 }), true).gold!.from).toBe(47);
+    expect(roundChange(beforeCouncil, me({ gold: 50, streak: 4 }), true, true).gold!.from).toBe(47);
+  });
+
+  it('has no interest or base income in the round that ends the game', () => {
+    const last = round({ damage: [], gold: [{ seat: 1, win: 1, streak: 2, loot: 0, rings: 0 }], eliminated: [0], places: [2] });
+    const change = roundChange(last, me({ gold: 47, streak: 4 }), false, false);
+    expect(amounts(change)).toEqual([
+      ['win', 1],
+      ['winStreak', 2],
+    ]);
+    expect(roundChange(last, me({ gold: 50, streak: 4 }), true, false).gold!.from).toBe(47);
   });
 
   it('pays interest past 5 with Treasure of Erebor', () => {
     const plain = round({ damage: [], gold: [] });
     const rich = me({ gold: 79, gifts: ['treasure-of-erebor'] });
-    expect(amounts(roundChange(plain, rich, false))).toEqual([
+    expect(amounts(roundChange(plain, rich, false, true))).toEqual([
       ['interest', 7],
       ['base', 5],
     ]);
-    expect(roundChange(plain, me({ gold: 91, gifts: ['treasure-of-erebor'] }), true).gold!.from).toBe(79);
+    expect(roundChange(plain, me({ gold: 91, gifts: ['treasure-of-erebor'] }), true, true).gold!.from).toBe(79);
   });
 
   it('has no gold for a person who is out, and HP no lower than 0', () => {
     const out = round({ damage: [{ seat: 1, amount: 12 }], eliminated: [1], places: [8] });
-    expect(roundChange(out, me({ hp: -5 }), false)).toEqual({ hp: { before: 7, after: 0 }, gold: null });
-    expect(roundChange(round(), me({ placement: 5 }), true).gold).toBeNull();
+    expect(roundChange(out, me({ hp: -5 }), false, true)).toEqual({ hp: { before: 7, after: 0 }, gold: null });
+    expect(roundChange(round(), me({ placement: 5 }), true, true).gold).toBeNull();
   });
 
   it('flies one coin per gold, up to 24, with bigger coins above that', () => {
