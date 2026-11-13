@@ -1094,6 +1094,16 @@ describe('facing', () => {
     expectAngle(aimed(100), PI / 4);
   });
 
+  it("turns an archer a little further, so its arrow's line, to the side of its centre, goes through its target", () => {
+    // The second Gimli (id 2) on (1, 3) faces Khamûl on (2, 3), √3 away at π/2, from 19 on (above). With his arrow π/4 to
+    // his left, on a line √3/2 to the side of his centre, he turns a further asin(1/2), π/6: to π/12.
+    const p = playbackAt(khamulRidesFight, 100);
+    expect(Math.hypot(p.position(0).x - p.position(2).x, p.position(0).z - p.position(2).z)).toBeCloseTo(Math.sqrt(3));
+    expectAngle(fightFacing(p, 2, 0, PI / 4, Math.sqrt(3) / 2), PI / 12);
+    // A line wider than the way to the target turns him as far as a line along its edge would.
+    expectAngle(fightFacing(p, 2, 0, 0, 10), 0);
+  });
+
   it('turns the same way around a step that a stun cuts into', () => {
     const fight = () => combat(PRESETS.full, PRESETS.full);
     const p = fullBoards();
