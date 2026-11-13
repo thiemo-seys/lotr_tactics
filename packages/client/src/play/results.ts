@@ -1,7 +1,6 @@
 // A round's results on the play page (docs/game-spec.md section 12): the person's outcome, then
 // what the round did to them, the hit their HP took and the gold coming in, played out once as the
-// results open, then everyone who took damage or was knocked out. The numbers come from
-// PlayFlow.results; this module only draws and animates them.
+// results open. The numbers come from PlayFlow.results; this module only draws and animates them.
 
 import { PLAYER } from '@lotr-tactics/sim';
 import type { RoundRecord } from '@lotr-tactics/server';
@@ -47,9 +46,8 @@ interface Parts {
 
 export function renderResults(panel: HTMLElement, flow: PlayFlow, round: RoundRecord, waiting: boolean): void {
   const r = flow.results(round, waiting);
-  const seats = flow.lobby?.seats;
   // Waiting doesn't build the panel again, so the animation plays once.
-  const key = JSON.stringify(['results', { ...r, waiting: undefined }, seats?.map((s) => s.kind)]);
+  const key = JSON.stringify(['results', { ...r, waiting: undefined }]);
   rebuild(panel, key, () => {
     panel.className = `panel results outcome-${r.outcome.toLowerCase().replace(' ', '-')}`;
     const { nodes, parts } = build(r, flow);
@@ -65,7 +63,6 @@ export function renderResults(panel: HTMLElement, flow: PlayFlow, round: RoundRe
 }
 
 function build(r: RoundResults, flow: PlayFlow): { nodes: Node[]; parts: Parts } {
-  const seats = flow.lobby?.seats;
   const { hp, gold } = r.change;
   const ring = el('span', 'hp-ring');
   ring.style.setProperty('--hp', String(hpPercent(hp.after)));
@@ -82,7 +79,7 @@ function build(r: RoundResults, flow: PlayFlow): { nodes: Node[]; parts: Parts }
   let purse: HTMLElement | null = null;
   let gained: HTMLElement | null = null;
   if (gold === null) {
-    const place = r.rows.find((row) => row.you)?.knockedOut ?? flow.state?.me.placement ?? null;
+    const place = r.knockedOut ?? flow.state?.me.placement ?? null;
     bottom = el('p', 'result-out', icon('knockout'), place === null ? 'You are out of the game.' : `You are out, in ${ordinal(place)} place.`);
   } else {
     const total = gold.lines.reduce((sum, line) => sum + line.amount, 0);
@@ -107,26 +104,6 @@ function build(r: RoundResults, flow: PlayFlow): { nodes: Node[]; parts: Parts }
     ),
     hero,
     bottom,
-    r.rows.length === 0
-      ? el('p', 'result-empty', 'Nobody took damage this round.')
-      : el(
-          'table',
-          'result-table',
-          el('thead', '', el('tr', '', el('th', '', 'Player'), el('th', 'num', 'Damage'), el('th', '', ''))),
-          el(
-            'tbody',
-            '',
-            ...r.rows.map((row) =>
-              el(
-                'tr',
-                `${row.you ? 'you' : ''}${row.knockedOut !== null ? ' knocked-out' : ''}`,
-                el('td', 'who', el('span', '', icon(seats?.[row.seat]?.kind === 'bot' ? 'bot' : 'person'), row.name)),
-                el('td', 'num damage', row.damage > 0 ? el('span', '', icon('damage'), `−${row.damage}`) : '—'),
-                el('td', 'ko', row.knockedOut === null ? '' : el('span', '', icon('knockout'), `Out · ${ordinal(row.knockedOut)}`)),
-              ),
-            ),
-          ),
-        ),
     el('p', 'waiting', icon('timer'), 'Waiting for the others…'),
   ];
   return { nodes, parts: { emblem, ring, flash, hp: hpNumber, float, sources, bag, purse, gained } };

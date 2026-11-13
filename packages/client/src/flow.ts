@@ -69,17 +69,6 @@ export interface PlanningRing {
   readonly corruption: number;
 }
 
-/** One player in a round's results. */
-export interface ResultRow {
-  readonly seat: number;
-  readonly name: string;
-  readonly you: boolean;
-  /** HP lost this round. */
-  readonly damage: number;
-  /** The place of a player knocked out this round, or null. */
-  readonly knockedOut: number | null;
-}
-
 /** Where a round's gold comes from: its fights' gold, paid as the fight step ends, then the next round's income as it starts. */
 export type IncomeSource = 'win' | 'winStreak' | 'lossStreak' | 'loot' | 'rings' | 'interest' | 'base';
 
@@ -103,7 +92,7 @@ export interface RoundChange {
   readonly gold: { readonly from: number; readonly lines: readonly IncomeLine[] } | null;
 }
 
-/** A round's results: the person's fight, and everyone who took damage or was knocked out. */
+/** A round's results: the person's fight, and what it did to their HP and gold. */
 export interface RoundResults {
   readonly stage: number;
   readonly round: number;
@@ -113,8 +102,8 @@ export interface RoundResults {
   readonly taken: number;
   /** What the round does to the person's HP and gold, as it was when its results opened. */
   readonly change: RoundChange;
-  /** The person first if they are listed, then by damage taken, then by seat. */
-  readonly rows: readonly ResultRow[];
+  /** The place the person finishes in, if this round knocks them out, or null. */
+  readonly knockedOut: number | null;
   /** The results have been shown and the page waits for the others. */
   readonly waiting: boolean;
 }
@@ -432,28 +421,19 @@ export class PlayFlow {
     return show.kind === 'fight' || show.kind === 'results' || show.kind === 'waiting' ? show.round : this.state!;
   }
 
-  /** A round's results: the person's fight and damage, and everyone who took damage or was knocked out. */
+  /** A round's results: the person's fight, damage and gold. */
   results(round: RoundRecord, waiting: boolean): RoundResults {
     const { you, state } = this;
     const fight = yourFight(round, you);
-    const damage = new Map(round.damage.map((d) => [d.seat, d.amount]));
-    const seats = [...new Set([...round.damage.map((d) => d.seat), ...round.eliminated])];
-    const rows = seats.map((seat) => ({
-      seat,
-      name: this.seatName(seat),
-      you: seat === you,
-      damage: damage.get(seat) ?? 0,
-      knockedOut: round.eliminated.includes(seat) ? (round.places[round.eliminated.indexOf(seat)] ?? null) : null,
-    }));
-    rows.sort((a, b) => Number(b.you) - Number(a.you) || b.damage - a.damage || a.seat - b.seat);
+    const out = round.eliminated.indexOf(you);
     return {
       stage: round.stage,
       round: round.round,
       type: roundType(round.stage, round.round),
       outcome: fight === null ? 'No fight' : outcomeText(fight.result.outcome, yourTeam(fight, you)),
-      taken: damage.get(you) ?? 0,
+      taken: round.damage.find((d) => d.seat === you)?.amount ?? 0,
       change: this.changes.get(`${round.stage}-${round.round}`) ?? this.roundChange(round),
-      rows,
+      knockedOut: out === -1 ? null : (round.places[out] ?? null),
       waiting: waiting && state!.me.placement === null,
     };
   }
