@@ -356,8 +356,8 @@ function checkRigged(name: string, id: UnitId, limit: number, what: string): voi
     expect(above.some((name) => name.startsWith('mount_')), `the bones above the hips: ${above.join(', ')}`).toBe(true);
   });
 
-  // Section 4, Star levels: a rigged 2★ or 3★ model is scaled by how far its clips reach, which the
-  // rig kit works out and writes on the armature, the node above root.
+  // Section 4, Models: a rigged model's meshes are bounded by how far its clips reach, which the rig kit
+  // works out and writes on the armature, the node above root.
   it('carries its reach in its armature’s extras', () => {
     const reach = armatureOf(glb(name)).extras?.reach;
     expect(typeof reach, 'a number').toBe('number');
