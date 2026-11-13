@@ -275,6 +275,7 @@ Which clip (section 4, Rigs and clips) each unit's model plays, and how far into
   - otherwise towards its target in `combat.state`, from the unit's `position()` to the target's, without the lunge;
   - over the first 3 ticks of a step or dash it turns evenly, the shorter way round, from the way it faced: the way the step before went if one ended on that tick, or else towards its target. Over the first 3 ticks after one ends it turns the same way from the way it went to its target;
   - with nowhere to face (no target, or the target in the same place), and once dead, it keeps the way it last faced.
+  - an archer's model is built with its arrow turned to its left of straight ahead (its script's `AIM_YAW`, listed in `aim.ts`), so its bow shows its curve to the camera. Wherever it faces its target, and as it stands in planning, the model turns that far back to its right, so its arrow points where it faces; while a step or dash moves it, its front faces the way it goes, as any other unit's.
 - **Planning:** on the planning board and bench, units play `idle` in real time, staggered by 0.37 s × their id.
 - **Reduced motion:** when the system asks for it, `idle` and `stun` hold their first frame. `move`, `attack`, `cast`, `death` and `victory` still play, since they show what happens.
 - **Static models,** such as today's 3★ ones, **and pawns** have no clips, and are drawn as before: turning, lunging and fading, and dying as above (Death).

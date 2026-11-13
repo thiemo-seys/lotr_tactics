@@ -1080,6 +1080,20 @@ describe('facing', () => {
     expectAngle(facingAt(khamulRidesFight, 2, 100, 0), PI / 2);
   });
 
+  it("turns a model that shoots to its left, by its aim, so its shot goes at its target, but not while it steps", () => {
+    const p = khamulRides();
+    // As above, with the second Gimli (id 2) shooting π/4 to his left: π/3 to Khamûl less π/4 on 1, the step's π/6 from
+    // 4 until he arrives on 16, then back to π/2 less π/4 by 19, a third of the way a tick from π/6.
+    expect(stepsOf(p, 2)[0]).toEqual([1, 16]);
+    const aimed = (t: number) => fightFacing(playbackAt(khamulRidesFight, t), 2, 0, PI / 4);
+    expectAngle(aimed(1), PI / 12);
+    expectAngle(aimed(4), PI / 6);
+    expectAngle(aimed(15.5), PI / 6);
+    expectAngle(aimed(17.5), (5 * PI) / 24);
+    expectAngle(aimed(19), PI / 4);
+    expectAngle(aimed(100), PI / 4);
+  });
+
   it('turns the same way around a step that a stun cuts into', () => {
     const fight = () => combat(PRESETS.full, PRESETS.full);
     const p = fullBoards();
