@@ -481,7 +481,9 @@ export class PlayFlow {
     const { state } = this;
     // Until the round's fight step ends, its gold isn't in the view's.
     const paid = !(state!.step.kind === 'fight' && state!.stage === round.stage && state!.round === round.round);
-    return roundChange(round, state!.me, paid);
+    // Players the round knocks out are placed only when its fight step ends.
+    const left = state!.players.filter((p) => p.placement === null && !round.eliminated.includes(p.seat)).length;
+    return roundChange(round, state!.me, paid, left > 1);
   }
 
   private showResults(round: RoundRecord, now: number): void {
@@ -496,11 +498,12 @@ export class PlayFlow {
 
 /**
  * What a round does to a player's HP and gold: the damage, the fights' gold (game-spec.md section
- * 9.4), then, unless the next round is a Council, its interest and base income (section 8.1).
- * `paid` says whether `me` is from after the round's fight step, when all of that is in its gold;
- * before, the next round's interest is on the gold held now plus the fights' gold.
+ * 9.4), then, if the game goes on to a next round that isn't a Council, its interest and base
+ * income (section 8.1). `paid` says whether `me` is from after the round's fight step, when all of
+ * that is in its gold; before, the next round's interest is on the gold held now plus the fights'
+ * gold. `goesOn` says whether more than one player is left after the round, so there is a next round.
  */
-export function roundChange(round: RoundRecord, me: PlayerView, paid: boolean): RoundChange {
+export function roundChange(round: RoundRecord, me: PlayerView, paid: boolean, goesOn: boolean): RoundChange {
   const taken = round.damage.find((d) => d.seat === me.seat)?.amount ?? 0;
   const hp = { before: me.hp + taken, after: Math.max(0, me.hp) };
   if (me.placement !== null || round.eliminated.includes(me.seat)) return { hp, gold: null };
@@ -508,7 +511,7 @@ export function roundChange(round: RoundRecord, me: PlayerView, paid: boolean): 
   const fights = earned.win + earned.streak + earned.loot + earned.rings;
   const [stage, next] = nextRound(round.stage, round.round);
   const name = `${stage}-${next}`;
-  const pays = roundType(stage, next) !== 'council';
+  const pays = goesOn && roundType(stage, next) !== 'council';
   const base = pays ? baseIncome(stage, next) : 0;
   // The gold held as the next round starts, which its interest is on.
   const held = !paid ? me.gold + fights : pays ? heldBefore(me.gold, base, me.gifts) : me.gold;
