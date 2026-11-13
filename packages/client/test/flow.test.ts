@@ -312,7 +312,7 @@ describe('round results', () => {
     return flow;
   }
 
-  it('list the person first, then by damage, with knockouts and their places from the round', () => {
+  it("give the person's outcome and damage, and their place from the round if it knocks them out", () => {
     // Players a round knocks out are placed only when its fight step ends, so the places come from the round.
     const flow = inGame([null, null, null, null, null]);
     const round: RoundRecord = {
@@ -330,18 +330,13 @@ describe('round results', () => {
       places: [7, 8],
     };
     const results = flow.results(round, false);
-    expect(results).toMatchObject({ stage: 3, round: 2, type: 'pvp', outcome: 'Defeat', taken: 6, waiting: false });
-    expect(results.rows).toEqual([
-      { seat: 1, name: 'You', you: true, damage: 6, knockedOut: null },
-      { seat: 2, name: 'Bot 2', you: false, damage: 12, knockedOut: 7 },
-      { seat: 4, name: 'Bot 4', you: false, damage: 9, knockedOut: 8 },
-      { seat: 0, name: 'Bot 0', you: false, damage: 6, knockedOut: null },
-    ]);
+    expect(results).toMatchObject({ stage: 3, round: 2, type: 'pvp', outcome: 'Defeat', taken: 6, knockedOut: null, waiting: false });
+    expect(flow.results({ ...round, eliminated: [2, 1, 4], places: [6, 7, 8] }, false).knockedOut).toBe(7);
   });
 
   it('say when there was no fight of yours, and wait only while you are in', () => {
     const round: RoundRecord = { stage: 3, round: 2, fights: [fight(2, 3, 'draw')], damage: [], gold: [], eliminated: [], places: [] };
-    expect(inGame([null, null, null, null]).results(round, true)).toMatchObject({ outcome: 'No fight', taken: 0, rows: [], waiting: true });
+    expect(inGame([null, null, null, null]).results(round, true)).toMatchObject({ outcome: 'No fight', taken: 0, knockedOut: null, waiting: true });
     expect(inGame([null, 4, null, null], 4).results(round, true).waiting).toBe(false);
     expect(inGame([null, null, null, null]).results({ ...round, fights: [fight(1, 3, 'draw')] }, false).outcome).toBe('Draw');
   });
