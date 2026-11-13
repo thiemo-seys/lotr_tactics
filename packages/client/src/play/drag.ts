@@ -3,19 +3,25 @@
 // onto another of the person's components to combine them. While the fights play, the same on the
 // bench, since the board is fighting. While
 // dragging, the scene marks where the drop would go, in gold if the game's rules allow it and in
-// red with the reason if not; the rules are the sim's own `checkAction`.
+// red with the reason if not; the rules are the sim's own `checkAction`. A component that would
+// combine, with another component or with one the unit holds, shows the item it would make.
 
-import { ITEMS, UNITS, combine, placeOf, unitAt, type Action, type ComponentId, type OwnedUnit, type Place } from '@lotr-tactics/sim';
+import { ITEMS, UNITS, placeOf, unitAt, type Action, type ItemId, type OwnedUnit, type Place } from '@lotr-tactics/sim';
 import type { PlayFlow } from '../flow.js';
+import { combinesInto } from '../items.js';
 import { placeAtPoint } from '../layout.js';
 import type { FightScene } from '../scene.js';
+import { itemTip } from '../tips.js';
 import { itemChip, ringChip } from '../ui/chips.js';
 import { el, setText, show, toggle } from '../ui/dom.js';
+import { tipCard } from '../ui/tip-card.js';
 import { suppressTips } from '../ui/tooltip.js';
 import type { ShopBar, TrayItem } from './shop-bar.js';
 
 /** How far the hint sits from the pointer. */
 const HINT_OFFSET = { x: 16, y: 18 };
+/** Space between the pointer and the card of the item a drop would make, and the window's edges. */
+const PREVIEW_GAP = { pointer: 30, edge: 8 };
 
 /** When a drag started: in planning, or while the fights play, when only the bench can be used. */
 type DragTime = 'planning' | 'fights';
@@ -25,6 +31,9 @@ export class DragAndDrop {
   private time: DragTime = 'planning';
   private unit: { readonly unit: OwnedUnit; readonly from: Place } | null = null;
   private item: { readonly item: TrayItem; readonly ghost: HTMLElement; readonly caption: HTMLElement } | null = null;
+  /** The card of the item a dragged component would make where it is now, and which item it shows. */
+  private readonly preview: HTMLElement = el('div', 'tip-card combine-preview');
+  private previewing: ItemId | null = null;
 
   constructor(
     private readonly flow: PlayFlow,
@@ -38,6 +47,8 @@ export class DragAndDrop {
     window.addEventListener('pointermove', (event) => this.move(event));
     window.addEventListener('pointerup', (event) => this.drop(event));
     window.addEventListener('pointercancel', () => this.cancel());
+    this.preview.hidden = true;
+    document.body.append(this.preview);
   }
 
   /** Starts dragging one of the person's items or the Ring from the tray. */
@@ -124,6 +135,7 @@ export class DragAndDrop {
     this.shop.selling(null);
     this.shop.markItem(null);
     show(this.hint, false);
+    this.showPreview(null, 0, 0);
     suppressTips(false);
     toggle(document.body, 'grabbing', false);
   }
@@ -138,21 +150,30 @@ export class DragAndDrop {
       if (other !== null) {
         const result = this.flow.check({ type: 'combine', item: this.item.item as number, with: other });
         const items = this.flow.me().items;
+        const made = result.ok ? combinesInto(items[this.item.item as number]!, items[other]!) : null;
         this.scene.markPlace(null);
         this.scene.markUnit(null);
         this.shop.markItem(other, result.ok);
-        setText(this.item.caption, result.ok ? `Combine into ${ITEMS[combine(items[other] as ComponentId, items[this.item.item as number] as ComponentId)].name}` : result.reason);
+        setText(this.item.caption, made !== null ? `Combine into ${ITEMS[made].name}` : result.ok ? '' : result.reason);
         toggle(this.item.ghost, 'refused', !result.ok);
+        this.showPreview(made, x, y);
         return;
       }
       this.shop.markItem(null);
       const to = this.overView(x, y) ? this.unitPlaceAt(x, y) : null;
       const target = to === null ? null : unitAt(this.flow.me(), to);
       const result = to === null ? null : this.flow.check(this.itemAction(this.item.item, to));
+      // A component given to a unit that holds a lone component combines with it.
+      const made = result?.ok === true && target !== null && this.item.item !== 'ring' ? combinesInto(this.flow.me().items[this.item.item]!, target.items) : null;
       this.scene.markPlace(to, result?.ok ?? true);
       this.scene.markUnit(result?.ok === true && target !== null ? target.id : null);
-      setText(this.item.caption, target === null ? 'Drop on a unit' : result!.ok ? `Give to ${UNITS[target.unitId].name}` : result!.reason);
+      const name = target === null ? '' : UNITS[target.unitId].name;
+      setText(
+        this.item.caption,
+        target === null ? 'Drop on a unit' : !result!.ok ? result!.reason : made !== null ? `Give to ${name}, making ${ITEMS[made].name}` : `Give to ${name}`,
+      );
       toggle(this.item.ghost, 'refused', result !== null && !result.ok);
+      this.showPreview(made, x, y);
       return;
     }
     if (this.unit === null) {
@@ -221,6 +242,30 @@ export class DragAndDrop {
 
   private itemAction(item: TrayItem, to: Place): Action {
     return item === 'ring' ? { type: 'ring', to } : { type: 'equip', item, to };
+  }
+
+  /**
+   * Shows the card of the item a drop would make, above the pointer, or below it if there is no
+   * room, and within the window; null hides it.
+   */
+  private showPreview(made: ItemId | null, x: number, y: number): void {
+    const card = this.preview;
+    card.hidden = made === null;
+    if (made === null) {
+      this.previewing = null;
+      return;
+    }
+    if (made !== this.previewing) {
+      this.previewing = made;
+      const tip = itemTip(made);
+      card.className = `tip-card combine-preview tone-${tip.tone ?? 'combined'}`;
+      card.replaceChildren(el('div', 'combine-preview-label', 'Makes'), ...tipCard(tip));
+    }
+    const { width, height } = card.getBoundingClientRect();
+    const left = Math.min(Math.max(x - width / 2, PREVIEW_GAP.edge), window.innerWidth - width - PREVIEW_GAP.edge);
+    const above = y - PREVIEW_GAP.pointer - height;
+    const top = above >= PREVIEW_GAP.edge ? above : Math.min(y + PREVIEW_GAP.pointer + 24, window.innerHeight - height - PREVIEW_GAP.edge);
+    card.style.transform = `translate(${Math.round(left)}px, ${Math.round(top)}px)`;
   }
 
   private showHint(text: string | null, x: number, y: number): void {

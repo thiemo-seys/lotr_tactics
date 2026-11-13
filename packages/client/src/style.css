@@ -3380,6 +3380,20 @@ body.play input {
   border-color: #8a2f2a;
 }
 
+/* The item a dragged component would make, over the pointer. */
+.combine-preview {
+  z-index: var(--z-drag);
+  animation: none;
+}
+
+.combine-preview-label {
+  margin-bottom: 6px;
+  font: 700 10px/1 var(--font-body);
+  color: var(--text-dim);
+  text-transform: uppercase;
+  letter-spacing: 0.12em;
+}
+
 .drag-ghost.refused .chip {
   box-shadow: 0 6px 16px rgba(0, 0, 0, 0.6), 0 0 0 2px var(--danger);
 }
