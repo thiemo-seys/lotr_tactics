@@ -18,6 +18,7 @@ import {
   type MarkState,
   type MissileState,
   type StunState,
+  type Vec3Out,
 } from './effects.js';
 import { BOARD_EXTENT } from './layout.js';
 import { EFFECTS } from './look.js';
@@ -31,6 +32,11 @@ export interface FxUnits {
   count(): number;
   /** The height of its chest, which projectiles leave from and strike, and sparks burst at. */
   chest(unit: number): number;
+  /**
+   * Where its shot leaves its bow, for an archer's model: across the ground from where it stands, in
+   * `out.x` and `out.z`, and the height in `out.y`. Whether it has one; if not, shots leave its chest.
+   */
+  bow(unit: number, out: Vec3Out): boolean;
   /** The way it faces, as an angle about the vertical. */
   facing(unit: number): number;
   /** Its livery colour, for its shards. */
@@ -336,6 +342,10 @@ export class FxView {
   private readonly at: MutablePoint = { x: 0, z: 0 };
   private readonly mark: MarkState = { fill: 0, edge: 0 };
   private readonly flight: MissileState = { fromX: 0, fromZ: 0, toX: 0, toZ: 0, share: 0 };
+  /** A basic attack's arrow, from bow to target (drawShots). */
+  private readonly shot: MissileState = { fromX: 0, fromZ: 0, toX: 0, toZ: 0, share: 0 };
+  /** Where an archer's shot leaves its bow (FxUnits.bow). */
+  private readonly bow: Vec3Out = { x: 0, y: 0, z: 0 };
   private readonly stun: StunState = { age: 0, left: 0 };
   /** The side drawn as the near one, whose edges are blue (EFFECTS.sides). */
   side: Team = 'A';
@@ -423,6 +433,7 @@ export class FxView {
     this.drawMarks(fx, time);
     this.drawAimLines(fx, playback, units, time);
     this.drawMissiles(fx, units, time);
+    this.drawShots(playback, units, time);
     this.drawRibbons(fx, playback, units, time);
     this.drawBursts(fx, playback, units, time);
     this.drawGround(fx, playback, time);
@@ -467,6 +478,7 @@ export class FxView {
       const k = fx.aimFirmness(line, time);
       const from = playback.positionInto(this.at, line.source, time);
       this.p.set(from.x, units.chest(line.source), from.z);
+      if (units.bow(line.source, this.bow)) this.p.set(from.x + this.bow.x, this.bow.y, from.z + this.bow.z);
       const to = playback.positionInto(this.at, line.target, time);
       this.p2.set(to.x, units.chest(line.target), to.z);
       const width = aimLine.from + (aimLine.to - aimLine.from) * k;
@@ -482,8 +494,14 @@ export class FxView {
       const m = fx.missiles[n]!;
       if (!live(m, time)) continue;
       const f = fx.missileInto(this.flight, m, time);
-      // A lob leaves the caster's hand or staff, above its chest, and comes down on the ground.
-      const fromY = units.chest(m.from) + (m.lob ? 0.45 : 0);
+      // A lob leaves the caster's hand or staff, above its chest, and comes down on the ground; an
+      // archer's arrow leaves its bow.
+      let fromY = units.chest(m.from) + (m.lob ? 0.45 : 0);
+      if (m.kind === 'arrow' && !m.lob && units.bow(m.from, this.bow)) {
+        f.fromX += this.bow.x;
+        f.fromZ += this.bow.z;
+        fromY = this.bow.y;
+      }
       const toY = m.to !== null ? units.chest(m.to) : m.lob ? 0.25 : fromY;
       const arc = m.lob ? EFFECTS.lob.arc : 0;
       const span = Math.max(1e-6, m.end - m.start);
@@ -530,6 +548,33 @@ export class FxView {
           if (fire && 14 > lamp.intensity) this.lamp(lamp, this.p, m.colour, 14);
         }
       }
+    }
+  }
+
+  /**
+   * Archers' basic attacks, as arrows from their bows to their targets' chests (viewer-spec section 5,
+   * Projectiles); the scene draws any other shooter's.
+   */
+  private drawShots(playback: Playback, units: FxUnits, time: number): void {
+    const { projectiles } = playback;
+    for (let n = 0; n < projectiles.length; n++) {
+      const shot = projectiles[n]!;
+      if (time < shot.startTick || !units.bow(shot.source, this.bow)) continue;
+      const share = playback.progress(shot.startTick, shot.hitTick - shot.startTick, time);
+      const to = playback.positionInto(this.at, shot.target, time);
+      const toY = units.chest(shot.target);
+      // From the bow where the shooter stood as it loosed, straight to the target's chest.
+      this.shot.fromX = shot.from.x + this.bow.x;
+      this.shot.fromZ = shot.from.z + this.bow.z;
+      this.shot.toX = to.x;
+      this.shot.toZ = to.z;
+      this.along(this.p, this.shot, this.bow.y, toY, 0, share);
+      this.along(this.p2, this.shot, this.bow.y, toY, 0, Math.min(1, share + 0.01));
+      if (this.p2.distanceToSquared(this.p) < 1e-12) this.along(this.p2, this.shot, this.bow.y, toY, 0, 1.01);
+      this.look.lookAt(this.p2, this.p, UP);
+      this.q.setFromRotationMatrix(this.look);
+      this.matrix.compose(this.p, this.q, this.s.setScalar(1));
+      this.arrows.put(this.matrix, this.colour.setHex(0xffffff));
     }
   }
 
