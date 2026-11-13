@@ -265,13 +265,16 @@ function wrap(seconds: number, length: number): number {
 /**
  * The way a living unit faces at the playback's display time (section 5, Facing), given its target in
  * `combat.state`: an angle about the vertical, as `facing()` gives. null when it has nowhere to face
- * or is dead, and the scene keeps the way it faced.
+ * or is dead, and the scene keeps the way it faced. `aim` is how far to its left its model shoots
+ * (aim.ts), taken off the way to its target so that it shoots at it, and `line` how far to the side
+ * of its centre its arrow's line runs (models.ts, BowShot), for which it turns a little further, so
+ * the line goes through its target; a step still faces the way it goes.
  */
-export function fightFacing(playback: Playback, unit: number, target: number | null): number | null {
+export function fightFacing(playback: Playback, unit: number, target: number | null, aim = 0, line = 0): number | null {
   const { death, steps } = playback.history(unit);
   const { time } = playback;
   if (death !== null && death <= time) return null;
-  return faceAt(playback, unit, target, steps, latestIndex(steps, time, false), time);
+  return faceAt(playback, unit, target, aim, line, steps, latestIndex(steps, time, false), time);
 }
 
 /**
@@ -280,9 +283,9 @@ export function fightFacing(playback: Playback, unit: number, target: number | n
  * from the way it faced as it started; for a few ticks after, turning back from that way to its
  * target; otherwise towards its target.
  */
-function faceAt(playback: Playback, unit: number, target: number | null, steps: readonly StepRecord[], k: number, t: number): number | null {
+function faceAt(playback: Playback, unit: number, target: number | null, aim: number, line: number, steps: readonly StepRecord[], k: number, t: number): number | null {
   const step = steps[k];
-  if (step === undefined) return towards(playback, unit, target, t);
+  if (step === undefined) return towards(playback, unit, target, aim, line, t);
   // Every step and dash goes to another hex.
   const way = facing(step.from, step.to) ?? 0;
   if (t < step.endTick) {
@@ -290,11 +293,11 @@ function faceAt(playback: Playback, unit: number, target: number | null, steps: 
     if (share >= 1) return way;
     // The way it faced as the step started: the way the step before went if it ended then, or else
     // towards its target, or part of the way between if the step before ended just before.
-    const from = faceAt(playback, unit, target, steps, k - 1, step.tick);
+    const from = faceAt(playback, unit, target, aim, line, steps, k - 1, step.tick);
     return from === null ? way : turnBetween(from, way, share);
   }
   const share = (t - step.endTick) / TURN_TICKS;
-  const to = towards(playback, unit, target, t);
+  const to = towards(playback, unit, target, aim, line, t);
   if (share >= 1) return to;
   // With nowhere to face it keeps the way it went.
   return to === null ? way : turnBetween(way, to, share);
@@ -304,10 +307,18 @@ function faceAt(playback: Playback, unit: number, target: number | null, steps: 
 const self: MutablePoint = { x: 0, z: 0 };
 const other: MutablePoint = { x: 0, z: 0 };
 
-/** The way from a unit to its target at `t`, from where they are drawn without the lunge; null with no target, or one in its place. */
-function towards(playback: Playback, unit: number, target: number | null, t: number): number | null {
+/**
+ * The way from a unit to its target at `t`, from where they are drawn without the lunge, less `aim`
+ * and the turn that puts a line `line` to the side of its centre through the target; null with no
+ * target, or one in its place.
+ */
+function towards(playback: Playback, unit: number, target: number | null, aim: number, line: number, t: number): number | null {
   if (target === null) return null;
-  return facing(playback.positionInto(self, unit, t), playback.positionInto(other, target, t));
+  const way = facing(playback.positionInto(self, unit, t), playback.positionInto(other, target, t));
+  if (way === null) return null;
+  if (aim === 0 && line === 0) return way;
+  const distance = Math.hypot(other.x - self.x, other.z - self.z);
+  return wrapAngle(way - aim - Math.asin(Math.max(-1, Math.min(1, line / distance))));
 }
 
 const FULL_TURN = 2 * Math.PI;

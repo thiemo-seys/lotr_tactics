@@ -9,6 +9,7 @@ import * as THREE from 'three';
 import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
 import { clone as cloneSkinned } from 'three/addons/utils/SkeletonUtils.js';
 import MODEL_FILES from 'virtual:models';
+import { aimOf } from './aim.js';
 import { CLIPS, type ClipLengths, type ClipName } from './animation.js';
 import { liveryOf } from './livery.js';
 import { labelHeight, pickModel, starColour, starScale, victoryRise } from './stars.js';
@@ -25,6 +26,26 @@ const CHEST_SHARE = 0.85;
 
 /** Where a model without a `head` bone has its chest, as a share of its height: a pawn's. */
 const STATIC_CHEST_SHARE = 0.69;
+
+/**
+ * How far ahead of its nock, along the arrow, an archer's shot leaves its bow: about the middle of a
+ * nocked arrow, where the projectile drawn in its place is centred.
+ */
+const ARROW_AHEAD = 0.3;
+
+/**
+ * Where an archer's model looses its shot, at its scale (docs/viewer-spec.md section 5, Facing and
+ * Projectiles): from its nocked arrow as it stands, in its own frame, and how far to the side of its
+ * centre the arrow's line runs, which the scene turns it a little further for, so the line goes
+ * through its target: the cross product, x by z less z by x, of where the shot leaves and the way
+ * the arrow points, level.
+ */
+export interface BowShot {
+  readonly x: number;
+  readonly y: number;
+  readonly z: number;
+  readonly line: number;
+}
 
 /**
  * How many times a frame a clip is measured for the heights its label clears: on each frame and
@@ -61,6 +82,10 @@ interface Model {
   readonly standing: number;
   /** The height of its top as it stands, at scale 1. */
   readonly top: number;
+  /** How far to its left it shoots, in radians (aim.ts). */
+  readonly aim: number;
+  /** Where a rigged archer's shot leaves, from its `arrow` bone, at scale 1; null for any other model. */
+  readonly bow: BowShot | null;
   /** The highest it reaches in `attack` and `cast`, which its label clears; never below `top`, and `top` for a static model. */
   readonly strike: number;
   /**
@@ -200,10 +225,29 @@ function prepare(name: string, unitId: UnitState['unitId'], scene: THREE.Object3
     reach,
     standing: rest.reach,
     top: rest.top,
+    aim: aimOf(name),
+    bow: complete === null ? null : bowOf(scene),
     strike,
     raised,
     chest: head instanceof THREE.Bone ? CHEST_SHARE * head.getWorldPosition(new THREE.Vector3()).y : null,
   };
+}
+
+/**
+ * Where a model's nocked arrow looses its shot, from its `arrow` bone as it stands (its head at the
+ * nock, along its +y), or null if it has none. The scene's world matrices must be up to date.
+ */
+function bowOf(scene: THREE.Object3D): BowShot | null {
+  const arrow = scene.getObjectByName('arrow');
+  if (!(arrow instanceof THREE.Bone)) return null;
+  const nock = new THREE.Vector3();
+  const turn = new THREE.Quaternion();
+  arrow.matrixWorld.decompose(nock, turn, new THREE.Vector3());
+  const along = new THREE.Vector3(0, 1, 0).applyQuaternion(turn);
+  const flat = Math.hypot(along.x, along.z);
+  if (flat < 1e-6) return null;
+  const at = nock.addScaledVector(along, ARROW_AHEAD);
+  return { x: at.x, y: at.y, z: at.z, line: (at.x * along.z - at.z * along.x) / flat };
 }
 
 /**
@@ -418,6 +462,10 @@ export class ModelCopy {
   readonly labelRise: number;
   /** The height of its chest as it stands, which projectiles leave from and strike. */
   readonly chest: number;
+  /** How far to its left it shoots, in radians (aim.ts): what the scene takes off the way it faces. */
+  readonly aim: number;
+  /** Where its shot leaves, at its scale, for a rigged archer; null for any other model. */
+  readonly bow: BowShot | null;
   /** Every material of the copy, all its own. */
   private readonly materials: readonly THREE.MeshStandardMaterial[];
   private readonly skeletons: readonly THREE.Skeleton[];
@@ -433,6 +481,10 @@ export class ModelCopy {
     this.labelHeight = labelHeight(this.scale, model.top, model.large, model.strike);
     this.labelRise = victoryRise(this.scale, model.top, model.large, model.strike, model.raised);
     this.chest = this.scale * chestOf(model);
+    this.aim = model.aim;
+    const { bow } = model;
+    const k = this.scale;
+    this.bow = bow === null ? null : { x: k * bow.x, y: k * bow.y, z: k * bow.z, line: k * bow.line };
     this.model = model.shader === 'skinned' ? cloneRig(model.scene) : model.scene.clone();
     this.model.scale.setScalar(this.scale);
     const materials = new Map<THREE.Material, THREE.MeshStandardMaterial>();

@@ -27,7 +27,7 @@ import { CLIPS, fightFacing, fightPoseInto, newPose, planningPoseInto, sinkDelay
 import { benchToWorld, hexToWorld, type Point } from './layout.js';
 import { ModelSwaps, Redraws } from './drawing.js';
 import type { PlanningRing } from './flow.js';
-import { copyModel, loadModels, modelShader, modelShaders, modelsLoaded, shaderSample, type ModelCopy, type ModelShader } from './models.js';
+import { copyModel, loadModels, modelShader, modelShaders, modelsLoaded, shaderSample, type BowShot, type ModelCopy, type ModelShader } from './models.js';
 import { Effects, type HitState, type ScreenState, type Vec3Out } from './effects.js';
 import { FxView, type FxUnits } from './fx.js';
 import { liveryOf } from './livery.js';
@@ -152,6 +152,13 @@ interface Body {
   readonly labelRise: number;
   /** The height of its chest as it stands, which projectiles leave from and strike. */
   readonly chest: number;
+  /**
+   * How far to its left it shoots, in radians (aim.ts): `turn` faces this far to the right of where
+   * the unit faces, so its shot goes where the unit faces. 0 for a pawn.
+   */
+  readonly aim: number;
+  /** Where its shot leaves its bow, for a rigged archer's model (models.ts); null otherwise. */
+  readonly bow: BowShot | null;
   /** Plays a rigged model's clips; null for a static model or a pawn. */
   readonly animator: Animator | null;
   /** Fades the whole body, for untargetable and dying units. */
@@ -243,7 +250,8 @@ export class FightScene {
   private readonly fxUnits: FxUnits = {
     count: () => this.units.length,
     chest: (unit) => this.units[unit]?.body.chest ?? PAWN_CHEST,
-    facing: (unit) => this.units[unit]?.body.turn.rotation.y ?? 0,
+    bow: (unit, out) => bowInto(out, this.units[unit]?.body),
+    facing: (unit) => facingOf(this.units[unit]?.body),
     livery: (unit) => {
       const view = this.units[unit];
       return view?.body.model === true ? liveryOf(view.unitId) : PAWN_COLOUR;
@@ -837,7 +845,7 @@ export class FightScene {
       body.flash(EFFECTS.hit.flashIntensity * hit.flash);
       // The way it goes while it steps or dashes, otherwise towards its target; with nowhere to face,
       // and once dead, the way it last faced.
-      const angle = fightFacing(playback, id, unit.target);
+      const angle = fightFacing(playback, id, unit.target, body.aim, body.bow?.line ?? 0);
       if (angle !== null) body.turn.rotation.y = angle;
       body.fade(unit.statuses.has('untargetable') ? UNTARGETABLE_OPACITY : 1);
       let labelHeight = body.labelHeight;
@@ -939,12 +947,11 @@ export class FightScene {
     if (!this.modelReady(view.unitId, view.star)) return false;
     const copy = copyModel(view.unitId, view.star);
     if (copy === null) return false;
-    const facing = view.body.turn.rotation.y;
+    const facing = facingOf(view.body);
     view.squash.remove(view.body.object);
     this.retired.push(view.body);
     view.body = modelBody(copy, view.unitId, view.star);
-    stand(view.body, view.team);
-    view.body.turn.rotation.y = facing;
+    view.body.turn.rotation.y = facing - view.body.aim;
     view.squash.add(view.body.object);
     view.label.position.y = view.body.labelHeight;
     return true;
@@ -1028,8 +1035,9 @@ export class FightScene {
     for (let i = 0; i < projectiles.length; i++) {
       const projectile = projectiles[i]!;
       const { mesh } = this.projectiles.get(projectile)!;
-      // It leaves as the shooter's attack clip looses it.
-      mesh.visible = playback.time >= projectile.startTick;
+      // It leaves as the shooter's attack clip looses it. An archer's flies as an arrow from its bow,
+      // which the effects draw (fx.ts).
+      mesh.visible = playback.time >= projectile.startTick && !this.units[projectile.source]?.body.bow;
       const { x, z } = playback.projectilePositionInto(this.at, projectile);
       // From the shooter's chest to the target's, so it strikes a Hobbit and an Ent alike.
       const from = this.units[projectile.source]?.body.chest ?? PAWN_CHEST;
@@ -1093,7 +1101,28 @@ export class FightScene {
  * Turns a body to face the other team's half from `team`'s. Team A's half is at +z, so it faces −z.
  */
 function stand(body: Body, team: Team): void {
-  body.turn.rotation.y = team === 'A' ? Math.PI : 0;
+  body.turn.rotation.y = (team === 'A' ? Math.PI : 0) - body.aim;
+}
+
+/**
+ * Where a body's shot leaves its bow, turned the way it faces: across the ground from where it stands,
+ * and the height. Whether it has one.
+ */
+function bowInto(out: Vec3Out, body: Body | undefined): boolean {
+  const bow = body?.bow;
+  if (!bow) return false;
+  const turn = body!.turn.rotation.y;
+  const cos = Math.cos(turn);
+  const sin = Math.sin(turn);
+  out.x = bow.x * cos + bow.z * sin;
+  out.y = bow.y;
+  out.z = bow.z * cos - bow.x * sin;
+  return true;
+}
+
+/** Where a unit faces, which its shot goes: the way its body turns, and as far left as its model shoots. */
+function facingOf(body: Body | undefined): number {
+  return body === undefined ? 0 : body.turn.rotation.y + body.aim;
 }
 
 /** A low-poly pawn, the same on both sides, `scale` times its usual size, with a nose where it faces. */
@@ -1120,6 +1149,8 @@ function pawnBody(scale: number): Body {
     labelHeight: LABEL.height * scale,
     labelRise: 0,
     chest: PAWN_CHEST * scale,
+    aim: 0,
+    bow: null,
     animator: null,
     fade: (opacity) => (material.opacity = opacity),
     flash: (amount) => {
@@ -1149,6 +1180,8 @@ function modelBody(copy: ModelCopy, unitId: UnitState['unitId'], star: Star): Bo
     labelHeight: copy.labelHeight,
     labelRise: copy.labelRise,
     chest: copy.chest,
+    aim: copy.aim,
+    bow: copy.bow,
     animator,
     fade: (opacity) => copy.fade(opacity),
     flash: (amount) => copy.flash(amount, FLASH_COLOUR),
