@@ -1,11 +1,11 @@
 // Which effects are live at a display time, and how far through (docs/viewer-spec.md section 5, Effects).
 
-import { MONSTERS, TICKS_PER_SECOND, UNITS, createCombat, type CastEvent, type Combat, type CombatEvent, type DamageEvent } from '@lotr-tactics/sim';
+import { CLASS_TEMPLATE, MONSTERS, TEMPLATES, TICKS_PER_SECOND, UNITS, createCombat, type AttackEvent, type CastEvent, type Combat, type CombatEvent, type DamageEvent } from '@lotr-tactics/sim';
 import { describe, expect, it } from 'vitest';
 import { fightBoards, type BoardChoice } from '../src/boards.js';
-import { Effects, HIT_STOP_TICKS, abilityLook, type HitState, type StatusRing, type MarkState, type MissileState, type ScreenState, type StunState, type Vec3Out } from '../src/effects.js';
+import { Effects, HIT_STOP_TICKS, abilityLook, shotLook, type HitState, type StatusRing, type MarkState, type MissileState, type ScreenState, type StunState, type Vec3Out } from '../src/effects.js';
 import { hexToWorld } from '../src/layout.js';
-import { ABILITY_LOOKS, EFFECTS } from '../src/look.js';
+import { ABILITY_LOOKS, EFFECTS, SHOT_LOOKS } from '../src/look.js';
 import { Playback } from '../src/playback.js';
 
 const T = TICKS_PER_SECOND;
@@ -81,6 +81,22 @@ describe('ability looks', () => {
     expect(abilityLook('Not an ability', 'physical')).toBe(EFFECTS.abilityDefault.physical);
     expect(abilityLook('Not an ability', 'magic')).toBe(EFFECTS.abilityDefault.magic);
     expect(abilityLook('Fire of Orthanc', 'magic')).toBe(ABILITY_LOOKS['Fire of Orthanc']);
+  });
+});
+
+describe('shot looks', () => {
+  it('has a shot for every unit and monster that attacks from range, and for nothing else', () => {
+    const ranged = [
+      ...Object.values(UNITS).filter((u) => TEMPLATES[CLASS_TEMPLATE[u.classes[0]!]].range >= 2).map((u) => u.id),
+      ...Object.values(MONSTERS).filter((m) => m.stats.range >= 2).map((m) => m.id),
+    ];
+    expect(ranged.length).toBeGreaterThan(10);
+    expect(Object.keys(SHOT_LOOKS).sort()).toEqual([...ranged].sort());
+  });
+
+  it('gives a unit not in the table the default shot', () => {
+    expect(shotLook('gimli')).toBe(EFFECTS.shot.default);
+    expect(shotLook('legolas')).toBe(SHOT_LOOKS.legolas);
   });
 });
 
@@ -351,6 +367,34 @@ describe('impact', () => {
     // And a shockwave out to the aim's hexes from its centre, with a burst there.
     const centre = hexToWorld(cast.aims[0]!.centre!);
     expect(fx.rings.some((r) => r.x === centre.x && r.z === centre.z && r.start === cast.releaseTick && r.to > 3)).toBe(true);
+  });
+
+  it('sparks at the target of a ranged basic attack as its shot lands, in the shot’s colour, and not for a melee blow', () => {
+    /** Steps to the first basic attack of a kind whose hit lands, and returns it. */
+    const firstLanded = (ranged: boolean): { p: Playback; fx: Effects; attack: AttackEvent } => {
+      const { p, fx } = fight('archers', 'tanks', 1);
+      const attacks: AttackEvent[] = [];
+      while (!p.combat.isOver()) {
+        for (const e of p.step()) {
+          if (e.type === 'attack' && e.ranged === ranged) attacks.push(e);
+          if (e.type !== 'damage' || e.kind !== 'attack') continue;
+          const attack = attacks.find((a) => a.unit === e.source && a.target === e.target && a.hitTick === e.tick);
+          if (attack !== undefined) {
+            fx.update();
+            return { p, fx, attack };
+          }
+        }
+      }
+      throw new Error('no attack landed');
+    };
+    const shot = firstLanded(true);
+    const shooter = shot.p.combat.state.units[shot.attack.unit]!.unitId;
+    // Each shot that lands sparks, so two landing together spark twice.
+    expect(shot.fx.bursts.filter((b) => b.unit === shot.attack.target && b.start === shot.attack.hitTick)).toContainEqual(
+      expect.objectContaining({ colour: SHOT_LOOKS[shooter]!.colour, count: EFFECTS.shot.impact.count }),
+    );
+    const blow = firstLanded(false);
+    expect(blow.fx.bursts.some((b) => b.unit === blow.attack.target && b.start === blow.attack.hitTick)).toBe(false);
   });
 
   it('sweeps a ring over each of a cone’s hexes, out from the caster, rather than a circle round it', () => {

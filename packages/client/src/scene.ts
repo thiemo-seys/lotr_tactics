@@ -27,11 +27,11 @@ import { CLIPS, fightFacing, fightPoseInto, newPose, planningPoseInto, sinkDelay
 import { benchToWorld, hexToWorld, type Point } from './layout.js';
 import { ModelSwaps, Redraws } from './drawing.js';
 import type { PlanningRing } from './flow.js';
-import { copyModel, loadModels, modelShader, modelShaders, modelsLoaded, shaderSample, type ModelCopy, type ModelShader } from './models.js';
-import { Effects, type HitState, type ScreenState, type Vec3Out } from './effects.js';
+import { copyModel, loadModels, modelShader, modelShaders, modelsLoaded, shaderSample, type ModelCopy, type ModelShader, type Muzzle } from './models.js';
+import { Effects, shotLook, type HitState, type ScreenState, type Vec3Out } from './effects.js';
 import { FxView, type FxUnits } from './fx.js';
 import { liveryOf } from './livery.js';
-import { EFFECT_TICKS, FLOATING_TEXT, type FloatingText, type MutablePoint, type Playback, type Projectile } from './playback.js';
+import { EFFECT_TICKS, FLOATING_TEXT, type FloatingText, type MutablePoint, type Playback } from './playback.js';
 import { ATMOSPHERE, BENCH_NOTE_HEIGHT, CAMERA, CAMERA_LIMITS, EFFECTS, LIGHTS, PAWN_COLOUR, type Framing } from './look.js';
 import { Post } from './post.js';
 import { stoneTiles } from './tiles.js';
@@ -112,10 +112,6 @@ interface EffectView {
   seen: number;
 }
 
-interface ProjectileView extends EffectView {
-  readonly mesh: THREE.Mesh;
-}
-
 /** A floating number. */
 interface TextView extends EffectView {
   readonly object: CSS2DObject;
@@ -152,6 +148,8 @@ interface Body {
   readonly labelRise: number;
   /** The height of its chest as it stands, which projectiles leave from and strike. */
   readonly chest: number;
+  /** Where its ranged attack's shot leaves, in its own frame facing +z; null for a pawn, or a model without one. */
+  readonly muzzle: Muzzle | null;
   /** Plays a rigged model's clips; null for a static model or a pawn. */
   readonly animator: Animator | null;
   /** Fades the whole body, for untargetable and dying units. */
@@ -188,7 +186,6 @@ const geometry = {
   body: new THREE.CylinderGeometry(0.3, 0.42, 0.9, 6),
   head: new THREE.IcosahedronGeometry(0.25, 0),
   nose: new THREE.ConeGeometry(0.09, 0.28, 4),
-  projectile: new THREE.IcosahedronGeometry(0.11, 0),
   // Drop markers: a hex outline and fill matching the board's pointy-top hexes, and a square for bench tiles.
   hexOutline: new THREE.RingGeometry(0.78, 0.94, 6, 1, Math.PI / 2),
   hexFill: new THREE.CircleGeometry(0.78, 6, Math.PI / 2),
@@ -199,7 +196,6 @@ const geometry = {
 /** The size of a bench tile. */
 const BENCH_TILE = 1.4;
 
-const projectileMaterial = new THREE.MeshBasicMaterial({ color: 0xfde68a });
 const noseMaterial = new THREE.MeshStandardMaterial({ color: 0xf5f5f5, flatShading: true });
 
 export class FightScene {
@@ -217,7 +213,6 @@ export class FightScene {
   private benchLayer = new THREE.Group();
   private playback: Playback | null = null;
   private units: UnitView[] = [];
-  private readonly projectiles = new Map<Projectile, ProjectileView>();
   private readonly texts = new Map<FloatingText, TextView>();
   /**
    * Each fight label's height in pixels, which floating numbers rise from above. A ResizeObserver
@@ -243,6 +238,8 @@ export class FightScene {
   private readonly fxUnits: FxUnits = {
     count: () => this.units.length,
     chest: (unit) => this.units[unit]?.body.chest ?? PAWN_CHEST,
+    muzzle: (unit) => this.units[unit]?.body.muzzle ?? null,
+    shot: (unit) => shotLook(this.playback!.combat.state.units[unit]!.unitId),
     facing: (unit) => this.units[unit]?.body.turn.rotation.y ?? 0,
     livery: (unit) => {
       const view = this.units[unit];
@@ -642,7 +639,6 @@ export class FightScene {
     this.effects = null;
     this.ripples.length = 0;
     this.units = [];
-    this.projectiles.clear();
     this.texts.clear();
     this.planning = new Map();
     this.planningKey = '';
@@ -677,7 +673,6 @@ export class FightScene {
       effects.still = this.reducedMotion.matches;
       effects.update();
       this.updateUnits(playback, effects);
-      this.updateProjectiles(playback);
       this.updateTexts(playback, effects);
       this.fx.draw(effects, playback, this.fxUnits, this.camera);
       effects.shakeInto(this.shake);
@@ -1022,32 +1017,6 @@ export class FightScene {
     return view;
   }
 
-  private updateProjectiles(playback: Playback): void {
-    const { projectiles } = playback;
-    sync(this.projectiles, projectiles, this.frame, this.addProjectile, this.removeProjectile);
-    for (let i = 0; i < projectiles.length; i++) {
-      const projectile = projectiles[i]!;
-      const { mesh } = this.projectiles.get(projectile)!;
-      // It leaves as the shooter's attack clip looses it.
-      mesh.visible = playback.time >= projectile.startTick;
-      const { x, z } = playback.projectilePositionInto(this.at, projectile);
-      // From the shooter's chest to the target's, so it strikes a Hobbit and an Ent alike.
-      const from = this.units[projectile.source]?.body.chest ?? PAWN_CHEST;
-      const to = this.units[projectile.target]?.body.chest ?? PAWN_CHEST;
-      mesh.position.set(x, from + (to - from) * playback.progress(projectile.startTick, projectile.hitTick - projectile.startTick), z);
-    }
-  }
-
-  private readonly addProjectile = (): ProjectileView => {
-    const mesh = new THREE.Mesh(geometry.projectile, projectileMaterial);
-    this.fightLayer.add(mesh);
-    return { mesh, seen: 0 };
-  };
-
-  private readonly removeProjectile = ({ mesh }: ProjectileView): void => {
-    this.fightLayer.remove(mesh);
-  };
-
   private updateTexts(playback: Playback, effects: Effects): void {
     const { texts } = playback;
     sync(this.texts, texts, this.frame, this.addText, this.removeText);
@@ -1120,6 +1089,7 @@ function pawnBody(scale: number): Body {
     labelHeight: LABEL.height * scale,
     labelRise: 0,
     chest: PAWN_CHEST * scale,
+    muzzle: null,
     animator: null,
     fade: (opacity) => (material.opacity = opacity),
     flash: (amount) => {
@@ -1149,6 +1119,7 @@ function modelBody(copy: ModelCopy, unitId: UnitState['unitId'], star: Star): Bo
     labelHeight: copy.labelHeight,
     labelRise: copy.labelRise,
     chest: copy.chest,
+    muzzle: copy.muzzle,
     animator,
     fade: (opacity) => copy.fade(opacity),
     flash: (amount) => copy.flash(amount, FLASH_COLOUR),

@@ -20,7 +20,8 @@ import {
   type StunState,
 } from './effects.js';
 import { BOARD_EXTENT } from './layout.js';
-import { EFFECTS } from './look.js';
+import { EFFECTS, type ShotLook } from './look.js';
+import type { Muzzle } from './models.js';
 import type { MutablePoint, Playback } from './playback.js';
 
 const T = TICKS_PER_SECOND;
@@ -31,6 +32,10 @@ export interface FxUnits {
   count(): number;
   /** The height of its chest, which projectiles leave from and strike, and sparks burst at. */
   chest(unit: number): number;
+  /** Where its ranged attack's shot leaves, in its own frame facing +z; null to loose it from ahead of its chest. */
+  muzzle(unit: number): Muzzle | null;
+  /** How its ranged basic attacks look. */
+  shot(unit: number): ShotLook;
   /** The way it faces, as an angle about the vertical. */
   facing(unit: number): number;
   /** Its livery colour, for its shards. */
@@ -118,6 +123,7 @@ class Layer {
 
 const WHITE = new THREE.Color(0xffffff);
 const UP = new THREE.Vector3(0, 1, 0);
+const FORWARD = new THREE.Vector3(0, 0, 1);
 
 /**
  * Gives a basic material an opacity per instance, from the geometry's `instanceAlpha`: a small change
@@ -272,9 +278,10 @@ const CAPACITY = {
   scorches: 8,
   lines: 64,
   streaks: 64,
-  arrows: 64,
+  arrows: 96,
   orbs: 32,
-  stones: 24,
+  darts: 48,
+  stones: 40,
   stars: 72,
   shells: 24,
   shards: 480,
@@ -309,6 +316,7 @@ export class FxView {
   private readonly streaks: Layer;
   private readonly arrows: Layer;
   private readonly orbs: Layer;
+  private readonly darts: Layer;
   private readonly stones: Layer;
   private readonly stars: Layer;
   private readonly shellFills: Layer;
@@ -322,6 +330,7 @@ export class FxView {
   private readonly matrix = new THREE.Matrix4();
   private readonly look = new THREE.Matrix4();
   private readonly q = new THREE.Quaternion();
+  private readonly spin = new THREE.Quaternion();
   private readonly billboard = new THREE.Quaternion();
   private readonly e = new THREE.Euler();
   private readonly p = new THREE.Vector3();
@@ -336,6 +345,8 @@ export class FxView {
   private readonly at: MutablePoint = { x: 0, z: 0 };
   private readonly mark: MarkState = { fill: 0, edge: 0 };
   private readonly flight: MissileState = { fromX: 0, fromZ: 0, toX: 0, toZ: 0, share: 0 };
+  /** A shot's start and colour, for its trail. */
+  private readonly shotTrail = { start: 0, colour: 0 };
   private readonly stun: StunState = { age: 0, left: 0 };
   /** The side drawn as the near one, whose edges are blue (EFFECTS.sides). */
   side: Team = 'A';
@@ -360,6 +371,8 @@ export class FxView {
     this.streaks = new Layer(new THREE.CylinderGeometry(1, 0.15, 1, 6, 1, true), light(), CAPACITY.streaks, 4);
     this.arrows = new Layer(arrowGeometry(), faceted({ vertexColors: true, emissive: 0x3a2400 }), CAPACITY.arrows);
     this.orbs = new Layer(new THREE.IcosahedronGeometry(1, 0), new THREE.MeshBasicMaterial(), CAPACITY.orbs);
+    // A bolt of light: a faceted shard along +z, stretched as it is drawn.
+    this.darts = new Layer(new THREE.OctahedronGeometry(1, 0), new THREE.MeshBasicMaterial(), CAPACITY.darts);
     this.stones = new Layer(new THREE.DodecahedronGeometry(1, 0), faceted(), CAPACITY.stones);
     this.stars = new Layer(starGeometry(), faceted({ color: EFFECTS.stun.colour, emissive: EFFECTS.stun.colour, emissiveIntensity: 0.9 }), CAPACITY.stars);
     this.shellFills = new Layer(new THREE.IcosahedronGeometry(1, 1), light({ side: THREE.DoubleSide }), CAPACITY.shells, 6);
@@ -380,6 +393,7 @@ export class FxView {
       this.streaks,
       this.arrows,
       this.orbs,
+      this.darts,
       this.stones,
       this.stars,
       this.shellFills,
@@ -423,6 +437,7 @@ export class FxView {
     this.drawMarks(fx, time);
     this.drawAimLines(fx, playback, units, time);
     this.drawMissiles(fx, units, time);
+    this.drawShots(playback, units, time);
     this.drawRibbons(fx, playback, units, time);
     this.drawBursts(fx, playback, units, time);
     this.drawGround(fx, playback, time);
@@ -534,15 +549,98 @@ export class FxView {
   }
 
   /**
+   * Ranged basic attacks' shots in flight (docs/viewer-spec.md section 5, Projectiles), in their
+   * shooter's look: from where its attack clip looses them, the muzzle, turned the way it faced its
+   * target as it shot, to the target's chest wherever it is, in a shallow arc; with a flash at the
+   * muzzle as each leaves. Their impacts are effects.ts's bursts.
+   */
+  private drawShots(playback: Playback, units: FxUnits, time: number): void {
+    const { shot } = EFFECTS;
+    const { projectiles } = playback;
+    for (let n = 0; n < projectiles.length; n++) {
+      const pr = projectiles[n]!;
+      // It leaves as the shooter's attack clip looses it, and is gone as it lands.
+      if (time < pr.startTick || time >= pr.hitTick) continue;
+      const look = units.shot(pr.source);
+      // The way it faced as it shot: towards where its target stood then.
+      const aim = playback.positionInto(this.at, pr.target, pr.startTick);
+      const dx = aim.x - pr.from.x;
+      const dz = aim.z - pr.from.z;
+      const way = dx * dx + dz * dz > 1e-12 ? Math.atan2(dx, dz) : units.facing(pr.source);
+      const cos = Math.cos(way);
+      const sin = Math.sin(way);
+      const muzzle = units.muzzle(pr.source);
+      const mx = muzzle === null ? 0 : muzzle[0];
+      const fromY = muzzle === null ? units.chest(pr.source) : muzzle[1];
+      const mz = muzzle === null ? shot.ahead : muzzle[2];
+      const f = this.flight;
+      f.fromX = pr.from.x + mx * cos + mz * sin;
+      f.fromZ = pr.from.z - mx * sin + mz * cos;
+      const to = playback.positionInto(this.at, pr.target, time);
+      f.toX = to.x;
+      f.toZ = to.z;
+      f.share = Math.min(1, Math.max(0, (time - pr.startTick) / (pr.hitTick - pr.startTick)));
+      const toY = units.chest(pr.target);
+      const ground = Math.hypot(f.toX - f.fromX, f.toZ - f.fromZ);
+      const arc = shot.arc[look.kind] * ground;
+      const length = Math.hypot(ground, toY - fromY) || 1;
+      this.along(this.p, f, fromY, toY, arc, f.share);
+      // Pointing along its flight, a little ahead.
+      this.along(this.p2, f, fromY, toY, arc, Math.min(1, f.share + 0.02));
+      if (this.p2.distanceToSquared(this.p) < 1e-10) this.p2.set(f.toX, toY, f.toZ);
+      this.look.lookAt(this.p2, this.p, UP);
+      this.q.setFromRotationMatrix(this.look);
+      switch (look.kind) {
+        case 'arrow': {
+          this.matrix.compose(this.p, this.q, this.s.set(shot.arrow.across, shot.arrow.across, shot.arrow.along));
+          this.arrows.put(this.matrix, this.colour.setHex(look.shaft ?? 0xffffff));
+          this.along(this.p3, f, fromY, toY, arc, Math.max(0, f.share - shot.streak.arrow / length));
+          this.streak(this.p3, this.p, look.colour, shot.streak.width);
+          this.glow(this.p, 0.45, look.colour, 0.6);
+          break;
+        }
+        case 'stone': {
+          this.e.set(time * 0.45, time * 0.31, 0);
+          this.q.setFromEuler(this.e);
+          this.matrix.compose(this.p, this.q, this.s.setScalar(shot.stone));
+          this.stones.put(this.matrix, this.colour.setHex(EFFECTS.stone.colour));
+          this.along(this.p3, f, fromY, toY, arc, Math.max(0, f.share - shot.streak.stone / length));
+          this.streak(this.p3, this.p, look.colour, shot.streak.width);
+          this.glow(this.p, 0.5, look.colour, 0.6);
+          break;
+        }
+        default: {
+          // A shard of light, spinning about its flight, in a glow with a trail of glows behind it.
+          const { bolt } = shot;
+          this.q.multiply(this.spin.setFromAxisAngle(FORWARD, time * 0.6));
+          this.matrix.compose(this.p, this.q, this.s.set(bolt.size, bolt.size, bolt.size * bolt.stretch));
+          this.darts.put(this.matrix, this.colour.setHex(0xffffff).lerp(this.tint.setHex(look.colour), 0.4));
+          this.glow(this.p, bolt.glow, look.colour, 1.1);
+          this.shotTrail.start = pr.startTick;
+          this.shotTrail.colour = look.colour;
+          this.trail(f, fromY, toY, arc, pr.hitTick - pr.startTick, time, this.shotTrail, bolt.trail, bolt.trailSize, 0.85);
+        }
+      }
+      // The flash at the muzzle as it leaves.
+      const flash = (time - pr.startTick) / (shot.flash.seconds * T);
+      if (flash < 1) {
+        this.p.set(f.fromX, fromY, f.fromZ);
+        const k = 1 - flash;
+        this.glow(this.p, (look.kind === 'bolt' ? shot.flash.bolt : shot.flash.arrow) * (0.6 + 0.4 * k), look.colour, 1.3 * k * k);
+      }
+    }
+  }
+
+  /**
    * A streak from `tail` to `head`: a wide edge painted in a deep, saturated cut of `colour`, which
    * reads on pale stone and shells, and a bright core of light in `colour` down its middle.
    */
-  private streak(tail: THREE.Vector3, head: THREE.Vector3, colour: number): void {
+  private streak(tail: THREE.Vector3, head: THREE.Vector3, colour: number, width = 1): void {
     const { streak } = EFFECTS;
     this.tint.setHex(colour).getHSL(this.hsl);
     this.tint.setHSL(this.hsl.h, Math.max(this.hsl.s, 0.75), streak.edgeLightness);
-    this.segment(this.streakEdges, tail, head, streak.edge, this.tint.getHex(), streak.edgeOpacity, true);
-    this.segment(this.streaks, tail, head, streak.width, colour, 1);
+    this.segment(this.streakEdges, tail, head, streak.edge * width, this.tint.getHex(), streak.edgeOpacity, true);
+    this.segment(this.streaks, tail, head, streak.width * width, colour, 1);
   }
 
   /** Glowing copies behind a missile, each further back in time, smaller and fainter. */

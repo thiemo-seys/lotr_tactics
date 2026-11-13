@@ -177,7 +177,67 @@ export const ABILITY_LOOKS: Readonly<Record<string, AbilityLook>> = {
   'Whip of flame': { colour: 0xff6a1a },
 };
 
+/** What a ranged basic attack looses: an arrow, a thrown stone, or a bolt of light. */
+export type ShotKind = 'arrow' | 'stone' | 'bolt';
+
+/**
+ * How a ranged basic attack looks: what it looses, and its colour, which its streak or glow takes.
+ * An arrow's `shaft`, when given, tints the arrow itself, dark for the Orcs' black-fletched arrows.
+ */
+export interface ShotLook {
+  readonly kind: ShotKind;
+  readonly colour: number;
+  readonly shaft?: number;
+}
+
+/**
+ * Each ranged unit's and monster's basic attack, by its id (a test checks there is one for each with
+ * a range of 2 or more). A unit missing from the table, such as one an item gave range, takes
+ * `EFFECTS.shot.default`.
+ */
+export const SHOT_LOOKS: Readonly<Record<string, ShotLook>> = {
+  // Archers
+  pippin: { kind: 'stone', colour: 0xe8c890 },
+  gorbag: { kind: 'arrow', colour: 0xe0703a, shaft: 0x5a4a44 },
+  haldir: { kind: 'arrow', colour: 0xd4ecb0 },
+  faramir: { kind: 'arrow', colour: 0xffd56a },
+  lurtz: { kind: 'arrow', colour: 0xff6a3c, shaft: 0x5a4a44 },
+  legolas: { kind: 'arrow', colour: 0xe8f0ff },
+  // Sorcerers
+  radagast: { kind: 'bolt', colour: 0xb6d97a },
+  elrond: { kind: 'bolt', colour: 0x9cf0b0 },
+  saruman: { kind: 'bolt', colour: 0xffb060 },
+  gandalf: { kind: 'bolt', colour: 0x9fd0ff },
+  galadriel: { kind: 'bolt', colour: 0xe8f4ff },
+  // Monsters
+  'goblin-archer': { kind: 'arrow', colour: 0xc8783a, shaft: 0x5a4a44 },
+  watcher: { kind: 'bolt', colour: 0x6ad0c0 },
+  balrog: { kind: 'bolt', colour: 0xff6a1a },
+};
+
 export const EFFECTS = {
+  /**
+   * A ranged basic attack's shot (SHOT_LOOKS), lighter than an ability's projectile. It leaves from
+   * the shooter's muzzle (models.ts: where its attack clip looses it, or `ahead` of its chest without
+   * one) and flies to the target's chest, rising in an arc of `arc` times the distance along the
+   * ground. An arrow is drawn `across` and `along` times its model, with a `streak` long behind it
+   * and `width` times an ability's streak; a stone `stone` big with a shorter streak; a bolt a
+   * spinning shard of light `size` across and `stretch` times that long, in a glow `glow` across,
+   * with `trail` glowing copies behind it, the first `trailSize` across. A `flash` glows at the
+   * muzzle as it leaves, bright for a bolt and faint for an arrow or stone; and `impact` sparks burst
+   * where one lands, in its colour.
+   */
+  shot: {
+    default: { kind: 'bolt', colour: 0xffc850 } as ShotLook,
+    ahead: 0.3,
+    arc: { arrow: 0.07, stone: 0.16, bolt: 0.02 },
+    arrow: { across: 1.25, along: 0.95 },
+    streak: { arrow: 1.5, stone: 0.7, width: 0.6 },
+    stone: 0.17,
+    bolt: { size: 0.12, stretch: 2.2, glow: 1.05, trail: 8, trailSize: 0.7 },
+    flash: { seconds: 0.14, bolt: 0.95, arrow: 0.45 },
+    impact: { count: 5, speed: 3.5, seconds: 0.22, glow: 0.7 },
+  },
   /** An ability not in ABILITY_LOOKS: physical gold, magic blue-white, true white. */
   abilityDefault: {
     physical: { colour: 0xffc850, projectile: 'arrow' },
