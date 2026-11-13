@@ -9,6 +9,7 @@ import * as THREE from 'three';
 import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
 import { clone as cloneSkinned } from 'three/addons/utils/SkeletonUtils.js';
 import MODEL_FILES from 'virtual:models';
+import { aimOf } from './aim.js';
 import { CLIPS, type ClipLengths, type ClipName } from './animation.js';
 import { liveryOf } from './livery.js';
 import { labelHeight, pickModel, starColour, starScale, victoryRise } from './stars.js';
@@ -61,6 +62,8 @@ interface Model {
   readonly standing: number;
   /** The height of its top as it stands, at scale 1. */
   readonly top: number;
+  /** How far to its left it shoots, in radians (aim.ts). */
+  readonly aim: number;
   /** The highest it reaches in `attack` and `cast`, which its label clears; never below `top`, and `top` for a static model. */
   readonly strike: number;
   /**
@@ -200,6 +203,7 @@ function prepare(name: string, unitId: UnitState['unitId'], scene: THREE.Object3
     reach,
     standing: rest.reach,
     top: rest.top,
+    aim: aimOf(name),
     strike,
     raised,
     chest: head instanceof THREE.Bone ? CHEST_SHARE * head.getWorldPosition(new THREE.Vector3()).y : null,
@@ -418,6 +422,8 @@ export class ModelCopy {
   readonly labelRise: number;
   /** The height of its chest as it stands, which projectiles leave from and strike. */
   readonly chest: number;
+  /** How far to its left it shoots, in radians (aim.ts): what the scene takes off the way it faces. */
+  readonly aim: number;
   /** Every material of the copy, all its own. */
   private readonly materials: readonly THREE.MeshStandardMaterial[];
   private readonly skeletons: readonly THREE.Skeleton[];
@@ -433,6 +439,7 @@ export class ModelCopy {
     this.labelHeight = labelHeight(this.scale, model.top, model.large, model.strike);
     this.labelRise = victoryRise(this.scale, model.top, model.large, model.strike, model.raised);
     this.chest = this.scale * chestOf(model);
+    this.aim = model.aim;
     this.model = model.shader === 'skinned' ? cloneRig(model.scene) : model.scene.clone();
     this.model.scale.setScalar(this.scale);
     const materials = new Map<THREE.Material, THREE.MeshStandardMaterial>();

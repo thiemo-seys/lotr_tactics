@@ -152,6 +152,11 @@ interface Body {
   readonly labelRise: number;
   /** The height of its chest as it stands, which projectiles leave from and strike. */
   readonly chest: number;
+  /**
+   * How far to its left it shoots, in radians (aim.ts): `turn` faces this far to the right of where
+   * the unit faces, so its shot goes where the unit faces. 0 for a pawn.
+   */
+  readonly aim: number;
   /** Plays a rigged model's clips; null for a static model or a pawn. */
   readonly animator: Animator | null;
   /** Fades the whole body, for untargetable and dying units. */
@@ -243,7 +248,7 @@ export class FightScene {
   private readonly fxUnits: FxUnits = {
     count: () => this.units.length,
     chest: (unit) => this.units[unit]?.body.chest ?? PAWN_CHEST,
-    facing: (unit) => this.units[unit]?.body.turn.rotation.y ?? 0,
+    facing: (unit) => facingOf(this.units[unit]?.body),
     livery: (unit) => {
       const view = this.units[unit];
       return view?.body.model === true ? liveryOf(view.unitId) : PAWN_COLOUR;
@@ -837,7 +842,7 @@ export class FightScene {
       body.flash(EFFECTS.hit.flashIntensity * hit.flash);
       // The way it goes while it steps or dashes, otherwise towards its target; with nowhere to face,
       // and once dead, the way it last faced.
-      const angle = fightFacing(playback, id, unit.target);
+      const angle = fightFacing(playback, id, unit.target, body.aim);
       if (angle !== null) body.turn.rotation.y = angle;
       body.fade(unit.statuses.has('untargetable') ? UNTARGETABLE_OPACITY : 1);
       let labelHeight = body.labelHeight;
@@ -939,12 +944,11 @@ export class FightScene {
     if (!this.modelReady(view.unitId, view.star)) return false;
     const copy = copyModel(view.unitId, view.star);
     if (copy === null) return false;
-    const facing = view.body.turn.rotation.y;
+    const facing = facingOf(view.body);
     view.squash.remove(view.body.object);
     this.retired.push(view.body);
     view.body = modelBody(copy, view.unitId, view.star);
-    stand(view.body, view.team);
-    view.body.turn.rotation.y = facing;
+    view.body.turn.rotation.y = facing - view.body.aim;
     view.squash.add(view.body.object);
     view.label.position.y = view.body.labelHeight;
     return true;
@@ -1093,7 +1097,12 @@ export class FightScene {
  * Turns a body to face the other team's half from `team`'s. Team A's half is at +z, so it faces −z.
  */
 function stand(body: Body, team: Team): void {
-  body.turn.rotation.y = team === 'A' ? Math.PI : 0;
+  body.turn.rotation.y = (team === 'A' ? Math.PI : 0) - body.aim;
+}
+
+/** Where a unit faces, which its shot goes: the way its body turns, and as far left as its model shoots. */
+function facingOf(body: Body | undefined): number {
+  return body === undefined ? 0 : body.turn.rotation.y + body.aim;
 }
 
 /** A low-poly pawn, the same on both sides, `scale` times its usual size, with a nose where it faces. */
@@ -1120,6 +1129,7 @@ function pawnBody(scale: number): Body {
     labelHeight: LABEL.height * scale,
     labelRise: 0,
     chest: PAWN_CHEST * scale,
+    aim: 0,
     animator: null,
     fade: (opacity) => (material.opacity = opacity),
     flash: (amount) => {
@@ -1149,6 +1159,7 @@ function modelBody(copy: ModelCopy, unitId: UnitState['unitId'], star: Star): Bo
     labelHeight: copy.labelHeight,
     labelRise: copy.labelRise,
     chest: copy.chest,
+    aim: copy.aim,
     animator,
     fade: (opacity) => copy.fade(opacity),
     flash: (amount) => copy.flash(amount, FLASH_COLOUR),
