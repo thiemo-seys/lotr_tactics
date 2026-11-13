@@ -95,7 +95,15 @@ interface Model {
   readonly raised: number;
   /** The height of its chest as it stands, at scale 1, from its `head` bone; null for a model without one. */
   readonly chest: number | null;
+  /**
+   * Where its ranged attack's shot leaves, at scale 1, in its own frame facing +z: its armature's
+   * `muzzle`, where its attack clip looses the shot; null for a model without one.
+   */
+  readonly muzzle: Muzzle | null;
 }
+
+/** A point in a model's own frame, as x, y and z, facing +z: where its shot leaves. */
+export type Muzzle = readonly [number, number, number];
 
 /** Models by file name once loaded; null for a file that didn't load. */
 const models = new Map<string, Model | null>();
@@ -230,6 +238,7 @@ function prepare(name: string, unitId: UnitState['unitId'], scene: THREE.Object3
     strike,
     raised,
     chest: head instanceof THREE.Bone ? CHEST_SHARE * head.getWorldPosition(new THREE.Vector3()).y : null,
+    muzzle: complete === null ? null : armatureMuzzle(scene),
   };
 }
 
@@ -248,6 +257,30 @@ function bowOf(scene: THREE.Object3D): BowShot | null {
   if (flat < 1e-6) return null;
   const at = nock.addScaledVector(along, ARROW_AHEAD);
   return { x: at.x, y: at.y, z: at.z, line: (at.x * along.z - at.z * along.x) / flat };
+}
+
+/**
+ * Where a model's shot leaves, at scale 1: from its own armature, or else its unit's 1★ model's,
+ * since a gear or book model keeps the unit's build and weapon; null if neither has one, and the
+ * scene looses it from an archer's bow, or ahead of the chest.
+ */
+function muzzleOf(model: Model): Muzzle | null {
+  return model.muzzle ?? models.get(model.unitId)?.muzzle ?? null;
+}
+
+/**
+ * The `muzzle` the rig kit writes into a ranged model's armature node (art/rig.py): where its attack
+ * clip looses the shot, on its `strike` frame. null if the model has none, or it isn't three numbers.
+ */
+function armatureMuzzle(scene: THREE.Object3D): Muzzle | null {
+  let muzzle: Muzzle | null = null;
+  scene.traverse((node) => {
+   const value: unknown = node.userData.muzzle;
+   if (muzzle === null && Array.isArray(value) && value.length === 3 && value.every((v) => typeof v === 'number' && Number.isFinite(v))) {
+     muzzle = [value[0] as number, value[1] as number, value[2] as number];
+   }
+  });
+  return muzzle;
 }
 
 /**
@@ -466,6 +499,8 @@ export class ModelCopy {
   readonly aim: number;
   /** Where its shot leaves, at its scale, for a rigged archer; null for any other model. */
   readonly bow: BowShot | null;
+  /** Where its ranged attack's shot leaves, scaled, in its own frame facing +z; null to loose it from ahead of the chest. */
+  readonly muzzle: Muzzle | null;
   /** Every material of the copy, all its own. */
   private readonly materials: readonly THREE.MeshStandardMaterial[];
   private readonly skeletons: readonly THREE.Skeleton[];
@@ -485,6 +520,8 @@ export class ModelCopy {
     const { bow } = model;
     const k = this.scale;
     this.bow = bow === null ? null : { x: k * bow.x, y: k * bow.y, z: k * bow.z, line: k * bow.line };
+    const muzzle = muzzleOf(model);
+    this.muzzle = muzzle === null ? null : [muzzle[0] * this.scale, muzzle[1] * this.scale, muzzle[2] * this.scale];
     this.model = model.shader === 'skinned' ? cloneRig(model.scene) : model.scene.clone();
     this.model.scale.setScalar(this.scale);
     const materials = new Map<THREE.Material, THREE.MeshStandardMaterial>();

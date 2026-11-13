@@ -24,7 +24,7 @@ import {
   type UnitState,
 } from '@lotr-tactics/sim';
 import { hexToWorld, type Point } from './layout.js';
-import { ABILITY_LOOKS, EFFECTS, type AbilityLook, type ProjectileKind } from './look.js';
+import { ABILITY_LOOKS, EFFECTS, SHOT_LOOKS, type AbilityLook, type ProjectileKind, type ShotLook } from './look.js';
 import type { MutablePoint, Playback } from './playback.js';
 
 const T = TICKS_PER_SECOND;
@@ -240,6 +240,11 @@ export function abilityLook(name: string, damageType: DamageType = 'physical'): 
   return ABILITY_LOOKS[name] ?? EFFECTS.abilityDefault[damageType];
 }
 
+/** How a unit's or monster's ranged basic attacks look: from the table by its id, or the default. */
+export function shotLook(unitId: string): ShotLook {
+  return SHOT_LOOKS[unitId] ?? EFFECTS.shot.default;
+}
+
 /** A unit's or monster's ability, if it has one. */
 export function abilityOf(unitId: UnitState['unitId']): AbilityDef | null {
   if (unitId in UNITS) return UNITS[unitId as keyof typeof UNITS].ability;
@@ -341,6 +346,8 @@ export class Effects {
   private bursted = 0;
   /** The tick each unit was last hit on, by unit id, for how far a new hit flashes it. */
   private readonly lastHit: number[] = [];
+  /** Ranged basic attacks still in flight, whose landing sparks at the target if it hits. */
+  private readonly shots: { readonly source: number; readonly target: number; readonly hitTick: number }[] = [];
 
   constructor(readonly playback: Playback) {
     this.update();
@@ -586,6 +593,9 @@ export class Effects {
 
   private record(e: CombatEvent): void {
     switch (e.type) {
+      case 'attack':
+        if (e.ranged) this.shots.push({ source: e.unit, target: e.target, hitTick: e.hitTick });
+        break;
       case 'cast':
         this.cast(e);
         break;
@@ -607,6 +617,7 @@ export class Effects {
         const flash = clamp01(since / ticks(hit.flashRecover));
         this.hits.push({ start: e.tick, end: e.tick + lasts, target: e.target, source: e.source, lost: e.amount - e.absorbed, absorbed: e.absorbed, flash });
         if (e.kind === 'ability') this.reach(e.source, e.target, e.tick, e.damageType);
+        else if (e.kind === 'attack') this.shotLands(e.source, e.target, e.tick);
         break;
       }
       case 'heal':
@@ -813,8 +824,28 @@ export class Effects {
     }
   }
 
+  /**
+   * A basic attack hit on `tick`: if it was a ranged one's shot landing, a few sparks and a small
+   * glow at the target, in the shot's colour (section 5, Projectiles). A dodged or wasted shot has
+   * none, and is dropped once its tick has passed (`settle`).
+   */
+  private shotLands(source: number, target: number, tick: number): void {
+    const i = this.shots.findIndex((s) => s.source === source && s.target === target && s.hitTick === tick);
+    if (i < 0) return;
+    this.shots.splice(i, 1);
+    const unitId = this.playback.combat.state.units[source]?.unitId;
+    if (unitId === undefined) return;
+    const { colour } = shotLook(unitId);
+    const { impact } = EFFECTS.shot;
+    const end = tick + ticks(impact.seconds);
+    this.bursts.push({ start: tick, end, unit: target, x: 0, y: 0, z: 0, colour, count: impact.count, speed: impact.speed, seed: this.bursted++, heart: false });
+    this.glows.push({ start: tick, end, unit: target, x: 0, y: 0, z: 0, colour, size: impact.glow });
+  }
+
   /** Settles the landings of the ticks processed: sparks and glows at the units they reached, and the big moments. */
   private settle(tick: number): void {
+    // Shots that have come and hit nothing: dodged, or wasted on a target gone.
+    for (let i = 0; i < this.shots.length; i++) if (this.shots[i]!.hitTick <= tick) this.shots.splice(i--, 1);
     for (let c = 0; c < this.pending.length; c++) {
       const cast = this.pending[c]!;
       let left = 0;
