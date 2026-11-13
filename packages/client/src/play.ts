@@ -267,7 +267,8 @@ function render(now: number): void {
     else scene.showPlanning(viewed, false, flow.ringOf(viewed.seat), 'B');
   };
   if (viewed !== null) renderViewingBar(viewingBar, flow);
-  if (shopping) shop.render(p);
+  // During a fight the person's own bench stays on screen, even while they look at another board.
+  if (shopping) shop.render(p, viewed === null || scene.showsFight);
   // The person's bench stays on screen while the fights play, and can be used.
   if (scene.showsFight) scene.showBench(p.bench, false, flow.planningRing());
   if (planning) {

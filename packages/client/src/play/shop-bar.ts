@@ -30,8 +30,8 @@ export class ShopBar {
   private readonly rerollCost = this.reroll.querySelector('.cost') as HTMLElement;
   private readonly lockLabel = this.lock.querySelector('.label') as HTMLElement;
   private readonly readyLabel = this.ready.querySelector('.label') as HTMLElement;
-  /** The state, lobby and step last drawn: the bar changes only when one of them does. */
-  private drawn: { state: unknown; lobby: unknown; step: string } = { state: null, lobby: null, step: '' };
+  /** The state, lobby and step last drawn, and whether the person's bench was on screen: the bar changes only when one of them does. */
+  private drawn: { state: unknown; lobby: unknown; step: string; ownBench: boolean } = { state: null, lobby: null, step: '', ownBench: true };
 
   constructor(
     private readonly flow: PlayFlow,
@@ -62,18 +62,24 @@ export class ShopBar {
     });
   }
 
-  render(p: PlayerView): void {
+  /**
+   * Draws the bar for the person. `ownBench` is false while another player's bench is on screen,
+   * as when the person looks at their board in planning: a full bench is then shown on the cards,
+   * since a note over the bench would be over theirs.
+   */
+  render(p: PlayerView, ownBench: boolean): void {
     const { flow } = this;
-    if (this.drawn.state === flow.state && this.drawn.lobby === flow.lobby && this.drawn.step === flow.show.kind) return;
-    this.drawn = { state: flow.state, lobby: flow.lobby, step: flow.show.kind };
+    const { drawn } = this;
+    if (drawn.state === flow.state && drawn.lobby === flow.lobby && drawn.step === flow.show.kind && drawn.ownBench === ownBench) return;
+    this.drawn = { state: flow.state, lobby: flow.lobby, step: flow.show.kind, ownBench };
     const buys = p.shop.map((_, slot) => flow.check({ type: 'buy', slot }));
-    const kinds = buys.map(shopBuy);
+    const kinds = buys.map((buy) => shopBuy(buy, ownBench));
     const mine = ownedUnits(p);
     const owned = p.shop.map((id) => mine.flatMap(({ unit }) => (unit.unitId === id ? [unit.star] : [])));
     // While the fights play, copies on the board merge only once they end.
     const fighting = flow.state!.phase === 'fight';
     const merges = p.shop.map((id) => id !== null && completesMerge(p, id, fighting));
-    rebuild(this.shop, JSON.stringify([p.shop, buys, owned, merges]), () =>
+    rebuild(this.shop, JSON.stringify([p.shop, buys, kinds, owned, merges]), () =>
       p.shop.map((id, slot) => {
         if (id === null) return el('div', 'unit-card empty', icon('board'));
         return unitCard(id, owned[slot]!, merges[slot]!, buys[slot]!, kinds[slot]!, (card) => this.buy(slot, card));
@@ -114,7 +120,7 @@ export class ShopBar {
 
   /** Buys a shop slot, or, if the bench is full, says so over the bench. */
   private buy(slot: number, card: HTMLElement): void {
-    const kind = shopBuy(this.flow.check({ type: 'buy', slot }));
+    const kind = shopBuy(this.flow.check({ type: 'buy', slot }), this.drawn.ownBench);
     if (kind === 'bench-full') {
       // The card's tip would cover the note over the bench.
       dismissTip(card);
