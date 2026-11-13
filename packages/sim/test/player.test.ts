@@ -3,7 +3,7 @@ import { PLAYER, POOL_COPIES, SHOP } from '../src/data/economy.js';
 import type { ItemId } from '../src/data/items.js';
 import { UNITS, type UnitId } from '../src/data/units.js';
 import { boardSlot, unitAt, type Place } from '../src/game/places.js';
-import { Player, baseIncome, shopOdds, shopOddsLevel, streakGold, xpForNextLevel } from '../src/game/player.js';
+import { Player, baseIncome, interestOn, shopOdds, shopOddsLevel, streakGold, xpForNextLevel } from '../src/game/player.js';
 import { addItem } from '../src/game/rules.js';
 import { Pool, UNIT_IDS, copiesIn } from '../src/game/pool.js';
 import { createRng, randomInt } from '../src/rng.js';
@@ -463,12 +463,17 @@ describe('gold', () => {
     }
   });
 
+  it('works out interest on its own, with the cap that Gifts raise', () => {
+    expect([0, 9, 10, 35, 49, 50, 99].map((gold) => interestOn(gold, []))).toEqual([0, 0, 1, 3, 4, 5, 5]);
+    expect([50, 79, 80, 120].map((gold) => interestOn(gold, ['treasure-of-erebor']))).toEqual([5, 7, 8, 8]);
+  });
+
   it('earns win gold and streak gold after PvP fights', () => {
     const { player } = setup(0);
     const results = [true, true, true, true, true, true, false, false, false, false, true];
     const gold = results.map((won) => {
       const earned = player.recordPvp(won);
-      return [player.streak, earned];
+      return [player.streak, earned.win + earned.streak];
     });
     expect(gold).toEqual([
       [1, 1],

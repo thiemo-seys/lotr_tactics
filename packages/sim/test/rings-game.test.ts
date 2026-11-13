@@ -94,14 +94,15 @@ describe('the Seven', () => {
       // The board is full for level 3, so Sam stays on the bench.
       field(game, 0, 'sam', { bench: 0 }, { items: items.sam });
       expect(playerOf(game, 0).level).toBe(3);
-      game.advance();
-      return playerOf(game, 0).gold;
+      const report = game.advance()!;
+      return [playerOf(game, 0).gold, report.gold.find((g) => g.seat === 0)?.rings ?? 0];
     };
-    const plain = goldAfter({});
-    expect(goldAfter({ legolas: ['ring-of-the-seven'] })).toBe(plain + 1);
-    expect(goldAfter({ gimli: ['ring-of-the-seven'], legolas: ['ring-of-the-seven'] })).toBe(plain + 3);
+    // The gold, and the Seven's part of it in the round's report.
+    const [plain] = goldAfter({});
+    expect(goldAfter({ legolas: ['ring-of-the-seven'] })).toEqual([plain! + 1, 1]);
+    expect(goldAfter({ gimli: ['ring-of-the-seven'], legolas: ['ring-of-the-seven'] })).toEqual([plain! + 3, 3]);
     // Not from the bench.
-    expect(goldAfter({ sam: ['ring-of-the-seven'] })).toBe(plain);
+    expect(goldAfter({ sam: ['ring-of-the-seven'] })).toEqual([plain, 0]);
   });
 });
 

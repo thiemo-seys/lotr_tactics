@@ -98,6 +98,11 @@ export function baseIncome(stage: number, round: number): number {
   return INCOME.base[`${stage}-${round}`] ?? INCOME.standard;
 }
 
+/** Interest at the start of a PvP or PvE round on the gold held, for a player with these Gifts (section 8.1). */
+export function interestOn(gold: number, gifts: readonly GiftId[]): number {
+  return Math.min(INCOME.maxInterest + giftBonus(gifts, 'maxInterest'), Math.floor(gold / INCOME.goldPerInterest));
+}
+
 /** Bonus gold for a streak of this many results. */
 export function streakGold(length: number): number {
   let gold = 0;
@@ -350,19 +355,17 @@ export class Player implements PlayerView {
 
   /** Interest on the gold held, then base income (section 8.1). */
   collectIncome(base: number): void {
-    const maxInterest = INCOME.maxInterest + giftBonus(this.gifts, 'maxInterest');
-    const interest = Math.min(maxInterest, Math.floor(this.gold / INCOME.goldPerInterest));
-    this.gold += interest + base;
+    this.gold += interestOn(this.gold, this.gifts) + base;
   }
 
   /**
-   * Updates the streak after a PvP fight and returns the win and streak gold it earns, which the
-   * game pays when the fight phase ends (section 8.2). A draw is a loss.
+   * Updates the streak after a PvP fight and returns the win gold and streak gold it earns, which
+   * the game pays when the fight phase ends (section 8.2). A draw is a loss.
    */
-  recordPvp(won: boolean): number {
+  recordPvp(won: boolean): { readonly win: number; readonly streak: number } {
     if (won) this.streak = this.streak > 0 ? this.streak + 1 : 1;
     else this.streak = this.streak < 0 ? this.streak - 1 : -1;
-    return (won ? INCOME.pvpWin : 0) + streakGold(Math.abs(this.streak));
+    return { win: won ? INCOME.pvpWin : 0, streak: streakGold(Math.abs(this.streak)) };
   }
 
   reachLevel(level: number): void {

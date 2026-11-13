@@ -38,7 +38,7 @@ packages/client/
   src/
     main.ts        viewer page setup, controls, URL state
     play.ts        play page setup: connections, keys, the frame loop, and which panels show
-    flow.ts        the play page's steps from the game's messages, what it sends back, the timer, a round's results, what the HUD shows while a fight plays, and whose board is on screen (no Three.js, no DOM)
+    flow.ts        the play page's steps from the game's messages, what it sends back, the timer, a round's results with what it does to the person's HP and gold, what the HUD shows while a fight plays, and whose board is on screen (no Three.js, no DOM)
     connection.ts  offline and WebSocket connections to a game (server-spec.md section 10)
     fights.ts      which fight in a round is the person's
     boards.ts      preset and random boards
@@ -83,7 +83,8 @@ packages/client/
       shop-bar.ts     Buy XP, Reroll and Lock, the shop's unit cards, the items, Ready, and selling
       side-panels.ts  the trait tracker, and the players list with the person's Gifts
       viewing-bar.ts  the bar over another player's board, and the way back to the person's own
-      panels.ts       the Council, the Gift offer, a round's results, the end, and the fight's banner
+      panels.ts       the Council, the Gift offer, the end, and the fight's banner
+      results.ts      a round's results, and their animation of the HP lost and the gold coming in
       menu.ts         the menu and the lobby screen
       drag.ts         dragging units and items, and what the drop would do
   test/
@@ -409,7 +410,7 @@ The parts without Three.js are tested with Vitest:
 - trait text and the trait tracker's rows;
 - tooltip content, the HUD's values, the players list's rows, a round's results and the timer, and what the HUD, the players list and the trait tracker show while the person's fight plays;
 - the model a star level uses, falling back to the level below, its scale within the hex, and its label height: 1.8 above the ground, clear of the attack and cast clips, and a winner's rise to clear its victory pose (stars.ts);
-- what an ability does in words (abilities.ts), how a shop card marks a unit the person has, and that a full bench shows on a click rather than on the card (shop.ts), the stage tracker's rounds (hud.ts), and that a round's result reaches the stage tracker only once its results have been shown (flow.ts).
+- what an ability does in words (abilities.ts), how a shop card marks a unit the person has, and that a full bench shows on a click rather than on the card (shop.ts), the stage tracker's rounds (hud.ts), and that a round's result reaches the stage tracker only once its results have been shown, and that the gold its results show coming in is the gold the next step starts with (flow.ts).
 
 The Three.js scene and the pages are checked by building them and looking at them in a browser.
 
