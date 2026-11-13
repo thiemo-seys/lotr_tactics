@@ -5,8 +5,11 @@
 
 import {
   TICKS_PER_SECOND,
+  baseIncome,
   checkAction,
   createCombat,
+  interestOn,
+  nextRound,
   roundType,
   simulateCombat,
   type Action,
@@ -77,6 +80,29 @@ export interface ResultRow {
   readonly knockedOut: number | null;
 }
 
+/** Where a round's gold comes from: its fights' gold, paid as the fight step ends, then the next round's income as it starts. */
+export type IncomeSource = 'win' | 'winStreak' | 'lossStreak' | 'loot' | 'rings' | 'interest' | 'base';
+
+/** One part of the gold a round brings in. */
+export interface IncomeLine {
+  readonly source: IncomeSource;
+  readonly amount: number;
+  /** Its name, short enough to sit under its icon. */
+  readonly label: string;
+  /** What it is for. */
+  readonly detail: string;
+}
+
+/** What a round does to the person's HP and gold. */
+export interface RoundChange {
+  readonly hp: { readonly before: number; readonly after: number };
+  /**
+   * The gold held before the round's gold comes in, and each part of it in the order it is paid;
+   * null for a person who is out.
+   */
+  readonly gold: { readonly from: number; readonly lines: readonly IncomeLine[] } | null;
+}
+
 /** A round's results: the person's fight, and everyone who took damage or was knocked out. */
 export interface RoundResults {
   readonly stage: number;
@@ -85,6 +111,8 @@ export interface RoundResults {
   readonly outcome: 'Victory' | 'Defeat' | 'Draw' | 'No fight';
   /** Damage the person took. */
   readonly taken: number;
+  /** What the round does to the person's HP and gold, as it was when its results opened. */
+  readonly change: RoundChange;
   /** The person first if they are listed, then by damage taken, then by seat. */
   readonly rows: readonly ResultRow[];
   /** The results have been shown and the page waits for the others. */
@@ -126,6 +154,8 @@ export class PlayFlow {
   private timerMs = 0;
   /** The person's result in each round whose results have been shown, by `stage-round`. */
   private outcomes = new Map<string, 'Victory' | 'Defeat' | 'Draw'>();
+  /** What each round whose results have been shown did to the person, as it was when they opened, by `stage-round`. */
+  private changes = new Map<string, RoundChange>();
   /** The whole of the person's last fight, for the damage meter after it, worked out once. */
   private recap: { round: RoundRecord; events: readonly CombatEvent[] } | null = null;
 
@@ -145,6 +175,7 @@ export class PlayFlow {
     this.timerKey = '';
     this.timerMs = 0;
     this.outcomes.clear();
+    this.changes.clear();
     this.recap = null;
   }
 
@@ -421,6 +452,7 @@ export class PlayFlow {
       type: roundType(round.stage, round.round),
       outcome: fight === null ? 'No fight' : outcomeText(fight.result.outcome, yourTeam(fight, you)),
       taken: damage.get(you) ?? 0,
+      change: this.changes.get(`${round.stage}-${round.round}`) ?? this.roundChange(round),
       rows,
       waiting: waiting && state!.me.placement === null,
     };
@@ -464,11 +496,75 @@ export class PlayFlow {
     this.show = { kind: 'fight', round, fight, playback };
   }
 
+  /** What a round does to the person, from the game's view now. */
+  private roundChange(round: RoundRecord): RoundChange {
+    const { state } = this;
+    // Until the round's fight step ends, its gold isn't in the view's.
+    const paid = !(state!.step.kind === 'fight' && state!.stage === round.stage && state!.round === round.round);
+    return roundChange(round, state!.me, paid);
+  }
+
   private showResults(round: RoundRecord, now: number): void {
     const fight = yourFight(round, this.you);
-    if (fight !== null) this.outcomes.set(`${round.stage}-${round.round}`, outcomeText(fight.result.outcome, yourTeam(fight, this.you)));
+    const key = `${round.stage}-${round.round}`;
+    if (fight !== null) this.outcomes.set(key, outcomeText(fight.result.outcome, yourTeam(fight, this.you)));
+    // Taken once, so spending while the results are on screen doesn't change what they show.
+    if (this.state !== null) this.changes.set(key, this.roundChange(round));
     this.show = { kind: 'results', round, until: now + TIMERS.results * 1000 };
   }
+}
+
+/**
+ * What a round does to a player's HP and gold: the damage, the fights' gold (game-spec.md section
+ * 9.4), then, unless the next round is a Council, its interest and base income (section 8.1).
+ * `paid` says whether `me` is from after the round's fight step, when all of that is in its gold;
+ * before, the next round's interest is on the gold held now plus the fights' gold.
+ */
+export function roundChange(round: RoundRecord, me: PlayerView, paid: boolean): RoundChange {
+  const taken = round.damage.find((d) => d.seat === me.seat)?.amount ?? 0;
+  const hp = { before: me.hp + taken, after: Math.max(0, me.hp) };
+  if (me.placement !== null || round.eliminated.includes(me.seat)) return { hp, gold: null };
+  const earned = round.gold.find((g) => g.seat === me.seat) ?? { win: 0, streak: 0, loot: 0, rings: 0 };
+  const fights = earned.win + earned.streak + earned.loot + earned.rings;
+  const [stage, next] = nextRound(round.stage, round.round);
+  const name = `${stage}-${next}`;
+  const pays = roundType(stage, next) !== 'council';
+  const base = pays ? baseIncome(stage, next) : 0;
+  // The gold held as the next round starts, which its interest is on.
+  const held = !paid ? me.gold + fights : pays ? heldBefore(me.gold, base, me.gifts) : me.gold;
+  const interest = pays ? interestOn(held, me.gifts) : 0;
+  const streak = Math.abs(me.streak);
+  const lines: IncomeLine[] = [
+    { source: 'win', amount: earned.win, label: 'Win', detail: 'For winning the fight.' },
+    { source: me.streak > 0 ? 'winStreak' : 'lossStreak', amount: earned.streak, label: 'Streak', detail: `For ${streak} ${me.streak > 0 ? 'wins' : 'losses'} in a row.` },
+    { source: 'loot', amount: earned.loot, label: 'Loot', detail: 'Dropped by the monsters.' },
+    { source: 'rings', amount: earned.rings, label: 'The Seven', detail: 'From the Rings of the Seven on your board.' },
+    { source: 'interest', amount: interest, label: 'Interest', detail: `On the ${held} gold you hold as round ${name} starts.` },
+    { source: 'base', amount: base, label: 'Income', detail: `Base income as round ${name} starts.` },
+  ];
+  return { hp, gold: { from: held - fights, lines: lines.filter((l) => l.amount > 0) } };
+}
+
+/** The most coins the results fly into the purse; above it, a coin carries more than 1 gold. */
+const MAX_COINS = 24;
+
+/** The gold each coin the results fly into the purse carries, for each line of income: one coin per gold, up to MAX_COINS in all. */
+export function coinValues(amounts: readonly number[]): number[][] {
+  const total = amounts.reduce((a, b) => a + b, 0);
+  return amounts.map((amount) => {
+    const count = total <= MAX_COINS ? amount : Math.max(1, Math.min(amount, Math.round((amount * MAX_COINS) / total)));
+    const each = Math.floor(amount / count);
+    return Array.from({ length: count }, (_, k) => (k === count - 1 ? amount - each * (count - 1) : each));
+  });
+}
+
+/**
+ * The gold held as a round started, from the gold after its income: income only grows with the
+ * gold held, so one amount fits, unless the player has spent since.
+ */
+function heldBefore(gold: number, base: number, gifts: readonly GiftId[]): number {
+  for (let held = gold - base; held >= 0 && held >= gold - base - 10; held--) if (held + interestOn(held, gifts) + base === gold) return held;
+  return Math.max(0, gold - base);
 }
 
 /** A fight's outcome for the team the person played. */

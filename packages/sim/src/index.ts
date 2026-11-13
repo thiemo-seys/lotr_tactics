@@ -35,12 +35,13 @@ export type * from './combat/events.js';
 export { UNIT_IDS, copiesIn } from './game/pool.js';
 export { TEAM_ROWS, boardPlace, boardSlot, isPlace, ownedUnits, placeOf, samePlace, unitAt } from './game/places.js';
 export type { BoardPlace, OwnedUnit, Owner, Place } from './game/places.js';
-export { baseIncome, shopOdds, shopOddsLevel, streakGold, xpForNextLevel } from './game/player.js';
+export { baseIncome, interestOn, shopOdds, shopOddsLevel, streakGold, xpForNextLevel } from './game/player.js';
 export type { PlayerView } from './game/player.js';
 export { BENCH_FULL, addItem, checkAction, completesMerge } from './game/rules.js';
 export type { ActionContext, ActionResult } from './game/rules.js';
 export { councilCosts, nextRound, playerDamage, pveRound, roundType, roundsInStage, stageDamage } from './game/schedule.js';
 export { createGame } from './game/game.js';
+export type { RoundGold } from './game/game.js';
 export type { RingState, RingView } from './game/ring.js';
 export type { RingSupplyView } from './game/ring-supply.js';
 export type {

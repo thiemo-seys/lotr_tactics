@@ -101,12 +101,27 @@ export interface FightReport {
   readonly result: CombatResult;
 }
 
+/** The gold a player earned from a round's fights, by where it came from (sections 8.2, 9.7 and 9.12). */
+export interface RoundGold {
+  readonly seat: number;
+  /** For a PvP or ghost win. */
+  readonly win: number;
+  /** For the win or loss streak. */
+  readonly streak: number;
+  /** A PvE round's loot. */
+  readonly loot: number;
+  /** The Seven's gold. */
+  readonly rings: number;
+}
+
 export interface RoundReport {
   readonly stage: number;
   readonly round: number;
   readonly fights: readonly FightReport[];
   /** Damage taken, in seat order, for players who took any. */
   readonly damage: readonly { readonly seat: number; readonly amount: number }[];
+  /** The gold the fights earned, in seat order, for players who earned any; it is paid when the fight phase ends. */
+  readonly gold: readonly RoundGold[];
   /** Seats eliminated this round, best place first. */
   readonly eliminated: readonly number[];
   /** The place each seat in `eliminated` finishes in, in the same order. */
@@ -150,7 +165,7 @@ class GameImpl implements Game, GameState {
   private readonly rng: Rng;
   private nextUnitId = 0;
   /** Gold and items the fights earned, paid when the fight phase ends (section 9.4). */
-  private earned: { readonly player: Player; gold: number; readonly items: ItemId[] }[] = [];
+  private earned: { readonly player: Player; win: number; streak: number; loot: number; rings: number; readonly items: ItemId[] }[] = [];
   /** The players this round's fights knocked out, best place first, placed when the fight phase ends (section 9.9). */
   private knockedOut: Player[] = [];
 
@@ -258,18 +273,18 @@ class GameImpl implements Game, GameState {
   }
 
   private payEarnings(): void {
-    for (const { player, gold, items } of this.earned) {
-      player.gold += gold;
+    for (const { player, win, streak, loot, rings, items } of this.earned) {
+      player.gold += win + streak + loot + rings;
       player.items.push(...items);
     }
     this.earned = [];
   }
 
   /** What a player has earned from this round's fights so far. */
-  private earnings(player: Player): { gold: number; items: ItemId[] } {
+  private earnings(player: Player): GameImpl['earned'][number] {
     let entry = this.earned.find((e) => e.player === player);
     if (entry === undefined) {
-      entry = { player, gold: 0, items: [] };
+      entry = { player, win: 0, streak: 0, loot: 0, rings: 0, items: [] };
       this.earned.push(entry);
     }
     return entry;
@@ -457,8 +472,8 @@ class GameImpl implements Game, GameState {
       const { outcome, survivors } = result;
       if (outcome !== 'A') hurt(home, playerDamage(this.stage, survivors.B));
       if (kind === 'pvp' && outcome !== 'B') hurt(away!, playerDamage(this.stage, survivors.A));
-      if (kind !== 'pve') this.earnings(this.players[home]!).gold += this.players[home]!.recordPvp(outcome === 'A');
-      if (kind === 'pvp') this.earnings(this.players[away!]!).gold += this.players[away!]!.recordPvp(outcome === 'B');
+      if (kind !== 'pve') earnPvp(this.earnings(this.players[home]!), this.players[home]!.recordPvp(outcome === 'A'));
+      if (kind === 'pvp') earnPvp(this.earnings(this.players[away!]!), this.players[away!]!.recordPvp(outcome === 'B'));
     }
     for (const [seat, amount] of damage) this.players[seat]!.hp -= amount;
 
@@ -467,10 +482,10 @@ class GameImpl implements Game, GameState {
       for (const player of living.filter((p) => !p.eliminated)) {
         const earned = this.earnings(player);
         for (let i = 0; i < loot.components; i++) earned.items.push(COMPONENTS[randomInt(this.rng, COMPONENTS.length)]!);
-        earned.gold += loot.gold;
+        earned.loot += loot.gold;
       }
     }
-    for (const player of living.filter((p) => !p.eliminated)) this.earnings(player).gold += player.ringGold();
+    for (const player of living.filter((p) => !p.eliminated)) this.earnings(player).rings += player.ringGold();
     this.ring.afterFights(fights, (seat) => this.players[seat]!.firstOnBoard('gollum')?.id ?? null);
     for (const { kind, home, away } of fights) {
       if (kind !== 'pve') remember(this.players[home]!, away!);
@@ -490,6 +505,10 @@ class GameImpl implements Game, GameState {
       round: this.round,
       fights,
       damage: [...damage].sort(([a], [b]) => a - b).map(([seat, amount]) => ({ seat, amount })),
+      gold: this.earned
+        .filter((e) => e.win + e.streak + e.loot + e.rings > 0)
+        .map(({ player, win, streak, loot, rings }) => ({ seat: player.seat, win, streak, loot, rings }))
+        .sort((a, b) => a.seat - b.seat),
       eliminated: this.knockedOut.map((p) => p.seat),
       places: this.knockedOut.map((_, i) => left + 1 + i),
     };
@@ -513,6 +532,11 @@ class GameImpl implements Game, GameState {
       this.turn++;
     }
   }
+}
+
+function earnPvp(earned: { win: number; streak: number }, gold: { readonly win: number; readonly streak: number }): void {
+  earned.win += gold.win;
+  earned.streak += gold.streak;
 }
 
 function remember(player: Player, opponent: number): void {

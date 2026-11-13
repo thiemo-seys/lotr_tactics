@@ -1,9 +1,9 @@
 import { TIMERS, type ClientMessage, type FightRecord, type Host, type LobbyView, type MatchView, type RoundRecord, type ServerMessage } from '@lotr-tactics/server';
-import { simulateCombat, type CombatEvent, type Team } from '@lotr-tactics/sim';
+import { simulateCombat, type CombatEvent, type PlayerView, type Team } from '@lotr-tactics/sim';
 import { describe, expect, it } from 'vitest';
 import { LocalConnection } from '../src/connection.js';
 import { yourFight, yourTeam } from '../src/fights.js';
-import { PlayFlow, ordinal, outcomeText, standings, type FlowHooks } from '../src/flow.js';
+import { PlayFlow, coinValues, ordinal, outcomeText, roundChange, standings, type FlowHooks, type RoundChange } from '../src/flow.js';
 import { traitRows } from '../src/traits.js';
 
 /** A host whose clock only moves when the test moves it. */
@@ -80,7 +80,7 @@ describe('the play flow', () => {
       input: { seed: 1, stage: 2, teams: { A: [], B: [] } },
       result: { outcome: 'A', survivors: { A: [], B: [] }, finalTick: 0 },
     });
-    const round: RoundRecord = { stage: 2, round: 1, fights: [fight('pvp', 1, 2), fight('ghost', 3, 0)], damage: [], eliminated: [], places: [] };
+    const round: RoundRecord = { stage: 2, round: 1, fights: [fight('pvp', 1, 2), fight('ghost', 3, 0)], damage: [], gold: [], eliminated: [], places: [] };
     flow.receive({ type: 'round', round }, 5000);
     expect(flow.show).toEqual({ kind: 'results', round, until: 5000 + TIMERS.results * 1000 });
     expect(calls.fights).toEqual([]);
@@ -103,8 +103,19 @@ describe('the play flow', () => {
 
     let rounds = 0;
     let readies = 0;
+    let checked = 0;
+    // What the last results said the round would do to the person's gold.
+    let promised: RoundChange | null = null;
     for (let i = 0; i < 3000 && flow.show.kind !== 'over'; i++) {
       const { show } = flow;
+      if (promised !== null && (show.kind === 'council' || show.kind === 'planning')) {
+        // The next step's gold is what the results showed coming in.
+        if (promised.gold !== null) {
+          expect(flow.state!.me.gold).toBe(promised.gold.from + promised.gold.lines.reduce((sum, l) => sum + l.amount, 0));
+          checked++;
+        }
+        promised = null;
+      }
       if (show.kind === 'council') {
         host.time += flow.state!.step.ms!;
         connection.update();
@@ -140,6 +151,8 @@ describe('the play flow', () => {
         expect([results.stage, results.round]).toEqual([show.round.stage, show.round.round]);
         expect(['Victory', 'Defeat', 'Draw', 'No fight']).toContain(results.outcome);
         expect(results.taken).toBe(show.round.damage.find((d) => d.seat === 0)?.amount ?? 0);
+        expect(results.change.hp.before - results.change.hp.after).toBe(flow.me().hp > 0 ? results.taken : results.change.hp.before);
+        promised = results.change;
         const before = calls.sent.length;
         flow.update(0, show.until - 1);
         expect(flow.show.kind).toBe('results');
@@ -159,6 +172,7 @@ describe('the play flow', () => {
     expect(flow.me().placement).not.toBeNull();
     expect(rounds).toBeGreaterThan(5);
     expect(readies).toBeGreaterThan(5);
+    expect(checked).toBeGreaterThan(5);
     connection.close();
   });
 });
@@ -192,6 +206,7 @@ describe("while the person's fight plays", () => {
       },
     ],
     damage: [{ seat: 0, amount: 7 }],
+    gold: [],
     eliminated: [],
     places: [],
   });
@@ -288,8 +303,11 @@ describe('round results', () => {
     flow.you = 1;
     flow.lobby = { code: 'ABCDE', host: 0, started: true, seats: placements.map((_, i) => ({ kind: 'bot', name: `Bot ${i}`, connected: false })) };
     flow.state = {
+      step: { kind: 'fight' },
+      stage: 3,
+      round: 2,
       players: placements.map((placement, seat) => ({ seat, placement })),
-      me: { placement: mePlacement },
+      me: { seat: 1, placement: mePlacement, hp: 50, gold: 20, streak: 0, gifts: [] },
     } as unknown as MatchView;
     return flow;
   }
@@ -307,6 +325,7 @@ describe('round results', () => {
         { seat: 1, amount: 6 },
         { seat: 0, amount: 6 },
       ],
+      gold: [],
       eliminated: [2, 4],
       places: [7, 8],
     };
@@ -321,7 +340,7 @@ describe('round results', () => {
   });
 
   it('say when there was no fight of yours, and wait only while you are in', () => {
-    const round: RoundRecord = { stage: 3, round: 2, fights: [fight(2, 3, 'draw')], damage: [], eliminated: [], places: [] };
+    const round: RoundRecord = { stage: 3, round: 2, fights: [fight(2, 3, 'draw')], damage: [], gold: [], eliminated: [], places: [] };
     expect(inGame([null, null, null, null]).results(round, true)).toMatchObject({ outcome: 'No fight', taken: 0, rows: [], waiting: true });
     expect(inGame([null, 4, null, null], 4).results(round, true).waiting).toBe(false);
     expect(inGame([null, null, null, null]).results({ ...round, fights: [fight(1, 3, 'draw')] }, false).outcome).toBe('Draw');
@@ -372,7 +391,7 @@ describe("other players' boards", () => {
     flow.state = {
       step: { kind, ms: 30000 },
       players: placements.map((placement, seat) => ({ seat, placement, board: [], bench: [] })),
-      me: { placement: placements[1] },
+      me: { seat: 1, placement: placements[1], hp: 40, gold: 10, streak: 0, gifts: [] },
       ring: { state: 'held', holder: 3, bearer: 42, corruption: 5, hobbitFights: 0 },
     } as unknown as MatchView;
     flow.show = { kind };
@@ -401,7 +420,7 @@ describe("other players' boards", () => {
 
     // The round's fights bring the person's own board back for the next step.
     flow.viewBoard(2);
-    const round: RoundRecord = { stage: 2, round: 1, fights: [], damage: [], eliminated: [], places: [] };
+    const round: RoundRecord = { stage: 2, round: 1, fights: [], damage: [], gold: [], eliminated: [], places: [] };
     flow.receive({ type: 'round', round }, 0);
     expect([flow.canViewBoards, flow.viewed()]).toEqual([false, null]);
     flow.show = { kind: 'planning' };
@@ -562,5 +581,81 @@ describe('results', () => {
     ];
     expect(standings(players).map((p) => p.seat)).toEqual([3, 1, 2, 0]);
     expect([1, 2, 3, 4, 11].map(ordinal)).toEqual(['1st', '2nd', '3rd', '4th', '11th']);
+  });
+});
+
+describe('what a round does to the person', () => {
+  const me = (changes: Partial<PlayerView> = {}) => ({ seat: 1, hp: 64, gold: 34, streak: -3, placement: null, gifts: [], ...changes }) as unknown as PlayerView;
+  const round = (changes: Partial<RoundRecord> = {}): RoundRecord => ({
+    stage: 3,
+    round: 2,
+    fights: [],
+    damage: [{ seat: 1, amount: 8 }],
+    gold: [{ seat: 1, win: 0, streak: 1, loot: 0, rings: 0 }],
+    eliminated: [],
+    places: [],
+    ...changes,
+  });
+  const amounts = (change: RoundChange) => change.gold!.lines.map((l) => [l.source, l.amount]);
+
+  it("takes the HP lost, then adds the fights' gold, interest on what is held after it, and the next round's base income", () => {
+    const change = roundChange(round(), me(), false);
+    expect(change.hp).toEqual({ before: 72, after: 64 });
+    expect(change.gold!.from).toBe(34);
+    expect(amounts(change)).toEqual([
+      ['lossStreak', 1],
+      ['interest', 3],
+      ['base', 5],
+    ]);
+    expect(change.gold!.lines.map((l) => l.detail)).toEqual(['For 3 losses in a row.', 'On the 35 gold you hold as round 3-3 starts.', 'Base income as round 3-3 starts.']);
+  });
+
+  it('works out the same from a view after the gold is paid', () => {
+    expect(roundChange(round(), me({ gold: 43 }), true)).toEqual(roundChange(round(), me(), false));
+  });
+
+  it('lists loot and the Seven after a PvE round', () => {
+    const pve = round({ round: 7, damage: [], gold: [{ seat: 1, win: 0, streak: 0, loot: 3, rings: 2 }] });
+    expect(amounts(roundChange(pve, me({ gold: 20 }), false))).toEqual([
+      ['loot', 3],
+      ['rings', 2],
+      ['interest', 2],
+      ['base', 5],
+    ]);
+  });
+
+  it('has no interest or base income when a Council comes next', () => {
+    const beforeCouncil = round({ round: 3, damage: [], gold: [{ seat: 1, win: 1, streak: 2, loot: 0, rings: 0 }] });
+    const change = roundChange(beforeCouncil, me({ gold: 47, streak: 4 }), false);
+    expect(amounts(change)).toEqual([
+      ['win', 1],
+      ['winStreak', 2],
+    ]);
+    expect(change.hp).toEqual({ before: 64, after: 64 });
+    expect(roundChange(beforeCouncil, me({ gold: 50, streak: 4 }), true).gold!.from).toBe(47);
+  });
+
+  it('pays interest past 5 with Treasure of Erebor', () => {
+    const plain = round({ damage: [], gold: [] });
+    const rich = me({ gold: 79, gifts: ['treasure-of-erebor'] });
+    expect(amounts(roundChange(plain, rich, false))).toEqual([
+      ['interest', 7],
+      ['base', 5],
+    ]);
+    expect(roundChange(plain, me({ gold: 91, gifts: ['treasure-of-erebor'] }), true).gold!.from).toBe(79);
+  });
+
+  it('has no gold for a person who is out, and HP no lower than 0', () => {
+    const out = round({ damage: [{ seat: 1, amount: 12 }], eliminated: [1], places: [8] });
+    expect(roundChange(out, me({ hp: -5 }), false)).toEqual({ hp: { before: 7, after: 0 }, gold: null });
+    expect(roundChange(round(), me({ placement: 5 }), true).gold).toBeNull();
+  });
+
+  it('flies one coin per gold, up to 24, with bigger coins above that', () => {
+    expect(coinValues([1, 3, 5])).toEqual([[1], [1, 1, 1], [1, 1, 1, 1, 1]]);
+    const big = coinValues([3, 5, 30]);
+    expect(big.map((coins) => coins.reduce((a, b) => a + b, 0))).toEqual([3, 5, 30]);
+    expect(big.flat().length).toBeLessThanOrEqual(24);
+    expect(big.every((coins) => coins.length > 0)).toBe(true);
   });
 });

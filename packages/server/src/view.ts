@@ -122,6 +122,7 @@ export function roundRecord(report: RoundReport): RoundRecord {
       result: { outcome: f.result.outcome, survivors: f.result.survivors, finalTick: f.result.finalTick },
     })),
     damage: report.damage,
+    gold: report.gold,
     eliminated: report.eliminated,
     places: report.places,
   };

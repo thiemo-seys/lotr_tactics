@@ -122,6 +122,10 @@ describe('stage 1', () => {
       expect(fight.input.teams.A).toHaveLength(1);
     }
     for (const p of game.state.players) expect(p.items).toHaveLength(2);
+    // Loot gold is reported for the round that pays it: none at 1-1, 2 at 1-3.
+    expect(report.gold).toEqual([]);
+    game.advance();
+    expect(game.advance()!.gold).toEqual(game.state.players.map((p) => ({ seat: p.seat, win: 0, streak: 0, loot: 2, rings: 0 })));
     skipTo(game, 2, 1);
     for (const p of game.state.players) {
       // 2 + 2 + 3 base income, 2 gold of loot at 1-3, then 4 at 2-1, and no interest below 10.
@@ -185,6 +189,21 @@ describe('PvP rounds', () => {
       expect(home.gold).toBe(after(home.seat, outcome === 'A'));
       expect(away.gold).toBe(after(away.seat, outcome === 'B'));
     }
+    // The report gives each winner's gold by where it came from; a first loss earns nothing.
+    const winners = report.fights.map((f) => (f.result.outcome === 'A' ? f.home : f.result.outcome === 'B' ? f.away! : null)).filter((s) => s !== null);
+    expect(report.gold).toEqual(winners.sort((a, b) => a - b).map((seat) => ({ seat, win: 1, streak: 0, loot: 0, rings: 0 })));
+  });
+
+  it('report win and streak gold apart', () => {
+    const game = createGame({ seed: 8, players: 2 });
+    skipTo(game, 2, 1);
+    clear(game, 1);
+    field(game, 0, 'gimli', { col: 3, row: 3 }, { star: 2 });
+    const reports = [game.advance()!, game.advance()!];
+    expect(reports.map((r) => r.gold)).toEqual([
+      [{ seat: 0, win: 1, streak: 0, loot: 0, rings: 0 }],
+      [{ seat: 0, win: 1, streak: 1, loot: 0, rings: 0 }, { seat: 1, win: 0, streak: 1, loot: 0, rings: 0 }],
+    ]);
   });
 
   it('deal stage damage plus the survivors to the loser', () => {

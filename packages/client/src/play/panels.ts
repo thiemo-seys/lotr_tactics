@@ -1,11 +1,10 @@
 // The play page's centre panels (docs/game-spec.md section 12): the Council's options, the Gift
-// offer, a round's results, the end of the game, and the banner with a fight's outcome.
+// offer, the end of the game, and the banner with a fight's outcome. A round's results are in results.ts.
 
 import { GIFTS, ITEMS, UNITS, type Outcome, type Team, type CouncilOptionView } from '@lotr-tactics/sim';
-import type { RoundRecord } from '@lotr-tactics/server';
-import { ordinal, outcomeText, standings, type PlayFlow, type RoundResults } from '../flow.js';
+import { ordinal, outcomeText, standings, type PlayFlow } from '../flow.js';
 import { plural } from '../hud.js';
-import { GIFT_TIER_ICONS, ROUND_ICONS, TRAIT_ICONS, type IconName } from '../icons.js';
+import { GIFT_TIER_ICONS, TRAIT_ICONS } from '../icons.js';
 import { TIER_NAMES, giftEffects } from '../gifts.js';
 import { medal } from '../players.js';
 import { actionTip, unitTip } from '../tips.js';
@@ -15,8 +14,6 @@ import { setTip } from '../ui/tooltip.js';
 
 const element = (id: string) => document.getElementById(id) as HTMLElement;
 
-const ROUND_NAMES = { council: 'Council of Elrond', pvp: 'PvP', pve: 'PvE' } as const;
-const OUTCOME_ICONS: Readonly<Record<RoundResults['outcome'], IconName>> = { Victory: 'trophy', Defeat: 'knockout', Draw: 'pvp', 'No fight': 'council' };
 
 // The Council of Elrond
 
@@ -103,50 +100,7 @@ export function renderGiftOffer(flow: PlayFlow): void {
   }
 }
 
-// Results and the end of the game
-
-export function renderResults(panel: HTMLElement, flow: PlayFlow, round: RoundRecord, waiting: boolean): void {
-  const r = flow.results(round, waiting);
-  const seats = flow.lobby?.seats;
-  rebuild(panel, JSON.stringify(['results', r, seats?.map((s) => s.kind)]), () => {
-    panel.className = `panel results outcome-${r.outcome.toLowerCase().replace(' ', '-')}`;
-    return [
-      el(
-        'div',
-        'result-head',
-        el('span', 'outcome-icon', icon(OUTCOME_ICONS[r.outcome])),
-        el(
-          'div',
-          'result-titles',
-          el('p', 'eyebrow', icon(ROUND_ICONS[r.type]), `Round ${r.stage}-${r.round} · ${ROUND_NAMES[r.type]}`),
-          el('h2', 'outcome', r.outcome),
-        ),
-        el('div', `damage-taken${r.taken > 0 ? ' hurt' : ''}`, icon(r.taken > 0 ? 'damage' : 'hp'), r.taken > 0 ? `−${r.taken} HP` : 'No damage'),
-      ),
-      r.rows.length === 0
-        ? el('p', 'result-empty', 'Nobody took damage this round.')
-        : el(
-            'table',
-            'result-table',
-            el('thead', '', el('tr', '', el('th', '', 'Player'), el('th', 'num', 'Damage'), el('th', '', ''))),
-            el(
-              'tbody',
-              '',
-              ...r.rows.map((row) =>
-                el(
-                  'tr',
-                  `${row.you ? 'you' : ''}${row.knockedOut !== null ? ' knocked-out' : ''}`,
-                  el('td', 'who', el('span', '', icon(seats?.[row.seat]?.kind === 'bot' ? 'bot' : 'person'), row.name)),
-                  el('td', 'num damage', row.damage > 0 ? el('span', '', icon('damage'), `−${row.damage}`) : '—'),
-                  el('td', 'ko', row.knockedOut === null ? '' : el('span', '', icon('knockout'), `Out · ${ordinal(row.knockedOut)}`)),
-                ),
-              ),
-            ),
-          ),
-      r.waiting ? el('p', 'waiting', icon('timer'), 'Waiting for the others…') : null,
-    ].filter((n) => n !== null);
-  });
-}
+// The end of the game
 
 export function renderOver(panel: HTMLElement, flow: PlayFlow, offline: boolean, actions: { newGame: () => void; menu: () => void }): void {
   const s = flow.state!;

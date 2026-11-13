@@ -446,8 +446,17 @@ interface RoundReport {
   round: number;
   fights: FightReport[];
   damage: { seat: number; amount: number }[];
+  gold: RoundGold[];      // the fights' gold, by source, for players who earned any; paid when the fight phase ends
   eliminated: number[];   // best place first
   places: number[];       // the place each of `eliminated` takes, in the same order
+}
+
+interface RoundGold {
+  seat: number;
+  win: number;      // PvP or ghost win gold (8.2)
+  streak: number;   // streak gold (8.2)
+  loot: number;     // PvE loot gold (9.7)
+  rings: number;    // the Seven's gold (9.12)
 }
 
 interface FightReport {
@@ -526,7 +535,7 @@ The play page, `play.html` in `packages/client`, next to the fight viewer (`view
 - **Fights:** the person's fight plays back with the viewer's playback, at 1×, 2× or 4×, and can be skipped; the others run headless. The camera stays where it was in planning, so the board doesn't move. When the person is team B, the fight is drawn turned half round, so their side is near, on the pale half, rather than the camera moving. The person's bench stays in front of the board with their units on it, and the shop bar stays open (9.4), with the top bar on its single row. The person's units always have green health bars and their opponent's red; units look the same on both sides (`viewer-spec.md` section 4). A banner shows Victory, Defeat or Draw when it ends.
   - While it plays, the game's view already has the fights' outcome in it: damage and streaks (`server-spec.md` section 5.1); players they knock out are placed only when the fight step ends. The HUD and the players list show HP, streaks and places as they were planned, if the page saw the planning, so they don't give the outcome away; gold, level, XP, the shop, the bench and items are live, since the person can shop. The board count and the trait tracker count the person's side in the fight. The outcome shows from the results on, in the HUD, the stage tracker and the players list.
 - **Damage meter:** while the person's fight plays and through its results, a Damage button opens a meter of what each of their units has dealt, taken, or healed and shielded (`viewer-spec.md` section 8). It shows only the person's own team.
-- **Results:** for a few seconds after each fight, the person's outcome and the damage they took, and a table of everyone who took damage or was knocked out, with the places of those knocked out.
+- **Results:** for a few seconds after each fight, the person's outcome, then what the round did to them, played in as the results open: their HP as a heart in a ring that shows the share of their starting HP left, which takes the hit, shaking and shedding shards as the number counts down and the ring shrinks, with the HP lost over it ("No damage" if none); then the gold coming in, each part as a chip with its icon, in the order it is paid: the fights' gold from the round's report (`RoundGold`: win, streak, loot, the Seven) and, unless a Council comes next, the next round's interest and base income (8.1). One coin per gold flies from each chip into a purse that counts up from the gold held before (at most 24 coins, bigger ones above that). Each chip's tooltip says what it is for. The interest is worked out as the results open, from the gold held then plus the fights' gold (`interestOn`), and doesn't change if the person spends while the results are on screen. A person knocked out sees that they are out instead of the gold. With reduced motion, the results show how all this ends. Below, a table of everyone who took damage or was knocked out, with the places of those knocked out.
 - **End:** the person's place, the final standings with medals for the top three, and New game and Back to menu.
 - **Timers:** 30 seconds of planning (`design.md` section 9), or 45 with a Gift offer, ended early by Ready; 15 seconds for the person's Council pick, after which they get a random option. The match runner keeps them, offline as online.
 - **Seed:** from the URL (`play.html#seed=7`), which starts an offline game straight away, or random from the menu's Play against bots.
