@@ -6,6 +6,9 @@
 import {
   ITEMS,
   TRAITS,
+  addItem,
+  combine,
+  isComponent,
   isRingOfPower,
   itemStats,
   type BuffStat,
@@ -35,6 +38,19 @@ export const RING_COLOURS: Readonly<Record<RingOfPowerId, readonly [string, stri
   'ring-of-the-seven': ['#eab308', '#92400e'],
   'ring-of-the-nine': ['#eab308', '#111827'],
 };
+
+/**
+ * The item a dragged item would make (section 7.7 of docs/design.md): with another component in
+ * the person's items, or with a lone component the unit it is given to holds. Null if it makes
+ * none: either isn't a component, or the unit can't take it.
+ */
+export function combinesInto(item: ItemId, onto: ItemId | readonly ItemId[]): ItemId | null {
+  if (!isComponent(item)) return null;
+  if (typeof onto === 'string') return isComponent(onto) ? combine(onto, item) : null;
+  const after = addItem(onto, item);
+  const lone = onto.findIndex(isComponent);
+  return after === null || lone < 0 ? null : after[lone]!;
+}
 
 /** A component's colour twice, a combined item's two components' colours, or a Ring of Power's gold and stone. */
 export function itemColours(id: ItemId): readonly [string, string] {
