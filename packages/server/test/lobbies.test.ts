@@ -107,7 +107,7 @@ describe('starting', () => {
     const [a, b] = [clients[0]!.last('state')!.state, clients[1]!.last('state')!.state];
     expect([a.you, b.you]).toEqual([0, 1]);
     expect(a.step).toEqual({ kind: 'planning', ms: TIMERS.planning * 1000 });
-    expect([a.stage, a.round, a.type]).toEqual([1, 1, 'start']);
+    expect([a.stage, a.round, a.type]).toEqual([1, 1, 'pve']);
     expect(a.players).toEqual(b.players);
     // The lobby says the game started before the first state arrives.
     expect(clients[0]!.inbox.findIndex((m) => m.type === 'state')).toBeGreaterThan(clients[0]!.inbox.findLastIndex((m) => m.type === 'lobby'));
@@ -120,13 +120,10 @@ describe('starting', () => {
     say(clients[0]!, { type: 'ready' });
     expect(clients[0]!.last('refused')).toEqual({ type: 'refused', request: 'ready', reason: 'The game has not started.' });
     say(clients[0]!, { type: 'start' });
-    say(clients[0]!, { type: 'act', action: { type: 'reroll' } });
-    expect(clients[0]!.last('refused')!.reason).toBe('The shop opens next round.');
     say(clients[0]!, { type: 'act', action: { type: 'equip', item: 0, to: { bench: 0 } } });
     expect(clients[0]!.last('state')!.state.me.bench[0]!.items).toHaveLength(1);
-    // The start round has no fight: Ready goes straight on to 1-2.
-    say(clients[0]!, { type: 'ready' });
-    expect(clients[0]!.last('state')!.state.round).toBe(2);
+    say(clients[0]!, { type: 'act', action: { type: 'reroll' } });
+    expect(clients[0]!.last('state')!.state.me.gold).toBe(0);
     expect(clients[0]!.last('round')).toBeUndefined();
     say(clients[0]!, { type: 'ready' });
     expect(clients[0]!.last('round')).toBeDefined();

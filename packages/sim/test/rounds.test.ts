@@ -11,17 +11,17 @@ import { createRng } from '../src/rng.js';
 
 describe('schedule', () => {
   it('follows docs/design.md section 9', () => {
-    expect([1, 2, 3, 4].map((round) => roundType(1, round))).toEqual(['start', 'pve', 'pve', 'pve']);
+    expect([1, 2, 3].map((round) => roundType(1, round))).toEqual(['pve', 'pve', 'pve']);
     for (const stage of [2, 3, 7]) {
       expect([1, 2, 3, 4, 5, 6, 7].map((round) => roundType(stage, round))).toEqual(['pvp', 'pvp', 'pvp', 'council', 'pvp', 'pvp', 'pve']);
     }
-    expect([roundsInStage(1), roundsInStage(2)]).toEqual([4, 7]);
-    expect(() => roundType(1, 5)).toThrow();
+    expect([roundsInStage(1), roundsInStage(2)]).toEqual([3, 7]);
+    expect(() => roundType(1, 4)).toThrow();
   });
 
   it('moves on to the next stage after its last round', () => {
-    expect(nextRound(1, 3)).toEqual([1, 4]);
-    expect(nextRound(1, 4)).toEqual([2, 1]);
+    expect(nextRound(1, 2)).toEqual([1, 3]);
+    expect(nextRound(1, 3)).toEqual([2, 1]);
     expect(nextRound(2, 7)).toEqual([3, 1]);
   });
 
@@ -41,7 +41,7 @@ describe('schedule', () => {
   });
 
   it('has a valid fight board for every PvE round', () => {
-    for (const [stage, round] of [[1, 2], [1, 3], [1, 4], [2, 7], [3, 7], [4, 7], [5, 7], [6, 7], [9, 7]] as const) {
+    for (const [stage, round] of [[1, 1], [1, 2], [1, 3], [2, 7], [3, 7], [4, 7], [5, 7], [6, 7], [9, 7]] as const) {
       const { monsters } = pveRound(stage, round);
       const B = monsters.map((m) => ({ ...m, star: 1 as const, items: [] }));
       expect(() => createCombat({ seed: 1, stage, teams: { A: [], B } })).not.toThrow();

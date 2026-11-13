@@ -172,12 +172,6 @@ export class Match {
       case 'planning': {
         // The game stays in the round while its fights play, so people can shop.
         const report = this.game.fight();
-        // The start round has no fights to show: straight on to the next round.
-        if (report.fights.length === 0) {
-          this.game.advance();
-          this.enter();
-          return;
-        }
         const record = roundRecord(report);
         const longest = Math.max(0, ...report.fights.map((f) => f.result.finalTick)) / TICKS_PER_SECOND;
         this.readySeats.clear();

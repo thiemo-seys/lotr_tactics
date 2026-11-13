@@ -139,7 +139,7 @@ const GIFT_STREAM = 20;
 class GameImpl implements Game, GameState {
   stage = 1;
   round = 1;
-  type: RoundType = 'start';
+  type: RoundType = 'pve';
   phase: Phase = 'planning';
   turn = 0;
   council: { options: CouncilOption[]; groups: number[][]; group: number } | null = null;
@@ -295,8 +295,6 @@ class GameImpl implements Game, GameState {
       return;
     }
     this.phase = 'planning';
-    // The start round is for placing the starting kits: no income, XP or shop.
-    if (this.type === 'start') return;
     this.corruptRing();
     for (const player of this.living()) {
       for (const auto of XP.automatic) if (auto.stage === this.stage && auto.round === this.round) player.reachLevel(auto.level);
@@ -426,8 +424,6 @@ class GameImpl implements Game, GameState {
     const living = this.living();
     for (const player of living) player.fillBoard();
     this.equipRing();
-    // The start round has no fight.
-    if (this.type === 'start') return { stage: this.stage, round: this.round, fights: [], damage: [], eliminated: [], places: [] };
     const fights: FightReport[] = [];
     const run = (kind: FightReport['kind'], home: Player, away: Player | null, B: readonly PlacedUnit[]) => {
       const input: CombatInput = {

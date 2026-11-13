@@ -11,10 +11,10 @@ export interface PveRound {
 const at = (unitId: MonsterId, col: number, row: number) => ({ unitId, col, row });
 
 /** Keyed by "stage-round". `later` is every PvE round from stage 6 on. */
-export const PVE_ROUNDS: Readonly<Record<'1-2' | '1-3' | '1-4' | '2-7' | '3-7' | '4-7' | '5-7' | 'later', PveRound>> = {
-  '1-2': { monsters: [at('goblin', 2, 3), at('goblin', 4, 3)], loot: { components: 1, gold: 0 } },
-  '1-3': { monsters: [at('goblin', 2, 3), at('goblin', 4, 3), at('goblin-archer', 3, 1)], loot: { components: 1, gold: 0 } },
-  '1-4': {
+export const PVE_ROUNDS: Readonly<Record<'1-1' | '1-2' | '1-3' | '2-7' | '3-7' | '4-7' | '5-7' | 'later', PveRound>> = {
+  '1-1': { monsters: [at('goblin', 2, 3), at('goblin', 4, 3)], loot: { components: 1, gold: 0 } },
+  '1-2': { monsters: [at('goblin', 2, 3), at('goblin', 4, 3), at('goblin-archer', 3, 1)], loot: { components: 1, gold: 0 } },
+  '1-3': {
     monsters: [at('goblin', 2, 3), at('goblin', 4, 3), at('goblin-archer', 1, 1), at('goblin-archer', 5, 1)],
     loot: { components: 1, gold: 2 },
   },

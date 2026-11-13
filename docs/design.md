@@ -362,7 +362,7 @@ All numbers are *(placeholder)*.
 
 ### Gold
 
-- **Base income:** 2 / 2 / 3 gold in rounds 1-2 to 1-4, 4 gold at 2-1, then 5 gold every round.
+- **Base income:** 2 / 2 / 3 gold in rounds 1-1 to 1-3, 4 gold at 2-1, then 5 gold every round.
 - **Interest:** +1 gold for every 10 gold held, up to +5 at 50 gold.
 - **Streaks** (win or loss):
 
@@ -387,7 +387,7 @@ All numbers are *(placeholder)*.
 ### Levels
 
 - Buy 4 XP for 4 gold. From stage 2 on, gain 2 XP every round.
-- Start at level 1; reach level 2 at round 1-2 and level 3 at round 2-1 automatically.
+- Start at level 1; reach level 2 at round 1-1 and level 3 at round 2-1 automatically.
 - Level is the number of units allowed on the board. Maximum level is 9.
 
 | Level | XP to reach | 1-cost | 2-cost | 3-cost | 4-cost | 5-cost |
@@ -423,8 +423,8 @@ With 5–8 units per cost tier (TFT has about 13), a specific unit appears in th
 
 **Stage 1:**
 
-- 1-1: Start. Each player is given a random 1-cost unit and a random item component, and has a planning round to place the unit and give it the item. There is no fight, no income and no shop yet.
-- 1-2 to 1-4: PvE
+- Before 1-1, each player is given a random 1-cost unit and a random item component.
+- 1-1 to 1-3: PvE. The game opens straight on 1-1's planning, with the starting unit, a shop and the first income, so there is no round spent only placing the starting unit.
 
 **Stage 2 onwards** (7 rounds per stage):
 

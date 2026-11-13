@@ -9,7 +9,7 @@ describe('the turn counter', () => {
   it('goes up at each Council group, each planning and the end, and not for actions', () => {
     const game = createGame({ seed: 3, players: 4 });
     expect(game.state.turn).toBe(1);
-    // The start round ends: on to 1-2's planning.
+    // 1-1 is fought: on to 1-2's planning.
     game.advance();
     expect([game.state.round, game.state.phase, game.state.turn]).toEqual([2, 'planning', 2]);
     game.act(0, { type: 'lock', locked: true });
@@ -60,8 +60,6 @@ describe('the autopilot', () => {
     const game = createGame({ seed: 6, players: 4 });
     const reports = new Autopilot(game, 6).playUntil(() => game.state.stage === 2 && game.state.round === 2);
     expect([game.state.stage, game.state.round, game.state.phase]).toEqual([2, 2, 'planning']);
-    // 1-1 has no fights, then 1-2, 1-3, 1-4 and 2-1.
-    expect(reports.map((r) => `${r.stage}-${r.round}`)).toEqual(['1-1', '1-2', '1-3', '1-4', '2-1']);
-    expect(reports[0]!.fights).toEqual([]);
+    expect(reports.map((r) => `${r.stage}-${r.round}`)).toEqual(['1-1', '1-2', '1-3', '2-1']);
   });
 });

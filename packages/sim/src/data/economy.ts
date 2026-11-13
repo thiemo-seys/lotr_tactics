@@ -34,7 +34,7 @@ export const SHOP = {
 
 export const INCOME = {
   /** Base income in the rounds that differ from `standard`, keyed by "stage-round". */
-  base: { '1-2': 2, '1-3': 2, '1-4': 3, '2-1': 4 } as Readonly<Record<string, number>>,
+  base: { '1-1': 2, '1-2': 2, '1-3': 3, '2-1': 4 } as Readonly<Record<string, number>>,
   standard: 5,
   goldPerInterest: 10,
   maxInterest: 5,
@@ -59,7 +59,7 @@ export const XP = {
   toLevel: { 4: 6, 5: 10, 6: 20, 7: 36, 8: 48, 9: 76 } as Readonly<Record<number, number>>,
   /** Levels reached automatically at the start of a round. */
   automatic: [
-    { stage: 1, round: 2, level: 2 },
+    { stage: 1, round: 1, level: 2 },
     { stage: 2, round: 1, level: 3 },
   ],
 } as const;
