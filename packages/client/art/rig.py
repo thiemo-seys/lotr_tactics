@@ -332,16 +332,20 @@ class Clip:
     for a cast that sets off on a dash or charge `off`, where it springs, clips.py), the frames each
     of a cast's hits is struck or loosed on (`hits`, the first its height: one, unless it looses or
     strikes again), `begin`, how far into its first key it begins once retimed, if not clips.BEGIN of the
-    way from rest, and `pose(frame)`, the channels at a frame (clips.py)."""
+    way from rest, `muzzle`, for a ranged attack, where its shot leaves: `(bone, point)`, a point on the
+    model as built that the bone carries (the arrow's rest on the bow, a staff's head, a stone in the
+    fingers), which Rig.export() poses on the strike frame; and `pose(frame)`, the channels at a frame
+    (clips.py)."""
 
-    def __init__(self, frames: int, pose, loop: bool = False, marks=None, hits=None, begin=None):
+    def __init__(self, frames: int, pose, loop: bool = False, marks=None, hits=None, begin=None, muzzle=None):
         self.frames, self.pose, self.loop, self.marks = frames, pose, loop, dict(marks or {})
         self.hits = list(hits) if hits is not None else None
         self.begin = begin
+        self.muzzle = muzzle
 
     def with_pose(self, pose) -> 'Clip':
         """This clip with another pose function, as a wrapper fitting it to a model makes it."""
-        return Clip(self.frames, pose, self.loop, self.marks, self.hits, self.begin)
+        return Clip(self.frames, pose, self.loop, self.marks, self.hits, self.begin, self.muzzle)
 
     @property
     def seconds(self) -> float:
@@ -748,7 +752,9 @@ class Rig:
         print(f'MODEL {model.name}: {len(self.bones)} bones (budget {MAX_BONES[self.kind]}), clips {marks}; '
               f'over every frame, radius {self.radius:.3f} and base {base:+.4f}; between frames, '
               f'radius {self.radius_between:.3f} and base {base_between:+.4f}; '
-              + ', '.join(f'{name} reaches {self.reaches[name][0]:.3f} (frame {self.reaches[name][1]:g})' for name in ACTIONS))
+              + ', '.join(f'{name} reaches {self.reaches[name][0]:.3f} (frame {self.reaches[name][1]:g})'
+                          for name in ACTIONS)
+              + (f'; its shot leaves from {self.muzzle()}' if self.clips['attack'].muzzle is not None else ''))
 
     def _measure(self, model) -> None:
         """Keeps each bone's vertices as the model stands, for points() and lowest()."""
@@ -987,17 +993,33 @@ class Rig:
         self._play(None)
         scene.frame_set(0)
 
+    def muzzle(self):
+        """Where a ranged attack's shot leaves on its strike frame, as the attack's style names it
+        (Clip.muzzle), in the model's frame as the client loads it: glTF's, y up and +z the way the
+        model faces (Blender's (x, y, z) is glTF's (x, z, -y)), rounded to 4 places; None for an attack
+        that names none, a melee blow."""
+        clip = self.clips['attack']
+        if clip.muzzle is None:
+            return None
+        bone, point = clip.muzzle
+        at = self.solve(clip.pose(clip.marks['strike']))[bone](point)
+        return [round(c, 4) + 0.0 for c in (at.x, at.z, -at.y)]  # + 0.0 so -0.0 is 0.0
+
     def export(self, model: bpy.types.Object, out: str) -> None:
         """Exports the mesh, its skin and one animation per clip, sampled on every frame. The
         armature's extras carry `reach`: the furthest from its centre any frame of any clip takes the
         model, on frames or between them as the client shows them, which the client bounds its meshes
-        by (docs/viewer-spec.md section 4, "Models")."""
+        by (docs/viewer-spec.md section 4, "Models"); `strike` and `hits`, when it strikes and casts;
+        and for a ranged attack `muzzle`, where its shot leaves (muzzle())."""
         for o in bpy.context.scene.objects:
             o.select_set(o in (model, self.armature))
         self.armature['reach'] = round(max(self.radius, self.radius_between), 4)
         # When it strikes and casts, for the client's tests (test/models.test.ts) to check against the sim.
         self.armature['strike'] = self.clips['attack'].marks['strike']
         self.armature['hits'] = self.clips['cast'].hits or [self.clips['cast'].marks['height']]
+        muzzle = self.muzzle()
+        if muzzle is not None:  # where a ranged attack's shot leaves, for the client to fly it from
+            self.armature['muzzle'] = muzzle
         bpy.ops.export_scene.gltf(
             filepath=out,
             export_format='GLB',

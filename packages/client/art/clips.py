@@ -545,7 +545,7 @@ def shot(rig, bow='l', seconds=0.6, drawn=False, **drawn_options):
     draw it stands at, the arrow gone to its quiver, and a fresh one drawn from it and nocked;
     `drawn_options` go to drawn_shot()."""
     if drawn:
-        return drawn_shot(rig, bow, seconds, BLOW, **drawn_options)
+        return drawn_shot(rig, bow, seconds, BLOW, **{'jolt': 1.0, **drawn_options})
     if drawn_options:
         raise TypeError(f'shot takes {", ".join(drawn_options)} only with drawn=True')
     draw = 'r' if bow == 'l' else 'l'
@@ -1875,7 +1875,7 @@ def retimed(rig, made_clip, keyed, at, lead, fast, last, longest, marks, hits=No
     def retimed_pose(f):
         return pose(keyed_frame(f)) if f >= lead else drawing_back(f)
 
-    return Clip(frames, retimed_pose, made_clip.loop, marks, hits)
+    return Clip(frames, retimed_pose, made_clip.loop, marks, hits, muzzle=made_clip.muzzle)
 
 
 def fit(clips, room=ROOM, pole=None, free=(), bow=None, between=False, **holding_options):
@@ -2551,8 +2551,11 @@ class Bow:
         return ch
 
 
+JOLT_DRAW = 0.2  # how much further a jolted shot draws the string, a share of its travel (drawn_shot())
+
+
 def drawn_shot(rig, bow, seconds, loose, rise=0.0, recoil=1.0, string='string', arrow='arrow', mark='strike',
-               deeper=0.1, quiver='back', anchor='cheek', snap=None, point=0.0, gather=1.0, wide=1.0):
+               deeper=0.1, quiver='back', anchor='cheek', snap=None, point=0.0, gather=1.0, wide=1.0, jolt=0.0):
     """A shot from the full draw the model stands at (Bow), loosed on frame `loose`: the draw pulled
     a little deeper, the shot raised `rise` degrees as it is held (a long, heavy shot), then loosed,
     the string snapping straight and the drawing hand flying back past the ear while the bow arm
@@ -2585,6 +2588,14 @@ def drawn_shot(rig, bow, seconds, loose, rise=0.0, recoil=1.0, string='string', 
     `wide` scales how far out to the drawing hand's side the fresh arrow swings on its way from the
     quiver to the string: less for a long arrow (Lurtz's), whose point would swing out of the hex
     between frames as the client shows them.
+
+    `jolt` (0 to 1) is how hard the loose reads at the game camera's distance, for an attack, whose
+    first frame is seen at full weight: from frame 0 the string is drawn `JOLT_DRAW` more of its
+    travel, the bow raised and pushed out and the body crouched and leaning into the shot; then on the
+    loose the body jolts back, the bow arm kicks up and out with the bow rolling forward over it, the
+    drawing hand flies well back and out (or with `anchor` 'chin' out to its side at the shoulder's
+    height), and the head follows it, all held for a few frames before the hand fetches the next
+    arrow. At 0 it is the light loose a heavy cast's shot keeps.
     """
     if quiver not in ('back', 'hip'):
         raise ValueError(f'quiver is "back" or "hip", not "{quiver}"')
@@ -2599,19 +2610,28 @@ def drawn_shot(rig, bow, seconds, loose, rise=0.0, recoil=1.0, string='string', 
     draw = w.draw
     bow_arm = w.swung
 
+    j = jolt
     k = Keys(lag={'head': 1, 'cape': 2})
     k.key(0, **b.still())
     held = loose - 1 if rise == 0 else max(1, loose - 3)
-    k.key(held, 'smooth', **bow_arm(rise, 0.01), spine=V(-1.5 - 0.3 * rise, 0, 0), head=V(-0.3 * rise, 0, 0),
-          hips_at=V(0, 0.005, -0.02 * leg))
-    k.key(loose - 1, **bow_arm(rise, 0.012), spine=V(-1.5 - 0.3 * rise, 0, 0), head=V(-0.3 * rise, 0, 0))
-    # Loosed: the bow arm kicks and the bow rolls forward in the hand; the body jolts.
-    k.key(loose, 'in', **bow_arm(rise, 0.035 * recoil, 0.0, 10 * recoil), spine=V(-0.5 - 0.3 * rise, 0, 0),
-          hips_at=V(0, 0.01, -0.025 * leg))
-    k.key(loose + 3, 'out', **bow_arm(rise * 0.8, 0.02 * recoil, 0.02, 14 * recoil), spine=V(0, 0, 0),
-          head=V(-0.2 * rise, 0, 0))
-    # Lowered a little while the hand fetches an arrow, and raised again to draw.
-    fetch = loose + 4  # the hand on its way to the quiver
+    if j:  # wound up from frame 0: the bow up and pushed out, the body crouched and leaning into it
+        k.key(0, **bow_arm(rise + 3 * j, 0.012 + 0.012 * j), spine=V(-1.5 - 0.3 * rise + 4 * j, 0, 0),
+              head=V(-0.3 * rise + 4 * j, 0, 0), hips_at=V(0, -0.01 * j, -(0.02 + 0.03 * j) * leg))
+    k.key(held, 'smooth', **bow_arm(rise + 4 * j, 0.01 + 0.02 * j), spine=V(-1.5 - 0.3 * rise + 5 * j, 0, 0),
+          head=V(-0.3 * rise + 5 * j, 0, 0), hips_at=V(0, 0.005 - 0.015 * j, -(0.02 + 0.035 * j) * leg))
+    k.key(loose - 1, **bow_arm(rise + 4 * j, 0.012 + 0.02 * j), spine=V(-1.5 - 0.3 * rise + 5 * j, 0, 0),
+          head=V(-0.3 * rise + 5 * j, 0, 0))
+    # Loosed: the bow arm kicks and the bow rolls forward in the hand; the body jolts back, the head after it.
+    k.key(loose, 'in', **bow_arm(rise + 6 * j, 0.035 * recoil + 0.03 * j, 0.0, 10 * recoil + 22 * j),
+          spine=V(-0.5 - 0.3 * rise - 7 * j, 0, b.yaw(4 * j)), hips_at=V(0, 0.01 + 0.03 * j, -(0.025 + 0.01 * j) * leg),
+          **({'head': V(-0.3 * rise - 10 * j, 0, b.yaw(-10 * j))} if j else {}))
+    k.key(loose + 3, 'out', **bow_arm(rise * 0.8 + 3 * j, 0.02 * recoil + 0.02 * j, 0.02 + 0.02 * j,
+                                      14 * recoil + 20 * j),
+          spine=V(-5 * j, 0, b.yaw(3 * j)), head=V(-0.2 * rise - 7 * j, 0, b.yaw(-7 * j)),
+          **({'hips_at': V(0, 0.03 * j, -0.03 * leg)} if j else {}))
+    # Lowered a little while the hand fetches an arrow, and raised again to draw; a jolted loose is held
+    # a frame longer before the hand goes.
+    fetch = loose + 4 + round(j)  # the hand on its way to the quiver
     grab = loose + 7  # the arrow taken
     nocked = loose + 11  # on the string
     # The bow comes in to take the fresh arrow on its slack string, and is pushed out again as the
@@ -2624,19 +2644,21 @@ def drawn_shot(rig, bow, seconds, loose, rise=0.0, recoil=1.0, string='string', 
     keyed = kept(rig, k, ahead=True)  # in its room before the drawing hand and the arrow are worked out from it
 
     # The string: drawn deeper, then let down as it is loosed, and drawn again once nocked.
-    s_keys = Keys().key(0, s=0.0).key(loose - 1, s=-deeper).key(loose, 'linear', s=1.0).key(nocked, s=1.0)
+    deep = deeper + JOLT_DRAW * j
+    s_keys = Keys().key(0, s=-0.6 * deep if j else 0.0).key(loose - 1, s=-deep).key(loose, 'linear', s=1.0)
+    s_keys.key(nocked, s=1.0)
     s_keys.key(n - 1, 'smooth', s=0.0).key(n, s=0.0)
     # The drawing hand, off the string from the loose until it nocks the fresh arrow: flown back past
     # the ear, then over the shoulder to the quiver for one, then out round the side of the head,
     # pulling it out, and over to the string.
-    released = w.wrist - 0.16 * w.aim + V(0, 0, 0.05)
+    released = w.wrist - (0.16 + 0.2 * j) * w.aim + V(0, 0, 0.05 + 0.05 * j) + b.out(0.1 * j, 0, 0, draw)
     if anchor == 'chin':  # out past the front of the drawing shoulder, low, clear of the chin
-        released = b.near(0.09, -0.34, 0.01, draw)
+        released = b.near(0.09 + 0.25 * j, -0.34 + 0.24 * j, 0.01 + 0.1 * j, draw)
     if snap is not None:
-        released = w.wrist + b.out(*snap, draw)
+        released = w.wrist + b.out(*snap, draw) * (1 + 0.8 * j) + V(0, 0, 0.04 * j)
     hand = Keys()
     hand.key(loose, at=released)
-    hand.key(loose + 2, 'out', at=released - 0.03 * w.aim + V(0, 0, 0.02))
+    hand.key(loose + 2 + round(j), 'out', at=released - (0.03 + 0.03 * j) * w.aim + V(0, 0, 0.02))
     if w.quiver and quiver == 'hip':
         # Down beside the body, out from it, to the quiver at the hip, and up out of it.
         turn, nock_q = w.quiver
@@ -2720,7 +2742,10 @@ def drawn_shot(rig, bow, seconds, loose, rise=0.0, recoil=1.0, string='string', 
                 w.arrow_to(ch, motions, turn, hand_(at))
         return ch
 
-    return Clip(n, pose, marks={mark: loose})
+    # Its shot leaves from where the arrow rests on the bow, a little ahead of the grip.
+    grip = rig.held(bow)[0]
+    rest_on = w.nock + w.aim * ((grip - w.nock).dot(w.aim) + 0.04)
+    return Clip(n, pose, marks={mark: loose}, muzzle=(f'hand_{bow}', rest_on))
 
 
 @style('cast', 'shot')
@@ -3251,38 +3276,55 @@ def flurry(rig, bow='l', seconds=0.8, height=3, shots=5, every=3, deeper=0.5, re
 
 
 @style('attack', 'bolt')
-def bolt(rig, hand='r', seconds=0.6, rise=10.0, reach=0.95):
+def bolt(rig, hand='r', seconds=0.6, rise=10.0, reach=1.0, lunge=1.0):
     """A bolt loosed from the hand, a sorcerer's attack: what it holds (hold(): an open hand from its
-    wrist to its fingertips with its palm as the face, or a light held up in it) drawn back by the
-    shoulder and turned up, the body turned away from the foe; then thrust out at it at the height
-    of the shoulder, `reach` of the arm's length, the face to the foe and tipped `rise` degrees up,
-    loosing the bolt on frame 3 as the body leans in after it; held a moment, and drawn back. The
-    other hand swings back for balance, unless fit() holds a staff in it."""
+    wrist to its fingertips with its palm as the face, or a light held up in it) drawn back behind the
+    shoulder and turned up on frame 0, seen at full weight, the body turned away from the foe and
+    rocked back; then punched out at it at the height of the shoulder, the arm straight, reaching for a
+    point `reach` (in shares of the arm's length) beyond where it can, so it stays straight as the
+    lunge carries the shoulder forward, the face to the foe and tipped `rise` degrees up, loosing the
+    bolt on frame 3 as the body lunges in after it `lunge` (0 to 1), the shoulder driven forward and
+    the other hand flung back, unless
+    fit() holds a staff in it; held a few frames, and drawn back. The bolt leaves from the middle of
+    what it holds, a little before its face (its muzzle)."""
     b = Body(rig, hand)
     n = frames_for(seconds)
     leg = b.leg
     off = b.off
+    ln = lunge
     k = Keys(lag={'head': 1, 'cape': 2})
     k.key(0, **b.still())
     up = math.radians(rise)
     facing = V(0, -math.cos(up), math.sin(up))  # to the foe, a little up
     raised = b.aim((0.0, -0.25, 1.0), (0.0, -1.0, 0.25))  # held upright, its face to the front
-    # Frame 0, seen at full weight: wound up, drawn back by the shoulder, the body turned away.
-    k.key(0, **b.arm(hand, b.near(0.26, 0.16, 0.24), raised, (0.8, 0.3, -0.5), world=1.0),
-          **b.arm(off, b.wrist(off, 0.04, -0.1, 0.04)), spine=V(-5, 0, b.yaw(20)), hips=V(-1, 0, b.yaw(8)),
-          hips_at=V(0, 0.02 * leg, -0.03 * leg), head=V(3, 0, b.yaw(-12)), cape=V(-4, 0, 0))
+    # Frame 0, seen at full weight: wound up, drawn back behind the shoulder, the body turned away and
+    # rocked back, the other hand reaching out before it.
+    k.key(0, **b.arm(hand, b.near(0.28, 0.26, 0.26), raised, (0.8, 0.4, -0.4), world=1.0),
+          **b.arm(off, b.wrist(off, 0.06, -0.2, 0.12)), spine=V(-8 * ln, 0, b.yaw(28)), hips=V(-2, 0, b.yaw(10)),
+          hips_at=V(0, 0.035 * ln * leg, -0.035 * leg), head=V(4, 0, b.yaw(-18)), cape=V(-6, 0, 0))
+    k.key(1, 'in', **{f'hand_{hand}_at': b.near(0.28, 0.22, 0.24)}, spine=V(-7 * ln, 0, b.yaw(26)))
     # On its way, wide of the face as the body turns into it.
-    k.key(2, 'in', **{f'hand_{hand}_at': b.near(0.2, -0.5, 0.18)})
-    # Thrust out at the foe, the face to it, the body after it: the bolt leaves.
+    k.key(2, 'in', **{f'hand_{hand}_at': b.near(0.18, -0.45, 0.18)}, spine=V(2 * ln, 0, b.yaw(4)),
+          hips=V(0, 0, b.yaw(2)), hips_at=V(0, -0.02 * ln * leg, -0.045 * leg))
+    # Punched out at the foe, the face to it, the shoulder driven after it: the bolt leaves.
     thrust = b.rig.aim(hand, turned(V(0, -0.25, 1.0), (rise - 90 + 14, 0, 0)), facing)
-    k.key(BLOW, 'in', **b.arm(hand, b.near(-0.12, -reach, 0.1), thrust, (0.8, 0.2, -0.6), world=1.0),
-          **b.arm(off, b.wrist(off, 0.08, 0.14, -0.02)), spine=V(9, 0, b.yaw(-14)), hips=V(2, 0, b.yaw(-6)),
-          hips_at=V(0, -0.07 * leg, -0.05 * leg), head=V(-6, 0, b.yaw(8)), cape=V(8, 0, 0))
-    k.key(BLOW + 4, 'out', **b.arm(hand, b.near(-0.12, -0.92 * reach, 0.08), thrust, (0.8, 0.2, -0.6), world=1.0),
-          spine=V(8, 0, b.yaw(-12)), hips_at=V(0, -0.065 * leg, -0.045 * leg))
+    # Its target is out ahead of the arm's reach, `reach` beyond it, so the arm is straight whatever the
+    # lunge takes the shoulder forward by.
+    k.key(BLOW, 'in', **b.arm(hand, b.near(0.02, -1.0 - reach / 2, 0.04), thrust, (0.8, 0.2, -0.6), world=1.0),
+          **b.arm(off, b.wrist(off, 0.16, 0.32, 0.08)), spine=V(13 * ln, 0, b.yaw(-22)), hips=V(3, 0, b.yaw(-9)),
+          hips_at=V(0, -0.11 * ln * leg, -0.07 * leg), head=V(-8, 0, b.yaw(12)), cape=V(12, 0, 0))
+    k.key(BLOW + 4, 'out', **b.arm(hand, b.near(0.02, -1.0 - reach / 3, 0.03), thrust, (0.8, 0.2, -0.6), world=1.0),
+          **b.arm(off, b.wrist(off, 0.14, 0.28, 0.06)), spine=V(11 * ln, 0, b.yaw(-19)),
+          hips_at=V(0, -0.1 * ln * leg, -0.065 * leg))
+    k.key(BLOW + 8, 'smooth', **b.arm(hand, b.near(-0.06, -0.75, 0.02), thrust, (0.8, 0.2, -0.6), world=1.0),
+          **b.arm(off, b.wrist(off, 0.06, 0.1, 0.02)), spine=V(5 * ln, 0, b.yaw(-8)),
+          hips_at=V(0, -0.05 * ln * leg, -0.035 * leg))
     k.key(n, **b.still())
     k.key(n, **{f'hand_{hand}_world': 1.0})
-    return Clip(n, k, marks={'strike': BLOW})
+    # Its bolt leaves from the middle of what the hand holds, a little before its face: before the palm
+    # of an open hand, or from a light held up in it.
+    grip, tip, _, face = rig.held(hand)
+    return Clip(n, k, marks={'strike': BLOW}, muzzle=(f'hand_{hand}', grip.lerp(tip, 0.5) + 0.04 * face))
 
 
 # Galadriel's beacon: a light that the model stands with held up is gathered in and lifted high.
@@ -3474,21 +3516,23 @@ def staff_way(b, p, lean, inward=0.0, out=0.0):
 
 
 @style('attack', 'point')
-def point(rig, hand='r', seconds=0.6, tip=38.0, inward=18.0, back=30.0, rise=0.55):
+def point(rig, hand='r', seconds=0.6, tip=55.0, inward=18.0, back=30.0, rise=0.65, thrust=0.3, lunge=1.0):
     """A sorcerer's shot from the head of a staff stood beside the body (hold() describes it from the
     grip up to its head; fit(pole=..., free=('attack',)) leaves it to this style). On frame 0, seen at
     full weight, it is lifted and its head drawn `back` degrees back over the shoulder, the body turned
-    away to it; then thrust up and swung forward over the hand, which rises `rise` of the arm's reach
-    by the body, until it points at the foe, `tip` degrees forward from upright and `inward` degrees in
-    across the front, loosing the shot on frame 3 as the body leans in after it and the other hand
-    swings back; held, and set down again where it stands. The hand stays close, so a long staff's head
-    stays in the hex, and goes up, so its head shows over the model's own head from behind."""
+    away to it and rocked back on its heels; then swung over the hand, which rises `rise` of the arm's
+    reach by the body, and thrust out at the foe on frame 3, `thrust` of the arm's reach ahead, its
+    head `tip` degrees forward from upright, near level, and `inward` degrees in across the front, as
+    the body lunges in after it `lunge` (0 to 1) and the other hand is flung back: the shot leaves
+    from its head. Held there a few frames, then drawn back and set down again where it stands. The
+    hand stays close by the body, so a long staff's head and butt stay in the attack's room."""
     b = Body(rig, hand)
     p = Pole(rig, hand)
     n = frames_for(seconds)
     leg = b.leg
     off = b.off
     reach = rig.reach(f'arm_{hand}')
+    ln = lunge
     k = Keys(lag={'head': 1, 'cape': 2})
     k.key(0, **b.still())
 
@@ -3496,25 +3540,31 @@ def point(rig, hand='r', seconds=0.6, tip=38.0, inward=18.0, back=30.0, rise=0.5
         # the grip moved (x outwards, y, z) shares of the arm's reach from where it stands
         return staff_at(p, p.grip + reach * b.out(x, y, z), staff_way(b, p, lean, inward_))
 
-    # Frame 0, seen at full weight: lifted and drawn back over the shoulder, the body turned to it.
-    k.key(0, **staff(0.06, 0.2, 0.12, -back), **b.arm(off, b.wrist(off, 0.04, -0.08, 0.04)),
-          hips_at=V(0, 0.015 * leg, -0.02 * leg), hips=V(-1, 0, b.yaw(6)), spine=V(-6, 0, b.yaw(14)),
-          head=V(4, 0, b.yaw(-10)), cape=V(-4, 0, 0))
-    # Thrust up and swung forward over the hand, gathering speed.
-    k.key(1, 'in', **staff(0.04, 0.1, 0.3 * rise / 0.55, -back / 2), spine=V(-3, 0, b.yaw(8)))
-    k.key(2, 'in', **staff(0.0, -0.04, 0.85 * rise, tip / 3, inward / 2), spine=V(3, 0, b.yaw(0)),
-          hips=V(1, 0, b.yaw(0)))
-    # Pointed at the foe, the body leaning in after it: the shot leaves.
-    k.key(BLOW, 'in', **staff(-0.04, -0.12, rise, tip, inward), **b.arm(off, b.wrist(off, 0.08, 0.14, -0.02)),
-          hips_at=V(0, -0.06 * leg, -0.05 * leg), hips=V(2, 0, b.yaw(-5)), spine=V(9, 0, b.yaw(-10)),
-          head=V(-6, 0, b.yaw(6)), cape=V(8, 0, 0))
-    k.key(BLOW + 3, 'out', **staff(-0.04, -0.11, 0.95 * rise, tip - 3, inward), spine=V(8, 0, b.yaw(-9)),
-          hips_at=V(0, -0.055 * leg, -0.045 * leg))
-    k.key(BLOW + 7, 'smooth', **staff(-0.03, -0.09, 0.8 * rise, tip - 8, inward * 0.8), spine=V(6, 0, b.yaw(-6)),
-          hips_at=V(0, -0.04 * leg, -0.035 * leg))
+    # Frame 0, seen at full weight: lifted and drawn back over the shoulder, the body turned to it and
+    # rocked back, the other hand out before it.
+    k.key(0, **staff(0.08, 0.22, 0.15, -back), **b.arm(off, b.wrist(off, 0.06, -0.2, 0.1)),
+          hips_at=V(0, 0.03 * ln * leg, -0.03 * leg), hips=V(-2, 0, b.yaw(8)), spine=V(-8 * ln, 0, b.yaw(18)),
+          head=V(5, 0, b.yaw(-12)), cape=V(-6, 0, 0))
+    # Swung up over the hand and on towards the foe, gathering speed, so that by frame 2 it is most of
+    # the way over and the thrust is mostly a push: turned far in the last frame, it would swing out of
+    # its room between frames.
+    k.key(1, 'in', **staff(0.06, 0.12, 0.5 * rise, -back * 0.3), spine=V(-6 * ln, 0, b.yaw(12)))
+    k.key(2, 'in', **staff(-0.04, -0.08, 0.9 * rise, 0.7 * tip, inward), spine=V(4 * ln, 0, b.yaw(0)),
+          hips=V(1, 0, b.yaw(0)), hips_at=V(0, -0.03 * ln * leg, -0.045 * leg))
+    # Thrust out at the foe, near level, the body lunging in after it and the other hand flung back:
+    # the shot leaves from its head.
+    k.key(BLOW, 'in', **staff(-0.1, -thrust, rise, tip, inward), **b.arm(off, b.wrist(off, 0.14, 0.3, 0.12)),
+          hips_at=V(0, -0.11 * ln * leg, -0.07 * leg), hips=V(3, 0, b.yaw(-6)), spine=V(14 * ln, 0, b.yaw(-14)),
+          head=V(-10, 0, b.yaw(8)), cape=V(12, 0, 0))
+    k.key(BLOW + 3, 'out', **staff(-0.1, -0.94 * thrust, 0.96 * rise, tip - 3, inward),
+          **b.arm(off, b.wrist(off, 0.13, 0.27, 0.1)), spine=V(12 * ln, 0, b.yaw(-12)),
+          hips_at=V(0, -0.1 * ln * leg, -0.065 * leg))
+    k.key(BLOW + 7, 'smooth', **staff(-0.06, -0.6 * thrust, 0.8 * rise, tip * 0.7, inward * 0.8),
+          **b.arm(off, b.wrist(off, 0.06, 0.12, 0.04)), spine=V(6 * ln, 0, b.yaw(-6)),
+          hips_at=V(0, -0.05 * ln * leg, -0.04 * leg))
     k.key(n, **b.still())
     k.key(n, **{f'hand_{hand}_world': 1.0})
-    return Clip(n, k, marks={'strike': BLOW})
+    return Clip(n, k, marks={'strike': BLOW}, muzzle=(f'hand_{hand}', rig.joint(f'tip_{hand}')))
 
 
 @style('cast', 'bar')
@@ -3815,7 +3865,8 @@ def stone_throw(rig, hand, seconds, mark, frame, path, body, stone, fetch_body):
           spine=V(4, 0, b.yaw(6)), hips_at=V(0, 0, -0.02 * leg), head=V(4, 0, b.yaw(4)))
     k.key(n, **b.still())
     k.key(n, **{f'hand_{hand}_world': 1.0})
-    return Clip(n, s.thrown(k, frame, fetch), marks={mark: frame})
+    # Its shot leaves from the stone in the fingers as they let it go.
+    return Clip(n, s.thrown(k, frame, fetch), marks={mark: frame}, muzzle=(f'hand_{hand}', s.head))
 
 
 @style('attack', 'pelt')

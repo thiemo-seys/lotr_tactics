@@ -82,7 +82,7 @@ function gearMaxBytes(id: UnitId): number {
 
 interface GltfNode {
   readonly name?: string;
-  readonly extras?: { readonly reach?: unknown; readonly strike?: unknown; readonly hits?: unknown };
+  readonly extras?: { readonly reach?: unknown; readonly strike?: unknown; readonly hits?: unknown; readonly muzzle?: unknown };
   readonly children?: readonly number[];
   readonly mesh?: number;
   readonly skin?: number;
@@ -376,6 +376,23 @@ function checkRigged(name: string, id: UnitId, limit: number, what: string): voi
     const length = (clip: Clip) => Math.max(...keyTimes(model, clipOf(model, clip))) * TICKS_PER_SECOND;
     expect(length('attack'), 'the attack recovers after its strike').toBeGreaterThan(strike + 3);
     expect(length('cast'), 'the cast follows through after its last hit').toBeGreaterThan(hits[hits.length - 1]! + 3);
+  });
+
+  // Section 4, Rigs and clips: a ranged attack's shot leaves from where its clip looses it, which the rig kit writes
+  // into the armature's extras as `muzzle`, in the model's own frame facing +z; a melee attack has none.
+  it('carries a muzzle ahead of it, above the ground and within its reach, if it attacks from range', () => {
+    const { extras } = armatureOf(glb(name));
+    if (TEMPLATES[CLASS_TEMPLATE[UNITS[id].classes[0]!]].range === 1) {
+      expect(extras?.muzzle, 'a melee unit has no muzzle').toBeUndefined();
+      return;
+    }
+    const muzzle = extras?.muzzle;
+    expect(Array.isArray(muzzle) && muzzle.length === 3 && muzzle.every((v) => typeof v === 'number'), 'three numbers').toBe(true);
+    const [x, y, z] = muzzle as [number, number, number];
+    expect(z, 'ahead of the model').toBeGreaterThan(0.1);
+    expect(y, 'above the ground').toBeGreaterThan(0.3);
+    // A staff's head can be the furthest it reaches, rounded to 4 places.
+    expect(Math.hypot(x, z), 'within its reach').toBeLessThanOrEqual((extras!.reach as number) + 1e-3);
   });
 
   it('has root on the ground at the origin, and every other bone below it', () => {
