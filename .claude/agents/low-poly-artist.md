@@ -32,7 +32,7 @@ You make the game look like Middle-earth in low-poly 3D (`docs/design.md` sectio
 - **Conventions,** so every model drops into the game:
   - 1 Blender unit is 1 unit in the game. The origin is the centre of the model's base, on the ground.
   - The model faces −Y in Blender, which is +Z in the game, the way the pawns face now.
-  - Heights follow the chart in `viewer-spec.md` section 4 (a Man is 1.42 to the top of his head, a Hobbit 0.88), Large units are built at their full size, and every model, mount and weapons included, fits inside its hex (radius 0.94).
+  - Heights follow the chart in `viewer-spec.md` section 4 (a Man is 1.42 to the top of his head, a Hobbit 0.88), Large units are built at their full size, and every model, mount and weapons included, fits inside its hex (radius 0.94), as it stands and in its clips, except that an `attack` or `cast` may reach up to 1.3 ahead, within 30 degrees of straight ahead (`viewer-spec.md` section 4, Size).
   - The part that shows the team uses a material named `team`, which the client recolours. Name other materials after what they are, such as `skin`, `steel` or `wood`.
   - Shade flat. Apply modifiers and transforms and join each model into one object before exporting.
   - No textures: colour comes from materials.
@@ -84,7 +84,7 @@ You make the game look like Middle-earth in low-poly 3D (`docs/design.md` sectio
 ## Checking your work
 
 - `test/models.test.ts` checks that every unit's `.glb` is rigged, with its bones, clips and size. Widen it when monsters and summons get models.
-- Check every new or changed rig with `art/clash.py` (`art/README.md`, Checking clashes), and judge what it reports from close renders before changing anything. Keep blows inside the hex between frames too: `finish()` warns, and `fit(between=True)` or `tweened()` draws them in.
+- Check every new or changed rig with `art/clash.py` (`art/README.md`, Checking clashes), and judge what it reports from close renders before changing anything. Keep each clip in its room between frames too: `finish()` warns, and `fit(between=True)` or `tweened()` draws them in.
 - **Look at it in the game.**
   - Run `pnpm dev` in the background.
   - Use Playwright to take screenshots of the viewer from its default camera, for example with `#a=full&b=traits&seed=3&stage=2` and the `items` and `ring` presets. Read the screenshots to see them.

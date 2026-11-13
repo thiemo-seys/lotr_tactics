@@ -42,8 +42,9 @@ export function pickModel(unitId: string, star: Star, available: ReadonlySet<str
 }
 
 /**
- * The scale of a model with the given reach from its centre: 1 at 1★, and at 2★ and 3★ the smaller of
- * 1.1 and what fits the hex, but never below 1. Large models start from 1 too.
+ * The scale of a model with the given reach from its centre as it stands: 1 at 1★, and at 2★ and 3★
+ * the smaller of 1.1 and what fits the hex, but never below 1. Large models start from 1 too. A rigged
+ * model's clips grow with it, so they may reach past their room by as much as it grows.
  */
 export function starScale(star: Star, reach: number): number {
   if (star === 1) return 1;

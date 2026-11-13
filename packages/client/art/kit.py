@@ -38,6 +38,12 @@ TEAM_BLUE = 0x4A90D9
 # The pawn the models replace is 1.35 tall, and a hex is drawn with a circumradius of 0.94.
 PAWN_HEIGHT = 1.35
 HEX_RADIUS = 0.94
+# A rigged model's attack and cast may reach further ahead, towards what it strikes, than its other
+# clips: up to AHEAD_REACH from its centre within AHEAD_ANGLE degrees of straight ahead, the wedge
+# that points at the hex in front of it, and within the hex elsewhere (placeholders,
+# docs/viewer-spec.md section 4, Size).
+AHEAD_REACH = 1.3
+AHEAD_ANGLE = 30
 
 # Triangle budgets (placeholders, docs/viewer-spec.md section 4).
 UNIT_BUDGET = 800

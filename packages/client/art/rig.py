@@ -99,6 +99,22 @@ FLOOR = -1e-4  # how far under the ground a frame may reach before it warns: rou
 BETWEEN = 4
 BETWEEN_FLOOR = -0.01
 DEATH_LOW = 0.8  # a death ends with its top below this share of the standing height
+# The clips that may reach ahead of the hex, towards what they strike (kit.AHEAD_REACH): the rest keep
+# to the hex, as the model does as it stands, so neighbours have room on a full board.
+ACTIONS = ('attack', 'cast')
+
+
+def crowding(co, ahead: bool):
+    """How far each point is from the centre, as a share of how far it may reach in its direction
+    (docs/viewer-spec.md section 4, Size): over 1 is outside. Within the hex (kit.HEX_RADIUS), or with
+    `ahead`, for an attack or cast, up to kit.AHEAD_REACH within kit.AHEAD_ANGLE of straight ahead (-Y)."""
+    from kit import AHEAD_ANGLE, AHEAD_REACH, HEX_RADIUS  # noqa: PLC0415
+
+    radii = np.hypot(co[:, 0], co[:, 1])
+    if not ahead:
+        return radii / HEX_RADIUS
+    wedge = -co[:, 1] >= radii * math.cos(math.radians(AHEAD_ANGLE))
+    return radii / np.where(wedge, AHEAD_REACH, HEX_RADIUS)
 
 CLIENT = os.path.join(os.path.dirname(os.path.abspath(__file__)), '..')
 DATA = os.path.join(CLIENT, '..', 'sim', 'src', 'data')
@@ -870,10 +886,11 @@ class Rig:
 
     def _check_frames(self, model) -> None:
         """Poses the model in every frame of every clip, as Blender plays the actions back, and
-        between them as the client does (between()), and warns when one reaches outside the hex or
-        under the ground, or the death doesn't end low. Fails if Blender's pose doesn't match the
-        rig's own (a mistake in this kit)."""
-        from kit import HEX_RADIUS  # noqa: PLC0415
+        between them as the client does (between()), and warns when one reaches outside its room
+        (crowding(): the hex, or for an attack or cast further ahead) or under the ground, or the
+        death doesn't end low. Fails if Blender's pose doesn't match the rig's own (a mistake in this
+        kit)."""
+        from kit import AHEAD_ANGLE, AHEAD_REACH, HEX_RADIUS  # noqa: PLC0415
 
         scene = bpy.context.scene
         groups = {g.index: g.name for g in model.vertex_groups}
@@ -886,6 +903,7 @@ class Rig:
         self.radius_between, self.bottom_between = 0.0, math.inf
         for name in CLIPS:
             clip = self.clips[name]
+            ahead = name in ACTIONS
             self._play(name)
             out, under = [], []  # (frame, how far, the bone that does it)
             # Between frames, as the client shows them: BETWEEN steps from each frame to the next.
@@ -898,10 +916,11 @@ class Rig:
                         m = posed[bone]
                         co[rows] = (rest[rows] - np.array(m.head)) @ np.array(m.turn.to_matrix()).T + np.array(m.at)
                     radii = np.hypot(co[:, 0], co[:, 1])
+                    crowded = crowding(co, ahead)
                     self.radius_between = max(self.radius_between, float(radii.max()))
                     self.bottom_between = min(self.bottom_between, float(co[:, 2].min()))
-                    if radii.max() > HEX_RADIUS:
-                        out.append((f + step / BETWEEN, float(radii.max()), owner[int(radii.argmax())]))
+                    if crowded.max() > 1:
+                        out.append((f + step / BETWEEN, float(radii[crowded.argmax()]), owner[int(crowded.argmax())]))
                     if co[:, 2].min() < BETWEEN_FLOOR:
                         under.append((f + step / BETWEEN, float(-co[:, 2].min()), owner[int(co[:, 2].argmin())]))
             for f in range(clip.frames + 1):
@@ -918,10 +937,11 @@ class Rig:
                         if (motions[owner[i]](rest[i]) - Vector(co[i])).length > 1e-4:
                             raise RuntimeError(f'{name} frame {f}: Blender poses the model unlike the rig')
                 radii = np.hypot(co[:, 0], co[:, 1])
+                crowded = crowding(co, ahead)
                 self.radius = max(self.radius, float(radii.max()))
                 self.bottom = min(self.bottom, float(co[:, 2].min()))
-                if radii.max() > HEX_RADIUS:
-                    out.append((f, float(radii.max()), owner[int(radii.argmax())]))
+                if crowded.max() > 1:
+                    out.append((f, float(radii[crowded.argmax()]), owner[int(crowded.argmax())]))
                 if co[:, 2].min() < FLOOR:
                     under.append((f, float(-co[:, 2].min()), owner[int(co[:, 2].argmin())]))
                 if name == 'death' and f == clip.frames:
@@ -933,8 +953,10 @@ class Rig:
                 out.sort()
                 far = max(out, key=lambda o: o[1])
                 bones = ', '.join(sorted({o[2] for o in out}))
-                print(f'WARNING {model.name}: {name} reaches {far[1]:.2f} from the centre, outside its hex '
-                      f'({HEX_RADIUS}), in frames {", ".join(f"{o[0]:g}" for o in out)} ({bones})')
+                room = f'its hex ({HEX_RADIUS}) or {AHEAD_REACH} ahead, within {AHEAD_ANGLE} degrees' if ahead \
+                    else f'its hex ({HEX_RADIUS})'
+                print(f'WARNING {model.name}: {name} reaches {far[1]:.2f} from the centre, outside {room}, '
+                      f'in frames {", ".join(f"{o[0]:g}" for o in out)} ({bones})')
             if under:
                 under.sort()
                 deep = max(under, key=lambda o: o[1])
@@ -947,8 +969,8 @@ class Rig:
     def export(self, model: bpy.types.Object, out: str) -> None:
         """Exports the mesh, its skin and one animation per clip, sampled on every frame. The
         armature's extras carry `reach`: the furthest from its centre any frame of any clip takes the
-        model, on frames or between them as the client shows them, which the client scales a 2★ or
-        3★ model by so its clips stay in the hex (docs/viewer-spec.md section 4, "Star levels")."""
+        model, on frames or between them as the client shows them, which the client bounds its meshes
+        by (docs/viewer-spec.md section 4, "Models")."""
         for o in bpy.context.scene.objects:
             o.select_set(o in (model, self.armature))
         self.armature['reach'] = round(max(self.radius, self.radius_between), 4)

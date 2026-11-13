@@ -52,11 +52,13 @@ interface Model {
   readonly clips: Readonly<Record<ClipName, THREE.AnimationClip>> | null;
   readonly lengths: ClipLengths | null;
   /**
-   * How far it reaches from its centre on the ground, at scale 1, which its star level's scale keeps
-   * within the hex: for a model that plays its clips, the furthest any frame of any clip takes it,
-   * from its armature's `reach`; for a static one, as it stands.
+   * How far it reaches from its centre on the ground, at scale 1, which its meshes' bounds hold: for a
+   * model that plays its clips, the furthest any frame of any clip takes it, from its armature's
+   * `reach`; for a static one, as it stands.
    */
   readonly reach: number;
+  /** How far it reaches from its centre on the ground as it stands, at scale 1, which its star level's scale keeps within the hex. */
+  readonly standing: number;
   /** The height of its top as it stands, at scale 1. */
   readonly top: number;
   /** The highest it reaches in `attack` and `cast`, which its label clears; never below `top`, and `top` for a static model. */
@@ -183,7 +185,7 @@ function prepare(name: string, unitId: UnitState['unitId'], scene: THREE.Object3
     raised = Math.max(rest.top, posed.highest([complete.victory]));
     posed.dispose();
     const extra = armatureReach(scene);
-    if (extra === null) console.warn(`The model ${name} has no reach in its armature's extras, so it is scaled by its reach as it stands.`);
+    if (extra === null) console.warn(`The model ${name} has no reach in its armature's extras, so it is bounded by its reach as it stands.`);
     else reach = extra;
     boundPoses(meshes, reach, Math.max(strike, raised));
   }
@@ -196,6 +198,7 @@ function prepare(name: string, unitId: UnitState['unitId'], scene: THREE.Object3
     clips: complete,
     lengths: complete === null ? null : lengthsOf(complete),
     reach,
+    standing: rest.reach,
     top: rest.top,
     strike,
     raised,
@@ -426,7 +429,7 @@ export class ModelCopy {
   constructor(model: Model, star: Star) {
     this.clips = model.clips;
     this.lengths = model.lengths;
-    this.scale = starScale(star, model.reach);
+    this.scale = starScale(star, model.standing);
     this.labelHeight = labelHeight(this.scale, model.top, model.large, model.strike);
     this.labelRise = victoryRise(this.scale, model.top, model.large, model.strike, model.raised);
     this.chest = this.scale * chestOf(model);
