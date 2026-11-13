@@ -531,12 +531,33 @@ export function roundChange(round: RoundRecord, me: PlayerView, paid: boolean, g
 /** The most coins the results fly into the purse; above it, a coin carries more than 1 gold. */
 const MAX_COINS = 24;
 
-/** The gold each coin the results fly into the purse carries, for each line of income: one coin per gold, up to MAX_COINS in all. */
+/**
+ * The gold each coin the results fly into the purse carries, for each line of income: one coin per
+ * gold, or above MAX_COINS gold, MAX_COINS coins in all. Then each line has one, and the rest are
+ * shared out by the gold beyond that, largest remainders first, earlier lines first on a tie.
+ */
 export function coinValues(amounts: readonly number[]): number[][] {
   const total = amounts.reduce((a, b) => a + b, 0);
-  return amounts.map((amount) => {
-    const count = total <= MAX_COINS ? amount : Math.max(1, Math.min(amount, Math.round((amount * MAX_COINS) / total)));
-    const each = Math.floor(amount / count);
+  const lines = amounts.filter((a) => a > 0).length;
+  let counts = [...amounts];
+  if (total > MAX_COINS && lines < MAX_COINS) {
+    const spare = MAX_COINS - lines;
+    const beyond = total - lines;
+    const shares = amounts.map((a) => (a > 0 ? (a - 1) * spare : 0));
+    counts = amounts.map((a, i) => (a > 0 ? 1 + Math.floor(shares[i]! / beyond) : 0));
+    let left = MAX_COINS - counts.reduce((a, b) => a + b, 0);
+    const order = amounts.map((_, i) => i).sort((a, b) => (shares[b]! % beyond) - (shares[a]! % beyond) || a - b);
+    for (const i of order) {
+      if (left === 0) break;
+      if (amounts[i]! > 0 && shares[i]! % beyond > 0) {
+        counts[i]!++;
+        left--;
+      }
+    }
+  } else if (total > MAX_COINS) counts = amounts.map((a) => Math.min(a, 1));
+  return amounts.map((amount, i) => {
+    const count = counts[i]!;
+    const each = Math.floor(amount / Math.max(1, count));
     return Array.from({ length: count }, (_, k) => (k === count - 1 ? amount - each * (count - 1) : each));
   });
 }

@@ -238,6 +238,30 @@ describe("while the person's fight plays", () => {
     expect(flow.shownView()).toBe(next);
   });
 
+  it('keep the gold the results showed as they opened when the person spends while they are on screen', () => {
+    const { flow } = recorded();
+    // Two players, so the game goes on to 2-2 and pays its income.
+    const withRival = (view: MatchView): MatchView => ({ ...view, players: [view.players[0]!, { ...view.players[0]!, seat: 1 }] });
+    flow.receive({ type: 'state', state: withRival(state('planning', 2, 1, 100)) }, 0);
+    const round = record(0, 1);
+    flow.receive({ type: 'round', round }, 10);
+    flow.receive({ type: 'state', state: withRival(state('fight', 2, 1, 93, 34)) }, 10);
+    flow.skip(20);
+    const opened = flow.results(round, false).change;
+    expect(opened.hp).toEqual({ before: 100, after: 93 });
+    expect(opened.gold!.from).toBe(34);
+    expect(opened.gold!.lines.map((l) => [l.source, l.amount])).toEqual([
+      ['interest', 3],
+      ['base', 5],
+    ]);
+    // 30 gold spent while the results are on screen: what they show stays as it was.
+    flow.receive({ type: 'state', state: withRival(state('fight', 2, 1, 93, 4)) }, 30);
+    expect(flow.results(round, false).change).toEqual(opened);
+    flow.update(0, 20 + TIMERS.results * 1000);
+    expect(flow.show.kind).toBe('waiting');
+    expect(flow.results(round, true).change).toEqual(opened);
+  });
+
   it('send shop actions while the fights play, until the next step, but no picks', () => {
     const { flow, calls } = recorded();
     flow.receive({ type: 'state', state: state('planning', 2, 1, 100) }, 0);
@@ -662,7 +686,11 @@ describe('what a round does to the person', () => {
     expect(coinValues([1, 3, 5])).toEqual([[1], [1, 1, 1], [1, 1, 1, 1, 1]]);
     const big = coinValues([3, 5, 30]);
     expect(big.map((coins) => coins.reduce((a, b) => a + b, 0))).toEqual([3, 5, 30]);
-    expect(big.flat().length).toBeLessThanOrEqual(24);
+    expect(big.flat().length).toBe(24);
     expect(big.every((coins) => coins.length > 0)).toBe(true);
+    // Many small lines next to a big one still make 24 coins, each line at least one.
+    const lopsided = coinValues([1, 1, 1, 1, 1, 30]);
+    expect(lopsided.flat().length).toBe(24);
+    expect(lopsided.map((coins) => coins.reduce((a, b) => a + b, 0))).toEqual([1, 1, 1, 1, 1, 30]);
   });
 });
