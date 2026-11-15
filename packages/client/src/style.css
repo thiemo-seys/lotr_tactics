@@ -3251,12 +3251,19 @@ body.play input {
   letter-spacing: 0.1em;
 }
 
+/*
+ * Two rows of chips, then it scrolls. The padding, taken back by the margin, keeps a chip grown or
+ * raised by a hover or a combine inside the box, so it shows no scrollbar and its ring isn't cut off.
+ */
 #items {
   display: flex;
   flex-wrap: wrap;
   gap: 5px;
   align-content: flex-start;
-  max-height: 70px;
+  max-height: 78px;
+  padding: 4px;
+  margin: -4px;
+  overflow-x: hidden;
   overflow-y: auto;
 }
 
