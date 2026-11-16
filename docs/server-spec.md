@@ -250,7 +250,8 @@ The play page (`game-spec.md` section 12) talks to a `Connection`. The connectio
   - a name field, remembered in local storage;
   - Play against bots, the main button;
   - Create lobby;
-  - Join, with a code field.
+  - Join, with a code field;
+  - the game's version at the bottom, such as `v0.1.0`: the `version` in the root `package.json`, set by hand and built into the client.
 - **Links:**
   - `play.html#seed=7` starts an offline game with that seed straight away, as before.
   - `play.html#lobby=CODE` opens the menu with the code filled in.

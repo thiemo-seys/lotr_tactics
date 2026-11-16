@@ -1,8 +1,11 @@
-import { readdirSync } from 'node:fs';
+import { readFileSync, readdirSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import { defineConfig, type Plugin } from 'vite';
 
 const MODELS = fileURLToPath(new URL('public/models', import.meta.url));
+
+/** The game's version, set by hand in the root `package.json` and shown on the play page's menu. */
+const VERSION = (JSON.parse(readFileSync(new URL('../../package.json', import.meta.url), 'utf8')) as { version: string }).version;
 
 /**
  * `virtual:models` lists the model files in `public/models`, so the client asks only for files that
@@ -41,6 +44,7 @@ export default defineConfig({
   // Relative asset paths, so the built client works from any folder.
   base: './',
   plugins: [modelList()],
+  define: { __APP_VERSION__: JSON.stringify(VERSION) },
   // pnpm dev runs the game server next to Vite (docs/server-spec.md section 3).
   server: { proxy: { '/ws': { target: 'ws://localhost:8080', ws: true } } },
   build: {
