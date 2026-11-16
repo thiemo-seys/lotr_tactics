@@ -30,6 +30,7 @@ const NAME_KEY = 'lotr-tactics-name';
 
 const element = <T extends HTMLElement>(id: string) => document.getElementById(id) as T;
 fillIcons(document);
+setText(element('version'), `v${__APP_VERSION__}`);
 initTooltips(tipCard);
 blockDisabledClicks();
 

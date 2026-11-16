@@ -2173,6 +2173,14 @@ body.play input {
   width: 100%;
 }
 
+#menu .version {
+  margin: -4px 0 -10px;
+  font: 500 11px/1 var(--font-body);
+  color: var(--text-muted);
+  text-align: center;
+  letter-spacing: 0.04em;
+}
+
 .divider {
   display: flex;
   gap: 12px;
