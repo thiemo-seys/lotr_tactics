@@ -10,6 +10,7 @@ How the units get rigs and animations, who does what, and in what order. The rul
 - [x] The 2★ gear models: Gimli's, Éomer's and Treebeard's as the pattern, then the other 33 in five batches, and a play-test.
 - [x] The `attack` and `cast` clips retimed to the sim's wind-ups and melee blows (Retiming below).
 - [x] Blows that reach into the room an `attack` or `cast` has ahead of the hex (Blows that reach ahead below).
+- [ ] Workflow 3: models and rigs for the 7 monsters and 2 summons (Workflow 3 below).
 
 All 36 units are rigged at 1★: Gimli; in run 2a, Éomer and Sharku on their mounts, Frodo, Sam and Merry, Aragorn, Boromir, Faramir and Beregond, and Balin and Dáin; in run 2b, the Ringwraith, Éowyn and Háma, Legolas, Haldir, Elrond and Galadriel, Gandalf, Saruman and Radagast, Gorbag, Grishnákh, Uglúk, Lurtz and Gothmog, Gamling, Théoden, Khamûl and the Witch-king on their horses, Pippin, Bilbo and Gollum, and Treebeard and Sauron. Run 2c checked them with full boards, a clash check and a play-test, and fixed what it found (Run 2c below). After it, Dáin's two-handed blows were redesigned, Faramir's stun was fixed, and the last blows that swung out of the hex between frames were brought in, so no 1★ model warns now (`art/README.md`, Fitting clips to what a model holds, and Checking clashes).
 
@@ -45,7 +46,7 @@ Then the sim gave abilities their wind-ups and melee blows their delay, and the 
   - `animation.ts` works out which clip each unit plays and how far in, from the events and display time alone.
   - `scene.ts` sets a Three.js `AnimationMixer` to that pose each frame.
   - So pause, step and speed apply to animation too, and the frame rate changes nothing.
-- **Pawns stay** for monsters, summons and any model that is missing or still loading. A model without a rig is drawn static.
+- **Pawns stay** for any model that is missing or still loading; monsters and summons were pawns until Workflow 3. A model without a rig is drawn static.
 
 ## Work and owners
 
@@ -188,6 +189,29 @@ The ranged units' attacks barely read at the game camera's distance: the drawn s
 - **The muzzle.** Each ranged style names where its shot leaves, and the export writes it into the armature's extras as `muzzle`, in the client's frame (`viewer-spec.md` section 4, Rigs and clips), for the client to fly its projectiles from: the arrow's rest on the bow, the staff's head, the palm or the light, and the stone in the fingers. All 22 rigged ranged models carry it, 1★ and 2★.
 - **Checks.** Every model builds without a warning; Radagast's 1★ is 199,492 bytes of 200,000. `clash.py` on the attacks finds what it found before, within a few millimetres, but for drawing hands at the chin or chest a frame or two longer as the draw deepens (Haldir 13 mm on frames 0 to 2, Legolas 6 to 9 mm on frame 2), which close renders show at the chin as built, and Gandalf's beard over his fist on Glamdring's hilt as he lunges (39 mm, frames 2.5 to 3.5, where it took 9), which renders show hidden behind the beard. The test of the models' extras passes.
 
+## Workflow 3: monsters and summons
+
+The user gave the go-ahead on 25 November 2026 for models of the PvE monsters (`data/monsters.ts`) and the two summons (`data/units.ts`, `SUMMONS`), and decided five things:
+
+1. **Rig kinds:** a figure on foot or Large keeps the 16 bones; a beast with no rider, the warg and the Mûmak, has a mount's bones, driven by the beast half of the mounted clips; the Watcher has tentacle chains and clips of its own (`viewer-spec.md` section 4, Rigs and clips).
+2. **No `cast` without an ability:** the goblins, goblin archers, wargs and both summons never cast, so their models have six clips, and the client plays a model with all the clips its fighter needs.
+3. **Livery:** each monster wears a colour of its own, in `livery.json` as a unit's is; summons wear their faction's (`viewer-spec.md` section 4, Livery).
+4. **The hex:** Large monsters keep to the hex and the room ahead of it as every unit does, for now. The Mûmak is stylised to fit.
+5. **Rigged from the start:** every monster and summon is rigged as it is built, none static first.
+
+Monsters are always 1★, so each has one script, `units/<id>.py`, and no gear or book model. Their looks are in `viewer-spec.md` section 4, Models, drawn from the books.
+
+| Run | What | Owner |
+|---|---|---|
+| 3a | The rig kit reads monsters' and summons' timing (a monster's range from its own stats, its ability from `data/monsters.ts`; summons are melee and have none) and builds a model without `cast`; the goblin and goblin archer from one script, the archer with a bow; the Orc grunt, of Gorbag's family; the Eye's Nazgûl, built on the Ringwraith | `low-poly-artist` |
+| 3a, alongside | The client loads monsters' and summons' models (summons were always pawns), plays a model without `cast` for a fighter with no ability, and colours monsters' livery from `livery.json`; tests | `client-engineer` |
+| 3b | The warg, with Sharku's warg moved into a shared module and a beast style in the clip library from the mount half of the mounted clips; the Cave Troll, Large, on Treebeard's pattern | `low-poly-artist` |
+| 3c | The Balrog: fire as faceted emissive faces, the whip's cone in its cast's room ahead | `low-poly-artist` |
+| 3d | The Mûmak, a Large beast whose Trample dashes; the Watcher, its pool and tentacles | `low-poly-artist` |
+| 3e | The check: every PvE round's board and full boards with summons, `clash.py`, a play-test of the PvE rounds | `low-poly-artist`, `playtester` |
+
+The runs that change the rig kit or the clip library go one at a time, since they share `rig.py`, `clips.py` and `kit.py`, and every roster model must still rebuild byte for byte after each.
+
 ## Risks
 
 - **Blender versions** export differently. Keep to 4.5 LTS. The models test checks the committed files, since CI can't rebuild them.
@@ -203,5 +227,4 @@ The ranged units' attacks barely read at the game camera's distance: the drawn s
 - **Smoothness on a real GPU.** Someone, the playtester or the user, plays both pages with full boards on a machine with a GPU. Run 2c only had software WebGL, and so did the 2★ play-test, in which rigging the 2★ models cost about 5 to 7% of the frame rate and 1.5 to 2.3 ms more of the main thread a frame.
 - **The 3★ book models,** still to rig. They stay static for now, as the user chose.
 - Reactions to hits, a second attack, and channelled casts.
-- Models and rigs for monsters and summons, with the user's go-ahead.
 - Sound.
