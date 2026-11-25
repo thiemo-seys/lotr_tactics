@@ -10,9 +10,13 @@ import { hudStats, plural, ringStatus, shopOddsView, stageTrack, timerView, type
 import { ROUND_ICONS } from '../icons.js';
 import { actionTip, ringTip, textTip } from '../tips.js';
 import { el, icon, rebuild, setText, show, toggle } from '../ui/dom.js';
+import { dropdown } from '../ui/dropdown.js';
 import { setTip } from '../ui/tooltip.js';
 
 const ROUND_NAMES = { council: 'Council of Elrond', pvp: 'PvP', pve: 'PvE' } as const;
+/** The round type at the end of the tracker, and what the banner under the round on screen calls it. */
+const ROUND_SHORT = { council: 'Council', pvp: 'PvP', pve: 'PvE' } as const;
+const ROUND_BANNERS = { council: 'Council of Elrond', pvp: 'Player fight', pve: 'Monster fight' } as const;
 const ROUND_HINTS = {
   council: 'Pick a unit and the item it brings, the lowest HP first.',
   pvp: 'Fight another player. The loser takes damage.',
@@ -45,6 +49,7 @@ export class HudBar {
   private readonly tracked = { stage: -1, round: -1, outcomes: -1 };
 
   constructor(private readonly flow: PlayFlow) {
+    dropdown(element('hud-menu'), element('hud-menu-list'));
     const me = () => flow.shownView().me;
     setTip(this.pill('hp'), () => textTip('Health', `${plural(me().hp, 'HP', 'HP')} left. Lost fights cost HP, and at 0 you are out.`));
     setTip(this.pill('gold'), () => textTip('Gold', `${plural(me().gold, 'gold', 'gold')}. Spend it on units, rerolls and XP; saving earns interest.`));
@@ -105,7 +110,7 @@ export class HudBar {
       rebuild(this.round, JSON.stringify(track), () => [
         el('span', 'stage-label', el('span', 'stage-eyebrow', 'Stage'), el('span', 'stage-number', String(stage))),
         el('ol', 'stage-rounds', ...track.map((node) => roundNode(stage, node))),
-        el('span', 'round-text', el('span', 'round-number', `${stage}-${round}`), el('span', `round-name ${type}`, ROUND_NAMES[type])),
+        el('span', `round-type ${type}`, icon(ROUND_ICONS[type]), ROUND_SHORT[type]),
       ]);
     }
 
@@ -165,13 +170,18 @@ export class HudBar {
 
 const OUTCOME_ICONS = { Victory: 'ready', Defeat: 'cross', Draw: 'level' } as const;
 
-/** A round in the stage tracker: its type's icon in the type's colour, marked as played, on screen or to come, with the person's result. */
+/**
+ * A round in the stage tracker: its type's icon in the type's colour, marked as played, on screen or
+ * to come, with the person's result. The round on screen carries a banner under it with its number
+ * and type.
+ */
 function roundNode(stage: number, node: StageNode): HTMLElement {
   const item = el(
     'li',
     `round-node ${node.type} ${node.state}${node.outcome === null ? '' : ` ${node.outcome.toLowerCase()}`}`,
     el('span', 'round-icon', icon(ROUND_ICONS[node.type])),
     node.outcome === null || node.state === 'current' ? null : el('span', 'round-result', icon(OUTCOME_ICONS[node.outcome])),
+    node.state === 'current' ? el('span', 'round-banner', el('b', '', `${stage}-${node.round}`), ` · ${ROUND_BANNERS[node.type]}`) : null,
   );
   item.tabIndex = 0;
   const when = node.state === 'done' ? 'Played.' : node.state === 'current' ? 'This round.' : 'To come.';
