@@ -7,20 +7,22 @@ upraised like a serpent, its small eyes red and raging, its upturned hornlike tu
 of gold, its trappings of scarlet and gold flapping in tatters about it, and a war-tower on its back.
 It is huge, but stylised and chunky so that it stands inside its hex as every unit does: short in the
 body, its legs pillars under it, its head carried straight before it and its trunk hanging close under
-its face, about 2.2 to the peak of the tower's canopy.
+its face. On its back an open howdah, low so that it doesn't hide what stands behind it, its light
+canopy about 1.9 to the tip of its finial; the beast is the main mass.
 
 Its livery, Harad crimson (packages/client/src/livery.json), is its trappings: a great cloth over its
-back under the tower, its gold-bordered skirts hanging in dags down its flanks, a frontlet on its
-brow and the canopy of the tower, so it shows from in front, from behind and from above against the
-grey hide. Its gold fittings, the bands on its tusks, the bosses on its cloth and the frontlet and the
-canopy's finial, use `trim`, which the client colours iron at 1★, the only star level a monster has;
-the cloth's borders are a muted gold of their own (`gold`).
+back under the howdah, its gold-bordered skirts hanging in dags down its flanks, a back-cloth down
+its rump either side of its tail, a broad band round its breast, a frontlet on its brow, the hangings
+round the howdah and its canopy, so it shows from in front, from behind and from above against the
+grey hide. Its gold fittings, the bands on its tusks, the bosses on its cloths and the frontlet and
+the canopy's finial, use `trim`, which the client colours iron at 1★, the only star level a monster
+has; the cloths' borders are a muted gold of their own (`gold`).
 
 It is rigged as a Large beast (../rig.py, Rig(kind='large-beast')): `root` and a mount's bones, as the
 warg is (../beasts.py), its body where a figure's hips would be, its neck, head and tail, and its legs,
 three bones each, a thigh or upper leg, a lower leg and a foot; and bones of its own on its head: its
 trunk, a chain of three (`mount_trunk_1` to `mount_trunk_3`), and its ears (`mount_ear_l` and
-`mount_ear_r`). The tower and what it carries ride its body. The clip library's mounted styles move it
+`mount_ear_r`). The howdah and its canopy ride its body. The clip library's mounted styles move it
 without a rider, with a beast's own attack and victory (../clips.py, Beasts): it stands breathing and
 shifting its weight, ambles a heavy stride, gores with its tusks as it lunges (`maul` without a jaw),
 reels, goes down on its belly and trumpets as it wins (`howl` without a jaw). Trample, its ability,
@@ -378,20 +380,53 @@ def caparison():
 
 
 def breast_band():
-    """A crimson band round its breast below its neck, bordered in gold, holding the cloth on."""
-    ring = [p + V(0, 0, 0) for p in ring8(*body_row(-0.47), grow=CLOTH)]
-    lower = [p + V(0, 0.07, 0) for p in ring8(*body_row(-0.4), grow=CLOTH)]
-    verts, faces, _ = loft([ring, lower])
-    part('breast-band', verts, faces, M['team'], inside=V(0, -0.44, 0.87))
+    """A broad crimson band round its breast below its neck, bordered in gold, holding the cloth on,
+    with a gold boss on either side."""
+    rings = [ring8(*body_row(y), grow=CLOTH * 1.5) for y in (-0.48, -0.455, -0.375, -0.35)]
+    verts, faces, bands = loft(rings)
+    face_mats = [1 if b in (0, 2) else 0 for b in bands]
+    part('breast-band', verts, faces, [M['team'], M['gold']], face_mats, inside=lambda c: V(0, c.y, 0.87))
+    for s in (-1, 1):
+        ring = ring8(*body_row(-0.415), grow=CLOTH * 1.5)
+        at = ring[0 if s > 0 else 3] + V(s * 0.004, 0, 0)
+        cone(f'breast-band-boss-{s}', at, at + V(s * 0.045, 0, 0.01), 0.03, M['trim'], n=5, back=None)
+
+
+def back_cloth():
+    """A crimson cloth over its haunches and down its rump, either side of its tail, edged in gold
+    and hanging in dags, so the livery shows from behind."""
+    for s in (-1, 1):
+        cols = (7, 0, 1) if s > 0 else (4, 3, 2)  # from its flank to beside the tail, on its side
+        rows = []
+        for y in (0.38, 0.48, 0.56):
+            ring = ring8(*body_row(y), grow=CLOTH * 1.5)
+            rows.append([ring[c] for c in cols])
+        edge = rows[-1]
+        # Hanging down the rump: down and back off the hide, drawn in a little towards the tail.
+        for back, drop in ((0.075, 0.13), (0.083, 0.24), (0.085, 0.27)):
+            rows.append([V(p.x * 0.97, p.y + back, p.z - drop * (0.6 if i == 0 else 1.0)) for i, p in enumerate(edge)])
+        verts, faces, bands = loft(rows, closed=False)
+        face_mats = [1 if b == len(rows) - 2 else 0 for b in bands]
+        last = (len(rows) - 1) * len(cols)
+        for i in range(len(cols) - 1):  # a dag under each width of the hem
+            a, b = verts[last + i], verts[last + i + 1]
+            verts.append(a.lerp(b, 0.5) + V(0, 0.005, -0.1))
+            faces.append((last + i, last + i + 1, len(verts) - 1))
+            face_mats.append(1)
+        part(f'back-cloth-{s}', verts, faces, [M['team'], M['gold']], face_mats,
+             inside=lambda c: V(0, min(c.y, 0.58) - 0.04, 0.88))
+        at = rows[3][1].lerp(rows[4][1], 0.5).lerp(rows[3][2].lerp(rows[4][2], 0.5), 0.35) + V(0, 0.006, 0)
+        cone(f'back-cloth-boss-{s}', at, at + V(0, 0.045, 0), 0.03, M['trim'], n=5, back=None)
 
 
 # The war-tower ------------------------------------------------------------------------------------
 #
-# A tower of planks on its back, over the cloth, with a rail round its top; on its corner posts a
-# crimson canopy, its eaves hanging in dags, and a gold finial at its peak.
-TOWER_Y, TOWER_X, TOWER_D = 0.06, 0.3, 0.29  # its middle and half-sizes across and along the back
-TOWER_BASE, TOWER_TOP = 1.38, 1.7
-POST_TOP, EAVE, PEAK = 1.99, 1.93, 2.2
+# An open howdah of planks on its back, over the cloth, hung round with crimson cloth under its rail,
+# and a light crimson canopy on four thin posts, low and shallow, its eaves hanging in short dags, a
+# gold finial at its peak. Low and open so what stands behind it shows over it and through it.
+TOWER_Y, TOWER_X, TOWER_D = 0.07, 0.27, 0.26  # its middle and half-sizes across and along the back
+TOWER_BASE, TOWER_TOP = 1.38, 1.54
+POST_TOP, EAVE, PEAK = 1.75, 1.72, 1.9
 
 
 def tower():
@@ -400,7 +435,7 @@ def tower():
         return [V(x, TOWER_Y - d, z), V(-x, TOWER_Y - d, z), V(-x, TOWER_Y + d, z), V(x, TOWER_Y + d, z)]
 
     # The walls, flaring a little, in two courses of planks, and the floor at their top.
-    rings = [rect(TOWER_BASE, -0.03), rect(1.46, -0.01), rect(TOWER_TOP)]
+    rings = [rect(TOWER_BASE, -0.03), rect(1.44, -0.01), rect(TOWER_TOP)]
     verts, faces, bands = loft(rings)
     face_mats = [b for b in bands]
     verts_top = len(verts) - 4
@@ -408,21 +443,34 @@ def tower():
     face_mats.append(0)
     part('tower', verts, faces, [M['wood'], M['timber']], face_mats, inside=V(0, TOWER_Y, 1.45))
     # A rail round the top.
-    rail = [rect(TOWER_TOP - 0.01, 0.012), rect(TOWER_TOP + 0.06, 0.012)]
+    rail = [rect(TOWER_TOP - 0.01, 0.012), rect(TOWER_TOP + 0.05, 0.012)]
     verts, faces, _ = loft(rail)
     part('tower-rail', verts, faces, M['timber'], inside=V(0, TOWER_Y, TOWER_TOP))
-    # Corner posts up to the canopy.
+    # Crimson hangings round the walls under the rail, a gold band at their top, their hem in dags.
+    hang = [rect(TOWER_TOP - 0.01, 0.022), rect(TOWER_TOP - 0.04, 0.022), rect(1.42, 0.022)]
+    verts, faces, bands = loft(hang)
+    face_mats = [1 if b == 0 else 0 for b in bands]
+    hem = hang[-1]
+    for i in range(4):  # dags: three along each side
+        a, b = hem[i], hem[(i + 1) % 4]
+        for f in (1 / 6, 1 / 2, 5 / 6):
+            first = len(verts)
+            verts += [a.lerp(b, f - 1 / 6), a.lerp(b, f + 1 / 6), a.lerp(b, f) - V(0, 0, 0.06)]
+            faces.append((first, first + 1, first + 2))
+            face_mats.append(0)
+    part('tower-hangings', verts, faces, [M['team'], M['gold']], face_mats, inside=V(0, TOWER_Y, 1.5))
+    # Thin corner posts up to the canopy, open between.
     for corner in rect(TOWER_TOP):
         c = V(corner.x * 0.93, TOWER_Y + (corner.y - TOWER_Y) * 0.93, (TOWER_TOP + POST_TOP) / 2)
-        box('tower-post', c, [V(0, 0, 1), V(1, 0, 0), V(0, 1, 0)], ((POST_TOP - TOWER_TOP) / 2, 0.025, 0.025),
+        box('tower-post', c, [V(0, 0, 1), V(1, 0, 0), V(0, 1, 0)], ((POST_TOP - TOWER_TOP) / 2, 0.02, 0.02),
             M['timber'])
-    # The canopy: a low pyramid over the posts, its eaves hanging in dags, a finial at its peak.
-    eave = rect(POST_TOP, 0.05)
-    apex = V(0, TOWER_Y, PEAK - 0.06)
+    # The canopy: a shallow pyramid over the posts, its eaves hanging in dags, a finial at its peak.
+    eave = rect(POST_TOP, 0.025)
+    apex = V(0, TOWER_Y, PEAK - 0.04)
     verts = eave + [apex]
     faces = [(i, (i + 1) % 4, 4) for i in range(4)] + [(3, 2, 1, 0)]
     part('canopy', verts, faces, M['team'], inside=V(0, TOWER_Y, POST_TOP + 0.02))
-    skirt_top, skirt_low = rect(POST_TOP, 0.05), rect(EAVE, 0.055)
+    skirt_top, skirt_low = rect(POST_TOP, 0.025), rect(EAVE, 0.029)
     verts, faces, _ = loft([skirt_top, skirt_low])
     face_mats = [0] * len(faces)
     for i in range(4):  # dags: two along each side
@@ -430,11 +478,11 @@ def tower():
         for f in (0.25, 0.75):
             p, q = a.lerp(b, f - 0.2), a.lerp(b, f + 0.2)
             first = len(verts)
-            verts += [p, q, a.lerp(b, f) - V(0, 0, 0.06)]
+            verts += [p, q, a.lerp(b, f) - V(0, 0, 0.04)]
             faces.append((first, first + 1, first + 2))
             face_mats.append(1)
     part('canopy-eaves', verts, faces, [M['gold'], M['team']], face_mats, inside=V(0, TOWER_Y, POST_TOP))
-    cone('canopy-finial', apex - V(0, 0, 0.01), V(0, TOWER_Y, PEAK), 0.035, M['trim'], n=5, back=None)
+    cone('canopy-finial', apex - V(0, 0, 0.01), V(0, TOWER_Y, PEAK), 0.03, M['trim'], n=5, back=None)
 
 
 # Its bones besides its legs': the body turns about the middle of its barrel, the neck about its root
@@ -647,7 +695,7 @@ CLIPS = trunked(tweened({
 
 
 # It is built low and raised once built (raise_up()): its legs stretched and all above them lifted
-# RAISE, joints and all, so it stands tall under its tower.
+# RAISE, joints and all, so it stands tall under its howdah.
 RAISE = 0.18
 HEAD_BACK = 0.05  # how far its neck, head, trunk and tusks are drawn back after they are built
 LEG_TOP = 0.86  # the height up to which the legs stretch
@@ -672,6 +720,7 @@ def build():
     with bone('mount_body'):
         body()
         caparison()
+        back_cloth()
         breast_band()
     before = set(bpy.context.scene.objects)
     with bone('mount_neck'):
