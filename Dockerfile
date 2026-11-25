@@ -1,10 +1,11 @@
 # The game server and the built client in one image (docs/server-spec.md section 9).
 # Build: docker build -t lotr-tactics .    Run: docker run -p 8080:8080 lotr-tactics
 
-FROM node:22-slim AS base
-ENV COREPACK_ENABLE_DOWNLOAD_PROMPT=0
-RUN corepack enable
+FROM node:26-slim AS base
 WORKDIR /app
+# Node 25 and later ship without Corepack, so this installs the pnpm that package.json's packageManager names.
+COPY package.json ./
+RUN npm install -g "$(node -p "require('./package.json').packageManager")"
 
 # Builds the client into packages/client/dist.
 FROM base AS build
