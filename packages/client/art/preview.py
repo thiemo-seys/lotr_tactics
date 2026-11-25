@@ -27,7 +27,9 @@ from its right and from behind (as the near side is seen). Short clips show ever
 frame, longer ones a dozen spread over them, with every frame of an attack or a cast from 0.13 s before
 it strikes, or is at its height, to a frame after, and each of a cast's later hits, which the rig
 writes in the armature's extras (`strike` and `hits`). --frames picks the frames instead, and --size sets the size of each
-frame in pixels (224 by default), for a closer look.
+frame in pixels (224 by default), for a closer look. The clips of a model taller than the box every
+model is framed in, a Large one or a rider, are framed with room above it for what it raises over its
+head.
 """
 
 import math
@@ -193,19 +195,25 @@ scene.collection.objects.link(camera)
 scene.camera = camera
 
 # Every model is framed the same, a box a little taller than the pawn and as wide as the hex, unless
-# --fit frames the model alone.
+# --fit frames the model alone. A model taller than the box, a Large one or a rider, is framed in a box
+# as tall as it is.
+BOX_TOP = 1.5
 low = Vector((math.inf,) * 3 if fit else (-0.94, -0.94, 0))
-high = Vector((-math.inf,) * 3 if fit else (0.94, 0.94, 1.5))
+high = Vector((-math.inf,) * 3 if fit else (0.94, 0.94, BOX_TOP))
 for o in meshes:
     for corner in o.bound_box:
         p = o.matrix_world @ Vector(corner)
         low = Vector(map(min, low, p))
         high = Vector(map(max, high, p))
+tall = not fit and high.z > BOX_TOP
 target = Vector((0, 0, (low.z + high.z) / 2 - 0.05))
 reach = max(high.z - low.z, high.x - low.x, high.y - low.y) / 2 + 0.12
-if clips:  # closer, on the hex
+if clips and not tall:  # closer, on the hex
     target.z -= 0.15
     reach *= 0.8
+elif clips:  # a tall model's clips raise what it holds over its head, so there is room above it
+    target.z += 0.13 * (high.z - low.z)
+    reach *= 1.22
 distance = reach / math.tan(camera.data.angle / 2)
 
 
