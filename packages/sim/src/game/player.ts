@@ -93,6 +93,11 @@ export function shopOdds(level: number, gifts: readonly GiftId[]): readonly numb
   return SHOP.odds[shopOddsLevel(level, gifts) - 1]!;
 }
 
+/** The gold a unit sells for: the full cost of every copy in it (section 7.5). */
+export function sellPrice(unit: { readonly unitId: UnitId; readonly star: Star }): number {
+  return UNITS[unit.unitId].cost * copiesIn(unit.star);
+}
+
 /** Base income at the start of a PvP or PvE round (section 8.1). */
 export function baseIncome(stage: number, round: number): number {
   return INCOME.base[`${stage}-${round}`] ?? INCOME.standard;
@@ -167,7 +172,7 @@ export class Player implements PlayerView {
     const unit = unitAt(this, from)!;
     this.setAt(from, null);
     this.release(unit);
-    this.gold += UNITS[unit.unitId].cost * copiesIn(unit.star);
+    this.gold += sellPrice(unit);
     this.items.push(...unit.items);
     // Selling the bearer leaves the Ring with the player, unworn.
     this.context.ring?.unitSold(this.seat, unit.id);

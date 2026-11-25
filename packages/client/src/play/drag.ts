@@ -1,21 +1,24 @@
 // Dragging while planning (docs/game-spec.md section 12): units between the bench and the board,
 // onto the shop bar to sell them, the person's items and the One Ring onto units, and a component
 // onto another of the person's components to combine them. While the fights play, the same on the
-// bench, since the board is fighting. While
-// dragging, the scene marks where the drop would go, in gold if the game's rules allow it and in
-// red with the reason if not; the rules are the sim's own `checkAction`. A component that would
-// combine, with another component or with one the unit holds, shows the item it would make.
+// bench, since the board is fighting. While dragging, the scene marks where the drop would go, in
+// gold if the game's rules allow it and in red with the reason if not; the rules are the sim's own
+// `checkAction`. From the moment a unit that can be sold is picked up, the shop bar offers the sale
+// with its price, and the gold by it shows what the sale brings. A component that would combine,
+// with another component or with one the unit holds, shows the item it would make.
 
 import { ITEMS, UNITS, placeOf, unitAt, type Action, type ItemId, type OwnedUnit, type Place } from '@lotr-tactics/sim';
 import type { PlayFlow } from '../flow.js';
 import { combinesInto } from '../items.js';
 import { placeAtPoint } from '../layout.js';
+import { saleOffer, type SaleOffer } from '../shop.js';
 import type { FightScene } from '../scene.js';
 import { itemTip } from '../tips.js';
 import { itemChip, ringChip } from '../ui/chips.js';
 import { el, setText, show, toggle } from '../ui/dom.js';
 import { tipCard } from '../ui/tip-card.js';
 import { suppressTips } from '../ui/tooltip.js';
+import type { HudBar } from './hud-bar.js';
 import type { ShopBar, TrayItem } from './shop-bar.js';
 
 /** How far the hint sits from the pointer. */
@@ -30,6 +33,8 @@ export class DragAndDrop {
   /** When the drag under way started; a drag ends when that time does. */
   private time: DragTime = 'planning';
   private unit: { readonly unit: OwnedUnit; readonly from: Place } | null = null;
+  /** The sale the shop bar offers for the dragged unit, or null if it can't be sold now. */
+  private sale: SaleOffer | null = null;
   private item: { readonly item: TrayItem; readonly ghost: HTMLElement; readonly caption: HTMLElement } | null = null;
   /** The card of the item a dragged component would make where it is now, and which item it shows. */
   private readonly preview: HTMLElement = el('div', 'tip-card combine-preview');
@@ -40,6 +45,7 @@ export class DragAndDrop {
     private readonly scene: FightScene,
     private readonly view: HTMLElement,
     private readonly shop: ShopBar,
+    private readonly hud: HudBar,
     private readonly hint: HTMLElement,
   ) {
     // Capturing on the view runs before the camera controls see the press.
@@ -119,6 +125,14 @@ export class DragAndDrop {
     event.preventDefault();
     this.unit = { unit, from: place };
     this.begin();
+    this.sale = saleOffer(unit, this.flow.me().gold, this.flow.check({ type: 'sell', from: place }));
+    this.offerSale(false);
+  }
+
+  /** Shows the sale for the dragged unit on the shop bar and by the gold, `over` while the pointer is over the bar. */
+  private offerSale(over: boolean): void {
+    this.shop.offerSale(this.sale, over);
+    this.hud.previewSale(this.sale, over);
   }
 
   private begin(): void {
@@ -132,7 +146,8 @@ export class DragAndDrop {
     this.scene.cameraControls = true;
     this.scene.markPlace(null);
     this.scene.markUnit(null);
-    this.shop.selling(null);
+    this.sale = null;
+    this.offerSale(false);
     this.shop.markItem(null);
     show(this.hint, false);
     this.showPreview(null, 0, 0);
@@ -182,13 +197,13 @@ export class DragAndDrop {
     }
     const point = this.scene.groundPoint(x, y);
     if (point !== null) this.scene.drag(this.unit.unit.id, point);
-    if (this.overShop(x, y)) {
-      this.shop.selling(UNITS[this.unit.unit.unitId].name);
+    const overShop = this.overShop(x, y);
+    this.offerSale(overShop);
+    if (overShop) {
       this.scene.markPlace(null);
       show(this.hint, false);
       return;
     }
-    this.shop.selling(null);
     const to = point === null ? null : placeAtPoint(point);
     const result = to === null ? null : this.flow.check({ type: 'move', from: this.unit.from, to });
     this.scene.markPlace(to, result?.ok ?? true);
@@ -214,10 +229,11 @@ export class DragAndDrop {
     }
     if (this.unit === null) return;
     const { from } = this.unit;
+    const sellable = this.sale !== null;
     this.unit = null;
     this.end();
     if (this.overShop(x, y)) {
-      this.flow.act({ type: 'sell', from });
+      if (sellable) this.flow.act({ type: 'sell', from });
     } else {
       const point = this.scene.groundPoint(x, y);
       const to = point === null ? null : placeAtPoint(point);

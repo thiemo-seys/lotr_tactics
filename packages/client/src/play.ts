@@ -74,7 +74,7 @@ const shop = new ShopBar(
   (item, event) => drag.startItem(item, event),
   () => scene.showBenchFull(),
 );
-const drag = new DragAndDrop(flow, scene, view, shop, element('drag-hint'));
+const drag = new DragAndDrop(flow, scene, view, shop, hud, element('drag-hint'));
 // Hovering a unit shows its stats and ability: in a fight as it is now, and in planning with its items.
 hoverUnits(view, scene, (pick) => {
   const step = flow.show;

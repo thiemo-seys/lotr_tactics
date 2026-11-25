@@ -1,5 +1,6 @@
 // The shop bar while planning and while the fights play (docs/game-spec.md section 12): Buy XP, Reroll and Lock, the shop's
-// unit cards, the person's items and the One Ring to drag onto units, and Ready. Dropping a dragged
+// unit cards, the person's items and the One Ring to drag onto units, and Ready. While a unit that
+// can be sold is dragged, the bar is framed in gold and offers the sale with its price; dropping the
 // unit on the bar sells it. Buying with the bench full says so over the bench.
 
 import { SHOP, UNITS, XP, completesMerge, isComponent, ownedUnits, type ActionResult, type PlayerView, type Star, type UnitId } from '@lotr-tactics/sim';
@@ -7,7 +8,7 @@ import type { PlayFlow } from '../flow.js';
 import { shopOddsView } from '../hud.js';
 import { TRAIT_ICONS } from '../icons.js';
 import { actionTip, unitTip } from '../tips.js';
-import { shopBuy, shopMark, type ShopBuy } from '../shop.js';
+import { shopBuy, shopMark, type SaleOffer, type ShopBuy } from '../shop.js';
 import { goldCost, itemChip, ringChip, traitTag } from '../ui/chips.js';
 import { el, icon, rebuild, setEnabled, setText, starBadge, toggle } from '../ui/dom.js';
 import { dismissTip, setTip } from '../ui/tooltip.js';
@@ -26,6 +27,7 @@ export class ShopBar {
   private readonly lock = element('lock');
   private readonly ready = element('ready');
   private readonly sellText = this.bar.querySelector('.sell-text') as HTMLElement;
+  private readonly sellPrice = this.bar.querySelector('.sell-price .value') as HTMLElement;
   private readonly xpCost = this.buyXp.querySelector('.cost') as HTMLElement;
   private readonly rerollCost = this.reroll.querySelector('.cost') as HTMLElement;
   private readonly lockLabel = this.lock.querySelector('.label') as HTMLElement;
@@ -128,10 +130,16 @@ export class ShopBar {
     } else if (kind === 'buy') this.flow.act({ type: 'buy', slot });
   }
 
-  /** While a unit is dragged over the bar, says that dropping it sells it; null when it isn't. */
-  selling(name: string | null): void {
-    toggle(this.bar, 'selling', name !== null);
-    if (name !== null) setText(this.sellText, `Drop to sell ${name}`);
+  /**
+   * While a unit that can be sold is dragged, frames the bar in gold and offers the sale with its
+   * price, brighter while the pointer is over the bar (`over`); null when no such unit is dragged.
+   */
+  offerSale(offer: SaleOffer | null, over = false): void {
+    toggle(this.bar, 'offering', offer !== null);
+    toggle(this.bar, 'offer-over', offer !== null && over);
+    if (offer === null) return;
+    setText(this.sellText, `Sell ${offer.name}`);
+    setText(this.sellPrice, `+${offer.price}`);
   }
 
   /** The index of the person's item whose chip is under a point, for dropping a dragged item on it. */
