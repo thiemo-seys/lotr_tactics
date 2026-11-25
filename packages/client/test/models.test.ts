@@ -34,7 +34,7 @@ type FighterId = UnitId | CreatureId;
  * docs/animation-plan.md builds them run by run, and each is added here as it lands. Every monster or summon whose
  * .glb is in public/models is checked in full whether it is listed or not.
  */
-const MONSTERS_MUST_BE_RIGGED: readonly CreatureId[] = ['goblin', 'goblin-archer', 'orc-grunt', 'eye-nazgul'];
+const MONSTERS_MUST_BE_RIGGED: readonly CreatureId[] = ['goblin', 'goblin-archer', 'orc-grunt', 'eye-nazgul', 'warg', 'cave-troll'];
 
 /** A unit's gear model, its model at 2★ (section 4, Star levels). */
 function gearModel(id: UnitId): string {

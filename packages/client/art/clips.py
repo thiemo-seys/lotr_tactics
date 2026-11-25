@@ -922,6 +922,10 @@ def raise_(rig, hand='r', seconds=0.8, out=0.08, lean=0.0):
 # in the other. The rider sits: its hips stay in the saddle and its legs hang as built, so they have
 # no tracks. A clip that doesn't move the mount's body leaves its standing legs unposed, so they
 # have none either, and only a raised leg is held up.
+#
+# A beast with no rider (rig.BEASTS: the warg, the Mûmak) is a mount alone, and `saddle`, `gallop`,
+# `reel`, `fall` and `rear` move it as they move a mount, leaving out the rider's channels (rider()).
+# Beasts below adds what only a beast does: its lunging bite, `maul`, and its howl, `howl`.
 
 
 class Steed:
@@ -1009,26 +1013,35 @@ class Steed:
         return ch
 
 
+def rider(rig, hand):
+    """The rider's Body on a mount, or None for a beast with no rider (rig.BEASTS), whose clips leave
+    out the rider's channels."""
+    return None if rig.beast else Body(rig, hand)
+
+
 def seated(b, m, legs=True, **channels):
     """The rider at rest on its mount, which stands, with every channel a mounted one-shot clip
     moves set: its first and last key. `legs` places the mount's feet, for a clip that moves its
-    body; without it its standing legs are left as built."""
-    ch = {bone: V(0, 0, 0) for bone in b.rig.bones if bone != 'root'}
-    ch['hips_at'] = V(0, 0, 0)
-    ch.update(b.held(b.hand))
-    ch.update(b.held(b.off))
+    body; without it its standing legs are left as built. With no rider (`b` None, a beast), the
+    mount alone."""
+    ch = {bone: V(0, 0, 0) for bone in m.rig.bones if bone != 'root'}
+    if b is not None:
+        ch['hips_at'] = V(0, 0, 0)
+        ch.update(b.held(b.hand))
+        ch.update(b.held(b.off))
     ch.update(m.stance(legs))
     ch.update(channels)
     return ch
 
 
 @style('idle', 'saddle')
-def saddle(rig, hand='r', seconds=2.0, breath=1.0, sway=1.0):
+def saddle(rig, hand='r', seconds=2.0, breath=1.0, sway=1.0, pant=0.0, jaw='mount_jaw'):
     """A rider sitting its mount, which stands: two breaths a loop and a slow shift of the mount's
     weight from side to side, its head nodding and turning a little and its tail swishing, a raised
     foreleg held up, ready to charge; the rider breathing and looking round, the weapon rocking in
-    its hand and the rein hand giving to the mount's head."""
-    b = Body(rig, hand)
+    its hand and the rein hand giving to the mount's head. A beast with no rider stands so alone;
+    `pant` works its jaw that many degrees either way, four times a loop, as a wolf pants."""
+    b = rider(rig, hand)
     m = Steed(rig)
     n = frames_for(seconds)
     h = m.height
@@ -1046,6 +1059,10 @@ def saddle(rig, hand='r', seconds=2.0, breath=1.0, sway=1.0):
         ch['mount_head'] = V(1.5 * wave(f, n, 2, 0.4), 0, 4.0 * wave(f, n, 1, 0.45))
         if 'mount_tail' in rig.bones:
             ch['mount_tail'] = V(2.0 * inhale, 6.0 * wave(f, n, 2, 0.2), 0)
+        if pant and jaw in rig.bones:
+            ch[jaw] = hinged(rig, jaw, pant * wave(f, n, 4))
+        if b is None:
+            return ch
         # The rider sits tall, breathing, and turns to look round.
         ch['hips'] = V(-0.5 * nod, -0.8 * shift, 0)
         ch['spine'] = V(-1.4 * inhale, 1.0 * shift, -1.2 * sway * wave(f, n, 1, 0.12))
@@ -1070,8 +1087,8 @@ def gallop(rig, hand='r', seconds=16 / 30, stride=0.55, fold=1.0, bob=1.0, bound
     head. `stride` is how far each foot travels while down, a share of the leg; `fold` how high the
     feet fold up behind, `bob` how far the body rises and falls, and `tail` how many degrees the tail
     streams up behind. `bound` (0 to 1) brings each pair of feet down closer together, the body lower
-    and rocking more: a bounding lope, as a wolf runs."""
-    b = Body(rig, hand)
+    and rocking more: a bounding lope, as a wolf runs. A beast with no rider runs so alone."""
+    b = rider(rig, hand)
     m = Steed(rig)
     n = frames_for(seconds)
     h = m.height
@@ -1117,6 +1134,8 @@ def gallop(rig, hand='r', seconds=16 / 30, stride=0.55, fold=1.0, bob=1.0, bound
         ch['mount_head'] = V(-4 * rock + 3, 0, 0)
         if 'mount_tail' in rig.bones:  # streaming out behind, level as the body rocks
             ch['mount_tail'] = V(tail - pitch + 5 * math.cos(math.tau * (u - 0.1)), 5 * math.sin(math.tau * u), 0)
+        if b is None:
+            return ch
         # The rider sits the gallop, the body leaning into it and keeping the head steady over the
         # rocking, the weapon carried up and the rein hand giving.
         ch['hips'] = V(-2.5 * rock, 0, 0)
@@ -1331,11 +1350,10 @@ def reel(rig, hand='r', seconds=1.2, droop=1.0, low=0.0):
     put down, its tail limp; the rider slumped and swaying with it, the head lolling, the weapon
     slack against the shoulder and the rein hand dropped. `low` (0 to 1) brings a weapon the rider
     sits holding up high that share of the way down to rest by its thigh, hanging slack down the
-    mount's flank (the Riders below)."""
-    b = Body(rig, hand)
+    mount's flank (the Riders below). A beast with no rider reels so alone."""
+    b = rider(rig, hand)
     m = Steed(rig)
     n = frames_for(seconds)
-    off = b.off
 
     def pose(f):
         sway = wave(f, n, 1)
@@ -1347,6 +1365,9 @@ def reel(rig, hand='r', seconds=1.2, droop=1.0, low=0.0):
         ch['mount_head'] = V(10 * droop + 4 * wave(f, n, 2, 0.2), 6 * wave(f, n, 1, 0.35), 4 * wave(f, n, 1, 0.2))
         if 'mount_tail' in rig.bones:
             ch['mount_tail'] = V(-3, 3 * wave(f, n, 1, 0.1), 0)
+        if b is None:
+            return ch
+        off = b.off
         ch['hips'] = V(2 + 1.5 * bob, -2.5 * sway, 2 * bob)
         ch['spine'] = V(12 + 3 * wave(f, n, 2, 0.2), 4 * wave(f, n, 1, 0.1), 4 * bob)
         ch['head'] = V(16 + 6 * wave(f, n, 1, 0.1), 9 * wave(f, n, 1, 0.35), 5 * wave(f, n, 1, 0.2))
@@ -1372,12 +1393,12 @@ def fall(rig, hand='r', seconds=0.5, roll=1.0):
     """Struck, rider and mount go down together: the mount's head flung up, its forelegs buckling to
     its knees and its hind legs folding under it, until it lies on its belly, rolled a little on its
     side, its neck curled round and its head low; the rider thrown back, then slumped forward over
-    its neck, the weapon dropped along its flank. Ends low, inside the hex. It is mount_grounded()."""
-    b = Body(rig, hand)
+    its neck, the weapon dropped along its flank. Ends low, inside the hex. It is mount_grounded(). A
+    beast with no rider goes down so alone."""
+    b = rider(rig, hand)
     m = Steed(rig)
     n = frames_for(seconds)
     h = m.height
-    off = b.off
     k = Keys(lag={'head': 1, 'cape': 1, 'mount_head': 1, 'mount_tail': 1})
     k.key(0, **seated(b, m))
 
@@ -1385,10 +1406,15 @@ def fall(rig, hand='r', seconds=0.5, roll=1.0):
         """A leg folded under the body posed by `body`."""
         return m.folded(leg, rig.solve(body)[m.legs[leg][0]].at)
 
+    def riding(make):
+        """The rider's channels, made by `make` from its Body, or none for a beast."""
+        return {} if b is None else make(b, b.off)
+
     # Struck: the head flung up, the rider thrown back.
     k.key(2, 'out', **m.body(-3, 0, 0, at=V(0, 0.01, 0.0)), mount_neck=V(-12, 0, 0), mount_head=V(-8, 0, 0),
-          spine=V(-14, 0, b.yaw(6)), head=V(-12, 0, 0),
-          **b.arm(hand, b.wrist(hand, 0.1, 0.05, 0.06)), **b.arm(off, b.wrist(off, 0.1, 0.05, 0.05)))
+          **riding(lambda b, off: dict(spine=V(-14, 0, b.yaw(6)), head=V(-12, 0, 0),
+                                       **b.arm(hand, b.wrist(hand, 0.1, 0.05, 0.06)),
+                                       **b.arm(off, b.wrist(off, 0.1, 0.05, 0.05)))))
     # The forelegs buckle: down on its knees, the hind legs still under it.
     hind = sum((m.fetlock[leg] for leg in m.hind), Vector()) / len(m.hind) + V(0, 0, 0.2 * h)
     body = m.body(22, 0, 0, at=V(0, 0.06 * h, -0.06 * h), about=hind)
@@ -1397,27 +1423,32 @@ def fall(rig, hand='r', seconds=0.5, roll=1.0):
         knelt.update(fold(body, leg))
     for leg in m.hind:
         knelt.update(m.planted(leg))
-    k.key(7, 'in', **knelt, mount_neck=V(-14, 0, 40 * roll), mount_head=V(4, 0, 0), spine=V(8, 0, 0), head=V(10, 0, 0),
-          **b.arm(hand, b.wrist(hand, 0.15, -0.1, -0.2)), **b.arm(off, b.wrist(off, 0.1, 0.0, -0.15)))
+    k.key(7, 'in', **knelt, mount_neck=V(-14, 0, 40 * roll), mount_head=V(4, 0, 0),
+          **riding(lambda b, off: dict(spine=V(8, 0, 0), head=V(10, 0, 0),
+                                       **b.arm(hand, b.wrist(hand, 0.15, -0.1, -0.2)),
+                                       **b.arm(off, b.wrist(off, 0.1, 0.0, -0.15)))))
     # Down: the hind legs folded under, lying on its belly and rolled a little onto its left.
     body = m.body(3, 7 * roll, 0, at=V(0, 0.02 * h, -0.5 * h))
     down = dict(body)
     for leg in m.legs:
         down.update(fold(body, leg))
     k.key(n, 'out', **down, mount_neck=V(14, 0, 50 * roll), mount_head=V(24, 0, 12 * roll), mount_tail=V(10, 0, 0),
-          spine=V(38, b.side * 4, 0), hips=V(6, 0, 0), head=V(24, b.side * 8, 0), cape=V(-10, 0, 0))
-    # The weapon let fall along its flank, its end resting on the ground: the hand placed in the
-    # mount's frame, where it lies, a little off the ground.
-    seat = rig.solve(body)[rig.seat]
-    shoulder = b.rig.joint(f'shoulder_{hand}')
-    rest = V(shoulder.x * 1.5, shoulder.y - 0.3, 0.3)
-    at = seat.head + seat.turn.inverted() @ (rest - seat.at)
-    held = rig.held(hand)
-    reach = (held[1] - b.rest[f'hand_{hand}_at']).length if held else 0.3
-    slope = math.asin(min(0.9, 0.24 / max(reach, 0.3)))
-    lay = b.aim((0.1, math.cos(slope), -math.sin(slope)), (1, 0, 0))
-    k.key(n, 'out', **b.arm(hand, at, lay, (0.6, 0.4, 0.3), world=1.0))
-    k.key(n, 'out', **b.arm(off, b.wrist(off, 0.05, -0.1, -0.4), b.tip(30)))
+          **riding(lambda b, off: dict(spine=V(38, b.side * 4, 0), hips=V(6, 0, 0), head=V(24, b.side * 8, 0),
+                                       cape=V(-10, 0, 0))))
+    if b is not None:
+        # The weapon let fall along its flank, its end resting on the ground: the hand placed in the
+        # mount's frame, where it lies, a little off the ground.
+        off = b.off
+        seat = rig.solve(body)[rig.seat]
+        shoulder = b.rig.joint(f'shoulder_{hand}')
+        rest = V(shoulder.x * 1.5, shoulder.y - 0.3, 0.3)
+        at = seat.head + seat.turn.inverted() @ (rest - seat.at)
+        held = rig.held(hand)
+        reach = (held[1] - b.rest[f'hand_{hand}_at']).length if held else 0.3
+        slope = math.asin(min(0.9, 0.24 / max(reach, 0.3)))
+        lay = b.aim((0.1, math.cos(slope), -math.sin(slope)), (1, 0, 0))
+        k.key(n, 'out', **b.arm(hand, at, lay, (0.6, 0.4, 0.3), world=1.0))
+        k.key(n, 'out', **b.arm(off, b.wrist(off, 0.05, -0.1, -0.4), b.tip(30)))
     return Clip(n, mount_grounded(rig, m, k))
 
 
@@ -1427,19 +1458,25 @@ def rear(rig, hand='r', seconds=1.2, rear=1.0, out=0.08):
     and a raised foreleg up again, while the rider leans into the rear and thrusts the weapon up high,
     and holds it there. `rear` is how high it rears: 0 for a stamp alone. `out` is how far out from
     the shoulder the fist goes up, a share of the arm's reach, as raise's: more to hold the weapon
-    clear of a big hood (the Riders below). It is mount_grounded()."""
-    b = Body(rig, hand)
+    clear of a big hood (the Riders below). It is mount_grounded(). A beast with no rider rears so
+    alone."""
+    b = rider(rig, hand)
     m = Steed(rig)
     n = frames_for(seconds)
     h = m.height
-    off = b.off
     k = Keys(lag={'head': 1, 'cape': 2, 'mount_head': 1, 'mount_tail': 2})
     k.key(0, **seated(b, m))
     hind = sum((m.fetlock[leg] for leg in m.hind), Vector()) / len(m.hind) + V(0, 0, 0.15 * h)
 
     def up(theta, height):
+        if b is None:
+            return {}
         aim, _ = arc(theta)
         return b.arm(hand, b.near(out, -0.05, height), b.rig.aim(hand, aim, b.out(1, 0, 0)), (0.9, 0.2, -0.3))
+
+    def riding(make):
+        """The rider's channels, made by `make` from its Body, or none for a beast."""
+        return {} if b is None else make(b, b.off)
 
     def merged(*parts, **channels):
         out = {}
@@ -1451,23 +1488,28 @@ def rear(rig, hand='r', seconds=1.2, rear=1.0, out=0.08):
     planted = merged(*(m.planted(leg) for leg in m.legs))
     # Gathering: down on its haunches.
     k.key(4, **merged(planted, m.body(-4 * rear, 0, 0, at=V(0, 0.02, -0.03 * h), about=hind)),
-          mount_neck=V(-6, 0, 0), spine=V(6, 0, 0), **b.arm(hand, b.wrist(hand, 0.02, 0.02, -0.06), b.tip(-6)))
+          mount_neck=V(-6, 0, 0),
+          **riding(lambda b, off: dict(spine=V(6, 0, 0), **b.arm(hand, b.wrist(hand, 0.02, 0.02, -0.06), b.tip(-6)))))
     # Up on its hind legs, forefeet pawing; the weapon thrust up.
     pawing = merged(*(m.foot(leg, V(0, -0.12 * h + 0.06 * h * i, 0.5 * h + 0.06 * h * i), 95)
                       for i, leg in enumerate(m.fore)))
     k.key(12, 'out', **merged(pawing, m.body(-24 * rear, 0, 0, at=V(0, 0.02, 0.0), about=hind)), mount_neck=V(14, 0, 0),
-          mount_head=V(10, 0, 0), mount_tail=V(10, 0, 0), spine=V(22 * rear, 0, b.yaw(3)), hips=V(4, 0, 0),
-          head=V(-8, 0, 0), cape=V(10, 0, 0), **up(-10, 0.98), **b.arm(off, b.wrist(off, 0.0, -0.1, 0.06)))
+          mount_head=V(10, 0, 0), mount_tail=V(10, 0, 0),
+          **riding(lambda b, off: dict(spine=V(22 * rear, 0, b.yaw(3)), hips=V(4, 0, 0), head=V(-8, 0, 0),
+                                       cape=V(10, 0, 0), **up(-10, 0.98), **b.arm(off, b.wrist(off, 0.0, -0.1, 0.06)))))
     pawing = merged(*(m.foot(leg, V(0, -0.06 * h - 0.06 * h * i, 0.45 * h - 0.05 * h * i), 70)
                       for i, leg in enumerate(m.fore)))
-    k.key(17, **merged(pawing, m.body(-20 * rear, 0, 0, at=V(0, 0.02, 0.0), about=hind)), spine=V(18 * rear, 0, b.yaw(2)))
+    k.key(17, **merged(pawing, m.body(-20 * rear, 0, 0, at=V(0, 0.02, 0.0), about=hind)),
+          **riding(lambda b, off: dict(spine=V(18 * rear, 0, b.yaw(2)))))
     # Down with a stamp, then standing proud, the weapon held high.
     k.key(24, 'in', **merged(*(m.planted(leg) for leg in m.fore), m.body(2, 0, 0, at=V(0, 0, -0.02 * h))),
-          mount_neck=V(4, 0, 0), mount_head=V(0, 0, 0), spine=V(-2, 0, b.yaw(2)), hips=V(0, 0, 0), **up(2, 0.94))
+          mount_neck=V(4, 0, 0), mount_head=V(0, 0, 0),
+          **riding(lambda b, off: dict(spine=V(-2, 0, b.yaw(2)), hips=V(0, 0, 0), **up(2, 0.94))))
     proud = m.stance()
     proud.update(mount_neck=V(-6, 0, 0), mount_head=V(6, 0, 0), mount_tail=V(4, 0, 0))
-    k.key(n, **proud, spine=V(-5, 0, b.yaw(2)), head=V(-8, 0, 0), cape=V(2, 0, 0), **up(0, 0.95),
-          **b.arm(off, b.wrist(off, 0.0, -0.04, 0.04)))
+    k.key(n, **proud,
+          **riding(lambda b, off: dict(spine=V(-5, 0, b.yaw(2)), head=V(-8, 0, 0), cape=V(2, 0, 0), **up(0, 0.95),
+                                       **b.arm(off, b.wrist(off, 0.0, -0.04, 0.04)))))
     return Clip(n, mount_grounded(rig, m, k))
 
 
@@ -1720,6 +1762,95 @@ def sound(rig, hand='l', seconds=0.8, height=5, rear=1.0, lift=0.0):
         return ch
 
     return Clip(n, pose, marks={'height': height})
+
+
+# Beasts (units/warg.py; docs/viewer-spec.md section 4, Rigs and clips) -----------------------------
+#
+# A beast with no rider, the warg and the Mûmak, is a mount alone (rig.BEASTS), and the mounted styles
+# above move it as they move a mount, without their rider: `saddle` stands it breathing, `pant` working
+# its jaws; `gallop` runs it, `bound` 1 for a wolf's lope; `reel` hangs its head, dazed; `fall` brings it
+# down on its belly; and `rear` rears it. These add what a beast does on its own: `maul`, its attack, a
+# lunge that bites or gores, and `howl`, its victory, the head thrown up to the sky. Both are written
+# from a mount's measurements alone (Steed), so they serve a heavy Large beast as well as a warg: a
+# jaw is optional, `leap` 0 keeps the forefeet on the ground and the turns scale with `heavy`.
+
+
+def haunches_point(m):
+    """The point a mount gathers onto its haunches about: above the middle of its hind feet."""
+    return sum((m.fetlock[leg] for leg in m.hind), Vector()) / len(m.hind) + V(0, 0, 0.15 * m.height)
+
+
+@style('attack', 'maul')
+def maul(rig, seconds=0.53, reach=1.0, leap=1.0, heavy=1.0, jaw='mount_jaw'):
+    """A beast's lunging bite: gathered back on its haunches, its head drawn in and its jaws wide, it
+    springs forward off its hind feet, its forefeet leaving the ground a share `leap` of the way, and
+    snaps its jaws shut at full stretch on frame 3, its body thrown forward `reach` of a share of its
+    height; then it lands on its forefeet, worries what it bit with a shake of its head, and settles
+    back to stand. `heavy` (0 to 1) scales every turn down, for a great beast that lunges with its
+    weight rather than its spring; without a jaw it is a lunge of the head, as a gore with tusks."""
+    m = Steed(rig)
+    n = frames_for(seconds)
+    h = m.height
+    g = heavy
+    k = Keys(lag={'mount_head': 1, 'mount_tail': 2})
+    k.key(0, **seated(None, m))
+    opened = {jaw: hinged(rig, jaw, 14)} if jaw in rig.bones else {}
+    shut = {jaw: hinged(rig, jaw, -36)} if jaw in rig.bones else {}
+    hind = haunches_point(m)
+    planted = together(*(m.planted(leg) for leg in m.legs))
+
+    def sprung(lift, ahead):
+        """The forefeet off the ground, `lift` of a share of its height, tucked `ahead` forward."""
+        return together(*(m.foot(leg, V(0, -ahead * h, (lift + 0.04 * i) * h), (55 + 10 * i) * leap)
+                          for i, leg in enumerate(m.fore)))
+
+    # Gathered: back and down on its haunches, the head drawn in and up, the jaws wide.
+    k.key(0, **planted, **m.body(-5 * g, 0, 0, at=V(0, 0.06 * h * reach, -0.05 * h), about=hind),
+          mount_neck=V(-14 * g, 0, 0), mount_head=V(-10 * g, 0, 0), mount_tail=V(-8 * g, 0, 0), **opened)
+    # Springing: thrown forward off its hind feet, the forefeet lifting, the neck stretched out.
+    k.key(2, 'in', **together(planted, sprung(0.24 * leap, 0.08) if leap else {}),
+          **m.body(-9 * g * leap + 3 * g * (1 - leap), 0, 0, at=V(0, -0.16 * h * reach, 0.04 * h * leap), about=hind),
+          mount_neck=V(6 * g, 0, 0), mount_head=V(-4 * g, 0, 0), **opened)
+    # The bite, at full stretch, the jaws snapped shut.
+    k.key(BLOW, 'in', **together(planted, sprung(0.2 * leap, 0.12) if leap else {}),
+          **m.body(-4 * g * leap + 5 * g * (1 - leap), 0, 0, at=V(0, -0.26 * h * reach, 0.03 * h * leap), about=hind),
+          mount_neck=V(12 * g, 0, 0), mount_head=V(4 * g, 0, 0), mount_tail=V(10 * g, 0, 0), **shut)
+    # Down on its forefeet, worrying it: the head shaken one way and the other.
+    k.key(BLOW + 2, 'out', **planted, **m.body(5 * g, 0, 0, at=V(0, -0.14 * h * reach, -0.03 * h)),
+          mount_neck=V(16 * g, 0, 6 * g), mount_head=V(6 * g, 14 * g, 4 * g))
+    k.key(BLOW + 4, 'smooth', mount_neck=V(14 * g, 0, -6 * g), mount_head=V(6 * g, -12 * g, -4 * g))
+    k.key(BLOW + 6, 'smooth', **m.body(3 * g, 0, 0, at=V(0, -0.08 * h * reach, -0.02 * h)),
+          mount_neck=V(8 * g, 0, 2 * g), mount_head=V(4 * g, 4 * g, 0), **(
+              {jaw: hinged(rig, jaw, -20)} if jaw in rig.bones else {}))
+    k.key(n, **seated(None, m))
+    return Clip(n, mount_grounded(rig, m, k), marks={'strike': BLOW})
+
+
+@style('victory', 'howl')
+def howl(rig, seconds=1.0, sit=1.0, heavy=1.0, jaw='mount_jaw'):
+    """A beast's victory: it sits back on its haunches, its forefeet planted, throws its head up to the
+    sky with its jaws open and howls, and holds it. `sit` is how far down onto its haunches it settles,
+    and `heavy` (0 to 1) scales the turns, as maul's does; without a jaw the head is thrown up alone, as
+    a great beast trumpets. It is mount_grounded()."""
+    m = Steed(rig)
+    n = frames_for(seconds)
+    h = m.height
+    g = heavy
+    k = Keys(lag={'mount_head': 2, 'mount_tail': 2})
+    k.key(0, **seated(None, m))
+    hind = haunches_point(m)
+    planted = together(*(m.planted(leg) for leg in m.legs))
+    opened = {jaw: hinged(rig, jaw, 8)} if jaw in rig.bones else {}
+    closed = {jaw: hinged(rig, jaw, -30)} if jaw in rig.bones else {}
+    # Settling back onto its haunches, the head lowered as it draws breath.
+    k.key(8, 'smooth', **planted, **m.body(-8 * g * sit, 0, 0, at=V(0, 0.05 * h * sit, -0.12 * h * sit), about=hind),
+          mount_neck=V(8 * g, 0, 0), mount_head=V(6 * g, 0, 0), mount_tail=V(-6 * g, 0, 0), **closed)
+    # The head thrown up to the sky, the jaws open, the tail low: the howl, held.
+    howling = dict(**planted, **m.body(-14 * g * sit, 0, 0, at=V(0, 0.08 * h * sit, -0.2 * h * sit), about=hind),
+                   mount_neck=V(-50 * g, 0, 0), mount_head=V(-38 * g, 0, 0), mount_tail=V(-10 * g, 0, 0), **opened)
+    k.key(16, 'out', **howling)
+    k.key(n, 'smooth', **{**howling, 'mount_neck': V(-54 * g, 0, 0), 'mount_head': V(-42 * g, 0, 0)})
+    return Clip(n, mount_grounded(rig, m, k))
 
 
 # fitting clips to what a model holds -----------------------------------------------------------
