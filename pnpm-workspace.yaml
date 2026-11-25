@@ -1,2 +1,6 @@
 packages:
   - packages/*
+# pnpm 11 and later fail an install on unreviewed build scripts. esbuild's only checks its binary,
+# which comes from its platform package anyway, so it stays off as it was under pnpm 10.
+allowBuilds:
+  esbuild: false

@@ -3,9 +3,9 @@
   "version": "0.1.0",
   "private": true,
   "type": "module",
-  "packageManager": "pnpm@10.28.0",
+  "packageManager": "pnpm@12.23.0",
   "engines": {
-    "node": ">=22.12"
+    "node": ">=26"
   },
   "scripts": {
     "dev": "pnpm --parallel --filter @lotr-tactics/client --filter @lotr-tactics/server dev",
