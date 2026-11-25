@@ -73,6 +73,23 @@
   --ring-grip: #f06a4c;
   --ring-betrayal: #e0457a;
 
+  /* Banner & Seal: the play page's top bar, stitched leather, parchment, ink and wax */
+  --leather: radial-gradient(ellipse at 50% 0%, rgba(255, 220, 170, 0.14), transparent 70%), linear-gradient(180deg, #5c3a25, #3b2316);
+  --leather-pressed: radial-gradient(ellipse at 50% 100%, rgba(255, 220, 170, 0.12), transparent 70%), linear-gradient(180deg, #3b2316, #4f311f);
+  --leather-edge: #1a0f08;
+  --stitch: rgba(240, 200, 140, 0.5);
+  --brass: #f0c987;
+  --parchment: #f3e6c4;
+  --parchment-deep: #dcc597;
+  --parchment-light: #f8e9c8;
+  --ink: #3a2215;
+  --ink-soft: #7a5634;
+  --ink-route: #8a6a44;
+  --wax-pvp: #a3242a;
+  --wax-pve: #2e6b3c;
+  --wax-council: #b48422;
+  --hud-drop: 0 3px 0 #140b05, 0 8px 14px rgba(0, 0, 0, 0.35);
+
   /* Spacing, radii and shadows */
   --space-1: 4px;
   --space-2: 8px;
@@ -577,16 +594,39 @@ kbd {
   color: var(--gold);
 }
 
-/* The play page's top bar: the person's stats, the stage tracker in the middle, and the buttons. */
+/* The play page's top bar, Banner & Seal: pieces of stitched leather floating over the arena, and
+   in the middle the stage tracker, a parchment band whose rounds are wax seals on an inked route. */
 #hud {
+  position: absolute;
+  top: 0;
+  right: 0;
+  left: 0;
   display: grid;
   grid-template-columns: minmax(0, 1fr) auto minmax(0, 1fr);
   flex-wrap: nowrap;
+  gap: 12px;
+  align-items: start;
+  min-height: 0;
+  padding: 12px 14px 0;
+  pointer-events: none;
+  background: none;
+  border: 0;
+  box-shadow: none;
+}
+
+#hud::after {
+  content: none;
+}
+
+#hud .hud-group,
+#hud .round-track {
+  pointer-events: auto;
 }
 
 .hud-side {
   display: flex;
   min-width: 0;
+  min-height: 54px;
   align-items: center;
 }
 
@@ -594,19 +634,236 @@ kbd {
   justify-content: flex-end;
 }
 
-/* The stage tracker: the stage, its rounds as icons by type, and the round on screen. */
-.round-track {
-  display: flex;
-  gap: 12px;
+/* A piece of the bar: stitched leather. */
+.hud-tile {
+  position: relative;
+  display: inline-flex;
+  flex: none;
+  gap: 7px;
   align-items: center;
-  justify-self: center;
-  padding: 3px 14px 3px 10px;
-  background: rgba(0, 0, 0, 0.28);
-  border: 1px solid #2b3546;
-  border-radius: var(--radius-pill);
-  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.04);
+  box-sizing: border-box;
+  height: 46px;
+  padding: 0 16px 0 13px;
+  font: 700 20px/1 var(--font-display);
+  font-variant-numeric: tabular-nums;
+  color: var(--parchment-light);
+  white-space: nowrap;
+  text-shadow: 0 2px 0 rgba(0, 0, 0, 0.5);
+  background: var(--leather);
+  border: 2px solid var(--leather-edge);
+  border-radius: 10px;
+  outline: 1.5px dashed var(--stitch);
+  outline-offset: -6px;
+  box-shadow: inset 0 1px 0 rgba(255, 220, 170, 0.18), var(--hud-drop);
 }
 
+.hud-tile .icon {
+  width: 22px;
+  height: 22px;
+  color: var(--brass);
+  filter: drop-shadow(0 1px 0 rgba(0, 0, 0, 0.45));
+}
+
+.hud-button {
+  font-size: 14px;
+  letter-spacing: 0.03em;
+  cursor: pointer;
+  transition:
+    filter var(--fast) var(--ease),
+    transform var(--fast) var(--ease);
+}
+
+.hud-button .icon {
+  width: 19px;
+  height: 19px;
+}
+
+.hud-button:hover {
+  filter: brightness(1.15);
+}
+
+.hud-button:active {
+  transform: translateY(2px);
+  box-shadow: inset 0 1px 0 rgba(255, 220, 170, 0.18), 0 1px 0 #140b05;
+}
+
+.hud-button[aria-pressed='true'] {
+  --stitch: rgba(255, 214, 140, 0.95);
+  color: #ffe3a3;
+  background: var(--leather-pressed);
+}
+
+.hud-icon {
+  justify-content: center;
+  width: 46px;
+  padding: 0;
+}
+
+/* The stats' states, in leather. */
+#hud .stat.hp .icon {
+  color: #ff8076;
+}
+
+#hud .stat.hp.low {
+  background: linear-gradient(180deg, #8a2a27, #4d1513);
+  border-color: var(--leather-edge);
+}
+
+#hud .stat.board.attention,
+#hud .stat.bench-queue {
+  --stitch: rgba(90, 58, 30, 0.6);
+  color: var(--ink);
+  text-shadow: 0 1px 0 rgba(255, 255, 255, 0.4);
+  background: linear-gradient(180deg, #f6dc8e, #c79634);
+  border-color: var(--leather-edge);
+  animation: hud-attention 1.6s var(--ease) infinite;
+}
+
+#hud .stat.board.attention .icon,
+#hud .stat.bench-queue .icon {
+  color: var(--ink);
+  filter: none;
+}
+
+@keyframes hud-attention {
+  0%,
+  100% {
+    box-shadow: var(--hud-drop), 0 0 0 0 rgba(243, 210, 122, 0);
+  }
+
+  50% {
+    box-shadow: var(--hud-drop), 0 0 0 5px rgba(243, 210, 122, 0.4);
+  }
+}
+
+#hud .stat.streak {
+  color: var(--parchment-light);
+  border-color: var(--leather-edge);
+}
+
+#hud .stat.streak.win .icon {
+  color: #ffa95a;
+}
+
+#hud .stat.streak.loss .icon {
+  color: #9fd3ff;
+}
+
+#hud .ring-status {
+  color: var(--tier);
+  background: var(--leather);
+  border-color: var(--leather-edge);
+}
+
+#hud .ring-status .icon {
+  color: var(--tier);
+}
+
+#hud .ring-status .value {
+  font-size: 15px;
+}
+
+/* Mount Doom: sealed in red wax. */
+#hud .mount-doom {
+  --stitch: rgba(255, 214, 180, 0.5);
+  background: linear-gradient(180deg, #a52d2f, #6f1b1d);
+}
+
+#hud .mount-doom .icon {
+  color: #ffd2a8;
+}
+
+/* The menu: Leave, the fight viewer and the frame cap. */
+.hud-menu {
+  position: relative;
+}
+
+.hud-menu-list {
+  position: absolute;
+  top: calc(100% + 8px);
+  right: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 210px;
+  padding: 9px;
+  background: var(--leather);
+  border: 2px solid var(--leather-edge);
+  border-radius: 10px;
+  outline: 1.5px dashed var(--stitch);
+  outline-offset: -6px;
+  box-shadow: var(--hud-drop);
+}
+
+.hud-menu-item {
+  display: flex;
+  gap: 10px;
+  align-items: center;
+  height: 36px;
+  padding: 0 12px;
+  font: 700 13.5px/1 var(--font-display);
+  color: var(--parchment-light);
+  text-align: left;
+  text-decoration: none;
+  cursor: pointer;
+  background: none;
+  border: 0;
+  border-radius: 6px;
+}
+
+.hud-menu-item:hover {
+  background: rgba(255, 220, 170, 0.1);
+}
+
+.hud-menu-item .icon {
+  width: 18px;
+  height: 18px;
+  color: var(--brass);
+}
+
+.hud-menu-item .check {
+  display: grid;
+  place-items: center;
+  width: 15px;
+  height: 15px;
+  margin-left: auto;
+  border: 1.5px solid var(--brass);
+  border-radius: 3px;
+}
+
+.hud-menu-item[aria-pressed='true'] .check {
+  background: var(--brass);
+}
+
+.hud-menu-item[aria-pressed='true'] .check::after {
+  width: 4px;
+  height: 8px;
+  margin-top: -2px;
+  content: '';
+  border: solid var(--leather-edge);
+  border-width: 0 2px 2px 0;
+  transform: rotate(45deg);
+}
+
+/* The stage tracker: the stage, its rounds as wax seals on an inked route, and the round's type. */
+.round-track {
+  display: flex;
+  gap: 14px;
+  align-items: center;
+  justify-self: center;
+  box-sizing: border-box;
+  height: 54px;
+  padding: 0 16px;
+  color: var(--ink);
+  background:
+    radial-gradient(ellipse at 50% 50%, transparent 55%, rgba(120, 80, 30, 0.32) 100%),
+    linear-gradient(180deg, var(--parchment), var(--parchment-deep));
+  border: 2px solid var(--ink);
+  border-radius: 10px;
+  box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.45), var(--hud-drop);
+}
+
+/* Out of a game: the name alone. */
 .round-track:has(.brand) {
   background: none;
   border-color: transparent;
@@ -615,191 +872,283 @@ kbd {
 
 .stage-label {
   display: flex;
-  flex-direction: column;
+  gap: 7px;
   align-items: center;
-  line-height: 1;
+  height: 34px;
+  padding-right: 14px;
+  border-right: 3px double rgba(90, 58, 30, 0.55);
 }
 
 .stage-eyebrow {
-  font: 600 9.5px/1 var(--font-body);
-  color: var(--text-muted);
+  font: 700 10px/1 var(--font-display);
+  color: var(--ink-soft);
   text-transform: uppercase;
-  letter-spacing: 0.12em;
+  letter-spacing: 0.16em;
 }
 
 .stage-number {
-  margin-top: 2px;
-  font: 700 20px/1 var(--font-display);
-  color: var(--gold-bright);
+  font: 700 22px/1 var(--font-display);
+  color: var(--ink);
 }
 
 .stage-rounds {
   position: relative;
   display: flex;
-  gap: 10px;
+  gap: 16px;
   align-items: center;
   padding: 0;
   margin: 0;
   list-style: none;
 }
 
-/* The line the rounds sit on. */
+/* The route the rounds sit on. */
 .stage-rounds::before {
   position: absolute;
   top: 50%;
-  right: 10px;
-  left: 10px;
-  height: 2px;
+  right: 14px;
+  left: 14px;
   content: '';
-  background: #2b3546;
+  border-top: 2.5px dashed var(--ink-route);
   transform: translateY(-50%);
 }
 
 .round-node {
-  --type: var(--gold);
-  --type-deep: var(--gold-deep);
+  --wax: var(--wax-council);
   position: relative;
   display: flex;
   align-items: center;
   justify-content: center;
+  outline: none;
 }
 
 .round-node.pvp {
-  --type: #e0605a;
-  --type-deep: #92302c;
+  --wax: var(--wax-pvp);
 }
 
 .round-node.pve {
-  --type: #4fbf7d;
-  --type-deep: #23704a;
+  --wax: var(--wax-pve);
 }
 
+/* A seal, a little uneven, as wax is. */
 .round-node .round-icon {
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  width: 24px;
-  height: 24px;
-  color: var(--type);
-  background: #141a24;
-  border: 1.5px solid color-mix(in srgb, var(--type) 55%, #2b3546);
-  border-radius: 50%;
+  width: 30px;
+  height: 30px;
+  color: rgba(255, 240, 220, 0.9);
+  background: radial-gradient(circle at 38% 30%, color-mix(in srgb, var(--wax) 55%, white) 0 8%, var(--wax) 42%, color-mix(in srgb, var(--wax) 55%, black) 100%);
+  border-radius: 46% 54% 50% 50% / 52% 46% 54% 48%;
+  box-shadow:
+    0 2px 0 rgba(60, 30, 10, 0.4),
+    inset 0 -2px 3px rgba(0, 0, 0, 0.35),
+    inset 0 0 0 3px color-mix(in srgb, var(--wax) 80%, black);
   transition:
-    transform var(--normal) var(--ease),
-    box-shadow var(--normal) var(--ease);
-}
-
-/* PvP rounds are diamonds, the others circles, so the two read apart by shape as well as colour. */
-.round-node.pvp .round-icon {
-  border-radius: 5px;
-  transform: rotate(45deg) scale(0.9);
+    width var(--normal) var(--ease),
+    height var(--normal) var(--ease);
 }
 
 .round-node .round-icon .icon {
-  width: 14px;
-  height: 14px;
+  width: 15px;
+  height: 15px;
+  filter: drop-shadow(0 1px 0 rgba(0, 0, 0, 0.35));
 }
 
-.round-node.pvp .round-icon .icon {
-  transform: rotate(-45deg);
+.round-node:focus-visible .round-icon {
+  box-shadow: var(--focus);
 }
 
 .round-node.done .round-icon {
-  opacity: 0.55;
+  opacity: 0.78;
 }
 
+/* Rounds to come: inked circles. */
 .round-node.next .round-icon {
-  color: color-mix(in srgb, var(--type) 70%, #7d8796);
-  border-style: dashed;
+  color: var(--ink-route);
+  background: rgba(243, 230, 196, 0.6);
+  border: 2px dashed var(--ink-route);
+  border-radius: 50%;
+  box-shadow: none;
+}
+
+.round-node.next .round-icon .icon {
+  filter: none;
 }
 
 .round-node.current .round-icon {
-  width: 32px;
-  height: 32px;
-  color: #fff;
-  background: linear-gradient(180deg, var(--type), var(--type-deep));
-  border-color: color-mix(in srgb, var(--type) 60%, white);
-  box-shadow: 0 0 14px color-mix(in srgb, var(--type) 50%, transparent), inset 0 1px 0 rgba(255, 255, 255, 0.4);
-  animation: round-now 2s var(--ease) infinite;
-}
-
-.round-node.current.pvp .round-icon {
-  transform: rotate(45deg) scale(0.85);
+  width: 42px;
+  height: 42px;
+  box-shadow:
+    0 3px 0 rgba(60, 30, 10, 0.45),
+    inset 0 -3px 4px rgba(0, 0, 0, 0.35),
+    inset 0 0 0 4px color-mix(in srgb, var(--wax) 80%, black),
+    0 0 0 3px rgba(255, 236, 190, 0.9);
+  animation: seal-now 2.4s var(--ease) infinite;
 }
 
 .round-node.current .round-icon .icon {
-  width: 19px;
-  height: 19px;
+  width: 21px;
+  height: 21px;
 }
 
-@keyframes round-now {
+/* The ribbon's tails under the seal on screen. */
+.round-node.current::before {
+  position: absolute;
+  bottom: -9px;
+  left: 50%;
+  z-index: -1;
+  width: 26px;
+  height: 16px;
+  content: '';
+  background: color-mix(in srgb, var(--wax) 75%, black);
+  clip-path: polygon(0 0, 100% 0, 100% 100%, 75% 70%, 50% 100%, 25% 70%, 0 100%);
+  transform: translateX(-50%);
+}
+
+@keyframes seal-now {
   0%,
   100% {
-    box-shadow: 0 0 10px color-mix(in srgb, var(--type) 40%, transparent), inset 0 1px 0 rgba(255, 255, 255, 0.4);
+    filter: drop-shadow(0 0 2px color-mix(in srgb, var(--wax) 40%, transparent));
   }
 
   50% {
-    box-shadow: 0 0 18px color-mix(in srgb, var(--type) 75%, transparent), inset 0 1px 0 rgba(255, 255, 255, 0.4);
+    filter: drop-shadow(0 0 9px color-mix(in srgb, var(--wax) 80%, transparent));
   }
 }
 
-/* The person's result in a round played: a small badge on its icon. */
+/* The person's result in a round played: an inked mark on its seal. */
 .round-result {
   position: absolute;
-  right: -5px;
-  bottom: -5px;
+  top: -6px;
+  right: -7px;
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  width: 13px;
-  height: 13px;
-  color: #fff;
-  background: #6b7280;
-  border: 1px solid #11161e;
+  width: 16px;
+  height: 16px;
+  color: var(--parchment-light);
+  background: var(--ink-soft);
+  border: 1.5px solid var(--parchment);
   border-radius: 50%;
 }
 
 .round-result .icon {
   width: 9px;
   height: 9px;
-  stroke-width: 3;
+  stroke-width: 3.2;
 }
 
 .round-node.victory .round-result {
-  background: #2f9d5c;
+  background: var(--ink);
 }
 
 .round-node.defeat .round-result {
-  background: #c2413c;
+  background: #7a1d1f;
 }
 
-.round-text {
-  display: flex;
-  flex-direction: column;
-  line-height: 1.1;
+/* The banner under the round on screen: its number and type. */
+.round-banner {
+  position: absolute;
+  top: calc(100% + 12px);
+  left: 50%;
+  padding: 7px 24px;
+  font: 700 12.5px/1 var(--font-display);
+  color: var(--parchment-light);
+  white-space: nowrap;
+  letter-spacing: 0.04em;
+  pointer-events: none;
+  background: linear-gradient(180deg, #a52d2f, #6f1b1d);
+  filter: drop-shadow(0 3px 0 #140b05);
+  clip-path: polygon(0 0, 100% 0, calc(100% - 11px) 50%, 100% 100%, 0 100%, 11px 50%);
+  transform: translateX(-50%);
 }
 
-.round-number {
-  font: 800 16px/1 var(--font-body);
-  font-variant-numeric: tabular-nums;
-  color: var(--text-strong);
-  letter-spacing: 0.02em;
+.round-banner b {
+  color: #ffe3a3;
 }
 
-.round-name {
-  margin-top: 3px;
-  font: 700 10px/1 var(--font-body);
-  color: var(--gold);
-  text-transform: uppercase;
-  letter-spacing: 0.1em;
+.round-type {
+  display: inline-flex;
+  gap: 6px;
+  align-items: center;
+  height: 34px;
+  padding-left: 14px;
+  font: 700 13px/1 var(--font-display);
+  color: #6e4f12;
+  white-space: nowrap;
+  letter-spacing: 0.08em;
+  border-left: 3px double rgba(90, 58, 30, 0.55);
 }
 
-.round-name.pvp {
-  color: #f08a84;
+.round-type .icon {
+  width: 16px;
+  height: 16px;
 }
 
-.round-name.pve {
-  color: #7fdca5;
+.round-type.pvp {
+  color: #8e1f24;
+}
+
+.round-type.pve {
+  color: #23582f;
+}
+
+/* Narrower windows: smaller pieces, so the stats stay clear of the tracker. */
+@media (max-width: 1280px) {
+  #hud {
+    gap: 8px;
+    padding-inline: 10px;
+  }
+
+  #hud .hud-group {
+    gap: 6px;
+  }
+
+  .hud-tile {
+    height: 40px;
+    padding: 0 12px 0 10px;
+    font-size: 17px;
+    outline-offset: -5px;
+  }
+
+  .hud-tile .icon {
+    width: 19px;
+    height: 19px;
+  }
+
+  .hud-button {
+    font-size: 13px;
+  }
+
+  .hud-icon {
+    width: 40px;
+    padding: 0;
+  }
+
+  .round-track {
+    gap: 10px;
+    height: 50px;
+    padding: 0 12px;
+  }
+
+  .stage-label {
+    padding-right: 10px;
+  }
+
+  .stage-rounds {
+    gap: 11px;
+  }
+
+  .round-type {
+    padding-left: 10px;
+  }
+}
+
+@media (max-width: 1100px) {
+  .stage-eyebrow,
+  .round-type {
+    display: none;
+  }
 }
 
 /* The person's level, XP, gold and the timer, at the bottom by the shop. */
@@ -2366,6 +2715,21 @@ body.play input {
   scrollbar-width: thin;
 }
 
+/* On the play page they start below the top bar, which floats over the board. */
+body.play {
+  --hud-clear: 72px;
+  --hud-banner-clear: 108px;
+}
+
+body.play .side-panel {
+  top: var(--hud-clear);
+  max-height: calc(100% - var(--hud-clear) - 12px);
+}
+
+body.play #traits {
+  max-height: min(calc(100% - var(--hud-clear) - 12px), 55vh);
+}
+
 /* Short enough to stay clear of the bench, scrolling if a board has many traits. */
 #traits {
   left: 12px;
@@ -2716,7 +3080,7 @@ body.play input {
 
 .viewing-bar {
   position: absolute;
-  top: 12px;
+  top: var(--hud-banner-clear, 12px);
   left: 50%;
   z-index: var(--z-panel);
   display: flex;
@@ -3628,7 +3992,7 @@ body.play input {
 
 /* The Gifts of Lothlórien on offer, at the top while planning. */
 #gift-offer {
-  top: 12px;
+  top: var(--hud-banner-clear, 12px);
   left: 50%;
   width: min(760px, calc(100% - 500px));
   min-width: 500px;

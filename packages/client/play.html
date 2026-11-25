@@ -10,23 +10,28 @@
     <header id="hud" class="topbar">
       <div class="hud-side">
         <div id="stats" class="hud-group stats" hidden>
-          <span id="stat-hp" class="pill stat hp"><span data-icon="hp"></span><span class="value"></span></span>
-          <span id="stat-board" class="pill stat board"><span data-icon="board"></span><span class="value"></span></span>
-          <span id="stat-waiting" class="pill stat bench-queue" hidden><span data-icon="timer"></span><span class="value"></span></span>
-          <span id="stat-streak" class="pill stat streak" hidden><span data-icon="streak-win" class="win"></span><span data-icon="streak-loss" class="loss"></span><span class="value"></span></span>
-          <span id="stat-ring-status" class="pill stat ring-status" hidden><span data-icon="one-ring"></span><span class="value"></span></span>
-          <button id="mount-doom" class="btn btn-danger btn-sm" hidden><span data-icon="volcano"></span>Mount Doom</button>
+          <span id="stat-hp" class="hud-tile stat hp"><span data-icon="hp"></span><span class="value"></span></span>
+          <span id="stat-board" class="hud-tile stat board"><span data-icon="board"></span><span class="value"></span></span>
+          <span id="stat-waiting" class="hud-tile stat bench-queue" hidden><span data-icon="timer"></span><span class="value"></span></span>
+          <span id="stat-streak" class="hud-tile stat streak" hidden><span data-icon="streak-win" class="win"></span><span data-icon="streak-loss" class="loss"></span><span class="value"></span></span>
+          <span id="stat-ring-status" class="hud-tile stat ring-status" hidden><span data-icon="one-ring"></span><span class="value"></span></span>
+          <button id="mount-doom" class="hud-tile hud-button mount-doom" hidden><span data-icon="volcano"></span>Mount Doom</button>
         </div>
       </div>
       <div id="round" class="round-track"></div>
       <div class="hud-side hud-end">
         <div class="hud-group">
-          <button id="speed" class="btn btn-secondary btn-sm" hidden><span data-icon="speed"></span><span class="label">1×</span></button>
-          <button id="toggle-meter" class="btn btn-ghost btn-sm" aria-pressed="false" hidden><span data-icon="blade"></span>Damage</button>
-          <button id="skip" class="btn btn-secondary btn-sm" hidden><span data-icon="skip"></span>Skip fight</button>
-          <button id="leave-game" class="btn btn-ghost btn-sm" hidden><span data-icon="leave"></span>Leave</button>
-          <button id="frame-cap" class="btn btn-ghost btn-sm btn-icon" aria-pressed="false" aria-label="Cap the frame rate at 30 fps"><span data-icon="gauge"></span></button>
-          <a id="to-viewer" href="./index.html" class="btn btn-ghost btn-sm"><span data-icon="viewer"></span>Fight viewer</a>
+          <button id="speed" class="hud-tile hud-button" hidden><span data-icon="speed"></span><span class="label">1×</span></button>
+          <button id="toggle-meter" class="hud-tile hud-button" aria-pressed="false" hidden><span data-icon="blade"></span>Damage</button>
+          <button id="skip" class="hud-tile hud-button" hidden><span data-icon="skip"></span>Skip fight</button>
+          <div class="hud-menu">
+            <button id="hud-menu" class="hud-tile hud-button hud-icon" aria-expanded="false" aria-controls="hud-menu-list" aria-label="Menu"><span data-icon="menu"></span></button>
+            <div id="hud-menu-list" class="hud-menu-list" hidden>
+              <button id="leave-game" class="hud-menu-item" hidden><span data-icon="leave"></span>Leave game</button>
+              <a id="to-viewer" href="./index.html" class="hud-menu-item"><span data-icon="viewer"></span>Fight viewer</a>
+              <button id="frame-cap" class="hud-menu-item" aria-pressed="false"><span data-icon="gauge"></span>Cap at 30 fps<span class="check" aria-hidden="true"></span></button>
+            </div>
+          </div>
         </div>
       </div>
     </header>
