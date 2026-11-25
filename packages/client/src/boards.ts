@@ -1,22 +1,25 @@
-// Boards to fight with: the sample boards from the sim's tests, or random ones
-// (docs/viewer-spec.md section 6). Placements are in each team's own perspective.
+// Boards to fight with: the sample boards from the sim's tests, each PvE round's monsters, or random
+// ones (docs/viewer-spec.md section 6). Placements are in each team's own perspective.
 
 import {
   BOARD_COLS,
   COMBINED_ITEM_IDS,
   MAX_ITEMS,
+  PVE_ROUNDS,
   TEAM_ROWS,
   UNITS,
   boardPlace,
   createRng,
   type ItemId,
   type PlacedUnit,
+  type PveRound,
   type Star,
+  type FighterId,
   type Team,
   type UnitId,
 } from '@lotr-tactics/sim';
 
-function placed(unitId: UnitId, col: number, row: number, star: Star = 1, items: readonly ItemId[] = []): PlacedUnit {
+function placed(unitId: FighterId, col: number, row: number, star: Star = 1, items: readonly ItemId[] = []): PlacedUnit {
   return { unitId, star, col, row, items };
 }
 
@@ -90,12 +93,44 @@ export const PRESETS = {
   ],
 } satisfies Record<string, PlacedUnit[]>;
 
-export type BoardChoice = keyof typeof PRESETS | 'random';
+/** A PvE round, as `PVE_ROUNDS` keys them: "stage-round", or `later`. */
+type PveKey = keyof typeof PVE_ROUNDS;
 
-export const BOARD_CHOICES: readonly BoardChoice[] = [...(Object.keys(PRESETS) as (keyof typeof PRESETS)[]), 'random'];
+/** A PvE round's monsters as a board: `pve-` and the round's key, such as `pve-1-1` or `pve-later`. */
+export type PveChoice = `pve-${PveKey}`;
+
+export type BoardChoice = keyof typeof PRESETS | PveChoice | 'random';
+
+/** Each PvE round's board, in `PVE_ROUNDS`'s order. */
+export const PVE_CHOICES: readonly PveChoice[] = (Object.keys(PVE_ROUNDS) as PveKey[]).map((key): PveChoice => `pve-${key}`);
+
+export const BOARD_CHOICES: readonly BoardChoice[] = [...(Object.keys(PRESETS) as (keyof typeof PRESETS)[]), ...PVE_CHOICES, 'random'];
+
+/** The board pickers' groups: the presets and a random board, then the PvE rounds. */
+export const BOARD_GROUPS: readonly { readonly label: string; readonly choices: readonly BoardChoice[] }[] = [
+  { label: 'Boards', choices: BOARD_CHOICES.filter((c) => !isPveChoice(c)) },
+  { label: 'PvE rounds', choices: PVE_CHOICES },
+];
 
 export function isBoardChoice(value: string): value is BoardChoice {
   return (BOARD_CHOICES as readonly string[]).includes(value);
+}
+
+function isPveChoice(choice: BoardChoice): choice is PveChoice {
+  return (PVE_CHOICES as readonly string[]).includes(choice);
+}
+
+/** What a board picker shows for a choice: a PvE round as "PvE 1-1" or "PvE later", the rest by name. */
+export function boardLabel(choice: BoardChoice): string {
+  return isPveChoice(choice) ? `PvE ${choice.slice('pve-'.length)}` : choice;
+}
+
+/**
+ * A PvE round's monsters, placed as the game places them (docs/game-spec.md section 9.7): 1★ and
+ * without items, on the hexes `PVE_ROUNDS` gives in the team's own perspective, so they fit either side.
+ */
+export function pveBoard(round: PveRound): PlacedUnit[] {
+  return round.monsters.map(({ unitId, col, row }) => placed(unitId, col, row));
 }
 
 /** Units on a random board. */
@@ -109,9 +144,11 @@ export function fightBoards(a: BoardChoice, b: BoardChoice, seed: number): { A: 
   return { A, B: ringInA ? B.map((p) => ({ unitId: p.unitId, star: p.star, col: p.col, row: p.row, items: p.items })) : B };
 }
 
-/** A board for one team: a preset, or a random one from the seed and the team. */
+/** A board for one team: a preset, a PvE round's monsters, or a random one from the seed and the team. */
 export function boardFor(choice: BoardChoice, seed: number, team: Team): readonly PlacedUnit[] {
-  return choice === 'random' ? randomBoard(seed, team) : PRESETS[choice];
+  if (choice === 'random') return randomBoard(seed, team);
+  if (isPveChoice(choice)) return pveBoard(PVE_ROUNDS[choice.slice('pve-'.length) as PveKey]);
+  return PRESETS[choice];
 }
 
 /**

@@ -1,7 +1,7 @@
 // The fight viewer page: controls, URL state and the frame loop (docs/viewer-spec.md section 6).
 
 import { LAST_TICK, OVERTIME_START_TICK, TICKS_PER_SECOND, createCombat, type CombatEvent } from '@lotr-tactics/sim';
-import { BOARD_CHOICES, fightBoards, isBoardChoice, type BoardChoice } from './boards.js';
+import { BOARD_GROUPS, boardLabel, fightBoards, isBoardChoice, type BoardChoice } from './boards.js';
 import { describe } from './log.js';
 import { Playback } from './playback.js';
 import { FightScene } from './scene.js';
@@ -48,7 +48,12 @@ const meter = new MeterPanel(element('meter'), element('toggle-meter'), true);
 const frameCap = frameCapButton(element('frame-cap'));
 
 for (const select of [boardA, boardB]) {
-  for (const choice of BOARD_CHOICES) select.add(new Option(choice, choice));
+  for (const { label, choices } of BOARD_GROUPS) {
+    const group = document.createElement('optgroup');
+    group.label = label;
+    for (const choice of choices) group.append(new Option(boardLabel(choice), choice));
+    select.append(group);
+  }
 }
 const scene = new FightScene(element('view'));
 let settings = readSettings();

@@ -43,7 +43,7 @@ packages/client/
     flow.ts        the play page's steps from the game's messages, what it sends back, the timer, a round's results with what it does to the person's HP and gold, what the HUD shows while a fight plays, and whose board is on screen (no Three.js, no DOM)
     connection.ts  offline and WebSocket connections to a game (server-spec.md section 10)
     fights.ts      which fight in a round is the person's
-    boards.ts      preset and random boards
+    boards.ts      preset, PvE round and random boards
     layout.ts      hex and bench positions, and finding the place under a point
     playback.ts    stepping the fight, what to draw at a moment, and what each unit has done, for animation.ts (no Three.js, no DOM)
     animation.ts   which clip each unit plays at a display time, and how far into it (no Three.js, no DOM)
@@ -410,6 +410,7 @@ How abilities, hits and statuses look: the **punchy** style, chosen on 6 Novembe
 
 - **Fight:** team A board, team B board, seed, stage, and a New fight button.
   - Presets: duel, tanks, archers, mixed, full, items (all 21 combined items), ring (a One Ring bearer), rings (the Three, the Seven and the Nine), stars (Frodo, Aragorn and Éomer at 1★, 2★ and 3★, for star levels on models), traits.
+  - PvE rounds: `pve-1-1`, `pve-1-2`, `pve-1-3`, `pve-2-7`, `pve-3-7`, `pve-4-7`, `pve-5-7` and `pve-later`, one for each round in the sim's `PVE_ROUNDS` (`data/pve.ts`, `game-spec.md` section 9.7) and built from it, so they follow the data: the round's monsters as the game places them, 1★ and without items, on its hexes in the team's own perspective, so they fit either side. The pickers list them in a group of their own, as "PvE 1-1" to "PvE later". For example `#a=full&b=pve-later` is the Balrog's round. The stage is still the one picked.
   - Random: 7 units with star levels from 1 to 3 and up to 3 random items each, placed at random on their half, from the seed and the team.
 - **Playback:**
   - Play/pause, an icon button that the space bar also toggles.
@@ -429,6 +430,7 @@ How abilities, hits and statuses look: the **punchy** style, chosen on 6 Novembe
 The parts without Three.js are tested with Vitest:
 - the hex layout;
 - random boards, which are valid and the same for the same seed;
+- the PvE round boards: one for each round in `PVE_ROUNDS`, the game's monsters for that round at 1★ without items on the data's hexes, the same on either side, and a fight against each that plays to its end with them on either side;
 - playback timing, interpolated positions and projectiles, a unit that dies mid-step or mid-dash staying where it died, a dash the fight ends before never setting off, floating texts on a unit starting clear of each other, and that frames between ticks keep the same lists of effects and events, so they allocate nothing;
 - that a floating number pops in on its inner element, never the one `CSS2DRenderer` positions (ui/float.ts);
 - the frame rate cap: every frame while off; 30 a second while on at 60, 120 and 144 Hz, on a steady grid, with frames a little early or late; a frame up to 2 ms early runs; every frame of a slower screen; no burst after a long gap; switching on and off from the next frame;

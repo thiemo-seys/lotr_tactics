@@ -1,12 +1,60 @@
-import { MAX_ITEMS, createCombat, isCombined } from '@lotr-tactics/sim';
+import { MAX_ITEMS, MONSTERS, PVE_ROUNDS, createCombat, isCombined, pveRound } from '@lotr-tactics/sim';
 import { describe, expect, it } from 'vitest';
-import { BOARD_CHOICES, PRESETS, RANDOM_BOARD_SIZE, fightBoards, isBoardChoice, randomBoard } from '../src/boards.js';
+import {
+  BOARD_CHOICES,
+  BOARD_GROUPS,
+  PRESETS,
+  PVE_CHOICES,
+  RANDOM_BOARD_SIZE,
+  boardFor,
+  boardLabel,
+  fightBoards,
+  isBoardChoice,
+  randomBoard,
+} from '../src/boards.js';
 
 describe('boards', () => {
-  it('offers every preset and a random board', () => {
-    expect(BOARD_CHOICES).toEqual([...Object.keys(PRESETS), 'random']);
+  it('offers every preset, every PvE round and a random board', () => {
+    expect(PVE_CHOICES).toEqual(Object.keys(PVE_ROUNDS).map((key) => `pve-${key}`));
+    expect(PVE_CHOICES).toEqual(['pve-1-1', 'pve-1-2', 'pve-1-3', 'pve-2-7', 'pve-3-7', 'pve-4-7', 'pve-5-7', 'pve-later']);
+    expect(BOARD_CHOICES).toEqual([...Object.keys(PRESETS), ...PVE_CHOICES, 'random']);
     expect(isBoardChoice('full')).toBe(true);
+    expect(isBoardChoice('pve-later')).toBe(true);
+    expect(isBoardChoice('pve-9-9')).toBe(false);
     expect(isBoardChoice('nonsense')).toBe(false);
+  });
+
+  it('groups the pickers into boards and PvE rounds, with every choice once', () => {
+    expect(BOARD_GROUPS.map((g) => g.label)).toEqual(['Boards', 'PvE rounds']);
+    expect(BOARD_GROUPS[1]!.choices).toEqual(PVE_CHOICES);
+    expect(BOARD_GROUPS.flatMap((g) => g.choices).toSorted()).toEqual([...BOARD_CHOICES].toSorted());
+    expect(boardLabel('pve-1-1')).toBe('PvE 1-1');
+    expect(boardLabel('pve-later')).toBe('PvE later');
+    expect(boardLabel('full')).toBe('full');
+  });
+
+  it('puts each PvE round’s monsters on a side as the game does: 1★, no items, on the data’s hexes', () => {
+    for (const choice of PVE_CHOICES) {
+      const round = PVE_ROUNDS[choice.slice('pve-'.length) as keyof typeof PVE_ROUNDS];
+      const board = boardFor(choice, 1, 'A');
+      expect(board).toEqual(round.monsters.map((m) => ({ ...m, star: 1, items: [] })));
+      expect(boardFor(choice, 2, 'B')).toEqual(board);
+      expect(board.every((p) => Object.hasOwn(MONSTERS, p.unitId))).toBe(true);
+    }
+    // The same monsters as the game's own PvE rounds, from stage 6 on for `later`.
+    expect(boardFor('pve-1-1', 1, 'B')).toEqual(pveRound(1, 1).monsters.map((m) => ({ ...m, star: 1, items: [] })));
+    expect(boardFor('pve-later', 1, 'B')).toEqual(pveRound(6, 7).monsters.map((m) => ({ ...m, star: 1, items: [] })));
+    expect(boardFor('pve-later', 1, 'B').map((p) => p.unitId)).toContain('balrog');
+  });
+
+  it('plays a PvE round to its end on either side', () => {
+    for (const choice of PVE_CHOICES) {
+      for (const teams of [fightBoards('full', choice, 1), fightBoards(choice, 'full', 1)]) {
+        const combat = createCombat({ seed: 1, stage: 6, teams });
+        while (!combat.isOver()) combat.step();
+        expect(['A', 'B', 'draw']).toContain(combat.result().outcome);
+      }
+    }
   });
 
   it('gives boards the sim accepts, whichever two are chosen', () => {
