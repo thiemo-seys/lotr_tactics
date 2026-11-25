@@ -1237,6 +1237,49 @@ kbd {
   color: var(--gold-bright);
 }
 
+/* While a unit is offered for sale, the gold it brings, then the gold after the sale. */
+.player-bar .stat.gold.selling {
+  border-color: rgba(243, 210, 122, 0.75);
+  box-shadow:
+    var(--inner-light),
+    0 0 0 3px rgba(243, 210, 122, 0.12);
+}
+
+.player-bar .stat.gold .sale {
+  display: inline-flex;
+  gap: 6px;
+  align-items: center;
+  margin-left: 4px;
+}
+
+.player-bar .stat.gold .sale[hidden] {
+  display: none;
+}
+
+.player-bar .stat.gold .sale .plus {
+  padding: 3px 7px;
+  font-size: 13px;
+  font-weight: 700;
+  color: var(--gold-ink);
+  background: var(--gold-gradient);
+  border-radius: var(--radius-pill);
+}
+
+.player-bar .stat.gold .sale .arrow {
+  font-weight: 500;
+  color: var(--text-dim);
+}
+
+.player-bar .stat.gold .sale .total {
+  font-weight: 700;
+  color: var(--gold-bright);
+}
+
+.player-bar .stat.gold:not(.sale-over) .sale :is(.arrow, .total),
+.player-bar .stat.gold.sale-over .sale .plus {
+  display: none;
+}
+
 .player-bar .timer {
   min-width: 92px;
   background: var(--leather);
@@ -4013,35 +4056,129 @@ body.play #traits {
   font-size: 12.5px;
 }
 
-/* Dropping a dragged unit on the bar sells it. */
-.sell-zone {
+/* While a unit that can be sold is dragged, the bar is framed in gold, its contents dim, and a tag
+   in the middle offers the sale with its price; over the bar, where dropping sells it, all brighten. */
+#shop-bar > :is(.shop-actions, #shop, .shop-side) {
+  transition:
+    opacity var(--normal) var(--ease),
+    filter var(--normal) var(--ease);
+}
+
+#shop-bar.offering {
+  box-shadow:
+    0 -4px 16px rgba(0, 0, 0, 0.45),
+    inset 0 0 0 2px rgba(214, 176, 90, 0.55),
+    inset 0 0 46px rgba(214, 176, 90, 0.12);
+}
+
+#shop-bar.offering > :is(.shop-actions, #shop, .shop-side) {
+  opacity: 0.5;
+  filter: saturate(0.55);
+}
+
+#shop-bar.offer-over {
+  background: linear-gradient(180deg, #2a2312, #15110a);
+  box-shadow:
+    0 -4px 16px rgba(0, 0, 0, 0.45),
+    inset 0 0 0 2px var(--gold-bright),
+    inset 0 0 60px rgba(243, 210, 122, 0.22),
+    0 0 30px rgba(243, 210, 122, 0.25);
+}
+
+#shop-bar.offer-over > :is(.shop-actions, #shop, .shop-side) {
+  opacity: 0.28;
+}
+
+.sell-offer {
   position: absolute;
-  inset: 4px;
-  display: flex;
-  gap: 10px;
+  top: 50%;
+  left: 50%;
+  z-index: 1;
+  display: inline-flex;
+  gap: 14px;
   align-items: center;
-  justify-content: center;
-  font: 700 18px/1 var(--font-display);
-  color: var(--ink);
+  height: 58px;
+  padding: 0 22px 0 16px;
+  font: 700 19px/1 var(--font-display);
+  color: var(--text-strong);
+  white-space: nowrap;
   pointer-events: none;
   visibility: hidden;
-  background:
-    radial-gradient(ellipse at 50% 50%, transparent 55%, rgba(120, 80, 30, 0.32) 100%),
-    linear-gradient(180deg, var(--parchment), var(--parchment-deep));
-  border: 2px dashed var(--ink-route);
-  border-radius: var(--radius-lg);
+  background: rgba(20, 16, 9, 0.94);
+  border: 1.5px solid rgba(243, 210, 122, 0.7);
+  border-radius: var(--radius-pill);
+  box-shadow:
+    0 10px 26px rgba(0, 0, 0, 0.55),
+    0 0 0 5px rgba(214, 176, 90, 0.1);
   opacity: 0;
-  transition: opacity var(--fast) var(--ease);
+  transform: translate(-50%, calc(-50% + 6px));
+  transition:
+    opacity var(--fast) var(--ease),
+    transform var(--normal) var(--ease),
+    visibility 0s linear var(--fast);
 }
 
-.sell-zone .icon {
-  width: 26px;
-  height: 26px;
+.sell-offer .icon {
+  width: 30px;
+  height: 30px;
+  color: var(--gold-bright);
 }
 
-#shop-bar.selling .sell-zone {
+.sell-offer .icon .f {
+  fill: rgba(243, 210, 122, 0.25);
+}
+
+.sell-offer .sep {
+  align-self: stretch;
+  width: 1px;
+  margin: 12px 0;
+  background: rgba(243, 210, 122, 0.35);
+}
+
+.sell-offer .sell-price {
+  display: inline-flex;
+  gap: 6px;
+  align-items: center;
+  font-size: 30px;
+  font-variant-numeric: tabular-nums;
+  color: var(--gold-bright);
+}
+
+.sell-offer .sell-price .icon {
+  width: 24px;
+  height: 24px;
+}
+
+#shop-bar.offering .sell-offer {
   visibility: visible;
   opacity: 1;
+  transform: translate(-50%, -50%);
+  transition:
+    opacity var(--fast) var(--ease),
+    transform var(--normal) var(--ease),
+    visibility 0s;
+}
+
+#shop-bar.offer-over .sell-offer {
+  color: var(--gold-ink);
+  background: var(--gold-gradient);
+  border-color: #fff3c4;
+  box-shadow:
+    0 10px 30px rgba(0, 0, 0, 0.55),
+    0 0 34px rgba(243, 210, 122, 0.55);
+  transform: translate(-50%, -50%) scale(1.08);
+}
+
+#shop-bar.offer-over .sell-offer :is(.icon, .sell-price) {
+  color: var(--gold-ink);
+}
+
+#shop-bar.offer-over .sell-offer .icon .f {
+  fill: rgba(30, 22, 6, 0.15);
+}
+
+#shop-bar.offer-over .sell-offer .sep {
+  background: rgba(30, 22, 6, 0.35);
 }
 
 /* What follows the mouse while dragging. */

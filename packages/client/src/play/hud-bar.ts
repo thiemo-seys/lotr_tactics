@@ -1,13 +1,14 @@
 // The play page's HUD (docs/game-spec.md section 12): at the top, HP, the board count, the streak
 // and the One Ring's status, with the stage tracker in the middle, the stage's rounds as icons by
 // type; at the bottom, by the shop, the level with its XP, gold and a timer that drains and turns
-// urgent. While the person's fight plays, the stats are as they were in its round's planning
+// urgent. While a unit is offered for sale, the gold shows what the sale brings, then the gold after it. While the person's fight plays, the stats are as they were in its round's planning
 // (PlayFlow.shownView), and the tracker shows its round's result only once its results do.
 
 import { RING, XP, roundType } from '@lotr-tactics/sim';
 import type { PlayFlow } from '../flow.js';
 import { hudStats, plural, ringStatus, shopOddsView, stageTrack, timerView, type HudStats, type StageNode } from '../hud.js';
 import { ROUND_ICONS } from '../icons.js';
+import type { SaleOffer } from '../shop.js';
 import { actionTip, ringTip, textTip } from '../tips.js';
 import { el, icon, rebuild, setText, show, toggle } from '../ui/dom.js';
 import { dropdown } from '../ui/dropdown.js';
@@ -37,6 +38,9 @@ export class HudBar {
   private readonly xpText = this.pill('level').querySelector('.xp-text') as HTMLElement;
   private readonly xpBar = this.pill('level').querySelector('.xp-bar i') as HTMLElement;
   private readonly ring = this.pill('ring-status');
+  private readonly sale = this.pill('gold').querySelector('.sale') as HTMLElement;
+  private readonly salePrice = this.sale.querySelector('.plus') as HTMLElement;
+  private readonly saleTotal = this.sale.querySelector('.total') as HTMLElement;
   private readonly mountDoom = element('mount-doom');
   /** The drain bar's width in steps of half a percent, to write it only when it moves. */
   private drained = -1;
@@ -159,6 +163,20 @@ export class HudBar {
       this.ring.dataset.tier = ring.tier.toLowerCase();
     }
     show(this.mountDoom, flow.show.kind === 'planning' && flow.check({ type: 'destroyRing' }).ok);
+  }
+
+  /**
+   * While a unit is offered for sale (ShopBar.offerSale), the gold it brings by the person's gold,
+   * then, while the pointer is over the shop bar (`over`), the gold after the sale; null when none is.
+   */
+  previewSale(offer: SaleOffer | null, over = false): void {
+    const gold = this.pill('gold');
+    show(this.sale, offer !== null);
+    toggle(gold, 'selling', offer !== null);
+    toggle(gold, 'sale-over', offer !== null && over);
+    if (offer === null) return;
+    setText(this.salePrice, `+${offer.price}`);
+    setText(this.saleTotal, `${offer.goldAfter}`);
   }
 
   /** The person's stats as shown: during their fight, from its planning, with the units that fight on the board. */

@@ -3,7 +3,7 @@ import { PLAYER, POOL_COPIES, SHOP } from '../src/data/economy.js';
 import type { ItemId } from '../src/data/items.js';
 import { UNITS, type UnitId } from '../src/data/units.js';
 import { boardSlot, unitAt, type Place } from '../src/game/places.js';
-import { Player, baseIncome, interestOn, shopOdds, shopOddsLevel, streakGold, xpForNextLevel } from '../src/game/player.js';
+import { Player, baseIncome, interestOn, sellPrice, shopOdds, shopOddsLevel, streakGold, xpForNextLevel } from '../src/game/player.js';
 import { addItem } from '../src/game/rules.js';
 import { Pool, UNIT_IDS, copiesIn } from '../src/game/pool.js';
 import { createRng, randomInt } from '../src/rng.js';
@@ -188,6 +188,17 @@ describe('selling', () => {
     expect(player.gold).toBe(1 + 3 * 3 + 9 * 5);
     expect(copies(pool, [player])).toEqual(STARTING_COPIES);
     expect(pool.count('sauron')).toBe(9);
+  });
+
+  it('pays what sellPrice says, which the client shows before a sale', () => {
+    expect(sellPrice({ unitId: 'sam', star: 1 })).toBe(1);
+    expect(sellPrice({ unitId: 'gimli', star: 2 })).toBe(3 * 3);
+    expect(sellPrice({ unitId: 'sauron', star: 3 })).toBe(9 * 5);
+    const { player, pool } = setup(4);
+    give(player, pool, { bench: 2 }, 'gimli', 2);
+    const unit = unitAt(player, { bench: 2 })!;
+    expect(player.sell({ bench: 2 }).ok).toBe(true);
+    expect(player.gold).toBe(4 + sellPrice(unit));
   });
 
   it('refuses an empty or invalid place', () => {
