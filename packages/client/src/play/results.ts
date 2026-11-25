@@ -6,6 +6,7 @@ import { PLAYER } from '@lotr-tactics/sim';
 import type { RoundRecord } from '@lotr-tactics/server';
 import { coinValues, ordinal, type IncomeLine, type IncomeSource, type PlayFlow, type RoundChange, type RoundResults } from '../flow.js';
 import { ROUND_ICONS, type IconName } from '../icons.js';
+import { cue } from '../sound.js';
 import { textTip } from '../tips.js';
 import { el, icon, rebuild, show } from '../ui/dom.js';
 import { setTip } from '../ui/tooltip.js';
@@ -131,7 +132,8 @@ function prepare(parts: Parts, { hp, gold }: RoundChange): void {
 
 /**
  * Plays the results in: the HP takes its hit, shaking and shedding shards as its ring shrinks, then
- * one coin per gold flies from where it came from into the purse, which counts up as they land.
+ * one coin per gold flies from where it came from into the purse, which counts up as they land,
+ * each with its sound.
  * It stops if the panel is built again.
  */
 function animate(panel: HTMLElement, key: string, parts: Parts, change: RoundChange): void {
@@ -143,6 +145,7 @@ function animate(panel: HTMLElement, key: string, parts: Parts, change: RoundCha
 
   at(HIT_AT, () => {
     if (lost > 0) {
+      cue('hurt');
       parts.flash.animate([{ opacity: 0.95 }, { opacity: 0 }], { duration: 380, easing: 'ease-out' });
       parts.emblem.animate(
         [
@@ -201,6 +204,7 @@ function animate(panel: HTMLElement, key: string, parts: Parts, change: RoundCha
         fly(panel, source, parts.bag!, k, () => {
           if (!alive()) return;
           held += value;
+          cue('coin');
           parts.purse!.textContent = String(held);
           parts.gained!.textContent = `+${held - gold.from} gold`;
           parts.bag!.animate([{ transform: 'scale(1.14)' }, { transform: 'scale(1)' }], { duration: 160 });

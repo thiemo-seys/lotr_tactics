@@ -1,4 +1,4 @@
-import { readFileSync, readdirSync } from 'node:fs';
+import { existsSync, readFileSync, readdirSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import { defineConfig, type Plugin } from 'vite';
 
@@ -8,9 +8,10 @@ const VERSION = (JSON.parse(readFileSync(new URL('../../package.json', import.me
 /**
  * A virtual module that lists the files in a folder of `public`, by name without their extension, so
  * the client asks only for files that exist: `virtual:models` for the models in `public/models`, so a
- * unit without one is drawn as a pawn without a failed request (docs/viewer-spec.md section 4), and
- * `virtual:portraits` for the unit cards' portraits in `public/portraits`. In the dev server, the list
- * is read again on the next page load after a file is added or removed.
+ * unit without one is drawn as a pawn without a failed request (docs/viewer-spec.md section 4),
+ * `virtual:portraits` for the unit cards' portraits in `public/portraits`, and `virtual:music` for the
+ * music tracks in `public/music` (docs/game-spec.md section 12, Sound), which may have no folder yet.
+ * In the dev server, the list is read again on the next page load after a file is added or removed.
  */
 function fileList(id: string, folder: string, extension: string): Plugin {
   const resolved = `\0${id}`;
@@ -20,10 +21,12 @@ function fileList(id: string, folder: string, extension: string): Plugin {
     resolveId: (source) => (source === id ? resolved : undefined),
     load(source) {
       if (source !== resolved) return undefined;
-      const files = readdirSync(dir)
-        .filter((file) => file.endsWith(extension))
-        .map((file) => file.slice(0, -extension.length))
-        .sort();
+      const files = existsSync(dir)
+        ? readdirSync(dir)
+            .filter((file) => file.endsWith(extension))
+            .map((file) => file.slice(0, -extension.length))
+            .sort()
+        : [];
       return `export default ${JSON.stringify(files)};`;
     },
     configureServer(server) {
@@ -42,7 +45,7 @@ function fileList(id: string, folder: string, extension: string): Plugin {
 export default defineConfig({
   // Relative asset paths, so the built client works from any folder.
   base: './',
-  plugins: [fileList('virtual:models', 'models', '.glb'), fileList('virtual:portraits', 'portraits', '.webp')],
+  plugins: [fileList('virtual:models', 'models', '.glb'), fileList('virtual:portraits', 'portraits', '.webp'), fileList('virtual:music', 'music', '.mp3')],
   define: { __APP_VERSION__: JSON.stringify(VERSION) },
   // pnpm dev runs the game server next to Vite (docs/server-spec.md section 3).
   server: { proxy: { '/ws': { target: 'ws://localhost:8080', ws: true } } },
