@@ -1154,14 +1154,15 @@ def mount_grounded(rig, m, pose):
     """A mounted clip's pose function kept out of the ground: in each frame, each of the mount's legs
     placed by IK whose lower leg or foot would reach under the ground rises until it rests on it; its
     tail, if it would, lifts behind; and its body rises, carrying the rider, if a part of the body
-    or the rider would. For keyed clips that bring the mount down, as `fall` does."""
+    or the rider would. For keyed clips that bring the mount down, as `fall` does. Bones the mount's
+    script moves itself (rig.Mount's `free`, such as the Mûmak's trunk) don't hold it up."""
     lower = {leg: [chain[1], chain[2]] for leg, chain in m.legs.items()}
     tail = [b for b in rig.bones if b.startswith('mount_tail')]
-    # The body with everything on it but its lower legs, its tail and the rider's arms, which aim
-    # the weapon.
+    # The body with everything on it but its lower legs, its tail, the rider's arms, which aim the
+    # weapon, and what the script moves itself.
     held = {b for s in ('l', 'r') for b in LIMBS[f'arm_{s}']}
     below = {b for bones in lower.values() for b in bones}
-    trunk = [b for b in rig.bones if b not in ('root', *tail, *held, *below)]
+    trunk = [b for b in rig.bones if b not in ('root', *tail, *held, *below, *rig.mount.free)]
 
     def lifted(frame):
         ch = pose(frame)
@@ -1850,6 +1851,81 @@ def howl(rig, seconds=1.0, sit=1.0, heavy=1.0, jaw='mount_jaw'):
                    mount_neck=V(-50 * g, 0, 0), mount_head=V(-38 * g, 0, 0), mount_tail=V(-10 * g, 0, 0), **opened)
     k.key(16, 'out', **howling)
     k.key(n, 'smooth', **{**howling, 'mount_neck': V(-54 * g, 0, 0), 'mount_head': V(-42 * g, 0, 0)})
+    return Clip(n, mount_grounded(rig, m, k))
+
+
+@style('cast', 'stampede')
+def stampede(rig, seconds=0.6, height=4, rear=1.0, heavy=1.0, surge=1.0):
+    """A great beast's charge through the foes' line, for an ability that dashes (the Mûmak's Trample):
+    it rocks back onto its haunches, its weight off its forefeet, then rears, its forefeet lifting and
+    its head thrown up; then it crashes down on its forefeet and surges forward, its head lowered, on
+    frame `height`, which it marks `off` too, where the dash sets off (timed()), so `move` carries it on
+    from there; a stamp forward and a settle follow, which show only if no dash carries it off. `rear`
+    is how far it rears and lifts its forefeet, `surge` how far it is thrown forward as it comes down,
+    a share of its height, and `heavy` (0 to 1) scales its turns, as maul's does. Written from a mount's
+    measurements alone (Steed), as maul and howl are, so it needs no jaw or rider. It is
+    mount_grounded()."""
+    m = Steed(rig)
+    n = frames_for(seconds)
+    h = m.height
+    g = heavy
+    k = Keys(lag={'mount_head': 1, 'mount_tail': 2})
+    k.key(0, **seated(None, m))
+    hind = haunches_point(m)
+    planted = together(*(m.planted(leg) for leg in m.legs))
+    # Rocked back onto its haunches, the head up: drawn from rest as the wind-up begins.
+    k.key(0, **planted, **m.body(-3 * g * rear, 0, 0, at=V(0, 0.03 * h, -0.02 * h), about=hind),
+          mount_neck=V(-8 * g, 0, 0), mount_head=V(-6 * g, 0, 0), mount_tail=V(-4 * g, 0, 0))
+    # Reared, its forefeet up and its head thrown up: held through the wind-up.
+    up = together(*(m.planted(leg) for leg in m.hind),
+                  *(hoof(m, leg, -0.04, (0.2 + 0.03 * i) * rear, 40 + 10 * i) for i, leg in enumerate(m.fore)))
+    k.key(2, 'out', **up, **m.body(-9 * g * rear, 0, 0, at=V(0, 0.03 * h, 0), about=hind),
+          mount_neck=V(-16 * g, 0, 0), mount_head=V(-12 * g, 0, 0), mount_tail=V(6 * g, 0, 0))
+    # Crashing down on its forefeet and surging forward, the head lowered: where it sets off.
+    down = together(*(m.planted(leg, -0.1 * m.reach[leg]) for leg in m.fore),
+                    *(m.planted(leg, 0.03 * m.reach[leg], 8) for leg in m.hind))
+    k.key(height, 'in', **down, **m.body(5 * g, 0, 0, at=V(0, -0.1 * h * surge, -0.03 * h)),
+          mount_neck=V(10 * g, 0, 0), mount_head=V(6 * g, 0, 0), mount_tail=V(10 * g, 0, 0))
+    # A stamp forward, then it settles back to stand.
+    k.key(height + 3, 'out', **planted, **m.body(2 * g, 0, 0, at=V(0, -0.06 * h * surge, -0.01 * h)),
+          mount_neck=V(6 * g, 0, 0), mount_head=V(3 * g, 0, 0), mount_tail=V(4 * g, 0, 0))
+    k.key(n, **seated(None, m))
+    return Clip(n, mount_grounded(rig, m, k), marks={'height': height, 'off': height})
+
+
+@style('death', 'founder')
+def founder(rig, seconds=0.5, kneel=10.0, roll=14.0, sink=0.5, heavy=1.0):
+    """A great beast going down where it stands: struck, its head flung up, it sinks as its forelegs
+    buckle, the forehand dropping `kneel` degrees, then its hind legs fold too, until it lies on its
+    belly, sunk `sink` of a share of its height and rolled `roll` degrees onto its left side, its head
+    sagged to the ground. It keeps over its own legs rather than pitching forward onto its knees as
+    `fall` does, so a beast with a long head or a load on its back ends low and inside its hex. `heavy`
+    scales the turns of its neck and head. It is mount_grounded()."""
+    m = Steed(rig)
+    n = frames_for(seconds)
+    h = m.height
+    g = heavy
+    k = Keys(lag={'mount_head': 1, 'mount_tail': 1})
+    k.key(0, **seated(None, m))
+
+    def fold(body, legs):
+        out = dict(body)
+        for leg in legs:
+            out.update(m.folded(leg, rig.solve(body)[m.legs[leg][0]].at))
+        return out
+
+    hind = haunches_point(m)
+    # Struck: the head flung up, its weight thrown back.
+    k.key(2, 'out', **together(*(m.planted(leg) for leg in m.legs)), **m.body(-2, 0, 0, at=V(0, 0.01 * h, 0)),
+          mount_neck=V(-10 * g, 0, 0), mount_head=V(-8 * g, 0, 0), mount_tail=V(-4, 0, 0))
+    # The forelegs buckle: the forehand sinks, the hind legs still under it.
+    body = m.body(kneel, 0.3 * roll, 0, at=V(0, 0.02 * h, -0.25 * h * sink / 0.5), about=hind)
+    k.key(7, 'in', **together(fold(body, m.fore), *(m.planted(leg) for leg in m.hind)),
+          mount_neck=V(4 * g, 0, 0), mount_head=V(6 * g, 0, 0))
+    # Down on its belly, rolled onto its left, the head sagged to the ground.
+    body = m.body(2, roll, 0, at=V(0, 0.02 * h, -sink * h))
+    k.key(n, 'out', **fold(body, m.legs), mount_neck=V(12 * g, 0, 6 * g), mount_head=V(14 * g, 0, 4 * g),
+          mount_tail=V(10, 0, 0))
     return Clip(n, mount_grounded(rig, m, k))
 
 

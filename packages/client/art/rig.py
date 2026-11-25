@@ -28,7 +28,13 @@ Beasts. A beast with no rider, the warg and the Mûmak, is rigged as a mount alo
 its parts to mount_... bones and passes its Mount to `Rig(kind='beast', mount=...)`, or 'large-beast'
 for a Large one. It has `root` and the mount's bones, hanging from it as they would under a rider, and
 none of the 16 bones of a figure, so the mounted clip styles drive it without their rider (clips.py,
-Beasts). beasts.py builds the warg and units/warg.py rigs it.
+Beasts). beasts.py builds the warg and units/warg.py rigs it, and units/mumak.py builds and rigs the
+Mûmak.
+
+Creatures of their own shape. The Watcher in the Water is neither a figure nor a beast: its script binds
+its parts to bones of its own (`body`, and its tentacles' chains) and passes them to
+`Rig(kind='large-creature', bones=...)`. It has `root` and those bones alone, and its clips are its own
+functions (units/watcher.py).
 
 Poses. A clip gives, for each frame, a few channels (clips.py lists them); `Rig.solve()` turns them
 into a motion for each bone, with two-bone IK for arms and legs that have a target. Turns are in
@@ -72,11 +78,15 @@ BONES = {
     'foot_r': ('shin_r', 'ankle_r', 'toe_r'),
 }
 BONE_NAME = re.compile(r'^[a-z][a-z0-9_]*$')
-MAX_BONES = {'foot': 24, 'large': 32, 'mounted': 40, 'beast': 24, 'large-beast': 32}  # placeholders
+MAX_BONES = {'foot': 24, 'large': 32, 'mounted': 40, 'beast': 24, 'large-beast': 32,
+             'large-creature': 32}  # placeholders
 # A beast with no rider, the warg and the Mûmak, has a mount's bones and none of the 16 above
 # (docs/viewer-spec.md section 4, Bones): `root`, and its mount_... bones hanging from it as they would
 # under a rider. A Large beast has a Large model's budgets.
 BEASTS = ('beast', 'large-beast')
+# A creature of its own shape, the Watcher, has neither a figure's bones nor a mount's: `root` and the
+# script's own bones alone, with clips of its own. It has a Large model's budgets.
+CREATURES = ('large-creature',)
 
 # The clips, in order, with their lengths in seconds and whether they loop (placeholders).
 CLIPS = ('idle', 'move', 'attack', 'cast', 'stun', 'death', 'victory')
@@ -99,7 +109,7 @@ LOOPS = ('idle', 'move', 'stun')
 STRIKE = 7  # the frame a melee attack's blow lands on, as the sim has it today (timing() reads it)
 SHOT = 3  # the frame a ranged attack's shot leaves on
 MAX_BYTES = {'foot': 200_000, 'large': 300_000, 'mounted': 300_000, 'beast': 200_000,
-             'large-beast': 300_000}  # a rigged model's .glb, by kind (placeholders)
+             'large-beast': 300_000, 'large-creature': 300_000}  # a rigged model's .glb, by kind (placeholders)
 # A rigged gear model (<id>-2, README.md, Gear models) has a triangle budget 12.5% above its 1★ model's, and
 # as much more room: 225,000 bytes on foot and 337,500 for a Large or mounted model (placeholders).
 GEAR_BYTES = {kind: limit * 9 // 8 for kind, limit in MAX_BYTES.items()}
@@ -356,10 +366,13 @@ class Mount:
     that the mount stands on its three bones from the body down, (upper, lower, foot), which clips
     pose by IK on the ground as they pose a rider's legs (clips.py), and `bends` the way each leg's
     middle joint points as it bends: forward for a horse's knee, back for its hock. `raised` names a
-    leg the mount holds up as it stands, ready to charge, or None."""
+    leg the mount holds up as it stands, ready to charge, or None. `free` names bones of the mount's
+    that its script moves itself, such as the Mûmak's trunk, which clips.mount_grounded() doesn't hold
+    the body up by (the script keeps them out of the ground)."""
 
-    def __init__(self, bones, legs, bends, seat: str = 'mount_body', raised=None):
+    def __init__(self, bones, legs, bends, seat: str = 'mount_body', raised=None, free=()):
         self.bones = {name: tuple(spec) for name, spec in bones.items()}
+        self.free = tuple(free)
         self.legs = {leg: tuple(chain) for leg, chain in legs.items()}
         self.bends = {leg: Vector(bend).normalized() for leg, bend in bends.items()}
         self.seat = seat
@@ -376,6 +389,9 @@ class Mount:
                 raise ValueError(f'leg "{leg}" needs the way its middle joint bends')
         if raised is not None and raised not in self.legs:
             raise ValueError(f'the raised leg "{raised}" is not one of the mount\'s legs')
+        for name in self.free:
+            if name not in self.bones:
+                raise ValueError(f'the free bone "{name}" is not one of the mount\'s bones')
 
 
 class Clip:
@@ -410,9 +426,11 @@ class Rig:
     or the six without `cast` for a monster or summon with no ability (Timing.wanted()). `bones`
     adds the script's own bones, `{name: (parent, head joint, tail joint)}`, such as a cape's.
     `kind` sets the bone budget and the size limit: 'foot', 'large' or 'mounted', or 'beast' or
-    'large-beast' for a beast with no rider. A rider passes its `mount` (Mount), whose bones join the
-    rig and whose seat its hips hang from. A beast passes its own body as `mount` too, and has its bones
-    and `root` alone, none of a figure's (`beast`). A 2★ gear model finishes with its 1★ model's rig,
+    'large-beast' for a beast with no rider, or 'large-creature' for a creature of its own shape. A
+    rider passes its `mount` (Mount), whose bones join the rig and whose seat its hips hang from. A beast
+    passes its own body as `mount` too, and has its bones and `root` alone, none of a figure's (`beast`).
+    A creature has no mount, and `root` and its own `bones` alone (`figure` is false for both). A 2★
+    gear model finishes with its 1★ model's rig,
     `geared()`, which raises the size limit to GEAR_BYTES.
 
     finish() reads the joints, after which the rig's measurements (`joint()`, `held()`, `rest`,
@@ -422,11 +440,14 @@ class Rig:
         if kind not in MAX_BONES:
             raise ValueError(f'a rig\'s kind is one of {", ".join(MAX_BONES)}, not "{kind}"')
         self.beast = kind in BEASTS  # a beast with no rider: its mount's bones and root alone
+        self.figure = kind not in BEASTS + CREATURES  # the 16 bones, on foot, Large or mounted
         if self.beast and mount is None:
             raise ValueError('a beast is rigged as a mount: pass its bones as `mount`')
+        if kind in CREATURES and mount is not None:
+            raise ValueError('a creature of its own shape has no mount: pass its bones as `bones`')
         self.specs = dict(clips)
-        self.bones = {'root': BONES['root']} if self.beast else dict(BONES)
-        self.limbs = {} if self.beast else dict(LIMBS)  # the limbs IK can pose: an arm or leg, or a mount's leg
+        self.bones = dict(BONES) if self.figure else {'root': BONES['root']}
+        self.limbs = dict(LIMBS) if self.figure else {}  # the limbs IK can pose: an arm or leg, or a mount's leg
         self.mount = mount
         self.seat = 'root'  # the bone the hips hang from: the root, or a rider's mount
         self._bends = {}  # the way each of a mount's legs bends, by limb
@@ -553,11 +574,11 @@ class Rig:
     @property
     def rest(self) -> dict:
         """Every channel's value in the rest pose (clips.py lists the channels)."""
-        r = {} if self.beast else {'hips_at': V(0, 0, 0)}
+        r = {'hips_at': V(0, 0, 0)} if self.figure else {}
         for bone in self.bones:
             if bone != 'root':
                 r[bone] = V(0, 0, 0)
-        for s in () if self.beast else ('l', 'r'):
+        for s in ('l', 'r') if self.figure else ():
             r[f'hand_{s}_at'] = self.joint(f'wrist_{s}')
             r[f'hand_{s}_aim'] = Quaternion()
             r[f'hand_{s}_world'] = 0.0
@@ -636,7 +657,7 @@ class Rig:
         motions['root'] = Motion(turn_of(ch.get('root', (0, 0, 0))), origin.copy(), origin)
         if self.mount is not None:  # the mount first, as the rider's hips hang from it
             self._own(motions, ch, fk, self.mount.bones)
-        if self.beast:  # a beast is its mount's bones alone, with any of its own
+        if not self.figure:  # a beast is its mount's bones alone, with any of its own; a creature its own
             self._own(motions, ch, fk, self.bones)
             return motions
         seat = motions[self.seat]  # the root, unless the model rides

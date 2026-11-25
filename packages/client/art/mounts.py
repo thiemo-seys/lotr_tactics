@@ -539,16 +539,17 @@ DOCK, TAIL_END = V(0, 0.46, 0.72), V(0.025, 0.69, 0.16)
 BENDS = {'fore_l': V(0, -1, 0), 'fore_r': V(0, -1, 0), 'hind_l': V(0, 1, 0), 'hind_r': V(0, 1, 0)}
 
 
-def mount_rig(chains, bones=MOUNT_BONES, bends=BENDS, raised=None):
+def mount_rig(chains, bones=MOUNT_BONES, bends=BENDS, raised=None, free=()):
     """The rig.Mount of a mount whose legs' bones are `chains` (jointed_leg()), after its other
-    `bones`: each leg's upper bone hangs from the body."""
+    `bones`: each leg's upper bone hangs from the body. `free` names bones its script moves itself
+    (rig.Mount)."""
     out = dict(bones)
     for leg in MOUNT_LEGS:
         upper, lower, foot = chains[leg]
         out[upper] = ('mount_body', f'mount_{leg}_top', f'mount_{leg}_knee')
         out[lower] = (upper, f'mount_{leg}_knee', f'mount_{leg}_fetlock')
         out[foot] = (lower, f'mount_{leg}_fetlock', f'mount_{leg}_toe')
-    return Mount(out, {leg: chains[leg] for leg in MOUNT_LEGS}, bends, raised=raised)
+    return Mount(out, {leg: chains[leg] for leg in MOUNT_LEGS}, bends, raised=raised, free=free)
 
 
 def horse(coat, points, blaze=None, stripe=False, tack='saddle-cloth', raised='left', turn=20, rigged=False):
