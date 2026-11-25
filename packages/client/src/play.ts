@@ -5,7 +5,8 @@
 import { ownedUnits } from '@lotr-tactics/sim';
 import type { ServerMessage } from '@lotr-tactics/server';
 import { LocalConnection, SocketConnection, savedSeat, socketUrl, type Connection } from './connection.js';
-import { PlayFlow } from './flow.js';
+import { PlayFlow, outcomeText } from './flow.js';
+import { SoundSystem } from './audio.js';
 import { yourTeam } from './fights.js';
 import { DragAndDrop } from './play/drag.js';
 import { HudBar } from './play/hud-bar.js';
@@ -16,8 +17,10 @@ import { ShopBar } from './play/shop-bar.js';
 import { renderPlayers, renderTraits } from './play/side-panels.js';
 import { renderViewingBar } from './play/viewing-bar.js';
 import { FightScene } from './scene.js';
+import { DEFAULT_SOUND, SoundWatch, cue, musicFor, type Hearing } from './sound.js';
 import { frameCapButton } from './ui/frame-cap.js';
 import { MeterPanel } from './ui/meter.js';
+import { soundControls } from './ui/sound-panel.js';
 import { blockDisabledClicks, fillIcons, isEnabled, setText, show, toggle } from './ui/dom.js';
 import { fighterTip, ownedUnitTip } from './tips.js';
 import { tipCard } from './ui/tip-card.js';
@@ -32,6 +35,18 @@ const element = <T extends HTMLElement>(id: string) => document.getElementById(i
 fillIcons(document);
 setText(element('version'), `v${__APP_VERSION__}`);
 initTooltips(tipCard);
+// A click on a button, or a soft "no" on a disabled one, before disabled clicks are stopped.
+// Buttons whose action has its own sound, and cards, which send actions, play that instead.
+document.addEventListener(
+  'click',
+  (event) => {
+    const target = event.target instanceof Element ? event.target.closest('button, a.btn, a.hud-menu-item, [role="button"]') : null;
+    if (target === null) return;
+    if (target.closest('[aria-disabled="true"]') !== null) cue('denied');
+    else if (!target.matches('[data-sound="own"], .unit-card, .council-card, .gift-card')) cue('click');
+  },
+  { capture: true },
+);
 blockDisabledClicks();
 
 const view = element('view');
@@ -52,6 +67,9 @@ const skipButton = element<HTMLButtonElement>('skip');
 const meterButton = element('toggle-meter');
 const meter = new MeterPanel(element('meter'), meterButton, false);
 const frameCap = frameCapButton(element('frame-cap'));
+const sound = new SoundSystem(DEFAULT_SOUND);
+soundControls(element('sound'), element('sound-panel'), sound);
+const soundWatch = new SoundWatch();
 
 // The board and bench framing in every step, so the board doesn't move between planning and fights.
 const scene = new FightScene(view, 'bench');
@@ -72,7 +90,10 @@ const hud = new HudBar(flow);
 const shop = new ShopBar(
   flow,
   (item, event) => drag.startItem(item, event),
-  () => scene.showBenchFull(),
+  () => {
+    cue('denied');
+    scene.showBenchFull();
+  },
 );
 const drag = new DragAndDrop(flow, scene, view, shop, hud, element('drag-hint'));
 // Hovering a unit shows its stats and ability: in a fight as it is now, and in planning with its items.
@@ -146,6 +167,7 @@ window.addEventListener('keydown', (event) => {
   const press = (id: string, action: () => void) => {
     // The key does what its button does, and only when the button can.
     if (isEnabled(element(id))) action();
+    else cue('denied');
   };
   if (event.key === 'd' || event.key === 'D') press('reroll', () => flow.act({ type: 'reroll' }));
   else if (event.key === 'f' || event.key === 'F') press('buy-xp', () => flow.act({ type: 'buyXp' }));
@@ -167,6 +189,8 @@ requestAnimationFrame(function frame(now) {
   const seconds = Math.min((now - last) / 1000, 0.1);
   last = now;
   flow.update(seconds, now);
+  for (const name of soundWatch.hear(hearing(now))) cue(name);
+  sound.want(musicFor(flow.show.kind));
   render(now);
   scene.render();
   updateTip();
@@ -215,6 +239,18 @@ function backToMenu(message: string): void {
 
 function receive(message: ServerMessage): void {
   flow.receive(message, performance.now());
+}
+
+// Sound
+
+/** What the page shows now, for the sounds that follow the game. */
+function hearing(now: number): Hearing {
+  const step = flow.show;
+  const fight =
+    step.kind === 'fight'
+      ? { id: step.playback, outcome: outcomeText(step.fight.result.outcome, yourTeam(step.fight, flow.you)), over: step.playback.combat.isOver() }
+      : null;
+  return { step: step.kind, fight, me: flow.inGame ? flow.me() : null, secondsLeft: flow.inGame ? flow.secondsLeft(now) : null };
 }
 
 // Drawing

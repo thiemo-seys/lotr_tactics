@@ -48,6 +48,8 @@ export const ICONS = {
   restart: '<path d="M4.5 12a7.5 7.5 0 1 0 2.2-5.3L4.5 9"/><path d="M4.5 4.5V9H9"/>',
   log: '<path d="M9 6.5h11M9 12h11M9 17.5h11"/><circle class="s" cx="4.8" cy="6.5" r="1.1"/><circle class="s" cx="4.8" cy="12" r="1.1"/><circle class="s" cx="4.8" cy="17.5" r="1.1"/>',
   viewer: `<path d="${EYE}"/><circle class="f" cx="12" cy="12" r="3"/>`,
+  sound: '<path class="f" d="M4 9.5h3.5L12 5.5v13l-4.5-4H4z"/><path d="M15.5 9a4 4 0 0 1 0 6M18 6.5a7.5 7.5 0 0 1 0 11"/>',
+  muted: '<path class="f" d="M4 9.5h3.5L12 5.5v13l-4.5-4H4z"/><path d="M15.5 9.5l5 5M20.5 9.5l-5 5"/>',
   gauge: '<path class="f" d="M3.5 17.5a8.5 8.5 0 0 1 17 0z"/><path d="M12 17.5l4-5.5M6.5 13.5l1 .6M12 9v1.2M17.5 13.5l-1 .6"/><circle class="s" cx="12" cy="17.5" r="1.4"/>',
   // Results
   knockout:

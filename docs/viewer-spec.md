@@ -16,7 +16,7 @@ A browser tool that runs one fight with `packages/sim` and plays it back in 3D. 
 **Out of scope (later)**
 
 - Placing units by drag and drop, the shop and the rest of a round.
-- Models for monsters and summons, and sound.
+- Models for monsters and summons, and sound in fights. The viewer is silent; the play page has sounds for its interface and music (`game-spec.md` section 12, Sound).
 - Networking. The viewer runs the sim itself, as the game client will (`sim-spec.md` section 14).
 
 ---

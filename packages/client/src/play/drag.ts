@@ -12,6 +12,7 @@ import type { PlayFlow } from '../flow.js';
 import { combinesInto } from '../items.js';
 import { placeAtPoint } from '../layout.js';
 import { saleOffer, type SaleOffer } from '../shop.js';
+import { cue } from '../sound.js';
 import type { FightScene } from '../scene.js';
 import { itemTip } from '../tips.js';
 import { itemChip, ringChip } from '../ui/chips.js';
@@ -136,6 +137,7 @@ export class DragAndDrop {
   }
 
   private begin(): void {
+    cue('pickup');
     this.time = this.now();
     this.scene.cameraControls = false;
     suppressTips(true);

@@ -33,6 +33,7 @@ import {
 } from '@lotr-tactics/server';
 import { yourFight, yourTeam } from './fights.js';
 import { Playback } from './playback.js';
+import { actionCue, cue } from './sound.js';
 import type { StarredHolder } from './traits.js';
 
 /** How long a finished fight stays on screen, in ticks of fight time, before the results. */
@@ -229,7 +230,10 @@ export class PlayFlow {
 
   /** Sends one of the person's actions: in planning or while the fights play, or a pick in a Council. */
   act(action: Action): void {
-    if (action.type === 'pick' ? this.show.kind === 'council' : this.canShop) this.hooks.send({ type: 'act', action });
+    const now = action.type === 'pick' ? this.show.kind === 'council' : this.canShop;
+    // Its sound as it is sent, or a soft "no" if the rules refuse it (section 12, Sound).
+    cue(actionCue(action, now && (this.state === null || this.check(action).ok)));
+    if (now) this.hooks.send({ type: 'act', action });
   }
 
   /**
@@ -246,7 +250,9 @@ export class PlayFlow {
 
   /** The person is Ready to end planning. */
   ready(): void {
-    if (this.show.kind === 'planning' && !this.state!.ready.includes(this.you)) this.hooks.send({ type: 'ready' });
+    if (this.show.kind !== 'planning' || this.state!.ready.includes(this.you)) return;
+    cue('ready');
+    this.hooks.send({ type: 'ready' });
   }
 
   /** Skips the rest of the fight to its results. */

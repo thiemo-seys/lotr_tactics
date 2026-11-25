@@ -15,7 +15,7 @@
           <span id="stat-waiting" class="hud-tile stat bench-queue" hidden><span data-icon="timer"></span><span class="value"></span></span>
           <span id="stat-streak" class="hud-tile stat streak" hidden><span data-icon="streak-win" class="win"></span><span data-icon="streak-loss" class="loss"></span><span class="value"></span></span>
           <span id="stat-ring-status" class="hud-tile stat ring-status" hidden><span data-icon="one-ring"></span><span class="value"></span></span>
-          <button id="mount-doom" class="hud-tile hud-button mount-doom" hidden><span data-icon="volcano"></span>Mount Doom</button>
+          <button id="mount-doom" data-sound="own" class="hud-tile hud-button mount-doom" hidden><span data-icon="volcano"></span>Mount Doom</button>
         </div>
       </div>
       <div id="round" class="round-track"></div>
@@ -24,6 +24,10 @@
           <button id="speed" class="hud-tile hud-button" hidden><span data-icon="speed"></span><span class="label">1×</span></button>
           <button id="toggle-meter" class="hud-tile hud-button" aria-pressed="false" hidden><span data-icon="blade"></span>Damage</button>
           <button id="skip" class="hud-tile hud-button" hidden><span data-icon="skip"></span>Skip fight</button>
+          <div class="hud-menu">
+            <button id="sound" class="hud-tile hud-button hud-icon" aria-label="Sound" aria-expanded="false" aria-controls="sound-panel"><span data-icon="sound" class="sound-on"></span><span data-icon="muted" class="sound-off"></span></button>
+            <div id="sound-panel" class="hud-menu-list sound-panel" role="group" aria-label="Sound" hidden></div>
+          </div>
           <div class="hud-menu">
             <button id="hud-menu" class="hud-tile hud-button hud-icon" aria-expanded="false" aria-controls="hud-menu-list" aria-label="Menu"><span data-icon="menu"></span></button>
             <div id="hud-menu-list" class="hud-menu-list" hidden>
@@ -89,7 +93,7 @@
       <section id="gift-offer" class="panel" aria-labelledby="gift-title" hidden>
         <div class="panel-head">
           <h2 id="gift-title"><span data-icon="brooch"></span>Gifts of Lothlórien <span id="gift-tier"></span></h2>
-          <button id="reroll-gifts" class="btn btn-secondary btn-sm"><span data-icon="reroll"></span>Reroll</button>
+          <button id="reroll-gifts" data-sound="own" class="btn btn-secondary btn-sm"><span data-icon="reroll"></span>Reroll</button>
         </div>
         <div id="gift-options"></div>
       </section>
@@ -114,9 +118,9 @@
     </div>
     <footer id="shop-bar" hidden>
       <div class="shop-actions">
-        <button id="buy-xp" class="btn btn-secondary shop-button"><span data-icon="level-up"></span><span class="label">Buy XP</span><span class="cost"></span><kbd>F</kbd></button>
-        <button id="reroll" class="btn btn-secondary shop-button"><span data-icon="reroll"></span><span class="label">Reroll</span><span class="cost"></span><kbd>D</kbd></button>
-        <button id="lock" class="btn btn-secondary shop-button" aria-pressed="false"><span data-icon="unlock" class="unlocked"></span><span data-icon="lock" class="locked"></span><span class="label">Lock</span></button>
+        <button id="buy-xp" data-sound="own" class="btn btn-secondary shop-button"><span data-icon="level-up"></span><span class="label">Buy XP</span><span class="cost"></span><kbd>F</kbd></button>
+        <button id="reroll" data-sound="own" class="btn btn-secondary shop-button"><span data-icon="reroll"></span><span class="label">Reroll</span><span class="cost"></span><kbd>D</kbd></button>
+        <button id="lock" data-sound="own" class="btn btn-secondary shop-button" aria-pressed="false"><span data-icon="unlock" class="unlocked"></span><span data-icon="lock" class="locked"></span><span class="label">Lock</span></button>
       </div>
       <div id="shop"></div>
       <div class="shop-side">
@@ -124,7 +128,7 @@
           <span class="tray-label">Items</span>
           <div id="items"></div>
         </div>
-        <button id="ready" class="btn btn-primary btn-lg ready-button"><span data-icon="ready"></span><span class="label">Ready</span><kbd>Space</kbd></button>
+        <button id="ready" data-sound="own" class="btn btn-primary btn-lg ready-button"><span data-icon="ready"></span><span class="label">Ready</span><kbd>Space</kbd></button>
       </div>
       <div class="sell-offer" aria-hidden="true"><span data-icon="coin"></span><span class="sell-text"></span><span class="sep"></span><span class="sell-price"><span class="value"></span><span data-icon="coin"></span></span></div>
     </footer>
