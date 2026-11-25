@@ -1,19 +1,20 @@
-// The units' models (docs/viewer-spec.md section 4, "Models", "Star levels" and "In the viewer"). Each
-// file is loaded once, and every unit drawn with one gets its own copy, drawn for its star level:
-// the geometry and clips are shared, the materials are its own, with `team` in the unit's
-// livery colour (livery.ts), the same on both sides, `trim` in its star level's, and every one able to fade. Until a unit's model has loaded,
+// The models of units, monsters and summons (docs/viewer-spec.md section 4, "Models", "Star levels"
+// and "In the viewer"). Each file is loaded once, and every unit drawn with one gets its own copy,
+// drawn for its star level, which is always 1★ for monsters and summons: the geometry and clips are
+// shared, the materials are its own, with `team` in the unit's livery colour (livery.ts), the same on
+// both sides, `trim` in its star level's, and every one able to fade. Until a unit's model has loaded,
 // or if it has none, the scene draws the unit as a pawn.
 
-import { TICKS_PER_SECOND, UNITS, type Star, type UnitId, type UnitState } from '@lotr-tactics/sim';
+import { TICKS_PER_SECOND, type Star, type UnitState } from '@lotr-tactics/sim';
 import * as THREE from 'three';
 import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
 import { clone as cloneSkinned } from 'three/addons/utils/SkeletonUtils.js';
 import MODEL_FILES from 'virtual:models';
 import { aimOf } from './aim.js';
-import { CLIPS, type ClipLengths, type ClipName } from './animation.js';
+import { CLIPS, clipsNeeded, type ClipLengths, type ClipName, type ClipSet } from './animation.js';
 import { liveryOf } from './livery.js';
 import { labelHeight, pickModel, starColour, starScale, victoryRise } from './stars.js';
-import { isLarge } from './units.js';
+import { FIGHTER_IDS, hasAbility, isLarge, modelStar } from './units.js';
 
 /** The material every model has that takes the unit's livery colour, the same on both sides (section 4, Livery). */
 const TEAM_MATERIAL = 'team';
@@ -69,8 +70,11 @@ interface Model {
   readonly shader: ModelShader;
   /** Whether it is a Large unit's, whose label clears its top (stars.ts, modelLabelHeight). */
   readonly large: boolean;
-  /** Its seven clips, or null when it has no rig or not all of them, so it is drawn static. */
-  readonly clips: Readonly<Record<ClipName, THREE.AnimationClip>> | null;
+  /**
+   * Its clips: all seven, or the six without `cast` for a fighter with no ability; null when it has
+   * no rig or not all the clips its fighter needs, so it is drawn static.
+   */
+  readonly clips: ClipSet<THREE.AnimationClip> | null;
   readonly lengths: ClipLengths | null;
   /**
    * How far it reaches from its centre on the ground, at scale 1, which its meshes' bounds hold: for a
@@ -116,11 +120,11 @@ const shaders: ModelShader[] = [];
 const samples = new Map<ModelShader, Model>();
 
 /**
- * Starts loading every unit's 1★ model, once, in the background. A unit's 2★ and 3★ models load once
- * it is drawn (`request`).
+ * Starts loading every unit's, monster's and summon's 1★ model, once, in the background. A unit's 2★
+ * and 3★ models load once it is drawn (`request`).
  */
 export function loadModels(): void {
-  for (const id of Object.keys(UNITS) as UnitId[]) {
+  for (const id of FIGHTER_IDS) {
     const name = pickModel(id, 1, AVAILABLE);
     if (name !== null) load(name, id);
   }
@@ -146,11 +150,12 @@ export function modelShader(unitId: UnitState['unitId'], star: Star): ModelShade
 
 /**
  * A copy of the model for a unit at a star level, with `team` in its livery colour and
- * `trim` in the star level's colour; null if it has none or it hasn't loaded yet.
+ * `trim` in the star level's colour; null if it has none or it hasn't loaded yet. A monster or
+ * summon is drawn at 1★, whatever it is given.
  */
 export function copyModel(unitId: UnitState['unitId'], star: Star): ModelCopy | null {
   const model = request(unitId, star);
-  return model === null ? null : new ModelCopy(model, star);
+  return model === null ? null : new ModelCopy(model, modelStar(unitId, star));
 }
 
 /**
@@ -164,9 +169,11 @@ export function shaderSample(shader: ModelShader): ModelCopy {
 /**
  * A unit's model at a star level, the level below standing in while one doesn't exist (stars.ts,
  * pickModel), or null if it has none or it is still loading. Starts loading it, if it hasn't, and the
- * next star level's, so a unit that is upgraded has its model sooner.
+ * next star level's, so a unit that is upgraded has its model sooner. Monsters and summons have their
+ * 1★ model only.
  */
-function request(unitId: UnitState['unitId'], star: Star): Model | null {
+function request(unitId: UnitState['unitId'], given: Star): Model | null {
+  const star = modelStar(unitId, given);
   const name = pickModel(unitId, star, AVAILABLE);
   if (name === null) return null;
   load(name, unitId);
@@ -204,9 +211,10 @@ function prepare(name: string, unitId: UnitState['unitId'], scene: THREE.Object3
   const skinned = meshes.length > 0;
   const clips: Partial<Record<ClipName, THREE.AnimationClip>> = {};
   for (const clip of animations) if ((CLIPS as readonly string[]).includes(clip.name)) clips[clip.name as ClipName] = clip;
-  const missing = CLIPS.filter((clip) => clips[clip] === undefined);
+  // All seven, or the six without `cast` for a fighter with no ability, which never casts.
+  const missing = clipsNeeded(hasAbility(unitId)).filter((clip) => clips[clip] === undefined);
   if (skinned && missing.length > 0) console.warn(`The model ${name} has no ${missing.join(', ')} clip, so it is drawn static.`);
-  const complete = skinned && missing.length === 0 ? (clips as Record<ClipName, THREE.AnimationClip>) : null;
+  const complete = skinned && missing.length === 0 ? (clips as ClipSet<THREE.AnimationClip>) : null;
   scene.updateMatrixWorld(true);
   const rest = measure(scene);
   let strike = rest.top;
@@ -214,7 +222,7 @@ function prepare(name: string, unitId: UnitState['unitId'], scene: THREE.Object3
   let reach = rest.reach;
   if (complete !== null) {
     const posed = new PosedCopy(scene, meshes);
-    strike = Math.max(rest.top, posed.highest([complete.attack, complete.cast]));
+    strike = Math.max(rest.top, posed.highest(complete.cast === undefined ? [complete.attack] : [complete.attack, complete.cast]));
     raised = Math.max(rest.top, posed.highest([complete.victory]));
     posed.dispose();
     const extra = armatureReach(scene);
@@ -472,10 +480,13 @@ function skinnedTop({ mesh, positions, bones, weights, rows }: SkinnedPart, matr
   return top;
 }
 
-function lengthsOf(clips: Readonly<Record<ClipName, THREE.AnimationClip>>): ClipLengths {
-  const lengths = {} as Record<ClipName, number>;
-  for (const name of CLIPS) lengths[name] = clips[name].duration;
-  return lengths;
+function lengthsOf(clips: ClipSet<THREE.AnimationClip>): ClipLengths {
+  const lengths: Partial<Record<ClipName, number>> = {};
+  for (const name of CLIPS) {
+    const clip = clips[name];
+    if (clip !== undefined) lengths[name] = clip.duration;
+  }
+  return lengths as ClipLengths;
 }
 
 /** One unit's copy of its model. */
@@ -484,8 +495,8 @@ export class ModelCopy {
   readonly object = new THREE.Group();
   /** The model, standing on its tile and scaled for its star level, which turns to face; its clips play on it. */
   readonly model: THREE.Object3D;
-  /** Its seven clips, shared with the other copies; null for a static model. */
-  readonly clips: Readonly<Record<ClipName, THREE.AnimationClip>> | null;
+  /** Its clips, shared with the other copies, without `cast` for a fighter with no ability; null for a static model. */
+  readonly clips: ClipSet<THREE.AnimationClip> | null;
   readonly lengths: ClipLengths | null;
   /** How much bigger than built it is drawn, for its star level (stars.ts, starScale). */
   readonly scale: number;

@@ -1,7 +1,7 @@
 """Renders a model for review with Cycles on the CPU (README.md).
 
     blender --background --factory-startup --python-exit-code 1 --python preview.py -- <model.glb> <out dir> \
-        [--quick] [--fit] [--culled] [--clips[=idle,attack,...]] [--frames=0,3,8] [--size=480]
+        [--quick] [--fit] [--culled] [--clips[=idle,attack,...]] [--frames=0,3,8] [--size=480] [--livery=#rrggbb]
 
 Writes one PNG per view and sheet.png, a 4 x 2 grid of them:
 
@@ -13,7 +13,8 @@ Writes one PNG per view and sheet.png, a 4 x 2 grid of them:
 in front (the far side); the bottom row turns the model round. The `team` material is drawn in the
 unit's livery (livery.py, from packages/client/src/livery.json), as the client draws it on both
 sides; the unit is the file's name without `.glb` and a star level's `-2` or `-3`, and a file named
-after no unit gets the default livery. Every model is framed the same, so sizes compare, unless --fit frames the
+after no unit gets the default livery; --livery gives the colour instead, to try one before it is in
+livery.json. Every model is framed the same, so sizes compare, unless --fit frames the
 model alone for a closer look at a small one. --quick renders only hero.png, smaller and with fewer
 samples. Single-sided materials draw as three.js draws them. --culled draws every material
 single-sided, as three.js would if the client culled back faces, so a face wound inside out, which
@@ -55,7 +56,7 @@ picked = option('frames')
 model_path, out_dir = [a for a in args if not a.startswith('--')][:2]
 os.makedirs(out_dir, exist_ok=True)
 
-LIVERY = livery(model_path)
+LIVERY = int(option('livery').lstrip('#'), 16) if option('livery') else livery(model_path)
 TILE = 0x31465F  # team A's half of the board, from scene.ts
 GROUND = 0x12161C  # the game's background
 BACKDROP = 0x2A3039

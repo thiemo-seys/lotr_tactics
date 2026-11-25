@@ -1,5 +1,5 @@
 {
-  "about": "Each unit's livery: the colour of the parts of its model in the material named `team` (docs/viewer-spec.md section 4, Livery). A unit is the name of its faction (its origin), to wear the faction's colour, or a colour of its own. Read by livery.ts, art/board.mjs and art/preview.py.",
+  "about": "Each unit's, monster's and summon's livery: the colour of the parts of its model in the material named `team` (docs/viewer-spec.md section 4, Livery). Each is the name of a faction (an origin), to wear the faction's colour, or a colour of its own: a roster unit its faction's or its own, a monster its own, a summon its faction's. Read by livery.ts, art/board.mjs and art/preview.py (through art/livery.py).",
   "factions": {
     "hobbit": "#a35a33",
     "gondor": "#5d6a7c",
@@ -48,7 +48,16 @@
     "galadriel": "#a7adaa",
     "witch-king": "#383840",
     "treebeard": "ent",
-    "sauron": "dark-lord"
+    "sauron": "dark-lord",
+    "goblin": "#7a3f2a",
+    "goblin-archer": "#7a3f2a",
+    "warg": "#7a3f2a",
+    "cave-troll": "#7a3f2a",
+    "watcher": "#4d6b5c",
+    "mumak": "#8a2a22",
+    "balrog": "#b0471c",
+    "orc-grunt": "orc",
+    "eye-nazgul": "nazgul"
   },
   "default": "#6a5a86"
 }

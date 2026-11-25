@@ -1,9 +1,11 @@
-import { TRAITS, UNITS, UNIT_IDS, type OriginId } from '@lotr-tactics/sim';
+import { MONSTERS, SUMMONS, TRAITS, UNITS, UNIT_IDS, type MonsterId, type OriginId, type SummonId } from '@lotr-tactics/sim';
 import { describe, expect, it } from 'vitest';
 import { DEFAULT_LIVERY, LIVERY, liveryOf } from '../src/livery.js';
 
 const COLOUR = /^#[0-9a-f]{6}$/;
 const origins = Object.keys(TRAITS).filter((id) => TRAITS[id as keyof typeof TRAITS].kind === 'origin') as OriginId[];
+const MONSTER_IDS = Object.keys(MONSTERS) as MonsterId[];
+const SUMMON_IDS = Object.keys(SUMMONS) as SummonId[];
 
 describe('livery.json (viewer-spec.md section 4, Livery)', () => {
   it('gives every faction a colour', () => {
@@ -12,14 +14,25 @@ describe('livery.json (viewer-spec.md section 4, Livery)', () => {
     expect(LIVERY.default).toMatch(COLOUR);
   });
 
-  it('gives every roster unit, and nothing else, its faction or a colour of its own', () => {
-    expect(Object.keys(LIVERY.units).sort()).toEqual([...UNIT_IDS].sort());
+  it('lists every roster unit, monster and summon, and nothing else', () => {
+    expect(Object.keys(LIVERY.units).sort()).toEqual([...UNIT_IDS, ...MONSTER_IDS, ...SUMMON_IDS].sort());
+  });
+
+  it('gives every roster unit its faction or a colour of its own', () => {
     for (const id of UNIT_IDS) {
       const livery = LIVERY.units[id];
       // A faction named here is the unit's own, so the art tools, which can't read the sim, agree with the game.
       if (livery.startsWith('#')) expect(livery, id).toMatch(COLOUR);
       else expect(livery, id).toBe(UNITS[id].origin);
     }
+  });
+
+  it('gives every monster a colour of its own, since a team colour means nothing on the enemy', () => {
+    for (const id of MONSTER_IDS) expect(LIVERY.units[id], id).toMatch(COLOUR);
+  });
+
+  it("gives every summon its faction's colour", () => {
+    for (const id of SUMMON_IDS) expect(LIVERY.units[id], id).toBe(SUMMONS[id].origin);
   });
 });
 
@@ -34,7 +47,19 @@ describe('liveryOf', () => {
     expect(liveryOf('sam')).toBe(0x844929);
   });
 
-  it('gives summons the default', () => {
-    expect(liveryOf('orc-grunt')).toBe(DEFAULT_LIVERY);
+  it("gives Moria's goblins, goblin archers, wargs and Cave Troll one rust, as one warband, and the other monsters their own", () => {
+    for (const id of ['goblin', 'goblin-archer', 'warg', 'cave-troll'] as const) expect(liveryOf(id), id).toBe(0x7a3f2a);
+    expect(liveryOf('watcher')).toBe(0x4d6b5c);
+    expect(liveryOf('mumak')).toBe(0x8a2a22);
+    expect(liveryOf('balrog')).toBe(0xb0471c);
+  });
+
+  it("gives summons their faction's colour: the Orc grunt the Orcs', the Eye's Nazgûl the Nazgûl's", () => {
+    expect(liveryOf('orc-grunt')).toBe(0x6b6a2c);
+    expect(liveryOf('eye-nazgul')).toBe(0x25252a);
+  });
+
+  it('gives every unit, monster and summon its own livery rather than the default', () => {
+    for (const id of [...UNIT_IDS, ...MONSTER_IDS, ...SUMMON_IDS]) expect(liveryOf(id), id).not.toBe(DEFAULT_LIVERY);
   });
 });

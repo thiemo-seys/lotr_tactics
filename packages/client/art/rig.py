@@ -138,14 +138,24 @@ DATA = os.path.join(CLIENT, '..', 'sim', 'src', 'data')
 
 
 class Timing:
-    """When a unit's attack strikes and its cast is at its height, in frames, from the sim's data and the
-    viewer's (timing()): `melee` (range 1) or not, `strike` (the frame its blow lands or its shot leaves),
-    `release` (the frame its ability's effects leave or land, or its dash or charge sets off: its wind-up),
-    `hits` (the frames each of its ability's hits is struck or loosed on, the first at the release),
-    and `dash`, whether its ability dashes or charges, so `move` carries it on from the release."""
+    """When a fighter's attack strikes and its cast is at its height, in frames, from the sim's data and
+    the viewer's (timing()): `melee` (range 1) or not, `strike` (the frame its blow lands or its shot
+    leaves), `release` (the frame its ability's effects leave or land, or its dash or charge sets off: its
+    wind-up), `hits` (the frames each of its ability's hits is struck or loosed on, the first at the
+    release), and `dash`, whether its ability dashes or charges, so `move` carries it on from the release.
+    A fighter with no ability (`ability` False: some monsters and the summons) never casts, so it has no
+    release or hits, and its model no `cast` (wanted())."""
 
     def __init__(self, unit, melee, strike, release, hits, dash):
         self.unit, self.melee, self.strike, self.release, self.hits, self.dash = unit, melee, strike, release, hits, dash
+
+    @property
+    def ability(self) -> bool:
+        return self.release is not None
+
+    def wanted(self) -> tuple:
+        """The clips its model has, in order: all of CLIPS, or without `cast` for a fighter with no ability."""
+        return CLIPS if self.ability else tuple(c for c in CLIPS if c != 'cast')
 
 
 def ticks(seconds: float) -> int:
@@ -166,12 +176,16 @@ def _number(text: str, name: str) -> float:
 
 
 _TIMINGS = {}
+# Where each summon's stats are, in the sim's data: the file and the name of their block, for its range.
+SUMMON_STATS = {'orc-grunt': ('templates.ts', 'ORC_GRUNT_STATS'), 'eye-nazgul': ('ring.ts', 'eye')}
 
 
 def timing(unit: str) -> Timing:
-    """A unit's Timing, read from packages/sim/src/data (units.ts for each unit's classes, wind-up, hits
-    and dash; templates.ts for the range each class's template gives; rules.ts for the ticks a second, the
-    melee blow's delay and the gap between hits) and the viewer's playback.ts (SHOT_DELAY_TICKS)."""
+    """A unit's, monster's or summon's Timing, read from packages/sim/src/data (units.ts for each unit's
+    classes, wind-up, hits and dash; templates.ts for the range each class's template gives; monsters.ts
+    for each monster's range, and its ability's wind-up, hits and dash if it has one; SUMMONS in units.ts
+    for the summons, which have none, with their range from SUMMON_STATS; rules.ts for the ticks a second,
+    the melee blow's delay and the gap between hits) and the viewer's playback.ts (SHOT_DELAY_TICKS)."""
     if not _TIMINGS:
         rules = _read(DATA, 'rules.ts')
         if _number(rules, 'TICKS_PER_SECOND') != FPS:
@@ -199,8 +213,35 @@ def timing(unit: str) -> Timing:
             melee = int(ranges[template[first]]) == 1
             _TIMINGS[found.group(1)] = Timing(found.group(1), melee, melee_hit if melee else shot, release,
                                              [release + i * gap for i in range(hits)], 'DASH_' in chunk)
+        # The PvE monsters (monsters.ts): melee or ranged by their own stats' range, and an ability if
+        # they have one, which may dash.
+        monsters = _read(DATA, 'monsters.ts').split('export const MONSTERS')[1]
+        for chunk in re.split(r'\n  [\w\']+[\w\'-]*: \{\n', monsters)[1:]:
+            found = re.search(r"\bid: '([\w-]+)'", chunk)
+            reach = re.search(r'\brange: (\d+)', chunk)
+            if not (found and reach):
+                continue
+            melee = int(reach.group(1)) == 1
+            windup = re.search(r'\bwindupSeconds: ([0-9.]+)', chunk)
+            if windup is None:
+                _TIMINGS[found.group(1)] = Timing(found.group(1), melee, melee_hit if melee else shot, None, [], False)
+                continue
+            release = ticks(float(windup.group(1)))
+            hits = max([int(h) for h in re.findall(r'\bhits: (\d+)', chunk)] or [1])
+            dash = 'dashAdjacentTo' in chunk or 'dashThroughLine' in chunk
+            _TIMINGS[found.group(1)] = Timing(found.group(1), melee, melee_hit if melee else shot, release,
+                                             [release + i * gap for i in range(hits)], dash)
+        # The summons (units.ts, SUMMONS), which have no ability, each with the stats it is made with.
+        summons = _read(DATA, 'units.ts').split('export const SUMMONS')[1]
+        for summon in re.findall(r"\bid: '([\w-]+)'", summons):
+            if summon not in SUMMON_STATS:
+                raise RuntimeError(f'the summon "{summon}" has no stats the rig kit knows of (rig.SUMMON_STATS)')
+            path, name = SUMMON_STATS[summon]
+            block = re.search(rf'\b{name}\s*[:=][^{{]*\{{([^}}]*)\}}', _read(DATA, path))
+            melee = int(_number(block.group(1), 'range')) == 1
+            _TIMINGS[summon] = Timing(summon, melee, melee_hit if melee else shot, None, [], False)
     if unit not in _TIMINGS:
-        raise RuntimeError(f'"{unit}" is no unit of the sim\'s, so its clips have no timing')
+        raise RuntimeError(f'"{unit}" is no unit, monster or summon of the sim\'s, so its clips have no timing')
     return _TIMINGS[unit]
 
 
@@ -354,7 +395,8 @@ class Clip:
 
 class Rig:
     """A model's skeleton and clips. `clips` gives each of CLIPS a style from clips.py, as
-    `(name, {options})` or a name alone, or a function `rig -> Clip` of the script's own. `bones`
+    `(name, {options})` or a name alone, or a function `rig -> Clip` of the script's own: all seven,
+    or the six without `cast` for a monster or summon with no ability (Timing.wanted()). `bones`
     adds the script's own bones, `{name: (parent, head joint, tail joint)}`, such as a cape's.
     `kind` sets the bone budget and the size limit: 'foot', 'large' or 'mounted'. A rider passes
     its `mount` (Mount), whose bones join the rig and whose seat its hips hang from. A 2★ gear model
@@ -737,7 +779,7 @@ class Rig:
         for name, spec in self.specs.items():
             self.clips[name] = self._clip(name, spec)
         self._check_clips()
-        for name in CLIPS:
+        for name in self.timing.wanted():
             self._keyframe(name, self.clips[name])
         self._check_frames(model)
         marks = ', '.join(
@@ -753,7 +795,7 @@ class Rig:
               f'over every frame, radius {self.radius:.3f} and base {base:+.4f}; between frames, '
               f'radius {self.radius_between:.3f} and base {base_between:+.4f}; '
               + ', '.join(f'{name} reaches {self.reaches[name][0]:.3f} (frame {self.reaches[name][1]:g})'
-                          for name in ACTIONS)
+                          for name in ACTIONS if name in self.reaches)
               + (f'; its shot leaves from {self.muzzle()}' if self.clips['attack'].muzzle is not None else ''))
 
     def _measure(self, model) -> None:
@@ -823,8 +865,11 @@ class Rig:
         return library.made(self, name, spec)  # a style's attack and cast retimed to the unit's Timing
 
     def _check_clips(self) -> None:
-        if sorted(self.clips) != sorted(CLIPS):
-            raise RuntimeError(f'clips must be exactly {", ".join(CLIPS)}, not {", ".join(sorted(self.clips))}')
+        t = self.timing
+        wanted = t.wanted()  # all seven, or six without `cast` for a fighter with no ability
+        if sorted(self.clips) != sorted(wanted):
+            why = '' if t.ability else f', since {t.unit} has no ability and never casts'
+            raise RuntimeError(f'clips must be exactly {", ".join(wanted)}{why}, not {", ".join(sorted(self.clips))}')
         for name, clip in self.clips.items():
             low, high = LENGTHS[name]
             if not low - 1e-9 <= clip.seconds <= high + 1e-9:
@@ -837,12 +882,13 @@ class Rig:
                     a, b = first[bone], last[bone]
                     if a.turn.rotation_difference(b.turn).angle > 1e-4 or (a.at - b.at).length > 1e-5:
                         raise RuntimeError(f'{name} loops but ends away from where it starts ({bone})')
-        t = self.timing
         strike = self.clips['attack'].marks.get('strike')
         if strike != t.strike:
             what = 'blow lands' if t.melee else 'shot leaves'
             raise RuntimeError(f'attack must strike on frame {t.strike} ({t.strike / FPS:.2f} s), when its {what}, '
                                f'and mark it, not on {strike}')
+        if not t.ability:
+            return
         cast = self.clips['cast']
         height = cast.marks.get('height')
         if height != t.release:
@@ -926,7 +972,7 @@ class Rig:
         self.radius, self.bottom = 0.0, math.inf
         self.radius_between, self.bottom_between = 0.0, math.inf
         self.reaches = {}  # each clip's furthest from the centre, on frames or between them: (how far, frame)
-        for name in CLIPS:
+        for name in self.timing.wanted():
             clip = self.clips[name]
             ahead = name in ACTIONS
             self._play(name)
@@ -1009,14 +1055,16 @@ class Rig:
         """Exports the mesh, its skin and one animation per clip, sampled on every frame. The
         armature's extras carry `reach`: the furthest from its centre any frame of any clip takes the
         model, on frames or between them as the client shows them, which the client bounds its meshes
-        by (docs/viewer-spec.md section 4, "Models"); `strike` and `hits`, when it strikes and casts;
+        by (docs/viewer-spec.md section 4, "Models"); `strike` and `hits`, when it strikes and casts (no
+        `hits` for a fighter with no ability, which has no cast);
         and for a ranged attack `muzzle`, where its shot leaves (muzzle())."""
         for o in bpy.context.scene.objects:
             o.select_set(o in (model, self.armature))
         self.armature['reach'] = round(max(self.radius, self.radius_between), 4)
         # When it strikes and casts, for the client's tests (test/models.test.ts) to check against the sim.
         self.armature['strike'] = self.clips['attack'].marks['strike']
-        self.armature['hits'] = self.clips['cast'].hits or [self.clips['cast'].marks['height']]
+        if 'cast' in self.clips:  # a fighter with no ability has no cast, and no hits
+            self.armature['hits'] = self.clips['cast'].hits or [self.clips['cast'].marks['height']]
         muzzle = self.muzzle()
         if muzzle is not None:  # where a ranged attack's shot leaves, for the client to fly it from
             self.armature['muzzle'] = muzzle

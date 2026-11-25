@@ -1,5 +1,19 @@
 import { existsSync, readFileSync } from 'node:fs';
-import { ABILITIES, ATTACKS, CLASS_TEMPLATE, TEMPLATES, TICKS_PER_SECOND, UNITS, toTicks, type UnitId } from '@lotr-tactics/sim';
+import {
+  ABILITIES,
+  ATTACKS,
+  CLASS_TEMPLATE,
+  MONSTERS,
+  SUMMONS,
+  TEMPLATES,
+  TICKS_PER_SECOND,
+  UNITS,
+  toTicks,
+  type AbilityDef,
+  type MonsterId,
+  type SummonId,
+  type UnitId,
+} from '@lotr-tactics/sim';
 import { describe, expect, it } from 'vitest';
 import { SHOT_DELAY_TICKS } from '../src/playback.js';
 
@@ -7,6 +21,20 @@ import { SHOT_DELAY_TICKS } from '../src/playback.js';
 // CI has no Blender to rebuild them, so this reads the .glb files themselves, without a glTF library.
 
 const UNIT_IDS = Object.keys(UNITS) as UnitId[];
+
+/** The PvE monsters and the summons, each with one model, always 1★ (section 4, Models; docs/animation-plan.md, Workflow 3). */
+type CreatureId = MonsterId | SummonId;
+const CREATURE_IDS: readonly CreatureId[] = [...(Object.keys(MONSTERS) as MonsterId[]), ...(Object.keys(SUMMONS) as SummonId[])];
+
+/** Anything with a model: a roster unit, a monster or a summon. */
+type FighterId = UnitId | CreatureId;
+
+/**
+ * The monsters and summons whose models have landed, which must stay there and rigged. Workflow 3 of
+ * docs/animation-plan.md builds them run by run, and each is added here as it lands. Every monster or summon whose
+ * .glb is in public/models is checked in full whether it is listed or not.
+ */
+const MONSTERS_MUST_BE_RIGGED: readonly CreatureId[] = ['goblin', 'goblin-archer', 'orc-grunt', 'eye-nazgul'];
 
 /** A unit's gear model, its model at 2★ (section 4, Star levels). */
 function gearModel(id: UnitId): string {
@@ -52,24 +80,59 @@ const CLIPS = {
 } as const;
 type Clip = keyof typeof CLIPS;
 
-/** Riders ride (section 4, Riders), and Large units are built at their full size (section 4, Large units). */
-function isRider(id: UnitId): boolean {
-  return UNITS[id].classes.includes('rider');
+function isUnit(id: FighterId): id is UnitId {
+  return Object.hasOwn(UNITS, id);
 }
 
-function isLargeUnit(id: UnitId): boolean {
-  return UNITS[id].large === true;
+function isMonster(id: FighterId): id is MonsterId {
+  return Object.hasOwn(MONSTERS, id);
 }
 
-/** At most 24 bones on foot, 32 for a Large unit and 40 for a mounted one (section 4, Bones). */
-function boneBudget(id: UnitId): number {
+/** Riders ride (section 4, Riders), and Large units and monsters are built at their full size (section 4, Large units). */
+function isRider(id: FighterId): boolean {
+  return isUnit(id) && UNITS[id].classes.includes('rider');
+}
+
+function isLargeUnit(id: FighterId): boolean {
+  if (isUnit(id)) return UNITS[id].large === true;
+  return isMonster(id) && MONSTERS[id].large === true;
+}
+
+/**
+ * Which bones a model has (section 4, Bones): a figure on foot, mounted or Large has the 16; a beast with no rider, the
+ * warg and the Mûmak, a mount's; the Watcher its tentacles.
+ */
+type RigKind = 'figure' | 'beast' | 'watcher';
+
+function rigKind(id: FighterId): RigKind {
+  if (id === 'warg' || id === 'mumak') return 'beast';
+  if (id === 'watcher') return 'watcher';
+  return 'figure';
+}
+
+/** The ability it casts, if any: every roster unit's, a monster's if it has one, and none for a summon (section 4, Clips). */
+function abilityOf(id: FighterId): AbilityDef | undefined {
+  if (isUnit(id)) return UNITS[id].ability;
+  if (isMonster(id)) return MONSTERS[id].ability;
+  return undefined;
+}
+
+/** Its attack's range: a roster unit's from the template of its first class, a monster's its own, and a summon's 1, as summons are melee. */
+function rangeOf(id: FighterId): number {
+  if (isUnit(id)) return TEMPLATES[CLASS_TEMPLATE[UNITS[id].classes[0]!]].range;
+  if (isMonster(id)) return MONSTERS[id].stats.range;
+  return 1;
+}
+
+/** At most 24 bones on foot, 32 for a Large unit or monster and 40 for a mounted one (section 4, Bones). */
+function boneBudget(id: FighterId): number {
   if (isRider(id)) return 40;
   if (isLargeUnit(id)) return 32;
   return 24;
 }
 
-/** Section 4, Limits: a rigged unit's .glb stays under 200,000 bytes, or 300,000 for a Rider or a Large unit. */
-function maxBytes(id: UnitId): number {
+/** Section 4, Limits: a rigged model's .glb stays under 200,000 bytes, or 300,000 for a Rider or a Large unit or monster. */
+function maxBytes(id: FighterId): number {
   return isRider(id) || isLargeUnit(id) ? 300_000 : 200_000;
 }
 
@@ -286,17 +349,21 @@ function armatureOf(model: Glb): GltfNode {
  * viewer looses it; an ability's hits are struck or loosed at its release, its wind-up after the cast, and every 3
  * ticks after for several hits (sim-spec section 10.6). A unit uses the template of its first class.
  */
-function timingOf(id: UnitId): { strike: number; hits: number[] } {
-  const unit = UNITS[id];
-  const melee = TEMPLATES[CLASS_TEMPLATE[unit.classes[0]!]].range === 1;
-  const release = toTicks(unit.ability.windupSeconds);
-  const counts = [...JSON.stringify(unit.ability.steps).matchAll(/"hits":(\d+)/g)].map((match) => Number(match[1]));
+function timingOf(id: FighterId): { strike: number; hits: number[] } {
+  const strike = rangeOf(id) === 1 ? toTicks(ATTACKS.meleeHitSeconds) : SHOT_DELAY_TICKS;
+  const ability = abilityOf(id);
+  // A monster or summon with no ability never casts, and its model has no cast to strike in.
+  if (ability === undefined) return { strike, hits: [] };
+  const release = toTicks(ability.windupSeconds);
+  const counts = [...JSON.stringify(ability.steps).matchAll(/"hits":(\d+)/g)].map((match) => Number(match[1]));
   const hits = Math.max(1, ...counts);
   const gap = toTicks(ABILITIES.multiHitSeconds);
-  return {
-    strike: melee ? toTicks(ATTACKS.meleeHitSeconds) : SHOT_DELAY_TICKS,
-    hits: Array.from({ length: hits }, (_, k) => release + k * gap),
-  };
+  return { strike, hits: Array.from({ length: hits }, (_, k) => release + k * gap) };
+}
+
+/** The clips its model has, exactly (section 4, Clips): all seven, or the six without `cast` for one with no ability. */
+function clipsOfFighter(id: FighterId): Clip[] {
+  return CLIP_NAMES.filter((clip) => clip !== 'cast' || abilityOf(id) !== undefined);
 }
 
 /** A model's clip by name. */
@@ -308,15 +375,20 @@ function clipOf(model: Glb, name: Clip): GltfAnimation {
 
 const CLIP_NAMES = Object.keys(CLIPS) as Clip[];
 
+/** That a model's .glb is one mesh with a `team` material on it (section 4, Livery). */
+function expectOneMeshWithTeam(id: string): void {
+  expect(existsSync(modelFile(id)), `public/models/${id}.glb`).toBe(true);
+  const { json } = glb(id);
+  expect(json.meshes ?? []).toHaveLength(1);
+  // Section 4, Livery: a material named `team`, on parts of the model, that the viewer gives the livery colour.
+  const team = (json.materials ?? []).findIndex((material) => material.name === 'team');
+  expect(team, 'a material named team').toBeGreaterThanOrEqual(0);
+  expect(json.meshes?.[0]?.primitives.some((primitive) => primitive.material === team), 'the team material on part of the mesh').toBe(true);
+}
+
 describe('unit models', () => {
   it.each(UNIT_IDS)('%s has a .glb of one mesh with a team material on it', (id) => {
-    expect(existsSync(modelFile(id)), `public/models/${id}.glb`).toBe(true);
-    const { json } = glb(id);
-    expect(json.meshes ?? []).toHaveLength(1);
-    // Section 4, Livery: a material named `team`, on parts of the model, that the viewer gives the livery colour.
-    const team = (json.materials ?? []).findIndex((material) => material.name === 'team');
-    expect(team, 'a material named team').toBeGreaterThanOrEqual(0);
-    expect(json.meshes?.[0]?.primitives.some((primitive) => primitive.material === team), 'the team material on part of the mesh').toBe(true);
+    expectOneMeshWithTeam(id);
   });
 
   // Workflow 2 of docs/animation-plan.md rigged them all, so a model that lost its rig is a regression.
@@ -325,11 +397,23 @@ describe('unit models', () => {
   });
 });
 
+/** A mount's bones, which a beast with no rider has too (section 4, Bones): the horse's 16. */
+const MOUNT_BONES = [
+  'mount_body',
+  'mount_neck',
+  'mount_head',
+  'mount_tail',
+  ...['fore', 'hind'].flatMap((leg) => ['upper', 'lower', 'foot'].flatMap((part) => ['l', 'r'].map((side) => `mount_${leg}_${part}_${side}`))),
+];
+
 /**
- * The checks of a rigged model, `name`, which is unit `id`'s model or its gear model, the .glb staying under `limit`
- * bytes: called inside a describe block.
+ * The checks of a rigged model, `name`, which is fighter `id`'s model or a unit's gear model, the .glb staying under
+ * `limit` bytes: called inside a describe block.
  */
-function checkRigged(name: string, id: UnitId, limit: number, what: string): void {
+function checkRigged(name: string, id: FighterId, limit: number, what: string): void {
+  const kind = rigKind(id);
+  const clips = clipsOfFighter(id);
+
   it('is one skinned mesh on one armature', () => {
     const { json } = glb(name);
     expect(json.skins ?? [], 'one skin').toHaveLength(1);
@@ -338,12 +422,34 @@ function checkRigged(name: string, id: UnitId, limit: number, what: string): voi
     expect(meshes[0]?.skin, 'the mesh is skinned').toBe(0);
   });
 
-  it('has the 16 bones, any of its own named in lower case with digits and underscores, within its budget', () => {
+  const bones = { figure: 'the 16 bones', beast: 'a mount’s bones and none of a figure’s', watcher: 'root, body and tentacles' }[kind];
+  it(`has ${bones}, any of its own named in lower case with digits and underscores, within its budget`, () => {
     const names = boneNames(glb(name));
-    for (const bone of BONES) expect(names).toContain(bone);
+    expect(names).toContain('root');
+    if (kind === 'figure') for (const bone of BONES) expect(names).toContain(bone);
+    else {
+      // A beast or the Watcher has none of a figure's bones but root (section 4, Bones).
+      for (const bone of BONES.filter((bone) => bone !== 'root')) expect(names, `${name} has no ${bone}`).not.toContain(bone);
+    }
+    if (kind === 'beast') for (const bone of MOUNT_BONES) expect(names).toContain(bone);
+    if (kind === 'watcher') {
+      expect(names).toContain('body');
+      expect(names).toContain('tentacle_1_1');
+      expect(names.filter((bone) => bone.startsWith('mount_')), 'no mount bones').toEqual([]);
+    }
     expect(new Set(names).size, 'no two bones with one name').toBe(names.length);
     for (const name of names) expect(name).toMatch(BONE_NAME);
     expect(names.length).toBeLessThanOrEqual(boneBudget(id));
+  });
+
+  // A beast with no rider has a mount's bones hanging from root as they would under a rider, its mount_body where a
+  // figure's hips would be, so the beast half of the mounted clips drives it (section 4, Bones).
+  it.skipIf(kind !== 'beast')('hangs a beast’s mount_body from root', () => {
+    const model = glb(name);
+    const body = skinOf(model).joints[boneNames(model).indexOf('mount_body')];
+    if (body === undefined) throw new Error(`${name} has no mount_body bone.`);
+    const parent = parentsOf(model).get(body);
+    expect(parent === undefined ? null : nameOf(model, parent)).toBe('root');
   });
 
   it.skipIf(!isRider(id))('hangs a rider’s hips from its mount, whose bones are named mount_…', () => {
@@ -372,9 +478,14 @@ function checkRigged(name: string, id: UnitId, limit: number, what: string): voi
     const { extras } = armatureOf(model);
     const { strike, hits } = timingOf(id);
     expect(extras?.strike, 'the frame its attack strikes on').toBe(strike);
-    expect(extras?.hits, 'the frames its cast strikes or looses on').toEqual(hits);
     const length = (clip: Clip) => Math.max(...keyTimes(model, clipOf(model, clip))) * TICKS_PER_SECOND;
     expect(length('attack'), 'the attack recovers after its strike').toBeGreaterThan(strike + 3);
+    if (hits.length === 0) {
+      // No ability, so no cast: no frames to strike or loose on, given as none or an empty list.
+      expect(extras?.hits ?? [], 'a model without cast has no hits').toEqual([]);
+      return;
+    }
+    expect(extras?.hits, 'the frames its cast strikes or looses on').toEqual(hits);
     expect(length('cast'), 'the cast follows through after its last hit').toBeGreaterThan(hits[hits.length - 1]! + 3);
   });
 
@@ -382,7 +493,7 @@ function checkRigged(name: string, id: UnitId, limit: number, what: string): voi
   // into the armature's extras as `muzzle`, in the model's own frame facing +z; a melee attack has none.
   it('carries a muzzle ahead of it, above the ground and within its reach, if it attacks from range', () => {
     const { extras } = armatureOf(glb(name));
-    if (TEMPLATES[CLASS_TEMPLATE[UNITS[id].classes[0]!]].range === 1) {
+    if (rangeOf(id) === 1) {
       expect(extras?.muzzle, 'a melee unit has no muzzle').toBeUndefined();
       return;
     }
@@ -410,10 +521,10 @@ function checkRigged(name: string, id: UnitId, limit: number, what: string): voi
     for (const coordinate of scenePosition(model, root)) expect(Math.abs(coordinate)).toBeLessThan(1e-4);
   });
 
-  it('has exactly the seven clips, each turning its bones, with lengths in range', () => {
+  it(`has exactly the ${clips.length === 7 ? 'seven clips' : 'six clips without cast, as it has no ability'}, each turning its bones, with lengths in range`, () => {
     const model = glb(name);
     const animations = model.json.animations ?? [];
-    expect(animations.map((animation) => animation.name).sort()).toEqual(Object.keys(CLIPS).sort());
+    expect(animations.map((animation) => animation.name).sort()).toEqual([...clips].sort());
     const bones = new Set(skinOf(model).joints);
     for (const animation of animations) {
       const { min, max } = CLIPS[animation.name as Clip];
@@ -430,7 +541,7 @@ function checkRigged(name: string, id: UnitId, limit: number, what: string): voi
 
   it('keys its clips at 30 frames a second, one frame per tick, each starting at frame 0', () => {
     const model = glb(name);
-    for (const clip of CLIP_NAMES) {
+    for (const clip of clips) {
       const times = keyTimes(model, clipOf(model, clip));
       // Its first keyframe is at 0, neither before nor after: 32-bit float times, hence the 0.1 ms slack.
       expect(Math.abs(Math.min(...times)), `${clip} starts at frame 0`).toBeLessThan(1e-4);
@@ -441,7 +552,7 @@ function checkRigged(name: string, id: UnitId, limit: number, what: string): voi
 
   it('ends each looping clip where it starts', () => {
     const model = glb(name);
-    for (const clip of CLIP_NAMES.filter((each) => CLIPS[each].loops)) {
+    for (const clip of clips.filter((each) => CLIPS[each].loops)) {
       const animation = clipOf(model, clip);
       for (const { sampler: index, target } of animation.channels) {
         const sampler = animation.samplers[index]!;
@@ -492,8 +603,9 @@ function checkRigged(name: string, id: UnitId, limit: number, what: string): voi
   });
 }
 
-function kindOf(id: UnitId): string {
-  return isRider(id) ? 'Rider' : isLargeUnit(id) ? 'Large unit' : 'unit on foot';
+function kindOf(id: FighterId): string {
+  const who = isUnit(id) ? 'unit' : isMonster(id) ? 'monster' : 'summon';
+  return isRider(id) ? 'Rider' : isLargeUnit(id) ? `Large ${who}` : rigKind(id) === 'figure' ? `${who} on foot` : who;
 }
 
 /** Every unit's model is rigged, and each is checked in full. */
@@ -525,6 +637,79 @@ describe.each(UNIT_IDS)('%s’s gear model, rigged', (id) => {
       const length = (model: Glb) => Math.max(...keyTimes(model, clipOf(model, clip)));
       expect(length(two), `${clip}'s length`).toBeCloseTo(length(one), 4);
     }
+  });
+});
+
+/** The monsters and summons whose models are in public/models now: none, or more as Workflow 3 lands them. */
+const CREATURES_WITH_MODELS = CREATURE_IDS.filter((id) => existsSync(modelFile(id)));
+
+describe('monster and summon models', () => {
+  // Each must be there once it has landed; one that hasn't yet is a pawn (section 4, In the viewer).
+  it('include every one that has landed (MONSTERS_MUST_BE_RIGGED)', () => {
+    for (const id of MONSTERS_MUST_BE_RIGGED) expect(existsSync(modelFile(id)), `public/models/${id}.glb`).toBe(true);
+  });
+
+  it('are named after monsters and summons', () => {
+    for (const id of MONSTERS_MUST_BE_RIGGED) expect(CREATURE_IDS).toContain(id);
+  });
+
+  // Monsters and summons are always 1★, so each has one model, and no gear or book model (section 4, Models).
+  it('are 1★ only', () => {
+    for (const id of CREATURE_IDS) {
+      for (const star of [2, 3]) expect(existsSync(modelFile(`${id}-${star}`)), `public/models/${id}-${star}.glb`).toBe(false);
+    }
+  });
+});
+
+/**
+ * Every monster's and summon's model that is there is rigged from the start (docs/animation-plan.md, Workflow 3), and
+ * checked as fully as a unit's 1★ model.
+ */
+for (const id of CREATURES_WITH_MODELS) {
+  describe(`${id}, rigged`, () => {
+    it('is a .glb of one mesh with a team material on it', () => {
+      expectOneMeshWithTeam(id);
+    });
+
+    it('is rigged', () => {
+      expect(isRigged(id), `${id} has a rig`).toBe(true);
+    });
+
+    checkRigged(id, id, maxBytes(id), `a ${kindOf(id)}`);
+  });
+}
+
+describe('what the checks expect of monsters and summons', () => {
+  it('six clips without cast for those with no ability, and seven for those with one', () => {
+    for (const id of ['goblin', 'goblin-archer', 'warg', 'orc-grunt', 'eye-nazgul'] as const) {
+      expect(clipsOfFighter(id), id).toEqual(['idle', 'move', 'attack', 'stun', 'death', 'victory']);
+      expect(timingOf(id).hits, id).toEqual([]);
+    }
+    for (const id of ['cave-troll', 'watcher', 'mumak', 'balrog', 'gimli'] as const) expect(clipsOfFighter(id), id).toEqual(CLIP_NAMES);
+  });
+
+  it('a muzzle for those that attack from range, the goblin archer, the Watcher and the Balrog, and none for summons', () => {
+    expect(CREATURE_IDS.filter((id) => rangeOf(id) > 1).sort()).toEqual(['balrog', 'goblin-archer', 'watcher']);
+  });
+
+  it('300,000 bytes for the Large monsters, and 200,000 for the rest', () => {
+    for (const id of ['cave-troll', 'watcher', 'mumak', 'balrog'] as const) expect(maxBytes(id), id).toBe(300_000);
+    for (const id of ['goblin', 'goblin-archer', 'warg', 'orc-grunt', 'eye-nazgul'] as const) expect(maxBytes(id), id).toBe(200_000);
+  });
+
+  it('a beast’s bones for the warg and the Mûmak, the Watcher’s own, and a figure’s for the rest', () => {
+    expect(CREATURE_IDS.map((id) => [id, rigKind(id)])).toEqual([
+      ['goblin', 'figure'],
+      ['goblin-archer', 'figure'],
+      ['warg', 'beast'],
+      ['cave-troll', 'figure'],
+      ['watcher', 'watcher'],
+      ['mumak', 'beast'],
+      ['balrog', 'figure'],
+      ['orc-grunt', 'figure'],
+      ['eye-nazgul', 'figure'],
+    ]);
+    expect(MOUNT_BONES).toHaveLength(16);
   });
 });
 

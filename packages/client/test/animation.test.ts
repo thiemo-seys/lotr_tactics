@@ -8,10 +8,9 @@ import {
   type ItemId,
   type PlacedUnit,
   type Star,
-  type UnitId,
 } from '@lotr-tactics/sim';
 import { describe, expect, it } from 'vitest';
-import { CLIPS, FADE_TICKS, fightFacing, fightPose, planningPose, sinkDelay, type ClipLengths, type ClipName, type Pose } from '../src/animation.js';
+import { CLIPS, FADE_TICKS, clipsNeeded, fightFacing, fightPose, planningPose, sinkDelay, type ClipLengths, type ClipName, type Pose } from '../src/animation.js';
 import { Effects } from '../src/effects.js';
 import { EFFECTS } from '../src/look.js';
 import { PRESETS } from '../src/boards.js';
@@ -28,7 +27,7 @@ import { Playback, facing } from '../src/playback.js';
 const LENGTHS: ClipLengths = { idle: 2.4, move: 0.6, attack: 0.9, cast: 0.7, stun: 0.8, death: 0.4, victory: 0.5 };
 // In ticks: idle 72, move 18, attack 27, cast 21, stun 24, death 12, victory 15.
 
-function placed(unitId: UnitId, col: number, row: number, star: Star = 1, items: readonly ItemId[] = []): PlacedUnit {
+function placed(unitId: PlacedUnit['unitId'], col: number, row: number, star: Star = 1, items: readonly ItemId[] = []): PlacedUnit {
   return { unitId, star, col, row, items };
 }
 
@@ -202,6 +201,55 @@ describe('the clips', () => {
   it('are the seven a rigged model has, and fade over 3 ticks', () => {
     expect(CLIPS).toEqual(['idle', 'move', 'attack', 'cast', 'stun', 'death', 'victory']);
     expect(FADE_TICKS).toBe(3);
+  });
+
+  // Section 4, In the viewer: a model plays its clips if it has all its fighter needs, seven, or the six without `cast`
+  // for a monster or summon with no ability, which never casts.
+  it('are all seven for a fighter that casts, and the six without cast for one with no ability', () => {
+    expect(clipsNeeded(true)).toEqual(CLIPS);
+    expect(clipsNeeded(false)).toEqual(['idle', 'move', 'attack', 'stun', 'death', 'victory']);
+  });
+});
+
+describe('a model without cast', () => {
+  /** LENGTHS without `cast`, as a goblin's, goblin archer's, warg's or summon's model has them. */
+  const SIX: ClipLengths = { idle: 2.4, move: 0.6, attack: 0.9, stun: 0.8, death: 0.4, victory: 0.5 };
+
+  /** Every pose a unit takes from the start of a fight to after its end, a third of a tick apart. */
+  function poses(p: Playback, unit: number, lengths: ClipLengths): Pose[] {
+    const all: Pose[] = [];
+    for (let t = 0; t <= p.time; t += 1 / 3) all.push(fightPose(p, unit, lengths, { time: t }));
+    return all;
+  }
+
+  it('plays a goblin through a whole fight, which it never casts in, without asking for cast', () => {
+    // Gimli (id 0) against two Moria goblins (ids 1 and 2), which have no ability (data/monsters.ts).
+    const p = finished(combat([placed('gimli', 3, 3)], [placed('goblin', 3, 3), placed('goblin', 4, 3)]));
+    expect(unitsOf(p)).toEqual(['gimli', 'goblin', 'goblin']);
+    for (const goblin of [1, 2]) {
+      expect(ticksOf(p, 'cast', goblin)).toEqual([]);
+      expect(ticksOf(p, 'attack', goblin).length).toBeGreaterThan(0);
+      const all = poses(p, goblin, SIX);
+      expect(all.some((pose) => pose.clip === 'attack'), 'it attacks').toBe(true);
+      for (const pose of all) {
+        expect(pose.clip).not.toBe('cast');
+        expect(pose.from?.clip).not.toBe('cast');
+        expect(Number.isFinite(pose.time) && pose.time >= 0 && pose.time <= SIX[pose.clip as Exclude<ClipName, 'cast'>]!).toBe(true);
+      }
+    }
+  });
+
+  it('never plays cast, even for a cast it should never have', () => {
+    // Sam (id 0) casts Loyal on 253 (an attack or cast on the tick a stun starts, above). Were a fighter with no cast
+    // clip to cast, it would play on as if it hadn't, rather than ask for a clip it hasn't got.
+    const p = walkingDuel();
+    expect(within(ticksOf(p, 'cast', 0), 240, 300)).toEqual([253]);
+    expectPlaying(pose(p, 0, 253), 'cast', 0);
+    for (const each of poses(p, 0, SIX)) {
+      expect(each.clip).not.toBe('cast');
+      expect(each.from?.clip).not.toBe('cast');
+      expect(Number.isFinite(each.time)).toBe(true);
+    }
   });
 });
 

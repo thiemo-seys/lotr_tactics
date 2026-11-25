@@ -26,7 +26,8 @@ belt cinching the cloak at the waist and two bosses pinning the mantle on the sh
 which the client colours iron, silver or gold by star level (docs/viewer-spec.md section 4, "Star
 levels"): the clasp and the buckle show from the front, the bosses and the pommel from behind too.
 Its 2★ model is ringwraith-2.py, which imports this script and builds it with a sword in its left hand
-(build()), and its 3★ model ringwraith-3.py.
+(build()), and its 3★ model ringwraith-3.py. The Eye's Nazgûl, a summon, is built on it too
+(eye-nazgul.py), with a long pale blade in its right hand in place of the knife.
 
     blender --background --factory-startup --python-exit-code 1 --python ringwraith.py [-- <out.glb>]
 
@@ -483,12 +484,13 @@ def knife():
     return fist, point, width
 
 
-def hands(made=None):
-    # The claw, or what the 2★ model holds in its place (`made`), in the left hand.
+def hands(made=None, blade=None):
+    # The claw, or what the 2★ model holds in its place (`made`), in the left hand; the knife, or what
+    # the Eye's Nazgûl holds in its place (`blade`, which returns the same), in the right.
     with bone('hand_l'):
         (made or claw)()
     with bone('hand_r'):
-        grip, point, edge = knife()
+        grip, point, edge = (blade or knife)()
     # The knife from the grip in the fist to its point, an edge turned up and out.
     hold('r', grip, point, point + 0.1 * edge)
 
@@ -566,10 +568,13 @@ CLIPS = robed(fit({
 }))
 
 
-def build(sword=None):
+def build(sword=None, blade=None):
     """Makes it in a fresh scene, every part bound to its bone and the joints marked, and returns the
     rig to finish() it with. Its 2★ model (ringwraith-2.py) passes its sword as `sword`, a function
-    that makes the fist and the sword in it, which the left hand holds in place of the claw."""
+    that makes the fist and the sword in it, which the left hand holds in place of the claw. The Eye's
+    Nazgûl (eye-nazgul.py) passes its blade as `blade`, a function that makes the right fist and what
+    it holds in place of the knife, and returns its grip, its point and the way an edge faces, as
+    knife() does."""
     reset()
     make_materials()
     legs()
@@ -578,7 +583,7 @@ def build(sword=None):
     mantle()
     sleeve('right', R_SHOULDER, R_ELBOW, R_WRIST)
     sleeve('left', L_SHOULDER, L_ELBOW, L_WRIST)
-    hands(sword)
+    hands(sword, blade)
     fittings()
     return Rig(bones={'robe': ('root', 'robe_top', 'robe_foot')}, clips=CLIPS)
 
