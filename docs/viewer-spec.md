@@ -78,6 +78,7 @@ packages/client/
       float.ts     a floating number: the element CSS2DRenderer positions, and the one in it that pops in
       unit-hover.ts  the card for the unit under the pointer in the 3D view
       frame-cap.ts   the button that caps the frame rate, and remembering the choice
+      dropdown.ts    a button that opens a list under it (the play page's top-bar menu)
     play/          the play page's parts
       hud-bar.ts      the HUD
       shop-bar.ts     Buy XP, Reroll and Lock, the shop's unit cards, the items, Ready, and selling
@@ -392,7 +393,7 @@ How abilities, hits and statuses look: the **punchy** style, chosen on 6 Novembe
   - The current tick, time and overtime.
 - **URL:** the fight settings are kept in the URL hash, for example `#a=full&b=traits&seed=3&stage=2`, so a fight can be shared and reloaded.
 - **Damage meter:** a Damage button next to Log opens and closes the meter (section 8), with a switch between teams A and B, since the viewer takes no side.
-- **Frame rate:** both pages run a frame whenever the browser offers one, as many a second as the screen shows. A 30 fps toggle (in the menu of the play page's top bar, an icon button next to Log in the viewer) caps them at 30 a second (frame-cap.ts), to spare the GPU and the battery; the browser remembers the choice, for both pages. The cap skips whole frames and the next frame run counts their time, so display time still follows the clock: fights play at the same speed and timers run the same either way. Frames come on a steady grid, a little early allowed, so a 60 Hz screen gets every other frame, and after a long gap the grid starts afresh rather than catching up. It is off by default.
+- **Frame rate:** both pages run a frame whenever the browser offers one, as many a second as the screen shows. A 30 fps toggle (in the menu of the play page's top bar, a "30 fps" button next to Log in the viewer) caps them at 30 a second (frame-cap.ts), to spare the GPU and the battery; the browser remembers the choice, for both pages. The cap skips whole frames and the next frame run counts their time, so display time still follows the clock: fights play at the same speed and timers run the same either way. Frames come on a steady grid, a little early allowed, so a 60 Hz screen gets every other frame, and after a long gap the grid starts afresh rather than catching up. It is off by default.
 - **Event log:** one line per event except moves, with unit names, newest last, coloured by the kind of event, with casts, deaths and the end marked.
 
 ---

@@ -1,6 +1,7 @@
 // A button that opens and closes a list under it, such as the play page's menu in the top bar. A
 // click outside the list, Escape, or choosing a link or button in it closes it again; a toggle in
-// it (a button with aria-pressed) leaves it open, so the person sees the toggle change.
+// it (a button with aria-pressed) leaves it open, so the person sees the toggle change. An Escape
+// that closes it does nothing else.
 
 import { show } from './dom.js';
 
@@ -25,6 +26,9 @@ export function dropdown(button: HTMLElement, list: HTMLElement): void {
   });
   document.addEventListener('keydown', (event) => {
     if (event.key !== 'Escape' || !open()) return;
+    // Closing the menu is all this Escape does: the page's own Escape, back to the person's board
+    // from another player's, listens on the window, after the document.
+    event.stopPropagation();
     set(false);
     button.focus();
   });
