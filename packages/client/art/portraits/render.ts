@@ -88,4 +88,4 @@ async function portraits(size: number, quality: number): Promise<Record<string, 
   return out;
 }
 
-(window as unknown as { portraits: typeof portraits }).portraits = portraits;
+Object.assign(window, { portraits, unitIds: ids });

@@ -3842,6 +3842,8 @@ body.play #traits {
 }
 
 .unit-card .art {
+  /* Positioned, so it paints over the light behind it (completes-star) and under the shading over it. */
+  position: relative;
   display: block;
   width: 100%;
   height: 100%;
@@ -3975,10 +3977,16 @@ body.play #traits {
   padding: 0 8px;
   font: 700 12px/1 var(--font-body);
   color: var(--parchment-light);
-  text-overflow: ellipsis;
-  white-space: nowrap;
   background: linear-gradient(180deg, #8e2025, #5e1013);
   border-top: 1px solid rgba(0, 0, 0, 0.6);
+}
+
+/* A reason too long for the card ends in an ellipsis. */
+.unit-card .why > span {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 /* A narrow card names its traits by icon only, and its unit in smaller letters; hovering it names them. */
@@ -4038,7 +4046,7 @@ body.play #traits {
   box-shadow: 0 0 0 2px var(--leather-edge), 0 0 0 4px var(--gold-bright), 0 0 18px rgba(243, 210, 122, 0.55);
 }
 
-.unit-card.has-copy:hover {
+.unit-card.has-copy:not([aria-disabled='true']):hover {
   box-shadow:
     0 0 0 2px var(--leather-edge),
     0 0 0 4px var(--gold-bright),
