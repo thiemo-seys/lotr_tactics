@@ -4,10 +4,10 @@
 // Gifts under it, as they were in planning while the fight plays (PlayFlow.shownView). A player's
 // row shows their board when clicked.
 
-import { GIFTS, type PlayerView } from '@lotr-tactics/sim';
+import { GIFTS, TRAITS, type PlayerView } from '@lotr-tactics/sim';
 import { ordinal, type PlayFlow, type TrackedTeam } from '../flow.js';
 import { plural } from '../hud.js';
-import { GIFT_TIER_ICONS } from '../icons.js';
+import { GIFT_TIER_ICONS, TRAIT_ICONS } from '../icons.js';
 import { playerRows, type PlayerRow } from '../players.js';
 import { giftTip, textTip, traitTip } from '../tips.js';
 import { traitRows, traitUnits, type TraitRow } from '../traits.js';
@@ -74,7 +74,6 @@ export function renderPlayers(panel: HTMLElement, flow: PlayFlow): void {
   // Rebuilding the rows would lose the keyboard's place in the list, so it is given back after.
   const focused = panel.contains(document.activeElement) ? (document.activeElement as HTMLElement).dataset.seat : undefined;
   rebuild(panel, JSON.stringify([rows, s.ring.corruption, s.me.gifts, viewing]), () => [
-    el('h3', 'side-title', icon('person'), 'Players'),
     el(
       'div',
       'player-list',
@@ -105,17 +104,22 @@ function playerRow(row: PlayerRow, corruption: number, board: RowBoard | null): 
     row.away ? el('span', 'badge away', icon('away')) : null,
     board?.shown === true && !row.you ? el('span', 'badge viewing', icon('viewer')) : null,
   );
+  // A medallion with the player's crest, ringed by their HP, beside a plate with their name and HP.
+  const crest = el('span', 'crest', icon(row.crest === null ? 'board' : TRAIT_ICONS[row.crest.origin]));
+  if (row.crest !== null) crest.style.setProperty('--crest', row.crest.colour);
+  const status =
+    row.placement !== null
+      ? el('span', 'status', out ? icon('knockout') : icon('trophy'), el('span', 'place', row.placement === 1 ? 'Winner' : `Out · ${ordinal(row.placement)}`))
+      : el('span', 'status', el('span', 'hp-num', String(Math.max(0, row.hp))), el('span', 'hp-bar', el('i', '', '')));
   const item = el(
     'div',
-    `player-row hp-${row.hpBand}${row.you ? ' you' : ''}${out ? ' out' : ''}${row.placement === 1 ? ' winner' : ''}${board === null ? '' : ' viewable'}${board?.shown === true ? ' shown' : ''}`,
+    `player-row hp-${row.hpBand}${row.you ? ' you' : ''}${out ? ' out' : ''}${row.placement === 1 ? ' winner' : ''}${row.ringHolder ? ' ring-holder' : ''}${board === null ? '' : ' viewable'}${board?.shown === true ? ' shown' : ''}`,
+    el('span', 'plate', el('span', 'plate-top', el('span', 'pname', row.name), badges), status),
+    el('span', 'medal', crest),
     el('span', 'who', icon(row.bot ? 'bot' : 'person')),
-    el('span', 'pname', row.name),
-    badges,
     el('span', 'lvl', String(row.level)),
-    row.placement !== null ? el('span', 'place', ordinal(row.placement)) : el('span', 'hp-num', String(Math.max(0, row.hp))),
-    el('span', 'hp-bar', el('i', '', '')),
   );
-  (item.querySelector('.hp-bar i') as HTMLElement).style.width = `${Math.round(row.hpShare * 100)}%`;
+  item.style.setProperty('--hp-share', `${Math.round(row.hpShare * 100)}%`);
   item.tabIndex = 0;
   item.dataset.seat = String(row.seat);
   if (board !== null) {
@@ -134,6 +138,7 @@ function playerRow(row: PlayerRow, corruption: number, board: RowBoard | null): 
     textTip(
       row.name,
       row.placement === 1 ? 'The winner.' : out ? `Out in ${ordinal(row.placement!)} place.` : `${plural(row.hp, 'HP', 'HP')} · level ${row.level}`,
+      ...(row.crest === null ? [] : [`Leans on ${TRAITS[row.crest.origin].name}.`]),
       ...(row.bot ? ['A bot.'] : row.away ? ['Away: a bot plays for them until they are back.'] : []),
       ...(row.streak === null ? [] : [`${plural(row.streak.length, row.streak.kind === 'win' ? 'win' : 'loss', row.streak.kind === 'win' ? 'wins' : 'losses')} in a row.`]),
       ...(row.ringHolder ? [`Holds the One Ring, at Corruption ${corruption}.`] : []),

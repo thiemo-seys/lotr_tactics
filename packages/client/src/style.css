@@ -2632,7 +2632,6 @@ body.play .side-title {
 
 /* Rows in the side panels: small leather strips. */
 body.play .trait-row,
-body.play .player-row,
 body.play .side-empty {
   border: 2px solid var(--leather-edge);
   border-radius: 8px;
@@ -2653,19 +2652,21 @@ body.play .trait-steps b.reached {
   color: var(--ink);
 }
 
-body.play .player-row.you {
-  border-color: var(--leather-edge);
-  box-shadow: inset 3px 0 0 var(--gold), inset 0 0 0 1px rgba(243, 210, 122, 0.45), 0 2px 0 #140b05;
+body.play .player-row {
+  --plate-border: var(--leather-edge);
 }
 
-body.play .player-row.out {
-  border-style: solid;
-  opacity: 0.75;
+body.play .player-row .plate {
+  outline: 1px dashed var(--stitch);
+  outline-offset: -5px;
+}
+
+body.play .player-row.you {
+  --plate-border: #e3bc5f;
 }
 
 body.play .player-row.shown:not(.you) {
-  border-color: var(--leather-edge);
-  box-shadow: inset 3px 0 0 var(--team-far), inset 0 0 0 1px rgba(217, 83, 79, 0.5), 0 2px 0 #140b05;
+  --plate-border: #c4524e;
 }
 
 body.play .gift-chip {
@@ -3044,7 +3045,7 @@ body.play #traits {
 
 #players {
   right: 12px;
-  width: 226px;
+  width: 184px;
 }
 
 .side-title {
@@ -3172,50 +3173,79 @@ body.play #traits {
   color: var(--text-muted);
 }
 
+/* A player's row: a medallion with their crest, ringed by their HP, over a plate with their name,
+   badges and HP. A badge at the medallion's top left says whether they are a bot, and one at its
+   bottom right gives their level. */
 .player-list {
   display: flex;
   flex-direction: column;
-  gap: 4px;
+  gap: 5px;
+  /* Room for the badges that stick out of the medallions, inside the panel's scroll box. */
+  padding: 3px 0 0 3px;
 }
 
 .player-row {
+  --medal: 56px;
   --hp: var(--success);
-  display: grid;
-  grid-template-columns: 16px minmax(0, 1fr) auto 20px 28px;
-  grid-template-rows: auto 4px;
-  row-gap: 4px;
-  column-gap: 6px;
-  align-items: center;
-  padding: 6px 9px 6px 8px;
-  background: var(--glass);
-  border: 1px solid var(--border);
-  border-radius: var(--radius);
-  box-shadow: var(--shadow-1);
+  --hp-light: #9be3b0;
+  --hp-dark: #2f7a4c;
+  --arc: var(--hp);
+  --plate-bg: linear-gradient(180deg, rgba(var(--shade-hover-rgb), 0.97) 0%, rgba(var(--shade-deep-rgb), 0.97) 100%);
+  --plate-border: var(--border-strong);
+  position: relative;
+  flex: none;
+  height: var(--medal);
+  border-radius: calc(var(--medal) / 2);
 }
 
 .player-row.hp-mid {
   --hp: #e7b94a;
+  --hp-light: #f6dc8e;
+  --hp-dark: #9a7420;
 }
 
 .player-row.hp-low {
   --hp: var(--danger);
+  --hp-light: #ffa9a6;
+  --hp-dark: #8f2f2d;
 }
 
-.player-row .who {
-  display: inline-flex;
-  color: var(--text-muted);
+.player-row .plate {
+  position: absolute;
+  inset: 4px 0 4px calc(var(--medal) * 0.4);
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  justify-content: center;
+  padding: 0 11px 0 calc(var(--medal) * 0.6 + 7px);
+  background: var(--plate-bg);
+  border: 2px solid var(--plate-border);
+  border-radius: var(--radius-pill);
+  box-shadow:
+    0 5px 12px rgba(0, 0, 0, 0.55),
+    var(--inner-light);
+  transition:
+    border-color var(--fast) var(--ease),
+    filter var(--fast) var(--ease);
 }
 
-.player-row .who .icon {
-  width: 15px;
-  height: 15px;
+.player-row .plate-top {
+  display: flex;
+  gap: 5px;
+  align-items: center;
+  min-width: 0;
 }
 
 .pname {
+  flex: 1;
+  min-width: 0;
   overflow: hidden;
-  font: 600 12.5px/1.1 var(--font-body);
+  font: 700 12px/1.15 var(--font-display);
+  color: var(--text);
+  letter-spacing: 0.04em;
   text-overflow: ellipsis;
   white-space: nowrap;
+  text-shadow: 0 1px 2px #000;
 }
 
 .player-row .badges {
@@ -3228,17 +3258,22 @@ body.play #traits {
   display: inline-flex;
   gap: 1px;
   align-items: center;
-  font: 700 10.5px/1 var(--font-body);
+  font: 800 10.5px/1 var(--font-body);
 }
 
 .player-row .badge .icon {
-  width: 14px;
-  height: 14px;
+  width: 12px;
+  height: 12px;
 }
 
 .player-row .badge.ring {
   color: var(--gold-bright);
-  filter: drop-shadow(0 0 3px rgba(243, 210, 122, 0.6));
+  filter: drop-shadow(0 0 3px rgba(243, 210, 122, 0.7));
+}
+
+.player-row .badge.ring .icon {
+  width: 14px;
+  height: 14px;
 }
 
 .player-row .badge.streak.win {
@@ -3250,109 +3285,187 @@ body.play #traits {
 }
 
 .player-row .badge.away {
-  color: #9db0c9;
+  color: #b8c6da;
 }
 
-.player-row .lvl {
-  display: inline-flex;
+.player-row .badge.viewing {
+  color: #ffb3ad;
+}
+
+.player-row .status {
+  display: flex;
+  gap: 7px;
   align-items: center;
-  justify-content: center;
-  width: 20px;
-  height: 20px;
-  font: 700 11px/1 var(--font-body);
-  color: #dfefff;
-  background: #24456e;
-  border: 1px solid #3f6da5;
-  border-radius: 50%;
+  min-width: 0;
 }
 
 .player-row .hp-num {
-  font: 700 13px/1 var(--font-body);
+  min-width: 20px;
+  font: 800 13px/1 var(--font-body);
   font-variant-numeric: tabular-nums;
-  text-align: right;
-}
-
-.player-row.winner .place {
-  color: var(--gold-ink);
-  background: var(--gold-gradient);
-}
-
-.player-row .place {
-  justify-self: end;
-  padding: 2px 5px;
-  font: 700 10.5px/1 var(--font-body);
-  color: var(--text);
-  background: var(--surface-3);
-  border-radius: var(--radius-pill);
+  color: var(--text-strong);
+  text-shadow: 0 1px 2px #000;
 }
 
 .player-row .hp-bar {
-  grid-column: 1 / -1;
-  height: 4px;
+  flex: 1;
+  height: 6px;
   overflow: hidden;
-  background: rgba(255, 255, 255, 0.08);
-  border-radius: 2px;
+  background: rgba(0, 0, 0, 0.5);
+  border-radius: 4px;
+  box-shadow: inset 0 1px 2px rgba(0, 0, 0, 0.6);
 }
 
 .player-row .hp-bar i {
   display: block;
+  width: var(--hp-share);
   height: 100%;
-  background: linear-gradient(90deg, color-mix(in srgb, var(--hp) 70%, black), var(--hp));
+  background: linear-gradient(180deg, var(--hp-light) 0%, var(--hp) 55%, var(--hp-dark) 100%);
+  border-radius: 4px;
   transition: width var(--slow) var(--ease);
 }
 
+.player-row .status > .icon {
+  width: 15px;
+  height: 15px;
+  color: var(--text-muted);
+}
+
+.player-row .place {
+  font: 700 11.5px/1 var(--font-body);
+  color: var(--text-muted);
+}
+
+.player-row.winner .status > .icon,
+.player-row.winner .place {
+  color: var(--gold-bright);
+}
+
+/* The medallion: the crest in its faction's colour, inside a ring filled to the share of HP left. */
+.player-row .medal {
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: var(--medal);
+  height: var(--medal);
+  padding: 4px;
+  background: conic-gradient(var(--arc) 0 var(--hp-share), rgba(255, 255, 255, 0.13) var(--hp-share) 100%);
+  border-radius: 50%;
+  box-shadow: 0 3px 8px rgba(0, 0, 0, 0.6);
+}
+
+.player-row .crest {
+  --crest: #59626f;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 100%;
+  height: 100%;
+  color: #f4e8cc;
+  background: radial-gradient(
+    circle at 35% 28%,
+    color-mix(in srgb, var(--crest) 60%, white) 0%,
+    var(--crest) 55%,
+    color-mix(in srgb, var(--crest) 55%, black) 100%
+  );
+  border: 2px solid #0e1219;
+  border-radius: 50%;
+}
+
+.player-row .crest .icon {
+  width: 54%;
+  height: 54%;
+  filter: drop-shadow(0 1px 1px rgba(0, 0, 0, 0.7));
+}
+
+.player-row .crest .icon .f {
+  fill-opacity: 0.3;
+}
+
+.player-row .who,
+.player-row .lvl {
+  position: absolute;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border: 2px solid #0e1219;
+  border-radius: 50%;
+  box-shadow: 0 2px 4px rgba(0, 0, 0, 0.5);
+}
+
+.player-row .who {
+  top: -3px;
+  left: -3px;
+  width: 20px;
+  height: 20px;
+  color: #eaf2ff;
+  background: #2c5a92;
+}
+
+.player-row .who .icon {
+  width: 12px;
+  height: 12px;
+}
+
+.player-row .lvl {
+  top: calc(var(--medal) - 19px);
+  left: calc(var(--medal) - 19px);
+  width: 22px;
+  height: 22px;
+  font: 800 11px/1 var(--font-body);
+  color: var(--gold-ink);
+  background: var(--gold-gradient);
+}
+
+/* The person's row, in gold. */
 .player-row.you {
-  background: linear-gradient(90deg, rgba(214, 176, 90, 0.2), rgba(var(--shade-rgb), 0.9) 70%);
-  border-color: var(--gold-deep);
-  box-shadow: inset 3px 0 0 var(--gold), var(--shadow-1);
+  --arc: var(--gold-bright);
+  --plate-bg: linear-gradient(180deg, #5c4716 0%, #33270c 100%);
+  --plate-border: #e3bc5f;
 }
 
 .player-row.you .pname {
   color: var(--gold-bright);
 }
 
+.player-row.ring-holder .medal {
+  box-shadow:
+    0 0 16px rgba(243, 210, 122, 0.8),
+    0 3px 8px rgba(0, 0, 0, 0.6);
+}
+
 .player-row.out {
-  background: rgba(var(--shade-rgb), 0.7);
-  border-style: dashed;
-}
-
-.player-row.out .pname,
-.player-row.out .who,
-.player-row.out .lvl {
-  color: var(--text-muted);
-}
-
-.player-row.out .lvl {
-  background: var(--surface-3);
-  border-color: var(--border-strong);
-}
-
-.player-row.out .hp-bar {
-  visibility: hidden;
+  opacity: 0.6;
+  filter: grayscale(1);
 }
 
 /* Another player's board: their rows can be clicked to see it, and the one on screen is marked in
    the far team's red, as their units are. */
 .player-row.viewable {
   cursor: pointer;
-  transition:
-    background-color var(--fast) var(--ease),
-    border-color var(--fast) var(--ease);
 }
 
-.player-row.viewable:hover {
-  background-color: rgba(var(--shade-hover-rgb), 0.94);
-  border-color: var(--border-strong);
+.player-row.viewable:hover .plate {
+  filter: brightness(1.15);
+}
+
+.player-row.viewable:hover:not(.you, .shown) {
+  --plate-border: var(--border-strong);
 }
 
 .player-row.shown:not(.you) {
-  background: linear-gradient(90deg, rgba(217, 83, 79, 0.22), rgba(var(--shade-rgb), 0.9) 70%);
-  border-color: color-mix(in srgb, var(--team-far) 60%, var(--border));
-  box-shadow: inset 3px 0 0 var(--team-far), var(--shadow-1);
+  --plate-bg: linear-gradient(180deg, color-mix(in srgb, var(--team-far) 30%, rgb(var(--shade-rgb))) 0%, rgba(var(--shade-rgb), 0.97) 100%);
+  --plate-border: #c4524e;
 }
 
-.player-row .badge.viewing {
-  color: #ff9a92;
+.player-row:focus-visible {
+  box-shadow: none;
+}
+
+.player-row:focus-visible .plate {
+  box-shadow:
+    var(--focus),
+    0 5px 12px rgba(0, 0, 0, 0.55);
 }
 
 .side-owner {
@@ -5058,7 +5171,11 @@ body.play #traits {
   }
 
   #players {
-    width: 196px;
+    width: 172px;
+  }
+
+  .player-row {
+    --medal: 50px;
   }
 
   #council,
@@ -5108,7 +5225,11 @@ body.play #traits {
   }
 
   #players {
-    width: 176px;
+    width: 160px;
+  }
+
+  .player-row {
+    --medal: 46px;
   }
 
   .stat.level .xp {
@@ -5134,7 +5255,7 @@ body.play #traits {
   }
 
   .player-row {
-    padding-block: 4px;
+    --medal: 50px;
   }
 }
 
