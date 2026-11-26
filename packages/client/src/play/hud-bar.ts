@@ -41,6 +41,8 @@ export class HudBar {
   private readonly sale = this.pill('gold').querySelector('.sale') as HTMLElement;
   private readonly salePrice = this.sale.querySelector('.plus') as HTMLElement;
   private readonly saleTotal = this.sale.querySelector('.total') as HTMLElement;
+  /** The sale on offer while a unit is dragged, and whether the pointer is over the shop bar. */
+  private offer: { readonly sale: SaleOffer; readonly over: boolean } | null = null;
   private readonly mountDoom = element('mount-doom');
   /** The drain bar's width in steps of half a percent, to write it only when it moves. */
   private drained = -1;
@@ -137,6 +139,7 @@ export class HudBar {
     setText(this.value('hp'), `${s.hp}`);
     toggle(this.pill('hp'), 'low', s.hp <= 30);
     setText(this.value('gold'), `${s.gold}`);
+    this.drawSale();
     setText(this.value('level'), `${s.level}`);
     setText(this.xpText, s.xp !== null ? `${s.xp.have}/${s.xp.need} XP` : s.topLevel ? 'Top level' : 'Level');
     show(this.xpBar.parentElement!, s.xp !== null);
@@ -170,13 +173,23 @@ export class HudBar {
    * then, while the pointer is over the shop bar (`over`), the gold after the sale; null when none is.
    */
   previewSale(offer: SaleOffer | null, over = false): void {
+    this.offer = offer === null ? null : { sale: offer, over };
+    this.drawSale();
+  }
+
+  /**
+   * Draws the sale on offer by the gold, the gold after it from the gold shown now: buying or
+   * rerolling while a unit is dragged changes it, and the HUD draws it again with the new state.
+   */
+  private drawSale(): void {
+    const { offer } = this;
     const gold = this.pill('gold');
     show(this.sale, offer !== null);
     toggle(gold, 'selling', offer !== null);
-    toggle(gold, 'sale-over', offer !== null && over);
+    toggle(gold, 'sale-over', offer?.over === true);
     if (offer === null) return;
-    setText(this.salePrice, `+${offer.price}`);
-    setText(this.saleTotal, `${offer.goldAfter}`);
+    setText(this.salePrice, `+${offer.sale.price}`);
+    setText(this.saleTotal, `${this.flow.shownView().me.gold + offer.sale.price}`);
   }
 
   /** The person's stats as shown: during their fight, from its planning, with the units that fight on the board. */
