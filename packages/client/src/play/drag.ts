@@ -125,7 +125,7 @@ export class DragAndDrop {
     event.preventDefault();
     this.unit = { unit, from: place };
     this.begin();
-    this.sale = saleOffer(unit, this.flow.me().gold, this.flow.check({ type: 'sell', from: place }));
+    this.sale = saleOffer(unit, this.flow.check({ type: 'sell', from: place }));
     this.offerSale(false);
   }
 

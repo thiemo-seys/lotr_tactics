@@ -28,16 +28,18 @@ export function shopBuy(result: ActionResult, ownBench: boolean): ShopBuy {
   return result.reason === BENCH_FULL && ownBench ? 'bench-full' : 'refused';
 }
 
-/** What the shop bar offers while a unit is dragged: its name, the gold it sells for, and the person's gold after the sale. */
+/**
+ * What the shop bar offers while a unit is dragged: its name and the gold it sells for. The gold
+ * after the sale is drawn from the person's gold as it is then, which buying or rerolling during the
+ * drag changes.
+ */
 export interface SaleOffer {
   readonly name: string;
   readonly price: number;
-  readonly goldAfter: number;
 }
 
-/** The sale offered for a dragged unit, from the person's gold and the rules' answer to selling it; null when it can't be sold now. */
-export function saleOffer(unit: { readonly unitId: UnitId; readonly star: Star }, gold: number, result: ActionResult): SaleOffer | null {
+/** The sale offered for a dragged unit, from the rules' answer to selling it; null when it can't be sold now. */
+export function saleOffer(unit: { readonly unitId: UnitId; readonly star: Star }, result: ActionResult): SaleOffer | null {
   if (!result.ok) return null;
-  const price = sellPrice(unit);
-  return { name: UNITS[unit.unitId].name, price, goldAfter: gold + price };
+  return { name: UNITS[unit.unitId].name, price: sellPrice(unit) };
 }

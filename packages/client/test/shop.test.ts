@@ -28,14 +28,14 @@ describe('shop cards', () => {
 });
 
 describe('the sale offered while a unit is dragged', () => {
-  it('names the unit, its price as the sim pays it, and the gold after', () => {
+  it('names the unit and its price as the sim pays it', () => {
     const cost = UNITS.gimli.cost;
-    expect(saleOffer({ unitId: 'merry', star: 1 }, 4, { ok: true })).toEqual({ name: 'Merry', price: 1, goldAfter: 5 });
-    expect(saleOffer({ unitId: 'gimli', star: 2 }, 4, { ok: true })).toEqual({ name: 'Gimli', price: 3 * cost, goldAfter: 4 + 3 * cost });
-    expect(saleOffer({ unitId: 'gimli', star: 3 }, 0, { ok: true })?.price).toBe(9 * cost);
+    expect(saleOffer({ unitId: 'merry', star: 1 }, { ok: true })).toEqual({ name: 'Merry', price: 1 });
+    expect(saleOffer({ unitId: 'gimli', star: 2 }, { ok: true })).toEqual({ name: 'Gimli', price: 3 * cost });
+    expect(saleOffer({ unitId: 'gimli', star: 3 }, { ok: true })?.price).toBe(9 * cost);
   });
 
   it("offers nothing when the rules don't allow the sale", () => {
-    expect(saleOffer({ unitId: 'merry', star: 1 }, 4, { ok: false, reason: 'Units on the board are fighting.' })).toBeNull();
+    expect(saleOffer({ unitId: 'merry', star: 1 }, { ok: false, reason: 'Units on the board are fighting.' })).toBeNull();
   });
 });
