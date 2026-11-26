@@ -18,6 +18,11 @@
   --surface-3: #232c3b;
   --surface-hover: #2b3647;
   --glass: rgba(14, 18, 25, 0.86);
+  /* Shades behind rows, cards and banners, as r, g, b to use in rgba() */
+  --shade-rgb: 14, 18, 25;
+  --shade-hover-rgb: 30, 38, 52;
+  --shade-deep-rgb: 10, 12, 16;
+  --card-face: #121822;
   --border: #2a3444;
   --border-strong: #3b4860;
 
@@ -2474,7 +2479,7 @@ kbd {
   color: var(--gold-bright);
   text-transform: uppercase;
   white-space: nowrap;
-  background: radial-gradient(100% 140% at 50% 50%, rgba(28, 22, 8, 0.92), rgba(10, 12, 16, 0.86));
+  background: radial-gradient(100% 140% at 50% 50%, rgba(28, 22, 8, 0.92), rgba(var(--shade-deep-rgb), 0.86));
   border: 1px solid var(--gold-deep);
   border-radius: var(--radius-lg);
   box-shadow: var(--shadow-3), 0 0 28px rgba(214, 176, 90, 0.2);
@@ -2503,7 +2508,7 @@ kbd {
 .outcome-banner.defeat,
 #banner.defeat {
   color: #ff9a92;
-  background: radial-gradient(100% 140% at 50% 50%, rgba(46, 12, 12, 0.92), rgba(10, 12, 16, 0.86));
+  background: radial-gradient(100% 140% at 50% 50%, rgba(46, 12, 12, 0.92), rgba(var(--shade-deep-rgb), 0.86));
   border-color: #8a2f2a;
   box-shadow: var(--shadow-3), 0 0 28px rgba(217, 83, 79, 0.22);
 }
@@ -2511,7 +2516,7 @@ kbd {
 .outcome-banner.draw,
 #banner.draw {
   color: #d6dde8;
-  background: radial-gradient(100% 140% at 50% 50%, rgba(30, 36, 46, 0.94), rgba(10, 12, 16, 0.86));
+  background: radial-gradient(100% 140% at 50% 50%, rgba(30, 36, 46, 0.94), rgba(var(--shade-deep-rgb), 0.86));
   border-color: #56647a;
   box-shadow: var(--shadow-3);
 }
@@ -2531,6 +2536,170 @@ body.play {
 
 body.play input {
   user-select: text;
+}
+
+/*
+ * Banner & Seal across the play page: its surfaces turn from slate to leather, so everything drawn
+ * from the tokens follows, and its panels, rows, tooltips and banners get leather edges and stitching.
+ * The fight viewer keeps the slate look.
+ */
+body.play {
+  --bg: #170e08;
+  --bg-2: #1f140b;
+  --surface: #26170e;
+  --surface-2: #2f1d12;
+  --surface-3: #3b2618;
+  --surface-hover: #4a301f;
+  --glass: rgba(38, 23, 13, 0.92);
+  --border: #4d3523;
+  --border-strong: #6e4c30;
+  --text: #f3e6c8;
+  --text-strong: #fff6e2;
+  --text-muted: #d4bc93;
+  --text-dim: #b59b74;
+  --inner-light: inset 0 1px 0 rgba(255, 220, 170, 0.1);
+  --shade-rgb: 38, 23, 13;
+  --shade-hover-rgb: 64, 41, 25;
+  --shade-deep-rgb: 22, 13, 7;
+  --card-face: #24160c;
+}
+
+/* Centre panels: the menu, the lobby, the Council, the Gifts and the results. */
+body.play .panel {
+  background:
+    radial-gradient(120% 70% at 50% 0%, rgba(255, 220, 170, 0.1), transparent 60%),
+    linear-gradient(180deg, rgba(74, 47, 30, 0.98), rgba(42, 25, 14, 0.98));
+  border: 2px solid var(--leather-edge);
+  border-radius: 14px;
+  outline: 1.5px dashed var(--stitch);
+  outline-offset: -8px;
+  box-shadow: var(--shadow-3), inset 0 1px 0 rgba(255, 220, 170, 0.16);
+}
+
+body.play .panel::before {
+  content: none;
+}
+
+body.play .panel h2,
+body.play .side-title {
+  color: var(--brass);
+}
+
+/* Rows in the side panels: small leather strips. */
+body.play .trait-row,
+body.play .player-row,
+body.play .side-empty {
+  border: 2px solid var(--leather-edge);
+  border-radius: 8px;
+  box-shadow: inset 0 1px 0 rgba(255, 220, 170, 0.1), 0 2px 0 #140b05;
+}
+
+body.play .side-empty {
+  outline: 1px dashed var(--stitch);
+  outline-offset: -5px;
+}
+
+body.play .trait-row:not(.inactive) {
+  border-color: var(--leather-edge);
+  box-shadow: inset 3px 0 0 var(--tone-colour), inset 0 1px 0 rgba(255, 220, 170, 0.1), 0 2px 0 #140b05;
+}
+
+body.play .trait-steps b.reached {
+  color: var(--ink);
+}
+
+body.play .player-row.you {
+  border-color: var(--leather-edge);
+  box-shadow: inset 3px 0 0 var(--gold), inset 0 0 0 1px rgba(243, 210, 122, 0.45), 0 2px 0 #140b05;
+}
+
+body.play .player-row.out {
+  border-style: solid;
+  opacity: 0.75;
+}
+
+body.play .player-row.shown:not(.you) {
+  border-color: var(--leather-edge);
+  box-shadow: inset 3px 0 0 var(--team-far), inset 0 0 0 1px rgba(217, 83, 79, 0.5), 0 2px 0 #140b05;
+}
+
+body.play .gift-chip {
+  border: 2px solid var(--leather-edge);
+  box-shadow: inset 3px 0 0 color-mix(in srgb, var(--tier) 70%, transparent), 0 2px 0 #140b05;
+}
+
+/* The bar over another player's board. */
+body.play .viewing-bar {
+  border: 2px solid var(--leather-edge);
+  box-shadow: var(--hud-drop), inset 0 0 0 1px rgba(217, 83, 79, 0.45), 0 0 22px rgba(217, 83, 79, 0.18);
+}
+
+/* Cards in the Council and the Gift offer. */
+body.play .council-card,
+body.play .gift-card {
+  box-shadow: 0 0 0 2px var(--leather-edge), 0 3px 0 2px #140b05;
+}
+
+body.play .council-card:hover,
+body.play .gift-card:hover {
+  box-shadow: 0 0 0 2px var(--leather-edge), 0 10px 24px rgba(0, 0, 0, 0.5), 0 0 18px color-mix(in srgb, var(--cost, var(--tier)) 40%, transparent);
+}
+
+body.play .council-card .name {
+  color: var(--parchment-light);
+}
+
+/* Tooltips: a leather card, edged in its accent. */
+body.play .tip-card {
+  background:
+    radial-gradient(120% 60% at 50% 0%, rgba(255, 220, 170, 0.08), transparent 60%),
+    linear-gradient(180deg, #3e2819, #26170e);
+  border: 2px solid var(--leather-edge);
+  border-top: 3px solid var(--accent);
+  border-radius: 9px;
+  outline: 1px dashed rgba(240, 200, 140, 0.32);
+  outline-offset: -5px;
+}
+
+/* The damage meter, under the trait tracker. */
+body.play .meter {
+  border: 2px solid var(--leather-edge);
+  outline: 1px dashed var(--stitch);
+  outline-offset: -6px;
+  box-shadow: var(--hud-drop);
+}
+
+/* The board dimmed and blurred behind the menu and the lobby, warmed. */
+body.play #backdrop {
+  background:
+    radial-gradient(70% 60% at 50% 45%, rgba(26, 15, 7, 0.35), rgba(18, 10, 5, 0.85)),
+    rgba(18, 10, 5, 0.35);
+}
+
+/* A fight's outcome: a swallowtail banner, brass for a victory, red wax for a defeat, leather for a draw. */
+body.play #banner {
+  top: var(--hud-banner-clear);
+  padding: 12px 52px;
+  color: var(--ink);
+  text-shadow: 0 1px 0 rgba(255, 245, 210, 0.5);
+  background: linear-gradient(180deg, #f6dc8e, #c79634);
+  border: 0;
+  border-radius: 0;
+  box-shadow: none;
+  filter: drop-shadow(0 4px 0 #140b05) drop-shadow(0 10px 18px rgba(0, 0, 0, 0.45));
+  clip-path: polygon(0 0, 100% 0, calc(100% - 24px) 50%, 100% 100%, 0 100%, 24px 50%);
+}
+
+body.play #banner.defeat {
+  color: #ffe3a3;
+  text-shadow: 0 2px 0 rgba(0, 0, 0, 0.4);
+  background: linear-gradient(180deg, #a52d2f, #6f1b1d);
+}
+
+body.play #banner.draw {
+  color: var(--parchment-light);
+  text-shadow: 0 2px 0 rgba(0, 0, 0, 0.4);
+  background: var(--leather);
 }
 
 /* The board dimmed and blurred behind the menu and the lobby. */
@@ -2895,7 +3064,7 @@ body.play #traits {
 }
 
 .trait-row:not(.inactive) {
-  background: linear-gradient(90deg, color-mix(in srgb, var(--tone-colour) 18%, rgba(14, 18, 25, 0.9)), rgba(14, 18, 25, 0.88) 75%);
+  background: linear-gradient(90deg, color-mix(in srgb, var(--tone-colour) 18%, rgba(var(--shade-rgb), 0.9)), rgba(var(--shade-rgb), 0.88) 75%);
   border-color: color-mix(in srgb, var(--tone-colour) 45%, var(--border));
 }
 
@@ -3088,7 +3257,7 @@ body.play #traits {
 }
 
 .player-row.you {
-  background: linear-gradient(90deg, rgba(214, 176, 90, 0.2), rgba(14, 18, 25, 0.9) 70%);
+  background: linear-gradient(90deg, rgba(214, 176, 90, 0.2), rgba(var(--shade-rgb), 0.9) 70%);
   border-color: var(--gold-deep);
   box-shadow: inset 3px 0 0 var(--gold), var(--shadow-1);
 }
@@ -3098,7 +3267,7 @@ body.play #traits {
 }
 
 .player-row.out {
-  background: rgba(14, 18, 25, 0.7);
+  background: rgba(var(--shade-rgb), 0.7);
   border-style: dashed;
 }
 
@@ -3127,12 +3296,12 @@ body.play #traits {
 }
 
 .player-row.viewable:hover {
-  background-color: rgba(30, 38, 52, 0.94);
+  background-color: rgba(var(--shade-hover-rgb), 0.94);
   border-color: var(--border-strong);
 }
 
 .player-row.shown:not(.you) {
-  background: linear-gradient(90deg, rgba(217, 83, 79, 0.22), rgba(14, 18, 25, 0.9) 70%);
+  background: linear-gradient(90deg, rgba(217, 83, 79, 0.22), rgba(var(--shade-rgb), 0.9) 70%);
   border-color: color-mix(in srgb, var(--team-far) 60%, var(--border));
   box-shadow: inset 3px 0 0 var(--team-far), var(--shadow-1);
 }
@@ -3183,7 +3352,7 @@ body.play #traits {
   font: 600 13px/1 var(--font-body);
   color: var(--text);
   white-space: nowrap;
-  background: linear-gradient(90deg, rgba(46, 16, 16, 0.94), rgba(14, 18, 25, 0.92) 60%);
+  background: linear-gradient(90deg, rgba(46, 16, 16, 0.94), rgba(var(--shade-rgb), 0.92) 60%);
   border: 1px solid color-mix(in srgb, var(--team-far) 55%, var(--border));
   border-radius: var(--radius-pill);
   box-shadow: var(--shadow-2), 0 0 22px rgba(217, 83, 79, 0.18);
@@ -3292,7 +3461,7 @@ body.play #traits {
   align-items: center;
   padding: 6px 9px;
   font: 600 12px/1.2 var(--font-body);
-  background: linear-gradient(90deg, color-mix(in srgb, var(--tier) 14%, rgba(14, 18, 25, 0.9)), rgba(14, 18, 25, 0.88));
+  background: linear-gradient(90deg, color-mix(in srgb, var(--tier) 14%, rgba(var(--shade-rgb), 0.9)), rgba(var(--shade-rgb), 0.88));
   border: 1px solid color-mix(in srgb, var(--tier) 40%, var(--border));
   border-radius: var(--radius);
   cursor: help;
@@ -3673,7 +3842,7 @@ body.play #traits {
   letter-spacing: 0.03em;
   white-space: nowrap;
   pointer-events: none;
-  background: rgba(14, 18, 25, 0.92);
+  background: rgba(var(--shade-rgb), 0.92);
   border: 1px solid rgba(236, 106, 103, 0.6);
   border-radius: var(--radius);
   box-shadow: 0 8px 22px rgba(0, 0, 0, 0.6), 0 0 18px rgba(236, 106, 103, 0.25);
@@ -4029,7 +4198,7 @@ body.play #traits {
   height: 50px;
   background:
     radial-gradient(110% 120% at 92% 10%, color-mix(in srgb, var(--cost) 45%, transparent), transparent 62%),
-    linear-gradient(165deg, color-mix(in srgb, var(--cost) 32%, #121822) 0%, #121822 80%);
+    linear-gradient(165deg, color-mix(in srgb, var(--cost) 32%, var(--card-face)) 0%, var(--card-face) 80%);
 }
 
 .council-card .emblem {
@@ -4225,7 +4394,7 @@ body.play #traits {
   width: 40px;
   height: 40px;
   color: var(--tier);
-  background: color-mix(in srgb, var(--tier) 12%, #0e1219);
+  background: color-mix(in srgb, var(--tier) 12%, var(--card-face));
   border: 1px solid color-mix(in srgb, var(--tier) 50%, transparent);
   border-radius: 50%;
   box-shadow: 0 0 14px color-mix(in srgb, var(--tier) 30%, transparent);
@@ -5229,7 +5398,7 @@ body.play .meter {
   overflow: hidden;
   background:
     radial-gradient(120% 120% at 90% 10%, color-mix(in srgb, var(--cost) 40%, transparent), transparent 65%),
-    linear-gradient(165deg, color-mix(in srgb, var(--cost) 28%, #121822) 0%, #121822 75%);
+    linear-gradient(165deg, color-mix(in srgb, var(--cost) 28%, var(--card-face)) 0%, var(--card-face) 75%);
   border: 2px solid var(--cost);
   border-radius: 7px;
 }
