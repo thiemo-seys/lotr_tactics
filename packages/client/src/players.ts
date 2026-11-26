@@ -2,10 +2,19 @@
 // 10): one row per player in standings order, from what the game's view shows of them. No Three.js
 // or DOM, so it can be tested.
 
-import { PLAYER, type GiftId, type RingView } from '@lotr-tactics/sim';
+import { PLAYER, TRAITS, type GiftId, type OriginId, type RingView, type TraitHolder } from '@lotr-tactics/sim';
 import type { PublicPlayer, SeatView } from '@lotr-tactics/server';
 import { standings } from './flow.js';
 import { streakOf, type Streak } from './hud.js';
+import { LIVERY } from './livery.js';
+import { traitRows } from './traits.js';
+
+/** A player's crest: the faction their board leans on, in the faction's livery colour. */
+export interface Crest {
+  readonly origin: OriginId;
+  /** `#rrggbb`. */
+  readonly colour: string;
+}
 
 export type HpBand = 'high' | 'mid' | 'low';
 
@@ -26,6 +35,8 @@ export interface PlayerRow {
   /** Set once the player is out, or has won. */
   readonly placement: number | null;
   readonly gifts: readonly GiftId[];
+  /** Null while no origin counts on their board. */
+  readonly crest: Crest | null;
 }
 
 /** HP shares above these are high, then middling; the rest are low. */
@@ -59,8 +70,20 @@ export function playerRows(
       away: seat?.kind === 'person' && !seat.connected,
       placement: p.placement,
       gifts: p.gifts,
+      crest: crestOf(p.board, p.gifts),
     };
   });
+}
+
+/**
+ * The faction a board leans on: the first origin in the trait tracker's order, which puts active
+ * traits first. Null when no origin counts, as on an empty board.
+ */
+export function crestOf(board: readonly (TraitHolder | null)[], gifts: readonly GiftId[]): Crest | null {
+  const row = traitRows(board, gifts).find((r) => TRAITS[r.trait].kind === 'origin');
+  if (row === undefined) return null;
+  const origin = row.trait as OriginId;
+  return { origin, colour: LIVERY.factions[origin] };
 }
 
 /** Medals for the first three places. */
