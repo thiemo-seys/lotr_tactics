@@ -3648,10 +3648,10 @@ body.play #traits {
   position: relative;
   z-index: var(--z-overlay);
   display: grid;
-  grid-template-columns: 158px minmax(0, 1fr) auto;
-  gap: 12px;
+  grid-template-columns: 164px minmax(0, 1fr) auto;
+  gap: 14px;
   align-items: stretch;
-  padding: 16px 12px 12px;
+  padding: 18px 14px 14px;
   background:
     radial-gradient(ellipse at 50% 0%, rgba(255, 220, 170, 0.08), transparent 60%),
     linear-gradient(180deg, #3d2618, #22140b);
@@ -3677,25 +3677,36 @@ body.play #traits {
 .shop-actions {
   display: flex;
   flex-direction: column;
-  gap: 5px;
+  gap: 6px;
   justify-content: center;
 }
 
-/* Buy XP, Reroll and Lock: small leather tiles. */
+/* Buy XP, Reroll and Lock: chunky leather tiles, each with its icon on a brass coin. */
 .shop-button {
   justify-content: flex-start;
   width: 100%;
-  height: 34px;
-  padding: 0 9px 0 10px;
-  gap: 7px;
-  font: 700 13px/1 var(--font-display);
+  height: 40px;
+  padding: 0 8px 0 6px;
+  gap: 8px;
+  font: 700 14px/1 var(--font-display);
   color: var(--parchment-light);
   background: var(--leather);
   border: 2px solid var(--leather-edge);
-  border-radius: 8px;
+  border-radius: 9px;
   outline: 1px dashed var(--stitch);
   outline-offset: -5px;
-  box-shadow: inset 0 1px 0 rgba(255, 220, 170, 0.18), 0 2px 0 #140b05;
+  box-shadow: inset 0 1px 0 rgba(255, 220, 170, 0.18), 0 3px 0 #140b05;
+}
+
+.shop-button > .icon {
+  box-sizing: content-box;
+  width: 14px;
+  height: 14px;
+  padding: 5px;
+  color: var(--ink);
+  background: radial-gradient(circle at 35% 30%, #fff0c4, #d9a95a 60%, #8a5f26);
+  border-radius: 50%;
+  box-shadow: 0 1px 0 rgba(0, 0, 0, 0.5);
 }
 
 .shop-button:hover {
@@ -3733,14 +3744,6 @@ body.play #traits {
   color: var(--success);
 }
 
-#buy-xp .icon {
-  color: #8cc4ff;
-}
-
-#reroll > .icon {
-  color: var(--brass);
-}
-
 #lock .icon.locked,
 #lock.on .icon.unlocked {
   display: none;
@@ -3763,14 +3766,16 @@ body.play #traits {
   min-width: 0;
 }
 
-/* A unit card: framed and coloured by cost, its origin as a portrait, its traits, cost and copies owned. */
+/*
+ * A unit card: the unit's portrait on a burst of its cost colour, framed in that colour, with its cost
+ * on a faceted gem, its name over the portrait's foot, and its traits on a stitched leather strip.
+ */
 .unit-card {
   --cost: var(--cost-1);
   position: relative;
-  display: flex;
-  flex-direction: column;
+  display: block;
   min-width: 0;
-  height: 102px;
+  height: 144px;
   padding: 0;
   overflow: hidden;
   font: inherit;
@@ -3778,11 +3783,12 @@ body.play #traits {
   text-align: left;
   cursor: pointer;
   background:
-    radial-gradient(110% 120% at 92% 10%, color-mix(in srgb, var(--cost) 38%, transparent), transparent 62%),
-    linear-gradient(165deg, color-mix(in srgb, var(--cost) 24%, #2a1a10) 0%, #1d120a 75%);
+    radial-gradient(60% 75% at 50% 38%, color-mix(in srgb, var(--cost) 75%, transparent), transparent 75%),
+    repeating-conic-gradient(from 0deg at 50% 30%, rgba(255, 240, 200, 0.07) 0 5deg, transparent 5deg 13deg),
+    linear-gradient(180deg, color-mix(in srgb, var(--cost) 35%, #24150c), #120a05);
   border: 2px solid var(--cost);
-  border-radius: 8px;
-  box-shadow: var(--card-edge), inset 0 0 0 1px rgba(0, 0, 0, 0.5), inset 0 1px 0 rgba(255, 255, 255, 0.12);
+  border-radius: 10px;
+  box-shadow: 0 0 0 2px var(--leather-edge), 0 4px 0 2px #140b05;
   transition:
     transform var(--fast) var(--ease),
     box-shadow var(--fast) var(--ease);
@@ -3809,186 +3815,269 @@ body.play #traits {
 }
 
 .unit-card:hover {
-  transform: translateY(-3px);
+  transform: translateY(-5px);
   box-shadow:
     0 0 0 2px var(--leather-edge),
-    0 10px 24px rgba(0, 0, 0, 0.5),
-    0 0 18px color-mix(in srgb, var(--cost) 45%, transparent),
-    inset 0 0 0 1px rgba(0, 0, 0, 0.5);
+    0 14px 26px rgba(0, 0, 0, 0.55),
+    0 0 24px color-mix(in srgb, var(--cost) 55%, transparent);
 }
 
 .unit-card:active {
-  transform: translateY(-1px);
+  transform: translateY(-2px);
 }
 
+/* The portrait fills the card above the strip, darkening towards its foot so the name reads. */
 .unit-card .portrait {
-  position: relative;
-  flex: 1;
-  min-height: 0;
-  padding: 7px 8px 0;
+  position: absolute;
+  inset: 0 0 30px;
+  overflow: hidden;
+  pointer-events: none;
 }
 
+.unit-card .portrait::after {
+  position: absolute;
+  inset: 0;
+  content: '';
+  background: linear-gradient(180deg, transparent 50%, rgba(14, 8, 4, 0.92) 96%);
+}
+
+.unit-card .art {
+  display: block;
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  object-position: 50% 20%;
+  transform-origin: 50% 30%;
+  transition: transform 250ms var(--ease);
+}
+
+.unit-card:hover .art {
+  transform: scale(1.07);
+}
+
+/* A unit without a portrait shows its origin instead. */
 .unit-card .emblem {
   position: absolute;
-  right: -8px;
-  bottom: 2px;
-  width: 70px;
-  height: 70px;
-  color: color-mix(in srgb, var(--cost) 55%, white);
-  opacity: 0.32;
+  top: 14%;
+  left: 50%;
+  width: 64px;
+  height: 64px;
+  color: color-mix(in srgb, var(--cost) 40%, white);
+  opacity: 0.5;
+  translate: -50% 0;
   stroke-width: 1.3;
+}
+
+/* The cost on a gem cut in facets, like the models. */
+.unit-card .gem {
+  position: absolute;
+  top: 8px;
+  left: 8px;
+  z-index: 1;
+  display: grid;
+  place-items: center;
+  width: 32px;
+  height: 32px;
+  font: 800 15px/1 var(--font-display);
+  color: #fff;
+  text-shadow: 0 1px 2px rgba(0, 0, 0, 0.8);
+  isolation: isolate;
+}
+
+.unit-card .gem::before {
+  position: absolute;
+  inset: 3px;
+  z-index: -1;
+  content: '';
+  background: conic-gradient(
+    from 45deg,
+    color-mix(in srgb, var(--cost) 55%, white),
+    var(--cost) 25%,
+    color-mix(in srgb, var(--cost) 55%, black) 50%,
+    var(--cost) 75%,
+    color-mix(in srgb, var(--cost) 55%, white)
+  );
+  border-radius: 4px;
+  box-shadow: 0 0 0 2px var(--leather-edge), 0 0 0 3px color-mix(in srgb, var(--cost) 60%, var(--brass)), 0 2px 4px rgba(0, 0, 0, 0.6);
+  rotate: 45deg;
 }
 
 .unit-card .owned {
   position: absolute;
-  top: 7px;
-  right: 7px;
+  top: 9px;
+  right: 8px;
   display: flex;
-  gap: 4px;
+  gap: 3px;
   align-items: center;
-  padding: 3px 5px;
-  background: rgba(0, 0, 0, 0.5);
+  padding: 4px 5px;
+  background: rgba(14, 8, 4, 0.72);
   border-radius: var(--radius-pill);
+  box-shadow: 0 0 0 1px rgba(243, 210, 122, 0.6);
 }
 
 .unit-card .name {
   position: absolute;
-  bottom: 4px;
-  left: 9px;
-  max-width: calc(100% - 18px);
+  right: 10px;
+  bottom: 36px;
+  left: 11px;
   overflow: hidden;
-  font: 700 15px/1.1 var(--font-display);
+  font: 700 18px/1.1 var(--font-display);
   color: var(--parchment-light);
   letter-spacing: 0.02em;
   text-overflow: ellipsis;
   white-space: nowrap;
-  text-shadow: 0 1px 2px #000, 0 0 10px rgba(0, 0, 0, 0.7);
+  text-shadow: 0 2px 3px rgba(0, 0, 0, 0.9);
 }
 
-.unit-card .cost {
+/* The traits on a stitched leather strip along the foot. */
+.unit-card .card-foot,
+.unit-card .why {
   position: absolute;
-  top: 6px;
-  left: 6px;
-  height: 19px;
-  padding: 0 6px 0 4px;
-  font-size: 12.5px;
-  color: var(--brass);
-  background: rgba(26, 15, 8, 0.75);
-  border: 1px solid rgba(240, 201, 135, 0.4);
-  border-radius: var(--radius-pill);
-}
-
-.unit-card .cost .icon {
-  width: 13px;
-  height: 13px;
+  right: 0;
+  bottom: 0;
+  left: 0;
+  display: flex;
+  align-items: center;
+  height: 30px;
+  overflow: hidden;
 }
 
 .unit-card .card-foot {
-  display: flex;
-  gap: 8px;
-  align-items: center;
-  height: 26px;
-  padding: 0 8px;
-  overflow: hidden;
-  background: linear-gradient(180deg, var(--parchment), var(--parchment-deep));
-  border-top: 1px solid var(--ink);
+  gap: 12px;
+  padding: 0 10px;
+  background: linear-gradient(180deg, #4a2e1c, #2c1a0f);
+  border-top: 1px solid rgba(0, 0, 0, 0.6);
+}
+
+.unit-card .card-foot::before {
+  position: absolute;
+  top: 3px;
+  right: 6px;
+  left: 6px;
+  content: '';
+  border-top: 1px dashed rgba(240, 200, 140, 0.4);
 }
 
 .unit-card .card-foot .trait-tag {
-  color: var(--ink);
+  font: 600 12px/1 var(--font-body);
+  color: var(--parchment);
 }
 
 .unit-card .card-foot .trait-tag .icon {
-  color: var(--ink-soft);
+  width: 14px;
+  height: 14px;
+  color: var(--brass);
 }
 
-/* A narrow card names its traits by icon only; hovering it names them. */
+/* Why the unit can't be bought, in place of the traits, which its tip still names. */
+.unit-card .why {
+  justify-content: center;
+  padding: 0 8px;
+  font: 700 12px/1 var(--font-body);
+  color: var(--parchment-light);
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  background: linear-gradient(180deg, #8e2025, #5e1013);
+  border-top: 1px solid rgba(0, 0, 0, 0.6);
+}
+
+/* A narrow card names its traits by icon only, and its unit in smaller letters; hovering it names them. */
 .unit-card {
   container-type: inline-size;
 }
 
-@container (max-width: 132px) {
-  .unit-card .card-foot {
-    gap: 7px;
-    justify-content: flex-start;
+@container (max-width: 170px) {
+  .unit-card .name {
+    font-size: 15.5px;
   }
 
+  .unit-card .card-foot {
+    gap: 9px;
+  }
+}
+
+@container (max-width: 140px) {
   .unit-card .card-foot .trait-tag span {
     display: none;
   }
 
   .unit-card .card-foot .trait-tag .icon {
-    width: 15px;
-    height: 15px;
+    width: 16px;
+    height: 16px;
   }
-}
 
-/* Why the unit can't be bought, along the top of the card. */
-.unit-card .why {
-  position: absolute;
-  top: 0;
-  right: 0;
-  left: 0;
-  padding: 3px 8px;
-  overflow: hidden;
-  font: 700 10.5px/1.15 var(--font-body);
-  color: var(--parchment-light);
-  text-overflow: ellipsis;
-  white-space: nowrap;
-  background: linear-gradient(180deg, #a52d2f, #6f1b1d);
-  border-bottom: 1px solid var(--leather-edge);
-}
-
-.unit-card[aria-disabled='true'] .cost,
-.unit-card[aria-disabled='true'] .owned {
-  top: 23px;
+  .unit-card .why {
+    font-size: 10.5px;
+  }
 }
 
 .unit-card[aria-disabled='true'] {
   cursor: not-allowed;
-  border-color: color-mix(in srgb, var(--cost) 45%, #333);
+  border-color: color-mix(in srgb, var(--cost) 40%, #2a1a10);
   box-shadow: 0 0 0 2px var(--leather-edge);
   transform: none;
 }
 
-.unit-card[aria-disabled='true'] .emblem,
-.unit-card[aria-disabled='true'] .name,
-.unit-card[aria-disabled='true'] .card-foot {
-  filter: grayscale(0.7) brightness(0.75);
+.unit-card[aria-disabled='true'] .art {
+  transform: none;
 }
 
-.unit-card[aria-disabled='true'] .cost {
-  color: #ff9d97;
-  border-color: rgba(236, 106, 103, 0.45);
+.unit-card[aria-disabled='true'] .portrait,
+.unit-card[aria-disabled='true'] .gem,
+.unit-card[aria-disabled='true'] .owned {
+  filter: grayscale(0.85) brightness(0.5);
+}
+
+.unit-card[aria-disabled='true'] .name {
+  color: color-mix(in srgb, var(--parchment-light) 60%, #000);
 }
 
 /* A unit the person already has on the bench or the board: a gold border, glowing when buying it makes a 2★. */
 .unit-card.has-copy {
   border-color: var(--gold-bright);
-  box-shadow: var(--card-edge), 0 0 0 3px var(--gold-bright), 0 0 16px rgba(243, 210, 122, 0.5), inset 0 0 0 1px rgba(0, 0, 0, 0.5);
+  box-shadow: 0 0 0 2px var(--leather-edge), 0 0 0 4px var(--gold-bright), 0 0 18px rgba(243, 210, 122, 0.55);
 }
 
-.unit-card.has-copy::after {
-  position: absolute;
-  inset: 0;
-  pointer-events: none;
-  content: '';
-  border: 1px solid rgba(255, 240, 200, 0.55);
-  border-radius: 8px;
+.unit-card.has-copy:hover {
+  box-shadow:
+    0 0 0 2px var(--leather-edge),
+    0 0 0 4px var(--gold-bright),
+    0 14px 26px rgba(0, 0, 0, 0.55),
+    0 0 24px rgba(243, 210, 122, 0.7);
 }
 
 .unit-card.completes-star {
   animation: completes-star 1.4s var(--ease) infinite;
 }
 
+/* Gold light swelling behind the unit. */
+.unit-card.completes-star .portrait::before {
+  position: absolute;
+  inset: 0;
+  content: '';
+  background: radial-gradient(55% 65% at 50% 40%, rgba(255, 225, 140, 0.6), transparent 70%);
+  animation: completes-star-light 1.4s var(--ease) infinite;
+}
+
 @keyframes completes-star {
   0%,
   100% {
-    box-shadow: var(--card-edge), 0 0 0 3px var(--gold-bright), 0 0 12px rgba(243, 210, 122, 0.45);
+    box-shadow: 0 0 0 2px var(--leather-edge), 0 0 0 4px var(--gold-bright), 0 0 12px rgba(243, 210, 122, 0.45);
   }
 
   50% {
-    box-shadow: var(--card-edge), 0 0 0 4px var(--gold-bright), 0 0 26px rgba(243, 210, 122, 0.85);
+    box-shadow: 0 0 0 2px var(--leather-edge), 0 0 0 5px var(--gold-bright), 0 0 28px rgba(243, 210, 122, 0.9);
+  }
+}
+
+@keyframes completes-star-light {
+  0%,
+  100% {
+    opacity: 0.35;
+  }
+
+  50% {
+    opacity: 1;
   }
 }
 
@@ -4044,14 +4133,17 @@ body.play #traits {
   }
 }
 
-.unit-card.empty {
-  align-items: center;
-  justify-content: center;
+/* A slot emptied by a buy. */
+.unit-card.empty,
+.unit-card.empty:hover {
+  display: grid;
+  place-items: center;
   color: rgba(240, 200, 140, 0.22);
   cursor: default;
-  background: rgba(0, 0, 0, 0.18);
-  border: 2px dashed rgba(240, 200, 140, 0.22);
+  background: rgba(0, 0, 0, 0.2);
+  border: 2px dashed rgba(240, 200, 140, 0.2);
   box-shadow: none;
+  transform: none;
 }
 
 .unit-card.empty .icon {
@@ -4065,23 +4157,21 @@ body.play #traits {
   align-items: stretch;
 }
 
+/* The items, in a tray sunk into the leather. */
 .tray {
   display: flex;
   flex-direction: column;
-  gap: 6px;
+  gap: 8px;
   width: 186px;
-  padding: 7px 9px;
-  background:
-    radial-gradient(ellipse at 50% 50%, transparent 55%, rgba(120, 80, 30, 0.32) 100%),
-    linear-gradient(180deg, var(--parchment), var(--parchment-deep));
-  border: 2px solid var(--leather-edge);
-  border-radius: 8px;
-  box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.45), 0 2px 0 #140b05;
+  padding: 9px 10px;
+  background: linear-gradient(180deg, #1c110a, #26170d);
+  border-radius: 10px;
+  box-shadow: inset 0 2px 8px rgba(0, 0, 0, 0.7), 0 0 0 1.5px #4a2e1c, 0 1px 0 1.5px rgba(255, 220, 170, 0.08);
 }
 
 .tray-label {
   font: 700 10.5px/1 var(--font-display);
-  color: var(--ink-soft);
+  color: var(--brass);
   text-transform: uppercase;
   letter-spacing: 0.14em;
 }
@@ -4114,7 +4204,7 @@ body.play #traits {
 
 .tray-empty {
   font-size: 12px;
-  color: var(--ink-soft);
+  color: var(--text-dim);
 }
 
 .ready-button {
@@ -4145,12 +4235,12 @@ body.play #traits {
 }
 
 .ready-button .icon {
-  width: 22px;
-  height: 22px;
+  width: 26px;
+  height: 26px;
 }
 
 .ready-button .label {
-  font: 700 16px/1 var(--font-display);
+  font: 800 18px/1 var(--font-display);
   letter-spacing: 0.04em;
 }
 
@@ -5209,9 +5299,6 @@ body.play #traits {
     display: none;
   }
 
-  .unit-card .name {
-    font-size: 13.5px;
-  }
 }
 
 @media (max-width: 1100px) {
@@ -5243,7 +5330,7 @@ body.play #traits {
 
 @media (max-height: 760px) {
   .unit-card {
-    height: 92px;
+    height: 122px;
   }
 
   .side-title:not(:first-child) {

@@ -3,3 +3,9 @@ declare module 'virtual:models' {
   const files: readonly string[];
   export default files;
 }
+
+/** The names, without `.webp`, of the unit portraits in `public/portraits`, which are unit ids (from the plugin in vite.config.ts). */
+declare module 'virtual:portraits' {
+  const files: readonly string[];
+  export default files;
+}
