@@ -1,38 +1,46 @@
 """The Balrog of Moria, Durin's Bane: the late-game Large PvE monster (packages/sim/src/data/monsters.ts),
 in the Faceted style (docs/viewer-spec.md section 4).
 
-After the books (The Fellowship of the Ring, The Bridge of Khazad-dum): a great shadow, in the middle of
-which was a dark form, of man-shape maybe, yet greater; and a power and terror seemed to be in it and to
-go before it. Its streaming mane kindled and blazed behind it; in its right hand was a blade like a
-stabbing tongue of fire, and in its left a whip of many thongs. Its wings, which the book leaves in
-doubt, are drawn as shadow, folded behind it, so they keep to its hex.
+After the films' Balrog, as faithfully as the style allows: a massive, hunched, bestial demon, its broad
+bull's skull carried low before its shoulders, with a deep brow, a heavy jaw hanging open on a mouth of
+fire, and great thick horns sweeping out from the brow and curving forward, the silhouette people
+remember. Its hide is charred and rocky, like cooling lava, in facets of `hide` and `crust` with here and
+there a facet of `ember` glowing through, and molten cracks of `fire` across its chest, belly, back,
+arms, thighs and tail. Fire bursts from the back of its head behind the horns, and from its shoulders and
+the hump of its back, as broad tongues of flame (faceted faces in two emissive colours, `fire` and
+`flame`, flat shaded, no textures). Bat wings of shadow are raised up and back behind it; it is huge
+across the shoulders, with long, heavy arms and great clawed fists; it stands on digitigrade legs, the
+knee forward and the hock back, on three-clawed feet; and a long, spiked tail curls round behind it to
+its right. In its right hand a sword whose blade is a tongue of flame, its hilt black iron; in its left
+a whip of six thongs of flame, hanging from an iron handle.
 
-About 2.4 tall to the crown of its head, built at full size as Treebeard is (treebeard.py, the Large
-pattern) and leaning a little into its stride: a dark, smoky body of facets in two shades of shadow,
-cracked with embers that glow within; a small, heavy-browed head with eyes of flame and a glowing
-mouth; a mane of fire about its head and down its back and shoulders, as faceted tongues of flame in
-two emissive colours (`fire` and `flame`, flat shaded, no textures); great clawed feet; a sword whose
-blade is a tongue of flame, its hilt dark iron; and in its left fist a whip of five thongs of flame,
-hanging from an iron handle.
+About 3.0 tall to the tips of its wings, 2.7 to the tips of its horns, built at full size as Treebeard
+is (treebeard.py, the Large pattern) and reaching 0.89 from its centre.
 
-Its livery, ember (packages/client/src/livery.json), is a scorched harness: two straps crossed over its
-chest and back, over its shoulders where it shows from above, and a broad girdle with a tasset before
-and behind, dull and matte against the black of it and the brightness of the fire. Its fittings, the
-bosses, the buckle, the sword's guard and pommel and the whip's band, use `trim`, which the client colours iron at 1★, the only star level a monster has.
+Its livery, ember (packages/client/src/livery.json), is the scorched crust of its hide: great plates over
+its shoulders, which show from the front and from above, a ridge of dorsal plates down its spine between
+the wings, which shows from behind, and a girdle with a tattered hanging before and behind, dull and
+matte against the black of it and the brightness of the fire. Its fittings, the sword's guard and
+pommel, the whip's band and the girdle's buckle, use `trim`, which the client colours iron at 1★, the
+only star level a monster has.
 
-It is rigged as a Large figure (../rig.py, Rig(kind='large')) with the 16 bones and six of its own: the
-whip's three, `whip_1` to `whip_3`, from the handle out; its wings, `wing_l` and `wing_r`, on the
-spine; and its mane, `mane`, on its head. Its legs bend at the knee where the thigh runs on inside the
-shin, its body at the waist where the upper body runs on inside the lower, and its arms at the elbow.
+It is rigged as a Large figure (../rig.py, Rig(kind='large')) with the 16 bones and nine of its own: the
+whip's three, `whip_1` to `whip_3`, from the handle out; its wings, `wing_l` and `wing_r`, on the spine;
+the fire of its head, `mane`, on its head; and its tail's three, `tail_1` to `tail_3`, the first hanging
+from the root and carried where the hips go (tailed()), as a robe is, so the hips can go down past it.
+Its legs bend at the knee, where the thigh runs on inside the shin; its hock is the rig's ankle, so the
+foot bone carries the shank and the paw; its body bends at the waist, where the upper body runs on inside
+the lower; and its arms at the elbow.
 
 Its attack is a ranged one in the sim (range 2, monsters.ts): a bolt of fire. It sweeps the sword up
-over its right shoulder and slashes it down before it, flinging the bolt from the blade's point at the
-foe as the shot leaves on frame 3 (its muzzle). Its cast, Whip of flame (a cone of the three hexes
-ahead and the three beyond them, at the end of a 0.5 s wind-up), draws the whip back behind it, swings
-it up over its shoulder and cracks it out across the cone in front on the release, the thongs
-streaming ahead, then sweeps them down to the right. As it wins it rears up, sword and whip raised and
-its wings lifted. The whip hangs and trails after the hand in every other clip (clips.swaying()), and
-the mane streams after the head.
+and back beside its right shoulder, outside its horn, and slashes it down before it, flinging the bolt
+from the blade's point at the foe as the shot leaves on frame 3 (its muzzle). Its cast, Whip of flame (a
+cone of the three hexes ahead and the three beyond them, at the end of a 0.5 s wind-up), draws the whip
+back behind it, swings it up outside its left horn and cracks it out across the cone in front on the
+release, the thongs streaming ahead, then sweeps them down to the right. As it wins it rears up, sword
+and whip raised and its wings lifted. The whip hangs and trails after the hand in every other clip
+(clips.swaying()), the fire of its head streams after the head, and the tail and wings are kept out of
+the ground and inside the hex in every frame (relieved()).
 
     blender --background --factory-startup --python-exit-code 1 --python balrog.py [-- <out.glb>]
 
@@ -41,46 +49,59 @@ Coordinates are Blender's: z up, the model faces -Y, so its right hand is at -X.
 
 import math
 import os
+import random
 import sys
 
-import bpy
 import numpy as np
-from mathutils import Matrix, Vector
+from mathutils import Matrix, Quaternion, Vector
 
 sys.path.insert(0, os.path.join(os.path.dirname(os.path.abspath(__file__)), '..'))
-from clips import BLOW, EASES, ROOM, Body, Keys, arc, degrees_of, fit, frames_for, made, swaying, timed  # noqa: E402
+from clips import (  # noqa: E402
+    BLOW,
+    EASES,
+    ROOM,
+    Body,
+    Keys,
+    arc,
+    degrees_of,
+    fit,
+    frames_for,
+    made,
+    swaying,
+    timed,
+    wave,
+)
 from kit import (  # noqa: E402
     LARGE_BUDGET,
     V,
     bone,
     box,
     cone,
-    ellipse,
     finish,
     loft,
     material,
-    nearest_on_line,
     nearest_on_polyline,
     part,
     path_rings,
     reset,
-    segment,
     team_material,
     trim_material,
     tube,
     wind,
 )
-from rig import Clip, Rig, hold, joint, measured  # noqa: E402
+from rig import Clip, Rig, hold, joint, measured, turn_of  # noqa: E402
 
 # Its own colours (sRGB).
-SHADOW = 0x19161A  # its body, a dark shadow...
-SMOKE = 0x2D292D  # ...in facets of smoke
-WING = 0x242025  # its wings, shadow too
-CLAWS = 0x3A302B  # horn-dark claws
-EMBER = 0x8C2A10  # the embers glowing in the cracks of it
-FIRE = 0xF2641A  # its fire...
+HIDE = 0x181414  # its hide, charred black...
+CRUST = 0x2E2622  # ...in facets of cooled rock
+WING = 0x1F1B1E  # its wings, shadow...
+SMOKE = 0x2B262A  # ...in panels of smoke
+HORN = 0x6A5A4C  # pale horn, so the horns show against the dark of the wings and the fire
+CLAWS = 0x2A2220  # horn-dark claws, spikes and horn tips
+EMBER = 0x6E1E08  # embers glowing dimly through its hide
+FIRE = 0xF2641A  # its fire, and the molten cracks...
 FLAME = 0xFFB238  # ...brightest at the tips of the flames
-EYES = 0xFFD45E  # eyes of flame
+EYES = 0xFFE07A  # eyes of flame
 IRON = 0x2E2B2B  # the sword's grip and the whip's handle, black iron
 
 M = {}  # materials by name, made once the scene is reset
@@ -89,9 +110,11 @@ M = {}  # materials by name, made once the scene is reset
 def make_materials():
     M.update(
         team=team_material(),
-        shadow=material('shadow', SHADOW, roughness=0.9),
-        smoke=material('smoke', SMOKE, roughness=0.95),
+        hide=material('hide', HIDE, roughness=0.92),
+        crust=material('crust', CRUST, roughness=0.95),
         wing=material('wing', WING, roughness=0.95),
+        smoke=material('smoke', SMOKE, roughness=0.95),
+        horn=material('horn', HORN, roughness=0.7),
         claws=material('claws', CLAWS, roughness=0.7),
         # The glowing parts: a dark base colour, so the light falling on them doesn't wash them out,
         # and the colour itself as their emission, which the client keeps under a hit's flash.
@@ -100,78 +123,83 @@ def make_materials():
         flame=material('flame', 0x6A4010, roughness=0.8, emission=FLAME, emission_strength=1.0),
         eyes=material('eyes', 0x6A5020, roughness=0.6, emission=EYES, emission_strength=1.0),
         iron=material('iron', IRON, roughness=0.6, metallic=0.1),
-        trim=trim_material(),  # the buckles and the sword's guard and pommel, coloured by star level
+        trim=trim_material(),  # the sword's guard and pommel, the whip's band, the buckle
     )
 
 
-def new_objects(before):
-    return [o for o in bpy.context.scene.objects if o not in before]
+def skin():
+    return [M['hide'], M['crust'], M['ember']]
 
 
-def cracked(faces, n, ember=None):
-    """Material indexes for the faces of a lofted tube of n sides: shadow and smoke in a checker, so
-    the facets read, and here and there an ember glowing in a crack (`ember`, by face index in its band
-    and band, or a scatter)."""
+def lava(n, bands, seed, glow=0.06):
+    """Material indexes for the faces of a lofted tube of n sides: hide and crust in a checker, so the
+    facets read, and here and there a facet of ember glowing through, the same every build."""
+    rnd = random.Random(seed)
     out = []
-    for f in range(len(faces)):
-        i, band = f % n, f // n
-        glow = ember(i, band) if ember else False
-        out.append(2 if glow else (i + band) % 2)
+    for f in range(n * bands):
+        i, b = f % n, f // n
+        out.append(2 if rnd.random() < glow else (i + b) % 2)
     return out
 
 
-def skin():
-    return [M['shadow'], M['smoke'], M['ember']]
+def limb(name, points, radii, n, seed, glow=0.06, end=None, side=None):
+    """A bent tube of hide along `points` (path_rings()), open at its ends unless `end` gives a point to
+    draw it to; returns its rings and points, so cracks can be laid along it."""
+    points = [Vector(p) for p in points]
+    rings = path_rings(points, radii, n, 0.0, side)
+    verts, faces, _ = loft(rings)
+    face_mats = lava(n, len(rings) - 1, seed, glow)
+    faces = wind(verts, faces, inside=nearest_on_polyline(points))
+    if end is not None:
+        first = (len(rings) - 1) * n
+        verts.append(Vector(end))
+        faces += wind(verts, [(first + i, first + (i + 1) % n, len(verts) - 1) for i in range(n)],
+                      inside=points[-1] - 0.01 * (points[-1] - points[-2]).normalized())
+        face_mats += [face_mats[-1]] * n
+    part(name, verts, faces, skin(), face_mats)
+    return rings, points
 
 
-# The lean ---------------------------------------------------------------------------------------
-#
-# The body is built upright and leaned by hunched(): forward about its hips, and above the middle of
-# its back its shoulders come a little further, so its head is carried forward and low, menacing.
-
-PIVOT = V(0, 0.02, 1.1)  # the hips
-LEAN = 7  # degrees the body above the hips leans forward
-MID = V(0, 0.03, 1.62)  # the middle of its back
-CURL = 9  # further degrees its shoulders come forward over it
-CURL_SPAN = 0.3
-
-
-def hunched(p):
-    """Where a point of the upright body is once it leans."""
-    p = Vector(p)
-    t = min(max((p.z - MID.z) / CURL_SPAN, 0.0), 1.0)
-    if t > 0:
-        p = MID + Matrix.Rotation(math.radians(CURL * t), 3, 'X') @ (p - MID)
-    return PIVOT + Matrix.Rotation(math.radians(LEAN), 3, 'X') @ (p - PIVOT)
+def crack(name, centres, normals, width=0.03):
+    """A molten crack: a thin strip of fire along the surface through `centres`, lifted along `normals`."""
+    verts = []
+    for i, c in enumerate(centres):
+        ahead = centres[min(i + 1, len(centres) - 1)] - centres[max(i - 1, 0)]
+        across = ahead.cross(normals[i]).normalized()
+        w = width * (0.5 if i in (0, len(centres) - 1) else 1.0)
+        verts += [c - 0.5 * w * across, c + 0.5 * w * across]
+    faces = [(2 * i, 2 * i + 1, 2 * i + 3, 2 * i + 2) for i in range(len(centres) - 1)]
+    part(name, verts, faces, M['fire'], outward=sum(normals, Vector()))
 
 
-def hunch(objects):
-    for obj in objects:
-        for v in obj.data.vertices:
-            v.co = hunched(v.co)
+def ring_crack(name, rings, points, path, width=0.03, lift=1.06):
+    """A crack along a tube's surface: `path` is (ring, position round the ring) pairs, both fractional."""
+    centres, normals = [], []
+    for k, pos in path:
+        k0 = int(k)
+        k1 = min(k0 + 1, len(rings) - 1)
 
+        def at(r):
+            n = len(rings[r])
+            i = int(pos) % n
+            return rings[r][i].lerp(rings[r][(i + 1) % n], pos - int(pos))
 
-def bend(root, end, upper, lower, pole):
-    """The middle joint of a limb from root to end, its bones upper and lower long, bent towards pole."""
-    root, end, pole = Vector(root), Vector(end), Vector(pole)
-    axis = end - root
-    reach = min(axis.length, upper + lower - 1e-3)
-    axis.normalize()
-    along = (upper * upper - lower * lower + reach * reach) / (2 * reach)
-    out = math.sqrt(max(upper * upper - along * along, 0.0))
-    side = pole - root
-    side = (side - side.dot(axis) * axis).normalized()
-    return root + along * axis + out * side
-
-
-# Fire -------------------------------------------------------------------------------------------
+        p = at(k0).lerp(at(k1), k - k0)
+        axis = points[k0].lerp(points[k1], k - k0)
+        centres.append(axis + (p - axis) * lift)
+        normals.append((p - axis).normalized())
+    crack(name, centres, normals, width)
 
 
 def flame(name, base, way, length, radius, curl=None, n=3, phase=0.0):
-    """A tongue of flame from `base` (hidden in what it rises from) along `way`, `length` long: a
-    faceted point of n sides, bent towards `curl` (a direction) as it rises, its lower band `fire` and
-    its tip `flame`."""
+    """A tongue of flame from `base` (hidden in what it rises from) along `way`, about `length` long: a
+    faceted point of n sides, bent towards `curl` as it rises, its lower band `fire` and its tip `flame`.
+    Each tongue is a little different, seeded by its name, so the fire flickers rather than standing in
+    a crown."""
     base, way = Vector(base), Vector(way).normalized()
+    jitter = random.Random(name)
+    length *= jitter.uniform(0.8, 1.15)
+    way = (way + V(jitter.uniform(-0.15, 0.15), jitter.uniform(-0.1, 0.1), 0)).normalized()
     curl = Vector(curl).normalized() if curl is not None else V(0, 0, 0)
     middle = base + 0.5 * length * way + 0.12 * length * curl
     tip = base + length * way + 0.35 * length * curl
@@ -184,86 +212,37 @@ def flame(name, base, way, length, radius, curl=None, n=3, phase=0.0):
     return part(name, verts, faces, [M['fire'], M['flame']], face_mats)
 
 
-# Feet and legs -----------------------------------------------------------------------------------
-
-# Heavy legs planted wide, the left foot a little forward; the knees forward of the line from hip to
-# ankle, so they bend forward.
-LEGS = [  # side, hip, knee, ankle, the foot's yaw (degrees, turned out)
-    ('right', V(-0.22, 0.05, 1.07), V(-0.29, -0.06, 0.6), V(-0.31, 0.08, 0.15), -10),
-    ('left', V(0.22, 0.01, 1.07), V(0.29, -0.12, 0.6), V(0.31, 0.0, 0.15), 10),
-]
-KNEE_OVERLAP = 0.07  # how far the thigh runs on past the knee, and the shin starts above it
-
-# A broad clawed foot round its own centre under the ankle: z, centre y, half-width and half-length.
-FOOT = [(0.0, -0.07, 0.13, 0.21), (0.07, -0.06, 0.13, 0.2), (0.17, 0.0, 0.09, 0.11)]
-
-
-def foot(side, ankle, yaw):
-    turn = Matrix.Rotation(math.radians(yaw), 3, 'Z')
-    at = V(ankle.x, ankle.y, 0)
-    rings = [[at + turn @ p for p in ellipse(0, cy, z, rx, ry, 6, 30)] for z, cy, rx, ry in FOOT]
-    verts, faces, bands = loft(rings)
-    face_mats = [0 if b == 0 else 1 for b in bands]
-    verts.append(at + turn @ V(0, -0.07, 0))
-    faces += [(i, (i + 1) % 6, len(verts) - 1) for i in range(6)]  # the sole
-    face_mats += [0] * 6
-    part(f'foot-{side}', verts, faces, [M['shadow'], M['smoke']], face_mats, inside=at + V(0, -0.04, 0.07))
-    # Three great claws from the front of the foot, hooked down to the ground.
-    for k, x in enumerate((-0.075, 0.0, 0.075)):
-        base = at + turn @ V(x, -0.2, 0.06)
-        tip = at + turn @ V(1.3 * x, -0.33, 0.005)
-        cone(f'claw-{side}-{k}', base, tip, 0.035, M['claws'], n=3, back=None)
-    joint(f'toe_{side[0]}', at + turn @ V(0, -0.3, 0.04))
-
-
-def legs():
-    for side, hip, knee, ankle, yaw in LEGS:
-        s = side[0]
-        past = knee + KNEE_OVERLAP * (ankle - knee).normalized()
-        above = knee + KNEE_OVERLAP * (hip - knee).normalized()
-        calf = knee.lerp(ankle, 0.35) + V(0, 0.03, 0)
-        with bone(f'thigh_{s}'):
-            verts, faces, _ = loft(segment(hip, past, [(0, 0.18), (0.55, 0.165), (1, 0.135)], 6, 30))
-            part(f'thigh-{side}', verts, faces, skin(), cracked(faces, 6), inside=nearest_on_line(hip, past))
-        with bone(f'shin_{s}'):
-            rings = [segment(above, calf, [(0, 0.12)], 6, 30)[0], segment(above, calf, [(1, 0.135)], 6, 30)[0],
-                     segment(calf, ankle, [(1, 0.095)], 6, 30)[0]]
-            verts, faces, _ = loft(rings)
-            part(f'shin-{side}', verts, faces, skin(), cracked(faces, 6),
-                 inside=nearest_on_polyline([above, calf, ankle]))
-        with bone(f'foot_{s}'):
-            foot(side, ankle, yaw)
-        joint(f'hip_{s}', hip)
-        joint(f'knee_{s}', knee)
-        joint(f'ankle_{s}', ankle)
-
-
 # The body ---------------------------------------------------------------------------------------
-
-# Built upright, rings of eight round it: z, half-width, half-depth and centre y. Narrow at the waist
-# and broad at the shoulders, as a Man is, yet greater. It bends at the waist in two pieces: the lower
-# body on the hips, from the fork of the legs to WAIST_TOP, and the upper body on the spine, from a
-# ring inside it (WAIST_INSIDE) up to its neck.
+#
+# Rings of eight round it, built hunched: z, half-width, depth before and behind, and centre y. Narrow
+# hips, a deep belly, a vast chest and shoulders with a hump of muscle behind them, the neck carried
+# forward and low. It bends at the waist in two pieces: the lower body on the hips, from the fork of the
+# legs to 1.5, and the upper body on the spine, from a ring inside it at 1.36 up to its neck.
 BODY = [
-    (0.9, 0.24, 0.18, 0.03),  # the fork of the legs
-    (1.1, 0.35, 0.25, 0.02),  # hips
-    (1.33, 0.3, 0.22, 0.0),  # the waist
-    (1.58, 0.42, 0.29, -0.02),  # the chest
-    (1.82, 0.47, 0.27, 0.02),  # the shoulders
-    (1.95, 0.3, 0.21, 0.04),  # the slope of the shoulders
-    (2.04, 0.15, 0.14, 0.01),  # the neck
+    (0.98, 0.22, 0.17, 0.17, 0.06),  # the fork of the legs
+    (1.18, 0.35, 0.26, 0.26, 0.06),  # hips
+    (1.42, 0.33, 0.27, 0.24, 0.04),  # the belly
+    (1.66, 0.44, 0.33, 0.28, 0.0),  # under the chest
+    (1.88, 0.5, 0.36, 0.34, -0.03),  # the chest
+    (2.04, 0.53, 0.3, 0.4, -0.04),  # the shoulders, humped behind
+    (2.18, 0.34, 0.22, 0.33, -0.06),  # the hump
+    (2.25, 0.18, 0.15, 0.17, -0.2),  # the neck, carried forward
 ]
-WAIST_TOP = 1.42
-WAIST_INSIDE = (1.28, 0.28, 0.2, 0.0)
 SIDES = 8
-PELVIS, WAIST, NECK = V(0, 0.02, 1.1), V(0, 0.06, 1.38), V(0, 0.02, 2.02)
+WAIST_TOP, WAIST_INSIDE = 1.5, 1.36
+PELVIS, WAIST, NECK = V(0, 0.06, 1.16), V(0, 0.04, 1.42), V(0, -0.16, 2.2)
 
 
-def ring(z, rx, ry, cy, k=1.0):
-    return ellipse(0, cy, z, k * rx, k * ry, SIDES, 22.5)
+def body_ring(z, rx, front, back, cy):
+    points = []
+    for i in range(SIDES):
+        a = math.radians(22.5 + 45 * i)
+        s = math.sin(a)
+        points.append(V(rx * math.cos(a), cy + (back if s > 0 else front) * s, z))
+    return points
 
 
-def at_height(z):
+def body_row(z):
     """The BODY row at height z, between the rows either side."""
     for a, b in zip(BODY, BODY[1:]):
         if a[0] <= z <= b[0]:
@@ -272,103 +251,130 @@ def at_height(z):
     raise ValueError(f'no body at z = {z}')
 
 
-def on_body(z, angle, k=1.04):
-    """A point on the upright body's surface at height z, `angle` degrees round from its left (+X)
-    towards its back (+Y), pushed out by k."""
-    _, rx, ry, cy = at_height(z)
+def on_body(z, angle, k=1.03):
+    """A point on the body at height z, `angle` degrees round from its left (+X) towards its back (+Y),
+    pushed out by k, and the outward normal there (level)."""
+    _, rx, front, back, cy = body_row(z)
     a = math.radians(angle)
-    return V(k * rx * math.cos(a), cy + k * ry * math.sin(a), z)
+    s = math.sin(a)
+    p = V(k * rx * math.cos(a), cy + k * (back if s > 0 else front) * s, z)
+    return p, (p - V(0, cy, z)).normalized()
+
+
+def body_crack(name, path):
+    centres, normals = zip(*(on_body(z, a, 1.02) for z, a in path))
+    crack(name, list(centres), list(normals), 0.04)
 
 
 def body():
-    def inside(c):
-        return V(0, 0.02, min(max(c.z, 0.95), 1.95))
-
-    lower = [ring(*BODY[0]), ring(*BODY[1]), ring(*BODY[2]), ring(*at_height(WAIST_TOP))]
+    lower = [body_ring(*row) for row in BODY[:3]] + [body_ring(*body_row(WAIST_TOP))]
     verts, faces, _ = loft(lower)
-    face_mats = cracked(faces, SIDES)
-    verts.append(V(0, 0.03, 0.86))
+    face_mats = lava(SIDES, 3, 11, 0.05)
+    verts.append(V(0, 0.06, 0.92))
     faces += [(i, (i + 1) % SIDES, len(verts) - 1) for i in range(SIDES)]  # closed between the legs
     face_mats += [0] * SIDES
     with bone('hips'):
-        part('body-lower', verts, faces, skin(), face_mats, inside=inside)
-    upper = [ring(*WAIST_INSIDE)] + [ring(*row) for row in BODY[3:]]
+        part('body-lower', verts, faces, skin(), face_mats, inside=lambda c: V(0, 0.04, min(max(c.z, 1.0), 2.1)))
+        # The fire within showing through its belly.
+        body_crack('belly-crack', [(1.46, 272), (1.38, 268), (1.28, 274)])
+        body_crack('belly-crack-left', [(1.44, 274), (1.4, 290), (1.32, 300)])
+    upper = [body_ring(*body_row(WAIST_INSIDE))] + [body_ring(*row) for row in BODY[3:]]
     verts, faces, _ = loft(upper)
-    # The chest's middle facets glow, the fire within it showing through the cracks of its shadow.
-    face_mats = cracked(faces, SIDES)
+    face_mats = lava(SIDES, len(upper) - 1, 12, 0.05)
+    verts.append(V(0, -0.2, 2.27))
+    last = (len(upper) - 1) * SIDES
+    faces += [(last + i, last + (i + 1) % SIDES, len(verts) - 1) for i in range(SIDES)]
+    face_mats += [1] * SIDES
     with bone('spine'):
-        part('body-upper', verts, faces, skin(), face_mats, inside=inside)
+        part('body-upper', verts, faces, skin(), face_mats, inside=lambda c: V(0, -0.02, min(max(c.z, 1.0), 2.1)))
+        # Molten cracks from the breastbone out over its chest and down its belly, and down its back.
+        for k, path in enumerate((
+            [(1.98, 268), (1.86, 262), (1.74, 270), (1.6, 266), (1.5, 272)],  # down the middle
+            [(1.86, 262), (1.9, 245), (1.84, 228), (1.92, 212)],  # out over the right breast
+            [(1.74, 270), (1.78, 290), (1.7, 308), (1.76, 326)],  # out under the left
+            [(1.6, 266), (1.56, 248), (1.5, 236)],
+            [(1.95, 100), (1.8, 88), (1.62, 96), (1.52, 86)],  # down the back
+        )):
+            body_crack(f'chest-crack-{k}', path)
     joint('pelvis', PELVIS)
     joint('waist', WAIST)
     joint('neck', NECK)
 
 
-def strap(name, path, width=0.09, k=1.05):
-    """A strap of the livery along the body's surface, through (z, angle) points (on_body())."""
-    centres = [on_body(z, a, k) for z, a in path]
-    verts = []
-    for i, c in enumerate(centres):
-        ahead = centres[min(i + 1, len(centres) - 1)] - centres[max(i - 1, 0)]
-        out = c - V(0, at_height(c.z)[3], c.z)
-        across = ahead.cross(out).normalized()
-        verts += [c - 0.5 * width * across, c + 0.5 * width * across]
-    faces = [(2 * i, 2 * i + 1, 2 * i + 3, 2 * i + 2) for i in range(len(centres) - 1)]
-    return part(name, verts, faces, M['team'], inside=lambda c: V(0, at_height(min(max(c.z, 0.9), 2.04))[3], c.z))
-
-
-# Over the left shoulder from the right hip before, and down the back to the right hip behind; the
-# other strap mirrors it, so they cross on the breast and between the shoulders.
-STRAP = [(1.26, 240), (1.42, 256), (1.58, 280), (1.74, 302), (1.86, 326), (1.95, 0), (1.86, 34), (1.74, 58),
-         (1.58, 80), (1.42, 104), (1.26, 120)]
-
-
-def harness():
-    """The scorched harness, in the livery: two straps crossed on its chest and back, a broad girdle
-    round its hips, and a tasset hanging from it before and behind; its buckles in trim."""
+def livery():
+    """The livery, the scorched crust of its hide in matte ember: great plates over its shoulders and a
+    ridge of dorsal plates down its spine, on the spine, and a girdle round its hips with a tattered
+    hanging before and behind, on the hips, its buckle in trim."""
     with bone('spine'):
-        strap('strap-left', STRAP, k=1.05)
-        strap('strap-right', [(z, 180 - a) for z, a in STRAP], k=1.075)
-        for name, z, a in (('boss-front', 1.6, 270), ('boss-back', 1.6, 90)):
-            c = on_body(z, a, 1.1)
-            out = V(0, math.copysign(1, math.sin(math.radians(a))), 0)
-            cone(name, c - 0.02 * out, c + 0.035 * out, 0.05, M['trim'], n=5, back=None)
+        for s in (-1, 1):
+            c = V(s * 0.46, 0.0, 2.07)
+            rings = []
+            for z, r in ((-0.14, 0.2), (0.0, 0.2), (0.08, 0.13)):
+                rings.append([c + V(r * math.cos(math.radians(30 + 60 * i)) * (1.15 if i in (0, 5) else 1.0),
+                                    1.2 * r * math.sin(math.radians(30 + 60 * i)), z) for i in range(6)])
+            verts, faces, _ = loft(rings)
+            verts.append(c + V(0, 0.02, 0.11))
+            faces += [(12 + i, 12 + (i + 1) % 6, len(verts) - 1) for i in range(6)]
+            part(f'plate-{s}', verts, faces, M['team'], inside=c + V(0, 0, -0.05))
+            for k, (dx, dy) in enumerate(((0.06, -0.1), (0.1, 0.06))):  # spikes of crust standing up from it
+                b = c + V(s * dx, dy, 0.07)
+                cone(f'plate-spike-{s}-{k}', b, b + V(s * 0.05, 0.03, 0.13), 0.04, M['claws'], n=3, back=None)
+        for k, z in enumerate((2.0, 1.82, 1.64)):  # dorsal plates, each its point raised up and back
+            p, _ = on_body(z, 90, 1.0)
+            w = 0.13 - 0.015 * k
+            verts = [p + V(-w, -0.02, 0.06), p + V(w, -0.02, 0.06), p + V(0.7 * w, 0.0, -0.08),
+                     p + V(-0.7 * w, 0.0, -0.08), p + V(0, 0.07, -0.03), p + V(0, 0.14, 0.12)]
+            faces = [(0, 3, 4), (1, 4, 2), (3, 2, 4), (0, 4, 5), (4, 1, 5), (0, 5, 1), (0, 1, 2, 3)]
+            part(f'ridge-{k}', verts, faces, M['team'], inside=p + V(0, -0.02, 0.0))
     with bone('hips'):
-        band = [ring(z, *at_height(z)[1:], k=1.07) for z in (1.08, 1.22)]
+        p, _ = on_body(1.46, 90, 1.0)  # the last dorsal plate, below the waist
+        w = 0.085
+        verts = [p + V(-w, -0.02, 0.06), p + V(w, -0.02, 0.06), p + V(0.7 * w, 0.0, -0.08),
+                 p + V(-0.7 * w, 0.0, -0.08), p + V(0, 0.07, -0.03), p + V(0, 0.14, 0.12)]
+        faces = [(0, 3, 4), (1, 4, 2), (3, 2, 4), (0, 4, 5), (4, 1, 5), (0, 5, 1), (0, 1, 2, 3)]
+        part('ridge-3', verts, faces, M['team'], inside=p + V(0, -0.02, 0.0))
+        band = []
+        for z in (1.12, 1.28):
+            _, rx, front, back, cy = body_row(z)
+            band.append(body_ring(z, rx * 1.07, front * 1.07, back * 1.07, cy))
         verts, faces, _ = loft(band)
-        part('girdle', verts, faces, M['team'], inside=lambda c: V(0, 0.02, c.z))
-        c = on_body(1.15, 270, 1.13)
-        box('buckle', c, [V(0, -1, 0), V(1, 0, 0), V(0, 0, 1)], (0.02, 0.06, 0.05), M['trim'])
-        for name, y, sign, drop in (('tasset-front', -0.27, -1, 0.42), ('tasset-back', 0.29, 1, 0.38)):
-            top, w = 1.12, 0.17
+        part('girdle', verts, faces, M['team'], inside=lambda c: V(0, 0.05, c.z))
+        for name, y, sign, drop, w in (('loin-front', -0.27, -1, 0.4, 0.2), ('loin-back', 0.33, 1, 0.5, 0.24)):
+            top = 1.18
             verts = [V(-w, y, top), V(w, y, top),
-                     V(-0.95 * w, y + sign * 0.05, top - 0.55 * drop), V(0.95 * w, y + sign * 0.05, top - 0.55 * drop),
-                     V(-0.8 * w, y + sign * 0.07, top - drop), V(0.0, y + sign * 0.075, top - drop - 0.07),
-                     V(0.8 * w, y + sign * 0.07, top - drop)]
-            faces = [(0, 1, 3, 2), (2, 3, 6, 5, 4)]
+                     V(-0.95 * w, y + sign * 0.06, top - 0.5 * drop), V(0.95 * w, y + sign * 0.06, top - 0.5 * drop),
+                     V(-0.85 * w, y + sign * 0.08, top - drop), V(-0.4 * w, y + sign * 0.08, top - 0.82 * drop),
+                     V(0.0, y + sign * 0.09, top - drop - 0.06), V(0.45 * w, y + sign * 0.08, top - 0.85 * drop),
+                     V(0.85 * w, y + sign * 0.08, top - drop + 0.02)]
+            faces = [(0, 1, 3, 2), (2, 3, 8, 7, 6, 5, 4)]
             part(name, verts, faces, M['team'], outward=V(0, sign, 0))
+        box('buckle', V(0, -0.31, 1.2), [V(0, -1, 0), V(1, 0, 0), V(0, 0, 1)], (0.02, 0.06, 0.05), M['trim'])
 
 
 def back_fire():
-    """The fire kindled about it: tongues of flame from the back of its neck, between its shoulders
-    and on top of them, streaming up and back, on the spine."""
+    """Fire rising from its shoulders and the hump of its back behind its head, streaming up and a little
+    back, in broad tongues that join the fire of its head, on the spine."""
     with bone('spine'):
-        for k, (base, way, length) in enumerate((
-            (V(0.0, 0.17, 1.97), V(0, 0.6, 1), 0.36),
-            (V(0.13, 0.17, 1.93), V(0.3, 0.7, 1), 0.3),
-            (V(-0.13, 0.17, 1.93), V(-0.3, 0.7, 1), 0.3),
-            (V(0.0, 0.26, 1.78), V(0, 1, 0.75), 0.3),
-            (V(0.36, 0.06, 1.86), V(0.3, 0.35, 1), 0.26),
-            (V(-0.36, 0.06, 1.86), V(-0.3, 0.35, 1), 0.26),
+        for k, (base, way, length, r) in enumerate((
+            ((0.0, 0.14, 2.2), (0, 0.25, 1), 0.56, 0.15),  # the great blaze behind its head
+            ((0.2, 0.16, 2.16), (0.3, 0.25, 1), 0.5, 0.12),
+            ((-0.2, 0.16, 2.16), (-0.3, 0.25, 1), 0.5, 0.12),
+            ((0.4, 0.06, 2.12), (0.3, 0.25, 1), 0.34, 0.08),
+            ((-0.4, 0.06, 2.12), (-0.3, 0.25, 1), 0.34, 0.08),
         )):
-            flame(f'back-flame-{k}', base, way, length, 0.07, curl=V(0, 1, 0.2), phase=30 * k)
+            flame(f'back-flame-{k}', V(*base), V(*way), length, r, curl=V(0, 0.5, 1), n=4 if r > 0.1 else 3,
+                  phase=45 * (k % 2))
 
 
-# Wings: shadow, folded behind it, from its shoulder blades up past its shoulders and hanging down its
-# back, each on a bone of its own from the spine (wing_l, wing_r). Built upright, as the body is.
-WING_ROOT = V(0.14, 0.25, 1.74)
-WING_PEAK = V(0.38, 0.44, 2.36)
-WING_TIPS = [V(0.46, 0.53, 1.5), V(0.4, 0.58, 1.18), V(0.26, 0.5, 1.02)]  # down from the peak, out to in
-WING_NOTCHES = [V(0.42, 0.5, 1.48), V(0.33, 0.52, 1.2)]  # the tattered edge between them
+# Wings: bat wings of shadow, raised up and back from its shoulder blades, an arm up to a high wrist and
+# four fingers from it, the membrane between them scalloped, in panels of shadow and smoke. Each is on a
+# bone of its own from the spine, `wing_l` and `wing_r`, from its root to its wrist. They reach 0.89 from
+# the centre, so they may lift and fold but never spread.
+WING_ROOT = V(0.18, 0.34, 2.02)
+WING_LOW = V(0.12, 0.36, 1.5)
+WING_ELBOW = V(0.4, 0.6, 2.4)
+WING_WRIST = V(0.62, 0.46, 2.76)
+FINGERS = [V(0.78, 0.3, 3.0), V(0.84, 0.3, 2.4), V(0.7, 0.52, 1.8), V(0.42, 0.62, 1.42)]
 
 
 def wings():
@@ -376,203 +382,303 @@ def wings():
         def m(p):
             return V(s * p.x, p.y, p.z)
 
-        root, peak = m(WING_ROOT), m(WING_PEAK)
-        elbow = root.lerp(peak, 0.55) + m(V(0.06, -0.02, 0))
+        root, low, elbow, wrist = m(WING_ROOT), m(WING_LOW), m(WING_ELBOW), m(WING_WRIST)
+        tips = [m(f) for f in FINGERS]
         with bone(f'wing_{side}'):
-            # The leading edge, a dark strut from the root up to the peak.
-            rings = path_rings([root, elbow, peak], [0.045, 0.04, 0.02], 4, 45)
-            verts = rings[0] + rings[1] + rings[2] + [peak + (peak - elbow).normalized() * 0.08]
-            faces = [(r * 4 + i, r * 4 + (i + 1) % 4, (r + 1) * 4 + (i + 1) % 4, (r + 1) * 4 + i)
-                     for r in range(2) for i in range(4)]
-            faces += [(8 + i, 8 + (i + 1) % 4, 12) for i in range(4)]
-            part(f'wing-edge-{side}', verts, faces, M['shadow'], inside=nearest_on_polyline([root, elbow, peak]))
-            # The membrane, a fan from the elbow of the edge, tattered along its lower edge.
-            tips = [m(t) for t in WING_TIPS]
-            notches = [m(t) for t in WING_NOTCHES]
-            rim = [peak, tips[0], notches[0], tips[1], notches[1], tips[2], root]
-            verts = [elbow] + rim
+            rings = path_rings([root, elbow, wrist], [0.06, 0.05, 0.04], 4)
+            verts, faces, _ = loft(rings)
+            part(f'wing-arm-{side}', verts, wind(verts, faces, inside=nearest_on_polyline([root, elbow, wrist])),
+                 M['hide'])
+            cone(f'wing-claw-{side}', wrist, wrist + m(V(0.02, -0.06, 0.14)), 0.03, M['claws'], n=3, back=None)
+            for k, t in enumerate(tips):
+                cone(f'wing-finger-{side}-{k}', wrist, t, 0.03, M['hide'], n=3, back=None)
+            # The membrane, fanned from the wrist, scalloped between the fingertips.
+            rim = [tips[0]]
+            for a, b in zip(tips, tips[1:]):
+                rim += [wrist.lerp(a.lerp(b, 0.5), 0.72), b]
+            rim += [low, elbow.lerp(low, 0.5), root, elbow]
+            verts = [wrist] + rim
             faces = [(0, i, i + 1) for i in range(1, len(rim))]
-            part(f'wing-{side}', verts, faces, M['wing'], outward=V(0, 1, 0))
+            part(f'wing-{side}', verts, faces, [M['wing'], M['smoke']], [(i // 2) % 2 for i in range(len(faces))],
+                 outward=V(0, 1, 0))
         joint(f'wing_{side}_root', root)
-        joint(f'wing_{side}_peak', peak)
+        joint(f'wing_{side}_peak', wrist)
+
+
+# Legs: digitigrade, on clawed feet -----------------------------------------------------------------
+#
+# The thigh from the hip down and forward to the knee, the shin back down to the hock, high off the
+# ground, and the shank down from it to the paw. The rig's ankle is the hock, so its foot bone carries the
+# shank and the paw together, and the knee, forward of the line from hip to hock, bends forward.
+LEG = [V(0.27, 0.06, 1.16), V(0.33, -0.2, 0.76), V(0.35, 0.16, 0.4), V(0.35, 0.02, 0.12)]  # hip, knee, hock, ankle
+
+
+def legs():
+    for s, side in ((1, 'left'), (-1, 'right')):
+        c = side[0]
+        dy = 0.04 if s < 0 else -0.02  # the left foot a little forward
+        hip, knee, hock, ankle = (V(s * p.x, p.y + dy, p.z) for p in LEG)
+        with bone(f'thigh_{c}'):
+            past = knee + 0.07 * (hock - knee).normalized()
+            rings, points = limb(f'thigh-{side}', [hip + V(0, 0, 0.06), hip.lerp(knee, 0.5), past],
+                                 [0.2, (0.2, 0.22), 0.15], 6, 20 + s)
+            ring_crack(f'thigh-crack-{side}', rings, points, [(0.2, 3.8), (0.9, 3.5), (1.5, 3.9), (1.9, 3.6)])
+        with bone(f'shin_{c}'):
+            above = knee + 0.05 * (hip - knee).normalized()
+            limb(f'shin-{side}', [above, knee.lerp(hock, 0.5), hock + 0.04 * (hock - knee).normalized()],
+                 [0.14, 0.13, 0.1], 6, 30 + s, 0.08)
+        with bone(f'foot_{c}'):
+            limb(f'shank-{side}', [hock - 0.03 * (hock - knee).normalized(), ankle], [0.1, 0.085], 6, 40 + s, 0.0)
+            foot(side, ankle)
+        joint(f'hip_{c}', hip)
+        joint(f'knee_{c}', knee)
+        joint(f'ankle_{c}', hock)
+
+
+def foot(side, ankle):
+    """A heavy clawed foot: a pad from the ankle to the ground, three great claws ahead and a spur behind."""
+    at = V(ankle.x, ankle.y, 0)
+    rows = [(0.0, -0.08, 0.13, 0.19), (0.07, -0.07, 0.13, 0.18), (0.15, 0.0, 0.09, 0.09)]
+    rings = [[at + V(rx * math.cos(math.radians(30 + 60 * i)), cy + ry * math.sin(math.radians(30 + 60 * i)), z)
+              for i in range(6)] for z, cy, rx, ry in rows]
+    verts, faces, bands = loft(rings)
+    face_mats = [0 if b == 0 else 1 for b in bands]
+    verts.append(at + V(0, -0.08, 0))
+    faces += [(i, (i + 1) % 6, len(verts) - 1) for i in range(6)]  # the sole
+    face_mats += [0] * 6
+    part(f'foot-{side}', verts, faces, [M['hide'], M['crust']], face_mats, inside=at + V(0, -0.04, 0.07))
+    for k, x in enumerate((-0.08, 0.0, 0.08)):
+        cone(f'toe-claw-{side}-{k}', at + V(x, -0.2, 0.06), at + V(1.35 * x, -0.36, 0.005), 0.04, M['claws'], n=3,
+             back=None)
+    cone(f'spur-{side}', at + V(0, 0.06, 0.08), at + V(0, 0.2, 0.01), 0.035, M['claws'], n=3, back=None)
+    joint(f'toe_{side[0]}', at + V(0, -0.33, 0.04))
+
+
+# The tail: long and heavy, down behind it and curling round to its right, its tip turned forward, clear
+# of the ground; on a chain of three bones, tail_1 to tail_3, each point of it following the bone of the
+# length it is on.
+TAIL = [V(0.0, 0.26, 1.12), V(0.0, 0.5, 0.86), V(-0.03, 0.64, 0.56), V(-0.15, 0.72, 0.36),
+        V(-0.38, 0.68, 0.28), V(-0.58, 0.5, 0.28), V(-0.68, 0.28, 0.32)]
+TAIL_RADII = [0.13, 0.12, 0.1, 0.085, 0.07, 0.055, 0.045]
+TAIL_TIP = V(-0.66, 0.08, 0.38)
+TAIL_JOINTS = (('tail_root', 0), ('tail_a', 2), ('tail_b', 4), ('tail_end', 7))  # by index in TAIL + tip
+TAIL_BONES = ('tail_1', 'tail_2', 'tail_3')
+
+
+def tail_bone(p):
+    """The bone of the length of the tail a point is nearest."""
+    points = TAIL + [TAIL_TIP]
+    nearest = min(range(len(points)), key=lambda i: (points[i] - p).length)
+    return TAIL_BONES[0] if nearest < 2 else TAIL_BONES[1] if nearest < 4 else TAIL_BONES[2]
+
+
+def tail():
+    with bone('tail_1', follows=tail_bone):
+        rings, points = limb('tail', TAIL, TAIL_RADII, 6, 50, 0.08, end=TAIL_TIP, side=V(0, 0, 1))
+        ring_crack('tail-crack', rings, points, [(1, 1.5), (2, 1.3), (3, 1.6), (4, 1.4), (5, 1.5), (5.8, 1.5)])
+        for k, t in enumerate((1.4, 2.4, 3.4, 4.4)):  # a ridge of spikes along the top of it
+            i = int(t)
+            c = points[i].lerp(points[i + 1], t - i)
+            r = TAIL_RADII[i] + (TAIL_RADII[i + 1] - TAIL_RADII[i]) * (t - i)
+            up = ((c - V(0, 0.2, c.z)).normalized() * 0.5 + V(0, 0, 0.6)).normalized()
+            cone(f'tail-spike-{k}', c + 0.6 * r * up, c + (r + 0.1) * up, 0.035, M['claws'], n=3, back=None)
+    points = TAIL + [TAIL_TIP]
+    for name, i in TAIL_JOINTS:
+        joint(name, points[i])
 
 
 # The head ----------------------------------------------------------------------------------------
 
-# The skull in rings from under the jaw up: the height above the head's origin, then the left half as
-# (x, y): the side, the back corner, the back, the front corner and the front. A heavy jaw, a brow like
-# a shelf over the eyes, and a low crown sloping back into the mane.
+HEAD = V(0, -0.35, 1.96)  # the middle of the underside of its jaw, before its shoulders
+HEAD_SCALE = 1.1
+
+# The skull in rings from under the jaw up: the height above HEAD, then the left half as (x, y): the
+# side, the back corner, the back, the front corner and the front. A heavy jaw, a broad bull's skull, a
+# shelf of brow, a low crown.
 SKULL = [
-    (0.0, (0.11, 0.0), (0.08, 0.08), 0.09, (0.1, -0.12), -0.16),  # under the jaw
-    (0.1, (0.135, 0.02), (0.1, 0.11), 0.13, (0.115, -0.12), -0.17),  # the mouth
-    (0.2, (0.145, 0.03), (0.11, 0.13), 0.15, (0.105, -0.1), -0.14),  # the cheeks, under the eyes
-    (0.27, (0.145, 0.04), (0.11, 0.13), 0.15, (0.125, -0.13), -0.17),  # the brow, a shelf
-    (0.36, (0.1, 0.06), (0.07, 0.12), 0.13, (0.07, -0.05), -0.07),  # the crown
+    (0.0, (0.13, 0.02), (0.09, 0.13), 0.15, (0.1, -0.17), -0.22),  # under the jaw
+    (0.1, (0.17, 0.04), (0.12, 0.17), 0.19, (0.13, -0.2), -0.27),  # the mouth
+    (0.2, (0.2, 0.05), (0.15, 0.19), 0.21, (0.12, -0.17), -0.25),  # cheeks and muzzle
+    (0.28, (0.23, 0.03), (0.16, 0.19), 0.21, (0.17, -0.18), -0.23),  # the brow, a shelf
+    (0.37, (0.17, 0.05), (0.11, 0.17), 0.18, (0.1, -0.07), -0.09),  # the crown
 ]
-CROWN = (0, 0.05, 0.4)
+CROWN = (0, 0.06, 0.41)
 
 
-def head_origin():
-    """The middle of the underside of its jaw, carried forward before its shoulders."""
-    return hunched(NECK) + V(0, -0.07, -0.05)
-
-
-def h(x, y, z):
-    return head_origin() + V(x, y, z)
+def hp(x, y, z):
+    return HEAD + HEAD_SCALE * V(x, y, z)
 
 
 def head():
     with bone('head'):
         skull()
-        features()
-    joint('crown', h(*CROWN))
+        horns()
+    joint('crown', hp(*CROWN))
 
 
 def skull():
     rings = []
-    for z, side, corner, back, front_corner, front_y in SKULL:
+    for z, side, corner, back, front_corner, front in SKULL:
         points = [side, corner, (0, back), (-corner[0], corner[1]), (-side[0], side[1]),
-                  (-front_corner[0], front_corner[1]), (0, front_y), front_corner]
-        rings.append([h(x, y, z) for x, y in points])
+                  (-front_corner[0], front_corner[1]), (0, front), front_corner]
+        rings.append([hp(x, y, z) for x, y in points])
     verts, faces, bands = loft(rings)
-    face_mats = [1 if (f % 8 + b) % 2 else 0 for f, b in enumerate(bands)]
+    face_mats = [(f % 8 + b) % 2 for f, b in enumerate(bands)]
+    for f, b in enumerate(bands):  # the mouth: the front of the lowest band glows, a gaping jaw of fire
+        if b == 0 and f % 8 in (5, 6):
+            face_mats[f] = 2
+        elif b == 0 and f % 8 in (4, 7):
+            face_mats[f] = 3
     faces.append(tuple(range(8)))
     face_mats.append(0)
-    verts.append(h(*CROWN))
+    verts.append(hp(*CROWN))
     last = (len(rings) - 1) * 8
     faces += [(last + i, last + (i + 1) % 8, len(verts) - 1) for i in range(8)]
     face_mats += [1 if i % 2 else 0 for i in range(8)]
-    part('skull', verts, faces, [M['shadow'], M['smoke']], face_mats, inside=h(0, 0.0, 0.18))
-
-
-def features():
-    # Eyes of flame, slanting slits deep under the brow.
+    part('skull', verts, faces, [M['hide'], M['crust'], M['fire'], M['ember']], face_mats, inside=hp(0, 0.0, 0.2))
+    # The lower jaw, hanging open below the glowing mouth, and fangs at its corners.
+    jaw = [hp(0.12, -0.12, 0.04), hp(-0.12, -0.12, 0.04), hp(-0.1, -0.24, -0.04), hp(0.1, -0.24, -0.04),
+           hp(0.12, 0.0, 0.02), hp(-0.12, 0.0, 0.02), hp(0.0, -0.27, -0.07)]
+    faces = [(0, 1, 2, 3), (2, 6, 3), (0, 3, 4), (1, 5, 2), (0, 4, 5, 1), (4, 3, 6), (5, 6, 2), (4, 6, 5)]
+    part('jaw', jaw, faces, M['hide'], inside=hp(0, -0.1, 0.0))
     for s in (-1, 1):
-        verts = [h(s * 0.03, -0.142, 0.225), h(s * 0.105, -0.12, 0.25), h(s * 0.09, -0.125, 0.212)]
+        cone(f'fang-{s}', hp(s * 0.1, -0.2, 0.11), hp(s * 0.09, -0.235, 0.0), 0.025, M['horn'], n=3, back=None)
+        # Eyes of flame, slanting slits deep under the brow, and nostrils that glow.
+        verts = [hp(s * 0.035, -0.245, 0.235), hp(s * 0.15, -0.205, 0.27), hp(s * 0.13, -0.21, 0.215)]
         part(f'eye-{s}', verts, [(0, 1, 2)], M['eyes'], outward=V(0, -1, 0))
-    # A mouth that glows, the fire within it.
-    verts = [h(0.09, -0.155, 0.08), h(0.03, -0.172, 0.095), h(-0.03, -0.172, 0.095), h(-0.09, -0.155, 0.08),
-             h(-0.03, -0.172, 0.065), h(0.03, -0.172, 0.065)]
-    part('mouth', verts, [(0, 1, 5), (1, 2, 4, 5), (2, 3, 4)], M['ember'], outward=V(0, -1, 0))
+        verts = [hp(s * 0.03, -0.265, 0.17), hp(s * 0.08, -0.25, 0.18), hp(s * 0.06, -0.255, 0.145)]
+        part(f'nostril-{s}', verts, [(0, 1, 2)], M['ember'], outward=V(0, -1, 0))
 
 
-# The mane: tongues of flame from its brow over its crown and down the back of its head, streaming up
-# and back, on a bone of its own (`mane`) that trails after the head (clips.swaying()). In the head's
-# measure: base, way and length.
-MANE = [
-    ((0.0, -0.06, 0.36), (0, 0.25, 1), 0.34),
-    ((0.07, -0.01, 0.37), (0.3, 0.4, 1), 0.32),
-    ((-0.07, -0.01, 0.37), (-0.3, 0.4, 1), 0.32),
-    ((0.0, 0.05, 0.39), (0, 0.6, 1), 0.42),
-    ((0.1, 0.07, 0.31), (0.6, 0.7, 0.8), 0.3),
-    ((-0.1, 0.07, 0.31), (-0.6, 0.7, 0.8), 0.3),
-    ((0.0, 0.13, 0.28), (0, 1, 0.65), 0.38),
-    ((0.08, 0.12, 0.17), (0.4, 1, 0.45), 0.28),
-    ((-0.08, 0.12, 0.17), (-0.4, 1, 0.45), 0.28),
-]
+# Great thick horns from the brow, sweeping out to the sides, then forward and up, like a bull's: pale
+# horn, darkening at the tips.
+HORN_PATH = [(0.15, -0.31, 2.3), (0.3, -0.3, 2.36), (0.43, -0.28, 2.45), (0.51, -0.35, 2.56),
+        (0.5, -0.47, 2.66), (0.41, -0.55, 2.74)]
+HORN_RADII = [0.11, 0.105, 0.088, 0.066, 0.044]
+
+
+def horns():
+    for s in (-1, 1):
+        points = [V(s * x, y, z) for x, y, z in HORN_PATH]
+        rings = path_rings(points[:-1], HORN_RADII, 5, 0, side=V(0, 0, 1))
+        verts, faces, bands = loft(rings)
+        face_mats = [1 if b >= 3 else 0 for b in bands]
+        faces = wind(verts, faces, inside=nearest_on_polyline(points))
+        verts.append(points[-1])
+        first = (len(rings) - 1) * 5
+        faces += wind(verts, [(first + i, first + (i + 1) % 5, len(verts) - 1) for i in range(5)], inside=points[-2])
+        face_mats += [1] * 5
+        part(f'horn-{s}', verts, faces, [M['horn'], M['claws']], face_mats)
 
 
 def mane():
+    """The fire of its head: broad tongues bursting from the back of its skull behind the horns,
+    streaming up and a little back, on a bone of its own (`mane`) that streams after the head."""
     with bone('mane'):
-        for k, (base, way, length) in enumerate(MANE):
-            flame(f'mane-{k}', h(*base), V(*way), length, 0.065, curl=V(0, 1, 0.3), phase=40 * k)
-    joint('mane_root', h(0, 0.05, 0.3))
-    joint('mane_tip', h(0, 0.3, 0.6))
+        for k, (base, way, length, r) in enumerate((
+            ((0.0, 0.08, 0.36), (0, 0.4, 1), 0.5, 0.12),
+            ((0.11, 0.1, 0.32), (0.4, 0.4, 1), 0.4, 0.1),
+            ((-0.11, 0.1, 0.32), (-0.4, 0.4, 1), 0.4, 0.1),
+            ((0.06, 0.16, 0.24), (0.15, 0.45, 1), 0.46, 0.1),
+            ((-0.06, 0.16, 0.24), (-0.15, 0.45, 1), 0.46, 0.1),
+            ((0.17, 0.08, 0.22), (0.7, 0.35, 0.8), 0.3, 0.07),
+            ((-0.17, 0.08, 0.22), (-0.7, 0.35, 0.8), 0.3, 0.07),
+        )):
+            flame(f'head-flame-{k}', hp(*base), V(*way), length, r, curl=V(0, 1, 0.3), n=4 if r > 0.09 else 3,
+                  phase=45 * (k % 2))
+    joint('mane_root', hp(0, 0.1, 0.3))
+    joint('mane_tip', hp(0, 0.35, 0.8))
 
 
 # Arms, the sword and the whip ---------------------------------------------------------------------
 
-SHOULDERS = {s: hunched(V(s * 0.46, 0.04, 1.84)) for s in (-1, 1)}  # its left (+X) and right
-UPPER_ARM, FOREARM = 0.5, 0.48
-
-# The sword is held up before its right shoulder, its flame beside its head; the whip hangs from its
-# left fist, low by its side.
-R_FIST = V(-0.5, -0.36, 1.12)
-SWORD = V(-0.04, -0.17, 0.98).normalized()
-POMMEL_AT, GUARD_AT, TIP_AT = -0.13, 0.11, 0.95  # along the sword from the fist
-L_FIST = V(0.55, -0.16, 1.06)
-HANDLE = V(0.06, -0.45, -0.89).normalized()
-HANDLE_END = 0.26  # how far along it from the fist the thongs start
+ARMS = {  # shoulder, elbow, wrist and the middle of the fist: long arms, the fists below the hips
+    'right': (V(-0.5, -0.05, 2.0), V(-0.66, 0.12, 1.52), V(-0.68, -0.1, 1.1), V(-0.68, -0.17, 1.02)),
+    'left': (V(0.5, -0.05, 2.0), V(0.66, 0.12, 1.52), V(0.66, -0.08, 1.08), V(0.65, -0.15, 0.99)),
+}
+SWORD = V(-0.02, -0.08, 1.0).normalized()  # held upright by its right side
+SWORD_EDGE = V(-1, -0.2, 0)  # its flat to the front, so it shows its breadth
+POMMEL_AT, GUARD_AT, TIP_AT = -0.14, 0.12, 1.02  # along the sword from the fist
+HANDLE = V(0.05, -0.35, -0.94).normalized()  # the whip's handle, down and a little forward
+HANDLE_END = 0.28
 # The whip's chain, from the end of its handle: it hangs down and a little back from there.
-WHIP = [V(0.0, 0.0, 0.0), V(0.01, 0.01, -0.27), V(0.03, 0.08, -0.5), V(0.05, 0.2, -0.7)]
-THONGS = 5
+WHIP = [V(0.0, 0.0, 0.0), V(0.01, 0.01, -0.24), V(0.03, 0.07, -0.44), V(0.05, 0.16, -0.6)]
+THONGS = 6
 
 
-def arm(side, fist, pole, along):
-    """An arm from its shoulder to a fist at `fist`, the elbow bent towards `pole`; the fist round
-    what it holds, which runs along `along`."""
-    s = 'l' if side == 'left' else 'r'
-    shoulder = SHOULDERS[1 if s == 'l' else -1]
-    reach = (fist - shoulder).normalized()
-    elbow = bend(shoulder, fist - 0.08 * reach, UPPER_ARM, FOREARM, pole)
-    wrist = fist - 0.08 * (fist - elbow).normalized()
-    past = elbow + 0.06 * (wrist - elbow).normalized()
-    above = elbow + 0.06 * (shoulder - elbow).normalized()
-    with bone(f'upper_arm_{s}'):
-        verts, faces, _ = loft(segment(shoulder, past, [(-0.12, 0.14), (0.5, 0.125), (1, 0.11)], 6, 30))
-        part(f'upper-arm-{side}', verts, faces, skin(), cracked(faces, 6), inside=nearest_on_line(shoulder, past))
-    with bone(f'forearm_{s}'):
-        verts, faces, _ = loft(segment(above, wrist, [(0, 0.1), (0.5, 0.12), (1, 0.095)], 6, 30))
-        part(f'forearm-{side}', verts, faces, skin(), cracked(faces, 6),
-             inside=nearest_on_line(above, wrist))
-        # Fire licking up from the back of the forearm.
-        out = V(1 if s == 'l' else -1, 0.4, 0.2)
-        ahead = (wrist - above).normalized()
-        out = (out - out.dot(ahead) * ahead).normalized()
-        base = above.lerp(wrist, 0.4) + 0.08 * out
-        flame(f'arm-flame-{side}', base, 0.35 * out + V(0, 0.35, 1) - 0.5 * ahead, 0.18, 0.045, curl=V(0, 0.5, 1))
+def arm(side, along):
+    """An arm from its shoulder to its fist, round what it holds, which runs along `along`; cracks of
+    fire down the outside of it, and great claws curled over the fist."""
+    shoulder, elbow, wrist, fist = ARMS[side]
+    s = 1 if side == 'left' else -1
+    c = side[0]
+    with bone(f'upper_arm_{c}'):
+        past = elbow + 0.05 * (wrist - elbow).normalized()
+        rings, points = limb(f'upper-arm-{side}', [shoulder + V(0, 0, 0.04), shoulder.lerp(elbow, 0.45), past],
+                             [0.16, 0.16, 0.12], 6, 60 + s)
+        ring_crack(f'upper-arm-crack-{side}', rings, points,
+                   [(0.4, 0.5 if s > 0 else 2.5), (1.0, 0.8 if s > 0 else 2.2), (1.7, 0.4 if s > 0 else 2.6)])
+    with bone(f'forearm_{c}'):
+        above = elbow + 0.05 * (shoulder - elbow).normalized()
+        rings, points = limb(f'forearm-{side}', [above, elbow.lerp(wrist, 0.5), wrist], [0.12, 0.13, 0.1], 6,
+                             70 + s, 0.08)
+        ring_crack(f'forearm-crack-{side}', rings, points,
+                   [(0.2, 4.5 if s > 0 else 0.5), (1.0, 4.2 if s > 0 else 0.8), (1.8, 4.6 if s > 0 else 0.4)])
     ahead = (fist - elbow).normalized()
     across = (along - along.dot(ahead) * ahead).normalized()
-    with bone(f'hand_{s}'):
-        box(f'fist-{side}', fist, [ahead, across, ahead.cross(across)], (0.1, 0.095, 0.09), M['shadow'], 0.85)
-    joint(f'shoulder_{s}', shoulder)
-    joint(f'elbow_{s}', elbow)
-    joint(f'wrist_{s}', wrist)
-    joint(f'fist_{s}', fist + 0.04 * ahead)
+    out = ahead.cross(across)
+    if out.y > 0:
+        out = -out
+    with bone(f'hand_{c}'):
+        box(f'fist-{side}', fist, [ahead, across, ahead.cross(across)], (0.12, 0.115, 0.11), M['hide'], 0.85)
+        for k, t in enumerate((-0.06, 0.0, 0.06)):
+            b = fist + 0.09 * ahead + 1.2 * t * across + 0.08 * out
+            cone(f'claw-{side}-{k}', b, b + 0.08 * out - 0.05 * ahead, 0.025, M['claws'], n=3, back=None)
+    joint(f'shoulder_{c}', shoulder)
+    joint(f'elbow_{c}', elbow)
+    joint(f'wrist_{c}', wrist)
+    joint(f'fist_{c}', fist + 0.04 * ahead)
 
 
 def sword():
-    """A blade like a stabbing tongue of fire, wavering as it narrows to its point, on a hilt of black
-    iron, its guard and pommel in trim; on the right hand, which holds it from the fist to its point."""
+    """A blade like a stabbing tongue of fire, wavering as it narrows to its point, with three flames
+    licking back off its edges, on a hilt of black iron, its guard and pommel in trim."""
+    fist = ARMS['right'][3]
     along = SWORD
-    edge = V(0, -1, 0)
-    edge = (edge - edge.dot(along) * along).normalized()  # its edge forward
+    edge = (SWORD_EDGE - SWORD_EDGE.dot(along) * along).normalized()
     flat = along.cross(edge)
-    start = R_FIST + GUARD_AT * along
-    tip = R_FIST + TIP_AT * along
-    stations = [(0.0, 0.055), (0.22, 0.085), (0.45, 0.065), (0.68, 0.08), (0.86, 0.05)]
+    start, tip = fist + GUARD_AT * along, fist + TIP_AT * along
     rings = []
-    for t, w in stations:
+    for t, w in ((0.0, 0.065), (0.22, 0.105), (0.45, 0.075), (0.68, 0.09), (0.86, 0.055)):
         c = start.lerp(tip, t)
         rings.append([c + w * edge, c + 0.3 * w * flat, c - w * edge, c - 0.3 * w * flat])
     verts, faces, bands = loft(rings)
     face_mats = [b % 2 for b in bands]
     verts.append(tip)
-    last = (len(stations) - 1) * 4
+    last = (len(rings) - 1) * 4
     faces += [(last + i, last + (i + 1) % 4, len(verts) - 1) for i in range(4)]
     face_mats += [1] * 4
-    part('blade', verts, faces, [M['fire'], M['flame']], face_mats, inside=nearest_on_line(start, tip))
-    # Flames licking back off its edge.
-    for k, (t, w) in enumerate(((0.3, 1), (0.62, -1))):
+    part('blade', verts, faces, [M['fire'], M['flame']], face_mats,
+         inside=lambda c: start + along * (c - start).dot(along))
+    for k, (t, w) in enumerate(((0.3, 1), (0.6, -1), (0.8, 1))):
         base = start.lerp(tip, t) + 0.05 * w * edge
-        flame(f'blade-flame-{k}', base, w * edge + 1.1 * along, 0.18, 0.035, curl=-w * edge)
-    # The hilt: the grip through the fist, the guard across it and the pommel below.
-    tube('grip', R_FIST + POMMEL_AT * along, R_FIST + GUARD_AT * along, [(0, 0.035), (1, 0.035)], M['iron'], n=5)
-    box('guard', R_FIST + GUARD_AT * along, [along, edge, flat], (0.025, 0.14, 0.04), M['trim'], 0.8)
-    cone('pommel', R_FIST + (POMMEL_AT + 0.01) * along, R_FIST + (POMMEL_AT - 0.06) * along, 0.05, M['trim'], n=5,
+        flame(f'blade-flame-{k}', base, w * edge + 1.2 * along, 0.2, 0.035, curl=-w * edge)
+    tube('grip', fist + POMMEL_AT * along, start, [(0, 0.035), (1, 0.035)], M['iron'], n=5)
+    box('guard', start, [along, edge, flat], (0.025, 0.15, 0.045), M['trim'], 0.8)
+    cone('pommel', fist + (POMMEL_AT + 0.01) * along, fist + (POMMEL_AT - 0.06) * along, 0.05, M['trim'], n=5,
          back=None)
     return tip, edge
 
 
 def whip():
-    """The whip of many thongs: an iron handle in the left fist, and five thongs of flame from its end,
+    """The whip of many thongs: an iron handle in the left fist, and six thongs of flame from its end,
     brightest at their tips, on the whip's three bones, each thong's points following the bone of the
-    length they are on, so the thongs bend where the bones turn. (Of the livery, thin and dark, they
-    hardly showed.)"""
-    root = L_FIST + HANDLE_END * HANDLE
+    length they are on, so the thongs bend where the bones turn."""
+    fist = ARMS['left'][3]
+    root = fist + HANDLE_END * HANDLE
     chain = [root + p for p in WHIP]
-    tube('handle', L_FIST - 0.09 * HANDLE, root + 0.02 * HANDLE, [(0, 0.035), (1, 0.03)], M['iron'], n=5)
-    tube('handle-band', root - 0.03 * HANDLE, root + 0.02 * HANDLE, [(0, 0.042), (1, 0.042)], M['trim'], n=5)
+    tube('handle', fist - 0.1 * HANDLE, root + 0.02 * HANDLE, [(0, 0.035), (1, 0.03)], M['iron'], n=5)
+    tube('handle-band', root - 0.03 * HANDLE, root + 0.02 * HANDLE, [(0, 0.045), (1, 0.045)], M['trim'], n=5)
 
     def follows(p):
         """The bone of the length of the whip a point of a thong is on."""
@@ -583,10 +689,10 @@ def whip():
 
     with bone('whip_1', follows=follows):
         for k in range(THONGS):
-            a = math.radians(72 * k + 15)
+            a = math.radians(60 * k + 15)
             spread = V(math.cos(a), math.sin(a), 0)
-            points = [chain[0], chain[1] + 0.025 * spread, chain[2] + 0.06 * spread, chain[3] + 0.1 * spread]
-            rings = path_rings(points[:3], [0.03, 0.026, 0.02], 3, 60 * k)
+            points = [chain[0], chain[1] + 0.03 * spread, chain[2] + 0.07 * spread, chain[3] + 0.12 * spread]
+            rings = path_rings(points[:3], [0.03, 0.026, 0.022], 3, 60 * k)
             verts = rings[0] + rings[1] + rings[2] + [points[3]]
             faces = [(r * 3 + i, r * 3 + (i + 1) % 3, (r + 1) * 3 + (i + 1) % 3, (r + 1) * 3 + i)
                      for r in range(2) for i in range(3)]
@@ -604,69 +710,73 @@ def arms():
         tip, edge = sword()
     with bone('hand_l'):
         root = whip()
-    # The right arm bends forward to hold the sword up, the elbow out and back; the left hangs by its
-    # side with the whip, the elbow out and back.
-    arm('right', R_FIST, SHOULDERS[-1] + V(-0.12, 0.3, -0.3), SWORD)
-    arm('left', L_FIST, SHOULDERS[1] + V(0.12, 0.3, -0.3), HANDLE)
-    hold('r', R_FIST, tip, tip + 0.1 * edge)
-    hold('l', L_FIST, root, root + 0.1 * V(0, -1, 0))
+    arm('right', SWORD)
+    arm('left', HANDLE)
+    fist_r, fist_l = ARMS['right'][3], ARMS['left'][3]
+    hold('r', fist_r, tip, tip + 0.1 * edge)
+    hold('l', fist_l, root, root + 0.1 * V(0, -1, 0))
 
 
 # Its clips ----------------------------------------------------------------------------------------
 #
 # Its attack, a bolt of fire flung from its sword (a shot, on frame 3 as keyed: its range is 2), and its
 # cast, the whip lashed across the cone in front, are its own. Each is drawn where it goes, the hands'
-# paths in the model's frame as the library's blows are, from the rig's measurements (clips.Body).
+# paths in the model's frame as the library's blows are, from the rig's measurements (clips.Body). Its
+# horns reach out over its shoulders, so both weapons are raised outside them.
 
 WHIP_BONES = ('whip_1', 'whip_2', 'whip_3')
 
 
 def slash(rig):
-    """Its attack: the sword swept up and back over its right shoulder, the body turned to it and
-    rearing, then over the top and slashed down before it, the body bowing in after it, so that on
-    frame 3 the blade points down at the foe ahead, and the bolt of fire leaves from its point (its
-    muzzle); a hold, and the sword brought back up to where it is held."""
+    """Its attack: the sword raised before its right shoulder, outside the horn, and tipped back, the
+    body turned to it and rearing, then over and slashed down before it, the body bowing in after it, so
+    that on frame 3 the blade points down at the foe ahead, and the bolt of fire leaves from its point
+    (its muzzle); a hold, and the sword brought back up to where it is held."""
     b = Body(rig, 'r')
     n = frames_for(0.6)
     leg = b.leg
     k = Keys(lag={'head': 1})
     k.key(0, **b.still())
 
-    def blade(theta, at, yaw=0.0, elbow=(0.12, 0.4, -0.9)):
+    def blade(theta, at, yaw=0.0, elbow=(-0.35, 0.3, -0.9)):
         aim, face = arc(theta, b.yaw(yaw))
         return b.arm('r', b.near(*at), rig.aim('r', aim, face), elbow, world=1.0)
 
+    # Its arms are long and its shoulders broad, so the sword is raised before its shoulder, the elbow
+    # down, rather than drawn back over it, which would take the elbow out of its hex.
+    up, down_in = (0.1, -0.2, -1.0), (-0.35, 0.3, -0.9)  # the elbow down as it rises, then down and in
     path = [
-        (0, 'smooth', -58, (0.0, 0.24, 0.36), -6),  # drawn back over its shoulder
-        (1, 'in', -42, (-0.02, 0.18, 0.44), -4),  # further, the body rearing
-        (2, 'in', 40, (-0.1, -0.12, 0.46), -2),  # over the top, coming down
-        (BLOW, 'in', 132, (-0.14, -0.5, -0.1), -4),  # slashed down at the foe: the bolt leaves
-        (BLOW + 3, 'out', 126, (-0.14, -0.48, -0.06), -4),
-        (BLOW + 7, 'smooth', 118, (-0.12, -0.45, -0.06), -4),
-        (BLOW + 11, 'smooth', 50, (-0.05, -0.32, -0.2), -2),
+        (0, 'smooth', -20, (0.17, -0.3, 0.12), -6, up),  # raised before its shoulder, outside the horn
+        (1, 'in', -35, (0.18, -0.26, 0.18), -4, up),  # tipped back, the body rearing
+        (2, 'in', 100, (0.14, -0.18, 0.28), -2, (-0.2, -0.8, -0.5)),  # over, coming down
+        (BLOW, 'in', 148, (-0.12, -0.62, -0.25), -4, down_in),  # slashed down at the foe: the bolt leaves
+        (BLOW + 3, 'out', 154, (-0.1, -0.6, -0.28), -4, down_in),
+        (BLOW + 7, 'smooth', 150, (-0.06, -0.55, -0.32), -4, down_in),
+        (BLOW + 11, 'smooth', 120, (0.12, -0.25, -0.75), -2, down_in),  # let down by its hip
     ]
-    for f, ease, theta, at, yaw in path:
-        k.key(f, ease, **blade(theta, at, yaw))
+    for f, ease, theta, at, yaw, elbow in path:
+        k.key(f, ease, **blade(theta, at, yaw, elbow))
     body_keys = [  # spine and hips as pitch and yaw to the sword's side, hips forward and down
-        (0, 'smooth', (-8, 14), (-2, 6), (-0.02, 0.03)),
-        (1, 'in', (-11, 10), (-3, 5), (-0.02, 0.03)),
-        (2, 'in', (-2, 4), (0, 2), (0.0, 0.05)),
-        (BLOW, 'in', (13, -16), (4, -8), (0.04, 0.09)),
-        (BLOW + 3, 'out', (12, -15), (4, -7), (0.035, 0.085)),
-        (BLOW + 7, 'smooth', (10, -12), (3, -6), (0.03, 0.07)),
-        (BLOW + 11, 'smooth', (3, -3), (1, -1), (0.01, 0.03)),
+        (0, 'smooth', (-8, 6), (-2, 3), (-0.02, 0.03)),
+        (1, 'in', (-11, 5), (-3, 2), (-0.02, 0.03)),
+        (2, 'in', (-2, 2), (0, 1), (0.0, 0.05)),
+        (BLOW, 'in', (7, -8), (3, -4), (0.0, 0.09)),
+        (BLOW + 3, 'out', (6, -8), (3, -4), (0.0, 0.085)),
+        (BLOW + 7, 'smooth', (5, -6), (2, -3), (0.0, 0.07)),
+        (BLOW + 11, 'smooth', (3, -2), (1, -1), (0.0, 0.03)),
     ]
     for f, ease, spine, hips, (ahead, low) in body_keys:
         k.key(f, ease, spine=V(spine[0], 0, b.yaw(spine[1])), hips=V(hips[0], 0, b.yaw(hips[1])),
               hips_at=V(0, -ahead * leg, -low * leg))
-    k.key(0, head=V(4, 0, b.yaw(-10)), **b.arm('l', b.wrist('l', 0.04, -0.06, 0.04)))
-    k.key(BLOW, 'in', head=V(-6, 0, b.yaw(6)), **b.arm('l', b.wrist('l', 0.08, 0.14, 0.02)))
+    # The head turns against the body, so it keeps looking ahead and its horns stay in the hex.
+    k.key(0, head=V(4, 0, b.yaw(-8)), **b.arm('l', b.wrist('l', 0.04, -0.06, 0.04)))
+    k.key(BLOW, 'in', head=V(-6, 0, b.yaw(3)), **b.arm('l', b.wrist('l', 0.08, 0.14, 0.02)))
     k.key(n, **b.still())
     k.key(n, **{'hand_r_world': 1.0})
     return timed(rig, 'attack', Clip(n, k, marks={'strike': BLOW}, muzzle=('hand_r', rig.joint('tip_r'))))
 
 
-def lashed(rig, ch, yaw, swings, room=ROOM - 0.01, ahead=True):
+def lashed(rig, ch, yaw, swings, room=ROOM - 0.1, ahead=True):
     """Channels `ch` with the whip's bones turned so each length points `swings` degrees round from
     hanging down towards behind its heading (90 behind, 180 up, 270 ahead, 360 down again), the heading
     `yaw` degrees round from straight ahead to its left. A length that points ahead and down droops
@@ -707,7 +817,7 @@ def lashed(rig, ch, yaw, swings, room=ROOM - 0.01, ahead=True):
 
 def lash(rig):
     """Its cast, Whip of flame: the whip drawn back behind it, low, the body turned to it and rearing;
-    swung up over its left shoulder, the thongs trailing up behind the hand; then cracked out across the
+    swung up outside its left horn, the thongs trailing up behind the hand; then cracked out across the
     front on frame 4 as keyed (its height, the end of its wind-up once retimed), the arm thrown forward
     and down and the thongs streaming out at the foes ahead; swept on across to its right as the thongs
     fall to the ground; held, and drawn back to hang by its side. The sword is held up and out to its
@@ -720,9 +830,9 @@ def lash(rig):
     k.key(0, **b.still())
     # (frame, ease, the whip hand by its shoulder, its elbow, the heading, and each length's swing)
     path = [
-        (0, 'smooth', (0.04, 0.06, -0.3), (0.45, 0.15, -0.88), 20, (24, 16, 8)),
-        (2, 'in', (0.0, -0.05, 0.62), (0.1, 0.45, -0.88), 12, (150, 130, 110)),
-        (3, 'in', (-0.04, -0.3, 0.55), (0.3, 0.4, -0.8), 8, (215, 200, 175)),
+        (0, 'smooth', (0.04, 0.06, -0.3), (0.2, 0.4, -0.88), 20, (24, 16, 8)),
+        (2, 'in', (0.18, 0.02, 0.5), (-0.35, 0.3, -0.9), 12, (150, 130, 110)),
+        (3, 'in', (0.2, -0.3, 0.26), (-0.35, 0.3, -0.9), 8, (215, 200, 175)),
         (height, 'in', (-0.28, -0.5, 0.05), (0.2, 0.3, -0.9), 4, (258, 262, 266)),
         (height + 2, 'out', (-0.3, -0.48, -0.25), (0.2, 0.3, -0.9), -26, (285, 300, 318)),
         (height + 5, 'smooth', (-0.3, -0.45, -0.35), (0.2, 0.3, -0.9), -36, (318, 335, 350)),
@@ -737,17 +847,20 @@ def lash(rig):
         (0, 'smooth', (-8, 12), (-2, 5), (-0.02, 0.03)),
         (2, 'in', (-10, 10), (-3, 4), (-0.02, 0.03)),
         (3, 'in', (2, 2), (1, 1), (0.01, 0.05)),
-        (height, 'in', (14, -18), (5, -8), (0.04, 0.09)),
-        (height + 2, 'out', (13, -26), (5, -11), (0.04, 0.09)),
-        (height + 5, 'smooth', (12, -28), (4, -12), (0.035, 0.085)),
-        (height + 10, 'smooth', (5, -10), (2, -4), (0.015, 0.04)),
+        (height, 'in', (8, -10), (3, -5), (0.0, 0.09)),
+        (height + 2, 'out', (8, -14), (3, -7), (0.0, 0.09)),
+        (height + 5, 'smooth', (7, -16), (3, -7), (0.0, 0.085)),
+        (height + 10, 'smooth', (3, -6), (1, -3), (0.0, 0.04)),
     ]
     for f, ease, spine, hips, (ahead, low) in body_keys:
         k.key(f, ease, spine=V(spine[0], 0, b.yaw(spine[1])), hips=V(hips[0], 0, b.yaw(hips[1])),
               hips_at=V(0, -ahead * leg, -low * leg))
-    up = rig.aim('r', V(0.15, -0.1, 1).normalized(), V(0, -1, 0))
-    k.key(0, head=V(4, 0, b.yaw(-14)), **b.arm('r', b.wrist('r', 0.1, 0.1, 0.12), up))
-    k.key(height, 'in', head=V(-8, 0, b.yaw(10)), **b.arm('r', b.wrist('r', 0.12, 0.2, 0.1), up))
+    up = rig.aim('r', V(0.15, -0.1, 1).normalized(), V(-1, -0.2, 0))
+    # The head turns against the body, so it keeps looking ahead and its horns stay in the hex.
+    k.key(0, head=V(4, 0, b.yaw(-16)), **b.arm('r', b.wrist('r', 0.06, 0.1, 0.1), up))
+    k.key(height, 'in', head=V(-8, 0, b.yaw(12)), **b.arm('r', b.wrist('r', 0.08, 0.16, 0.08), up))
+    k.key(height + 5, 'smooth', head=V(-6, 0, b.yaw(20)))
+    k.key(height + 10, 'smooth', head=V(-2, 0, b.yaw(8)))
     k.key(n, **b.still())
     k.key(n, **{'hand_l_world': 1.0})
 
@@ -773,31 +886,32 @@ def rearing(rig):
     k.key(0, **b.still())
     k.key(0, **{'hand_r_world': 1.0, 'hand_l_world': 1.0})
     k.key(3, hips_at=V(0, 0, -0.07 * leg), spine=V(8, 0, 0), head=V(6, 0, 0),
-          **b.arm('r', b.wrist('r', -0.04, 0.02, -0.06), b.tip(-6), (0.1, 0.5, -0.85), world=1.0),
-          **b.arm('l', b.wrist('l', -0.04, 0.04, -0.06), None, (0.1, 0.5, -0.85), world=1.0))
+          **b.arm('r', b.wrist('r', -0.04, 0.02, -0.06), b.tip(-6), (-0.15, 0.6, -0.8), world=1.0),
+          **b.arm('l', b.wrist('l', -0.04, 0.04, -0.06), None, (-0.15, 0.6, -0.8), world=1.0))
 
-    k.key(6, 'in', **b.arm('r', b.near(-0.05, -0.3, 0.25), b.tip(-30), (0.1, 0.5, -0.85), world=1.0),
-          **b.arm('l', b.near(-0.05, -0.3, 0.2, 'l'), None, (0.1, 0.5, -0.85), world=1.0),
+    k.key(6, 'in', **b.arm('r', b.near(0.12, -0.3, -0.1), b.tip(-4), (-0.2, -0.3, -0.95), world=1.0),
+          **b.arm('l', b.near(0.12, -0.3, -0.2, 'l'), None, (0.1, 0.6, -0.8), world=1.0),
           hips_at=V(0, 0, -0.03 * leg), spine=V(0, 0, 0), head=V(0, 0, 0))
+    k.key(8, **b.arm('r', b.near(0.14, -0.05, 0.45), b.tip(-4), (-0.5, 0.8, -0.1), world=1.0))
 
     def up(theta):
         aim, _ = arc(theta)
         return rig.aim('r', aim, V(-1, 0, 0))
 
-    k.key(10, 'out', **b.arm('r', b.near(0.06, 0.0, 0.8), up(-6), (0.1, 0.5, -0.85), world=1.0),
-          **b.arm('l', b.near(0.12, 0.02, 0.72, 'l'), None, (0.1, 0.5, -0.85), world=1.0),
-          hips_at=V(0, 0.01 * leg, 0.02 * leg), hips=V(-4, 0, 0), spine=V(-14, 0, 0), head=V(-18, 0, 0),
-          wing_l=V(-8, 14, 6), wing_r=V(-8, -14, -6))
-    k.key(RAISED, **b.arm('r', b.near(0.06, -0.02, 0.78), up(0), (0.1, 0.5, -0.85), world=1.0),
-          **b.arm('l', b.near(0.1, 0.0, 0.7, 'l'), None, (0.1, 0.5, -0.85), world=1.0),
-          hips_at=V(0, 0.005 * leg, 0.0), hips=V(-3, 0, 0), spine=V(-11, 0, 0), head=V(-14, 0, 0),
-          wing_l=V(-6, 12, 5), wing_r=V(-6, -12, -5))
+    k.key(10, 'out', **b.arm('r', b.near(0.18, 0.28, 0.8), up(-6), (0.0, 0.8, -0.6), world=1.0),
+          **b.arm('l', b.near(0.26, 0.0, -0.1, 'l'), None, (0.2, 0.6, -0.8), world=1.0),
+          hips_at=V(0, 0.01 * leg, 0.02 * leg), hips=V(-4, 0, 0), spine=V(-10, 0, 0), head=V(-8, 0, 0),
+          wing_l=V(-6, 6, 4), wing_r=V(-6, -6, -4))
+    k.key(RAISED, **b.arm('r', b.near(0.18, 0.26, 0.78), up(0), (0.0, 0.8, -0.6), world=1.0),
+          **b.arm('l', b.near(0.24, 0.0, -0.12, 'l'), None, (0.2, 0.6, -0.8), world=1.0),
+          hips_at=V(0, 0.005 * leg, 0.0), hips=V(-3, 0, 0), spine=V(-8, 0, 0), head=V(-6, 0, 0),
+          wing_l=V(-5, 5, 3), wing_r=V(-5, -5, -3))
     return Clip(n, lambda f: k(min(f, RAISED)))
 
 
 def whip_hangs(clips):
     """The clips with the whip hanging from the hand and trailing after it, each length after the one
-    before (clips.swaying()), and the mane streaming after the head."""
+    before (clips.swaying())."""
     for name in WHIP_BONES:
         clips = swaying(clips, name, share=1.0, lag=2, drag=0.5)
     return clips
@@ -826,21 +940,172 @@ def tucked(clips, clip, hand, elbow, by):
     return {name: (lambda rig, name=name, spec=spec: tucking(rig, name, spec)) for name, spec in clips.items()}
 
 
+LIFTED = 0.06  # how far above the ground tailed() keeps the tail, and steadied() the body
+
+
+def tailed(clips):
+    """The clips with the tail carried where the hips take it, as clips.robed() carries a robe: its first
+    bone hangs from the root, so it is no part of the trunk and the hips can go down past it as the
+    Balrog kneels (clips.grounded() would hold them up on it), and in every frame it goes where the hips
+    take its root and turns as they turn. In the loops its last two lengths sway slowly from side to
+    side, the end after the middle. Where the hips would take it under the ground, it rests on it."""
+
+    def wrapped(rig, clip, spec):
+        made_clip = made(rig, clip, spec)
+        pose, n, loop = made_clip.pose, made_clip.frames, made_clip.loop
+        top = rig.joint('tail_root')
+
+        def with_tail(f):
+            ch = pose(f)
+            hips = rig.solve(ch)['hips']
+            ch['tail_1'] = V(*ch.get('hips', (0, 0, 0)))
+            ch['tail_1_at'] = hips(top) - top
+            if loop:
+                ch['tail_2'] = V(0, 0, 5 * wave(f, n, 1))
+                ch['tail_3'] = V(0, 0, 7 * wave(f, n, 1, -0.15))
+            low = rig.lowest(ch, list(TAIL_BONES))
+            if low < LIFTED:  # it rests on the ground where the hips would take it under, its root up in the body
+                ch['tail_1_at'] = ch['tail_1_at'] + V(0, 0, LIFTED - low)
+            return ch
+
+        return made_clip.with_pose(with_tail)
+
+    return {clip: (lambda rig, clip=clip, spec=spec: wrapped(rig, clip, spec)) for clip, spec in clips.items()}
+
+
+# How much of a style's turn of the head and the spine each clip keeps: a Man's head lolls and his body
+# twists freely, but the Balrog's head is carried low and forward already, with horns that would swing
+# out of its hex. And the turns some clips add, eased in over the clip: as it dies it throws its head
+# back, so its horns go up rather than out ahead, the fire of its head streams back, and its wings droop
+# forward over its shoulders, so it ends low.
+SHARES = {
+    'move': {'head': 0.5, 'spine': 0.6},
+    'stun': {'head': 0.3, 'spine': 0.5},
+    'death': {'head': 0.0, 'spine': 0.5},
+}
+ADDED = {'death': {'head': V(-36, 0, 0), 'mane': V(-50, 0, 0), 'wing_l': V(30, 0, 0), 'wing_r': V(30, 0, 0)}}
+# And how much further the hips sink in some clips: its legs are long, and a death on its knees leaves its
+# wings high, so it sinks further, its hocks folding under it.
+SUNK = {'death': V(0, 0, -0.45)}
+
+
+def steadied(clips, shares=SHARES, added=ADDED, sunk=SUNK):
+    """The clips with each turn named in `shares` scaled by its share, and each in `added` turned
+    further, all of it by the clip's last frame."""
+
+    def wrapped(rig, clip, spec):
+        made_clip = made(rig, clip, spec)
+        if clip not in shares and clip not in added and clip not in sunk:
+            return made_clip
+        pose, n = made_clip.pose, made_clip.frames
+
+        def steady(f):
+            ch = pose(f)
+            for name, share in shares.get(clip, {}).items():
+                if name in ch:
+                    ch[name] = degrees_of(Quaternion().slerp(turn_of(ch[name]), share))
+            u = EASES['smooth'](min(f / n, 1.0))
+            for name, turn in added.get(clip, {}).items():
+                extra = Quaternion().slerp(turn_of(turn), u)
+                ch[name] = degrees_of(extra @ turn_of(ch.get(name, (0, 0, 0))))
+            if clip in sunk:  # as far as its body stays out of the ground
+                ch['hips_at'] = Vector(ch.get('hips_at', (0, 0, 0))) + u * sunk[clip]
+                low = rig.lowest(ch, rig.trunk)
+                if low < LIFTED:
+                    ch['hips_at'] = ch['hips_at'] + V(0, 0, LIFTED - low)
+            return ch
+
+        return made_clip.with_pose(steady)
+
+    return {clip: (lambda rig, clip=clip, spec=spec: wrapped(rig, clip, spec)) for clip, spec in clips.items()}
+
+
+# The ways a bone may turn to keep out of the ground and in its room (relieved()): about the model's own
+# axes, either way round.
+AXES = [V(1, 0, 0), V(-1, 0, 0), V(0, 1, 0), V(0, -1, 0), V(0, 0, 1), V(0, 0, -1)]
+RELIEF_STEP, RELIEF_MOST = 2.0, 90.0
+MARGIN = 0.03  # how far inside its room and above the ground relieved() keeps them, for the frames between  # degrees
+
+
+def relieved(clips, chains, room=ROOM):
+    """The clips with each bone of `chains` (lists of bones, each hanging from the one before) turned,
+    in every frame where it must be, by as little as it takes about one of AXES at its head, to keep
+    what is on it and on the bones after it out of the ground and in the clip's room: the wings, which
+    the body carries forward as it bows, folded in, and the tail lifted where the hips take it down."""
+
+    def wrapped(rig, clip, spec):
+        made_clip = made(rig, clip, spec)
+        pose = made_clip.pose
+        ahead = clip in ('attack', 'cast')
+
+        def placed(ch, bones):
+            motions = rig.solve(ch)
+            out = []
+            for name in bones:
+                pts = rig.points(name)
+                if len(pts):
+                    m = motions[name]
+                    out.append((pts - np.array(m.head)) @ np.array(m.turn.to_matrix()).T + np.array(m.at))
+            return np.concatenate(out)
+
+        def badness(ch, bones):
+            p = placed(ch, bones)
+            return max(0.0, float(measured(p, ahead).max()) - room + MARGIN) + max(0.0, MARGIN - float(p[:, 2].min()))
+
+        def with_relief(f):
+            ch = pose(f)
+            for chain in chains:
+                for i, name in enumerate(chain):
+                    bones = chain[i:]
+                    if badness(ch, bones) <= 0:
+                        continue
+                    motions = rig.solve(ch)
+                    parent = motions[rig.bones[name][0]].turn
+                    world = parent @ turn_of(ch.get(name, (0, 0, 0)))
+                    best = (badness(ch, bones), 0.0, ch[name] if name in ch else V(0, 0, 0))
+                    for axis in AXES:
+                        a = RELIEF_STEP
+                        while a <= RELIEF_MOST:
+                            turned = parent.inverted() @ Quaternion(axis, math.radians(a)) @ world
+                            trial = dict(ch)
+                            trial[name] = degrees_of(turned)
+                            bad = badness(trial, bones)
+                            if (bad, a) < best[:2]:
+                                best = (bad, a, trial[name])
+                            if bad <= 0:
+                                break
+                            a += RELIEF_STEP
+                    if best[1] > 0:
+                        ch[name] = best[2]
+            return ch
+
+        return made_clip.with_pose(with_relief)
+
+    return {clip: (lambda rig, clip=clip, spec=spec: wrapped(rig, clip, spec)) for clip, spec in clips.items()}
+
+
 # Slow and heavy, as Treebeard's and the Cave Troll's. It stands breathing slow, the sword up; strides
 # long and low, the sword carried up and the whip swinging; flings fire from its sword and lashes its
 # whip (above); sways, dazed, the sword let down; sinks to its knees as it falls; and rears up as it
-# wins. The whip hangs and trails in every clip but its cast, where it is lashed, and the mane streams
-# after the head in all of them. Kept in its room by fit().
+# wins. The whip hangs and trails in every clip but its cast, where it is lashed; the fire of its head
+# streams after the head and the wings take back some of the body's bow; the tail goes where the hips
+# take it; and the wings and the tail are kept in their room and out of the ground. Kept in its room by
+# fit().
 HUNG = whip_hangs({
-    'idle': ('ready', {'seconds': 2.6, 'breath': 0.8, 'sway': 0.7, 'crouch': 0.03}),
+    'idle': ('ready', {'seconds': 2.2, 'breath': 0.8, 'sway': 0.7, 'crouch': 0.03}),
     'move': ('run', {'seconds': 0.6, 'heavy': 1.0, 'stride': 0.42, 'lift': 0.16, 'lean': 6.0}),
     'attack': slash,
-    'stun': ('dazed', {'seconds': 1.5, 'low': 0.6}),
-    'death': ('knees', {'slump': 0.8, 'back': 0.25}),
+    'stun': ('dazed', {'seconds': 1.3, 'low': 0.6}),
+    'death': ('knees', {'slump': 0.8, 'back': 0.35}),
     'victory': rearing,
 })
-HUNG = tucked(HUNG, 'death', 'l', (0.2, 0.45, -0.85), 7)
-CLIPS = fit(swaying({**HUNG, 'cast': lash}, 'mane', share=0.5, lag=2, drag=0.5), between=True)
+HUNG = tucked(tucked(HUNG, 'death', 'l', (0.2, 0.45, -0.85), 7), 'death', 'r', (-0.2, 0.45, -0.85), 7)
+SWAYED = swaying({**HUNG, 'cast': lash}, 'mane', share=0.5, lag=2, drag=0.5)
+for _wing in ('wing_l', 'wing_r'):
+    SWAYED = {**swaying(SWAYED, _wing, share=0.5, lag=1, drag=0.7),
+              'death': swaying({'death': SWAYED['death']}, _wing, share=0.0, lag=1, drag=0.7)['death']}
+SWAYED = steadied(SWAYED)
+CLIPS = fit(relieved(tailed(SWAYED), [['wing_l'], ['wing_r'], list(TAIL_BONES)]), between=True)
 
 
 def build():
@@ -849,12 +1114,11 @@ def build():
     reset()
     make_materials()
     legs()
-    before = set(bpy.context.scene.objects)
     body()
-    harness()
+    livery()
     back_fire()
     wings()
-    hunch(new_objects(before))
+    tail()
     head()
     mane()
     arms()
@@ -865,6 +1129,9 @@ def build():
         'wing_l': ('spine', 'wing_l_root', 'wing_l_peak'),
         'wing_r': ('spine', 'wing_r_root', 'wing_r_peak'),
         'mane': ('head', 'mane_root', 'mane_tip'),
+        'tail_1': ('root', 'tail_root', 'tail_a'),
+        'tail_2': ('tail_1', 'tail_a', 'tail_b'),
+        'tail_3': ('tail_2', 'tail_b', 'tail_end'),
     })
 
 

@@ -212,6 +212,8 @@ Monsters are always 1★, so each has one script, `units/<id>.py`, and no gear o
 
 After run 3e the user kept the models as they are: the Balrog and the Watcher stay ranged, at range 2; the Eye's Nazgûl keeps the Nazgûl's black and its red eyes; the warg keeps its coat; and the Mûmak keeps its low howdah and its crimson.
 
+On 26 November 2026 the user had the Balrog rebuilt after the films, from five static concepts: a hunched, horned demon of cracked lava hide with wings raised behind it, digitigrade legs and a tail, rigged on the same Large-figure rig with the same seven clips and timing, and three bones more, `tail_1` to `tail_3` (`art/README.md`, Balrog).
+
 The runs that change the rig kit or the clip library go one at a time, since they share `rig.py`, `clips.py` and `kit.py`, and every roster model must still rebuild byte for byte after each.
 
 ## Risks
