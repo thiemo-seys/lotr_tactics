@@ -210,6 +210,8 @@ Monsters are always 1★, so each has one script, `units/<id>.py`, and no gear o
 | 3d | The Mûmak, a Large beast whose Trample dashes; the Watcher, its pool and tentacles | `low-poly-artist` |
 | 3e | The check: every PvE round's board and full boards with summons, `clash.py`, a play-test of the PvE rounds | `low-poly-artist`, `playtester` |
 
+After run 3e the user kept the models as they are: the Balrog and the Watcher stay ranged, at range 2; the Eye's Nazgûl keeps the Nazgûl's black and its red eyes; the warg keeps its coat; and the Mûmak keeps its low howdah and its crimson.
+
 The runs that change the rig kit or the clip library go one at a time, since they share `rig.py`, `clips.py` and `kit.py`, and every roster model must still rebuild byte for byte after each.
 
 ## Risks
