@@ -188,7 +188,7 @@ function unitCard(id: UnitId, owned: readonly Star[], merges: boolean, result: A
     el('span', 'gem', String(def.cost)),
     owned.length === 0 ? null : ownedBadge(owned),
     el('span', 'name', def.name),
-    buy.ok ? el('span', 'card-foot', ...[def.origin, ...def.classes].map(traitTag)) : el('span', 'why', buy.reason.replace(/\.$/, '')),
+    buy.ok ? el('span', 'card-foot', ...[def.origin, ...def.classes].map(traitTag)) : el('span', 'why', el('span', '', buy.reason.replace(/\.$/, ''))),
   );
   const ownedText = owned.length === 0 ? '' : `, you have ${owned.length}${mark === 'completes' ? ', buying it makes a 2★' : ''}`;
   card.setAttribute('aria-label', `${def.name}, ${def.cost} gold${ownedText}${buy.ok ? '' : `: ${buy.reason}`}`);
@@ -205,7 +205,6 @@ function portraitImage(src: string): HTMLElement {
   image.className = 'art';
   image.src = src;
   image.alt = '';
-  image.decoding = 'async';
   image.draggable = false;
   return image;
 }

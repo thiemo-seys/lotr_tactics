@@ -43,8 +43,10 @@ try {
     console.log(`PORTRAIT ${id} ${bytes.length} bytes`);
     written++;
   }
-  const missing = [...only].filter((id) => !(id in portraits));
-  if (missing.length > 0) throw new Error(`No model for ${missing.join(', ')}`);
+  // A unit whose model is missing or failed to load gets no portrait: say so, so its old one isn't left in place unseen.
+  const wanted = only.size > 0 ? [...only] : await page.evaluate(() => window.unitIds);
+  const missing = wanted.filter((id) => !(id in portraits));
+  if (missing.length > 0) throw new Error(`No portrait for ${missing.join(', ')}: its 1★ model is missing or didn't load`);
   console.log(`${written} portraits in ${path.relative(process.cwd(), OUT)}`);
 } finally {
   await browser.close();
