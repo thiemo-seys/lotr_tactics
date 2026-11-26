@@ -73,7 +73,7 @@
   --ring-grip: #f06a4c;
   --ring-betrayal: #e0457a;
 
-  /* Banner & Seal: the play page's top bar, stitched leather, parchment, ink and wax */
+  /* Banner & Seal: the play page's top bar, shop and level row, in stitched leather, parchment, ink and wax */
   --leather: radial-gradient(ellipse at 50% 0%, rgba(255, 220, 170, 0.14), transparent 70%), linear-gradient(180deg, #5c3a25, #3b2316);
   --leather-pressed: radial-gradient(ellipse at 50% 100%, rgba(255, 220, 170, 0.12), transparent 70%), linear-gradient(180deg, #3b2316, #4f311f);
   --leather-edge: #1a0f08;
@@ -88,7 +88,9 @@
   --wax-pvp: #a3242a;
   --wax-pve: #2e6b3c;
   --wax-council: #b48422;
+  --wax-xp: #2d4f86;
   --hud-drop: 0 3px 0 #140b05, 0 8px 14px rgba(0, 0, 0, 0.35);
+  --card-edge: 0 0 0 2px var(--leather-edge), 0 3px 0 2px #140b05;
 
   /* Spacing, radii and shadows */
   --space-1: 4px;
@@ -1151,44 +1153,134 @@ kbd {
   }
 }
 
-/* The person's level, XP, gold and the timer, at the bottom by the shop. */
+/* The person's level, XP, gold and the timer: leather pieces floating over the bottom of the board,
+   just above the shop. The bar has no height of its own, so the pieces rise out of it. */
 .player-bar {
   position: relative;
   z-index: var(--z-overlay);
   display: flex;
-  gap: 14px;
-  align-items: center;
+  gap: 10px;
+  align-items: flex-end;
   justify-content: center;
-  padding: 6px 12px;
-  background: linear-gradient(180deg, rgba(14, 18, 25, 0.6), #161c27);
-  border-top: 1px solid #222b39;
+  height: 0;
+  pointer-events: none;
+  transform: translateY(-10px);
 }
 
-.player-bar .pill {
-  height: 36px;
+.player-bar > * {
+  pointer-events: auto;
+}
+
+.player-bar .hud-tile {
+  height: 44px;
+}
+
+/* The level: a blue wax seal, then the XP towards the next one on a stitched strip. */
+.player-bar .stat.level {
+  gap: 9px;
+  padding: 0 16px 0 7px;
+}
+
+.player-bar .level-badge {
+  width: 32px;
+  height: 32px;
+  font: 700 16px/1 var(--font-display);
+  color: #eef4ff;
+  text-shadow: 0 1px 0 rgba(0, 0, 0, 0.4);
+  background: radial-gradient(circle at 38% 30%, #8fb2ec 0 8%, var(--wax-xp) 45%, #14284a 100%);
+  border: 0;
+  border-radius: 46% 54% 50% 50% / 52% 46% 54% 48%;
+  box-shadow: inset 0 -2px 3px rgba(0, 0, 0, 0.35), inset 0 0 0 3px #1d3864, 0 2px 0 rgba(0, 0, 0, 0.4);
+}
+
+.player-bar .xp {
+  gap: 5px;
+}
+
+.player-bar .xp-text {
+  font: 700 11px/1 var(--font-display);
+  color: #e3cfa6;
+  text-shadow: none;
+  letter-spacing: 0.04em;
 }
 
 .player-bar .xp-bar {
   width: 150px;
-  height: 6px;
-  border-radius: 3px;
+  height: 7px;
+  background: rgba(0, 0, 0, 0.4);
+  border: 1px solid rgba(240, 200, 140, 0.3);
+  border-radius: 4px;
+}
+
+.player-bar .xp-bar i {
+  background: linear-gradient(90deg, #2d5aa0, #8cc4ff);
 }
 
 .player-bar .stat.gold {
-  padding: 0 16px 0 12px;
-  font-size: 18px;
-  border-color: color-mix(in srgb, var(--gold) 50%, var(--border));
-  background: linear-gradient(180deg, #2a2412, var(--surface-2));
+  --stitch: rgba(246, 214, 142, 0.75);
+  padding: 0 18px 0 13px;
+  font-size: 23px;
 }
 
 .player-bar .stat.gold .icon {
-  width: 21px;
-  height: 21px;
+  width: 23px;
+  height: 23px;
+  color: var(--gold-bright);
+}
+
+.player-bar .stat.gold .value {
+  color: var(--gold-bright);
 }
 
 .player-bar .timer {
-  height: 36px;
-  min-width: 86px;
+  min-width: 92px;
+  background: var(--leather);
+  border: 2px solid var(--leather-edge);
+  border-radius: 10px;
+  padding: 0 16px 0 13px;
+  font: 700 20px/1 var(--font-display);
+  color: var(--parchment-light);
+}
+
+.player-bar .timer .icon {
+  width: 20px;
+  height: 20px;
+}
+
+.player-bar .timer .drain {
+  right: 9px;
+  bottom: 7px;
+  left: 9px;
+  height: 3px;
+  background: rgba(0, 0, 0, 0.4);
+  border-radius: 2px;
+}
+
+.player-bar .timer .drain i {
+  background: linear-gradient(90deg, #a8782a, #f6dc8e);
+}
+
+.player-bar .timer.urgent {
+  --stitch: rgba(255, 214, 180, 0.6);
+  color: #ffe3a3;
+  background: linear-gradient(180deg, #a52d2f, #6f1b1d);
+  border-color: var(--leather-edge);
+  animation: hud-urgent 1s var(--ease) infinite;
+}
+
+.player-bar .timer.urgent .drain i {
+  background: linear-gradient(90deg, #ffb3a0, #fff0d8);
+}
+
+@keyframes hud-urgent {
+  0%,
+  100% {
+    box-shadow: var(--hud-drop), 0 0 0 0 rgba(236, 106, 103, 0);
+  }
+
+  50% {
+    box-shadow: var(--hud-drop), 0 0 0 5px rgba(236, 106, 103, 0.4);
+  }
 }
 
 /* The timer drains as its step runs out, and turns red in its last seconds. */
@@ -3232,10 +3324,12 @@ body.play #traits {
   grid-template-columns: 158px minmax(0, 1fr) auto;
   gap: 12px;
   align-items: stretch;
-  padding: 10px 12px 11px;
-  background: linear-gradient(180deg, #161c27, #0e1219);
-  border-top: 1px solid #2b3546;
-  box-shadow: 0 -4px 16px rgba(0, 0, 0, 0.45);
+  padding: 16px 12px 12px;
+  background:
+    radial-gradient(ellipse at 50% 0%, rgba(255, 220, 170, 0.08), transparent 60%),
+    linear-gradient(180deg, #3d2618, #22140b);
+  border-top: 2px solid var(--leather-edge);
+  box-shadow: 0 -6px 18px rgba(0, 0, 0, 0.45), inset 0 1px 0 rgba(255, 220, 170, 0.16);
 }
 
 /* Outside planning in a game, the bar keeps its place, empty, so the board stays put. */
@@ -3243,14 +3337,14 @@ body.play #traits {
   visibility: hidden;
 }
 
+/* The stitching along its top edge. */
 #shop-bar::before {
   position: absolute;
-  top: -1px;
-  right: 0;
-  left: 0;
-  height: 1px;
+  top: 6px;
+  right: 10px;
+  left: 10px;
   content: '';
-  background: linear-gradient(90deg, transparent, rgba(214, 176, 90, 0.5) 30%, rgba(214, 176, 90, 0.5) 70%, transparent);
+  border-top: 1.5px dashed var(--stitch);
 }
 
 .shop-actions {
@@ -3260,12 +3354,42 @@ body.play #traits {
   justify-content: center;
 }
 
+/* Buy XP, Reroll and Lock: small leather tiles. */
 .shop-button {
   justify-content: flex-start;
   width: 100%;
-  height: 32px;
-  padding: 0 8px 0 9px;
+  height: 34px;
+  padding: 0 9px 0 10px;
   gap: 7px;
+  font: 700 13px/1 var(--font-display);
+  color: var(--parchment-light);
+  background: var(--leather);
+  border: 2px solid var(--leather-edge);
+  border-radius: 8px;
+  outline: 1px dashed var(--stitch);
+  outline-offset: -5px;
+  box-shadow: inset 0 1px 0 rgba(255, 220, 170, 0.18), 0 2px 0 #140b05;
+}
+
+.shop-button:hover {
+  border-color: var(--leather-edge);
+  filter: brightness(1.15);
+}
+
+.shop-button:disabled:hover,
+.shop-button[aria-disabled='true']:hover {
+  border-color: var(--leather-edge);
+  filter: none;
+}
+
+.shop-button .gold-cost {
+  color: var(--brass);
+}
+
+.shop-button kbd {
+  color: var(--brass);
+  background: rgba(0, 0, 0, 0.3);
+  border-color: rgba(240, 200, 140, 0.3);
 }
 
 .shop-button .label {
@@ -3287,7 +3411,7 @@ body.play #traits {
 }
 
 #reroll > .icon {
-  color: var(--gold-bright);
+  color: var(--brass);
 }
 
 #lock .icon.locked,
@@ -3300,10 +3424,9 @@ body.play #traits {
 }
 
 #lock.on {
-  --btn-bg: #3a2f14;
-  --btn-hover: #4a3c19;
-  --btn-border: var(--gold-deep);
-  color: var(--gold-bright);
+  --stitch: rgba(255, 214, 140, 0.95);
+  color: #ffe3a3;
+  background: var(--leather-pressed);
 }
 
 #shop {
@@ -3328,11 +3451,11 @@ body.play #traits {
   text-align: left;
   cursor: pointer;
   background:
-    radial-gradient(110% 120% at 92% 10%, color-mix(in srgb, var(--cost) 42%, transparent), transparent 62%),
-    linear-gradient(165deg, color-mix(in srgb, var(--cost) 30%, #121822) 0%, #121822 72%);
+    radial-gradient(110% 120% at 92% 10%, color-mix(in srgb, var(--cost) 38%, transparent), transparent 62%),
+    linear-gradient(165deg, color-mix(in srgb, var(--cost) 24%, #2a1a10) 0%, #1d120a 75%);
   border: 2px solid var(--cost);
-  border-radius: 10px;
-  box-shadow: var(--shadow-2), inset 0 0 0 1px rgba(0, 0, 0, 0.45), inset 0 1px 0 rgba(255, 255, 255, 0.12);
+  border-radius: 8px;
+  box-shadow: var(--card-edge), inset 0 0 0 1px rgba(0, 0, 0, 0.5), inset 0 1px 0 rgba(255, 255, 255, 0.12);
   transition:
     transform var(--fast) var(--ease),
     box-shadow var(--fast) var(--ease);
@@ -3361,9 +3484,10 @@ body.play #traits {
 .unit-card:hover {
   transform: translateY(-3px);
   box-shadow:
+    0 0 0 2px var(--leather-edge),
     0 10px 24px rgba(0, 0, 0, 0.5),
-    0 0 18px color-mix(in srgb, var(--cost) 40%, transparent),
-    inset 0 0 0 1px rgba(0, 0, 0, 0.45);
+    0 0 18px color-mix(in srgb, var(--cost) 45%, transparent),
+    inset 0 0 0 1px rgba(0, 0, 0, 0.5);
 }
 
 .unit-card:active {
@@ -3407,7 +3531,7 @@ body.play #traits {
   max-width: calc(100% - 18px);
   overflow: hidden;
   font: 700 15px/1.1 var(--font-display);
-  color: #fff;
+  color: var(--parchment-light);
   letter-spacing: 0.02em;
   text-overflow: ellipsis;
   white-space: nowrap;
@@ -3421,8 +3545,9 @@ body.play #traits {
   height: 19px;
   padding: 0 6px 0 4px;
   font-size: 12.5px;
-  background: rgba(5, 7, 10, 0.62);
-  border: 1px solid rgba(243, 210, 122, 0.25);
+  color: var(--brass);
+  background: rgba(26, 15, 8, 0.75);
+  border: 1px solid rgba(240, 201, 135, 0.4);
   border-radius: var(--radius-pill);
 }
 
@@ -3438,8 +3563,16 @@ body.play #traits {
   height: 26px;
   padding: 0 8px;
   overflow: hidden;
-  background: rgba(6, 8, 12, 0.66);
-  border-top: 1px solid rgba(255, 255, 255, 0.07);
+  background: linear-gradient(180deg, var(--parchment), var(--parchment-deep));
+  border-top: 1px solid var(--ink);
+}
+
+.unit-card .card-foot .trait-tag {
+  color: var(--ink);
+}
+
+.unit-card .card-foot .trait-tag .icon {
+  color: var(--ink-soft);
 }
 
 /* A narrow card names its traits by icon only; hovering it names them. */
@@ -3472,11 +3605,11 @@ body.play #traits {
   padding: 3px 8px;
   overflow: hidden;
   font: 700 10.5px/1.15 var(--font-body);
-  color: #ffe1de;
+  color: var(--parchment-light);
   text-overflow: ellipsis;
   white-space: nowrap;
-  background: linear-gradient(180deg, rgba(128, 30, 30, 0.96), rgba(110, 24, 24, 0.88));
-  border-bottom: 1px solid rgba(255, 140, 130, 0.35);
+  background: linear-gradient(180deg, #a52d2f, #6f1b1d);
+  border-bottom: 1px solid var(--leather-edge);
 }
 
 .unit-card[aria-disabled='true'] .cost,
@@ -3487,7 +3620,7 @@ body.play #traits {
 .unit-card[aria-disabled='true'] {
   cursor: not-allowed;
   border-color: color-mix(in srgb, var(--cost) 45%, #333);
-  box-shadow: var(--shadow-1);
+  box-shadow: 0 0 0 2px var(--leather-edge);
   transform: none;
 }
 
@@ -3505,7 +3638,7 @@ body.play #traits {
 /* A unit the person already has on the bench or the board: a gold border, glowing when buying it makes a 2★. */
 .unit-card.has-copy {
   border-color: var(--gold-bright);
-  box-shadow: var(--shadow-2), 0 0 0 1px var(--gold-bright), 0 0 14px rgba(243, 210, 122, 0.45), inset 0 0 0 1px rgba(0, 0, 0, 0.45);
+  box-shadow: var(--card-edge), 0 0 0 3px var(--gold-bright), 0 0 16px rgba(243, 210, 122, 0.5), inset 0 0 0 1px rgba(0, 0, 0, 0.5);
 }
 
 .unit-card.has-copy::after {
@@ -3524,11 +3657,11 @@ body.play #traits {
 @keyframes completes-star {
   0%,
   100% {
-    box-shadow: var(--shadow-2), 0 0 0 1px var(--gold-bright), 0 0 12px rgba(243, 210, 122, 0.45);
+    box-shadow: var(--card-edge), 0 0 0 3px var(--gold-bright), 0 0 12px rgba(243, 210, 122, 0.45);
   }
 
   50% {
-    box-shadow: var(--shadow-2), 0 0 0 3px var(--gold-bright), 0 0 26px rgba(243, 210, 122, 0.85);
+    box-shadow: var(--card-edge), 0 0 0 4px var(--gold-bright), 0 0 26px rgba(243, 210, 122, 0.85);
   }
 }
 
@@ -3587,10 +3720,10 @@ body.play #traits {
 .unit-card.empty {
   align-items: center;
   justify-content: center;
-  color: #364257;
+  color: rgba(240, 200, 140, 0.22);
   cursor: default;
-  background: rgba(255, 255, 255, 0.015);
-  border: 2px dashed var(--border);
+  background: rgba(0, 0, 0, 0.18);
+  border: 2px dashed rgba(240, 200, 140, 0.22);
   box-shadow: none;
 }
 
@@ -3611,16 +3744,19 @@ body.play #traits {
   gap: 6px;
   width: 186px;
   padding: 7px 9px;
-  background: rgba(0, 0, 0, 0.22);
-  border: 1px solid var(--border);
-  border-radius: var(--radius);
+  background:
+    radial-gradient(ellipse at 50% 50%, transparent 55%, rgba(120, 80, 30, 0.32) 100%),
+    linear-gradient(180deg, var(--parchment), var(--parchment-deep));
+  border: 2px solid var(--leather-edge);
+  border-radius: 8px;
+  box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.45), 0 2px 0 #140b05;
 }
 
 .tray-label {
-  font: 600 10.5px/1 var(--font-body);
-  color: var(--text-muted);
+  font: 700 10.5px/1 var(--font-display);
+  color: var(--ink-soft);
   text-transform: uppercase;
-  letter-spacing: 0.1em;
+  letter-spacing: 0.14em;
 }
 
 /*
@@ -3651,7 +3787,7 @@ body.play #traits {
 
 .tray-empty {
   font-size: 12px;
-  color: var(--text-dim);
+  color: var(--ink-soft);
 }
 
 .ready-button {
@@ -3660,6 +3796,25 @@ body.play #traits {
   width: 116px;
   height: auto;
   padding: 8px;
+  color: var(--ink);
+  text-shadow: 0 1px 0 rgba(255, 245, 210, 0.5);
+  background: linear-gradient(180deg, #f6dc8e, #d4a648 50%, #a8782a);
+  border: 2px solid var(--leather-edge);
+  border-radius: 10px;
+  outline: 1.5px dashed rgba(90, 58, 30, 0.55);
+  outline-offset: -6px;
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.55), 0 3px 0 #140b05, 0 0 18px rgba(243, 210, 122, 0.25);
+}
+
+.ready-button:hover {
+  background: linear-gradient(180deg, #fde7a2, #e0b456 50%, #b5852f);
+  border-color: var(--leather-edge);
+}
+
+.ready-button kbd {
+  color: var(--ink);
+  background: rgba(255, 248, 225, 0.4);
+  border-color: rgba(70, 50, 10, 0.35);
 }
 
 .ready-button .icon {
@@ -3668,16 +3823,16 @@ body.play #traits {
 }
 
 .ready-button .label {
-  font: 700 15px/1 var(--font-display);
+  font: 700 16px/1 var(--font-display);
   letter-spacing: 0.04em;
 }
 
 .ready-button.is-ready {
-  --btn-bg: #1d3a2a;
-  --btn-border: #3f8a5e;
-  --btn-fg: #c9f3d8;
-  text-shadow: none;
-  background-image: none;
+  color: #e3f7e6;
+  text-shadow: 0 1px 0 rgba(0, 0, 0, 0.4);
+  background: linear-gradient(180deg, #3f8a52, #1f5230);
+  outline-color: rgba(200, 240, 210, 0.45);
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.25), 0 3px 0 #140b05;
   opacity: 1;
 }
 
@@ -3698,11 +3853,13 @@ body.play #traits {
   align-items: center;
   justify-content: center;
   font: 700 18px/1 var(--font-display);
-  color: var(--gold-bright);
+  color: var(--ink);
   pointer-events: none;
   visibility: hidden;
-  background: rgba(30, 22, 6, 0.9);
-  border: 2px dashed var(--gold);
+  background:
+    radial-gradient(ellipse at 50% 50%, transparent 55%, rgba(120, 80, 30, 0.32) 100%),
+    linear-gradient(180deg, var(--parchment), var(--parchment-deep));
+  border: 2px dashed var(--ink-route);
   border-radius: var(--radius-lg);
   opacity: 0;
   transition: opacity var(--fast) var(--ease);
