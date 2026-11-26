@@ -33,7 +33,9 @@ packages/client/
   index.html       the fight viewer
   play.html        the play page (game-spec.md section 12)
   art/             the models' and arenas' Blender scripts, the rig kit, the clip library and the clash check (art/README.md, sections 3 and 4)
+    portraits/     renders the shop cards' portraits from the 1★ models (section 4, Portraits)
   public/models/   one .glb per unit and star level (<id>, <id>-2, <id>-3), built from art/ and committed, which both pages load
+  public/portraits/  one .webp portrait per unit, rendered by art/portraits/ and committed, which the shop's unit cards show
   public/arenas/   one .glb per arena, built from art/arenas/ and committed (section 3, Arena)
   src/
     main.ts        viewer page setup, controls, URL state
@@ -65,6 +67,7 @@ packages/client/
     abilities.ts   what an ability does, in words, from its steps and the sim's ability values
     hud.ts         the HUD's stats, streak, timer, One Ring status and stage tracker
     shop.ts        how a shop card marks a unit the person already has, and what a click on one does
+    portraits.ts   where a unit's portrait is, if it has one
     players.ts     the players list's rows
     icons.ts       the icon set, and the icon for each trait, component, Gift tier, round type and status
     log.ts         event log text
@@ -81,7 +84,7 @@ packages/client/
       dropdown.ts    a button that opens a list under it (the play page's top-bar menu)
     play/          the play page's parts
       hud-bar.ts      the HUD
-      shop-bar.ts     Buy XP, Reroll and Lock, the shop's unit cards, the items, Ready, and selling
+      shop-bar.ts     Buy XP, Reroll and Lock, the shop's unit cards with their portraits, the items, Ready, and selling
       side-panels.ts  the trait tracker, and the players list with the person's Gifts
       viewing-bar.ts  the bar over another player's board, and the way back to the person's own
       panels.ts       the Council, the Gift offer, the end, and the fight's banner
@@ -171,6 +174,13 @@ Each unit, monster and summon gets its own model in the **Faceted** art style, c
     - A frame is drawn only when something on screen changes: the fight's display time, planning units idling (not under reduced motion, when `idle` holds still), the camera, the size, the units, a dragged unit or the marker. A WebGL context restored after it was lost clears the canvas, as a resize does, so the frame is drawn again.
     - On frames between ticks the client's own code allocates nothing and writes to the page only what has changed. Three.js and the sim's ticks still allocate.
     - What is removed is disposed of.
+
+### Portraits
+
+The shop's unit cards (`game-spec.md` section 12) show each unit's head and shoulders, rendered from its 1★ model.
+
+- **Rendering:** `pnpm portraits [id ...]` (`art/portraits/portraits.mjs`) serves the client with Vite and opens `art/portraits/` in headless Chromium with the Playwright installed on the machine, as `art/board.mjs` does. That page loads the models with the client's own `models.ts`, so a portrait has the unit's livery and trim, poses a rigged model 0.4 s into its `idle` clip, turns it 0.45 radians to its left, and frames it from its bones: centred just below the base of its `head` bone and 2.7 times as tall as its torso, from its `hips` to its `head`, so a rider, a tall figure and one that crouches show at the same size *(placeholders)*. A model without those bones is framed by its height. `art/portraits/framing.ts` moves or zooms the frame for the models it suits badly, such as Orcs that hunch. Warm key and rim lights, as in the arena, and a clear background, since the card draws its own.
+- **Files:** one 384×384 WebP per unit, `public/portraits/<id>.webp`, about 10 kB each, committed like the models. Render them again after a unit's 1★ model or its livery changes. `public/portraits/` is listed when the client is built, as `public/models/` is, so a missing portrait is never requested: that unit's card shows its origin's icon instead.
 
 ### Rigs and clips
 
@@ -412,6 +422,7 @@ The parts without Three.js are tested with Vitest:
 - the 1★ model files: every unit has one, a single mesh with a `team` material on it, and every one is rigged: one skinned mesh with the 16 bones within the budget, `root` at the origin with every bone below it, exactly the seven clips at their lengths keyed on whole frames, loops that end where they start, one bone per vertex, under its size, its attack striking and its cast's hits on the sim's ticks, as its armature's extras `strike` and `hits` give them, with each clip playing on past them (section 4, Rigs and clips), and its `reach` in its armature's extras (section 4, Models), and, for a ranged unit, its `muzzle` ahead of it, above the ground and within its reach, and none for a melee unit (section 4, Rigs and clips);
 - the arena file: within its budget, with its baked occlusion and no normals; the court round the board and bench clear, the band round it low, and nothing under a hex reaching its top (section 3, Arena);
 - the camera: every view starts within the limits, the fog never reaches a unit on the board or the bench, and the whole board and bench are in focus from each view's starting point (look.ts);
+- the portrait files: every unit has one, a square WebP of 384 pixels (section 4, Portraits), and a unit without one gets no portrait's address;
 - the 2★ gear model files: every unit's is rigged, with the same checks as a 1★ model's rig but under a gear model's size, and has its 1★ model's bones, each hanging from the same one, and clips as long (section 4, Star levels);
 - the event log text;
 - the damage meter's rows: totals and parts per tab, summons in their owner's row, the Eye's Nazgûl in its own, order and ties;

@@ -1,5 +1,5 @@
 // The shop bar while planning and while the fights play (docs/game-spec.md section 12): Buy XP, Reroll and Lock, the shop's
-// unit cards, the person's items and the One Ring to drag onto units, and Ready. While a unit that
+// unit cards with their portraits, the person's items and the One Ring to drag onto units, and Ready. While a unit that
 // can be sold is dragged, the bar is framed in gold and offers the sale with its price; dropping the
 // unit on the bar sells it. Buying with the bench full says so over the bench.
 
@@ -9,6 +9,7 @@ import { shopOddsView } from '../hud.js';
 import { TRAIT_ICONS } from '../icons.js';
 import { actionTip, unitTip } from '../tips.js';
 import { shopBuy, shopMark, type SaleOffer, type ShopBuy } from '../shop.js';
+import { portraitUrl } from '../portraits.js';
 import { goldCost, itemChip, ringChip, traitTag } from '../ui/chips.js';
 import { el, icon, rebuild, setEnabled, setText, starBadge, toggle } from '../ui/dom.js';
 import { dismissTip, setTip } from '../ui/tooltip.js';
@@ -167,29 +168,27 @@ export class ShopBar {
 }
 
 /**
- * A unit card for the shop: framed and coloured by cost, with its traits, cost, copies owned and,
- * if it can't be bought, why, unless only the bench is full: that card looks as usual, and a click
- * says so over the bench. A unit the person already has on the bench or the board gets a gold
- * border, which glows when buying it would make a 2★ from two 1★ copies.
+ * A unit card for the shop: the unit's portrait on a burst of its cost colour, framed in that colour,
+ * with its cost on a gem, its name, its traits on a stitched strip below and the copies owned. If it
+ * can't be bought, the reason takes the strip's place, unless only the bench is full: that card looks
+ * as usual, and a click says so over the bench. A unit the person already has on the bench or the
+ * board gets a gold border, which glows when buying it would make a 2★ from two 1★ copies.
  */
 function unitCard(id: UnitId, owned: readonly Star[], merges: boolean, result: ActionResult, kind: ShopBuy, onBuy: (card: HTMLElement) => void): HTMLElement {
   const def = UNITS[id];
   // A full bench isn't shown on the card.
   const buy: ActionResult = kind === 'bench-full' ? { ok: true } : result;
   const mark = shopMark(owned, merges);
+  const portrait = portraitUrl(id);
   const card = el(
     'button',
     `unit-card cost-${def.cost}${mark === 'none' ? '' : ' has-copy'}${mark === 'completes' ? ' completes-star' : ''}`,
-    el(
-      'span',
-      'portrait',
-      icon(TRAIT_ICONS[def.origin], 'emblem'),
-      goldCost(def.cost, 'cost'),
-      owned.length === 0 ? null : ownedBadge(owned),
-      buy.ok ? null : el('span', 'why', buy.reason.replace(/\.$/, '')),
-      el('span', 'name', def.name),
-    ),
-    el('span', 'card-foot', ...[def.origin, ...def.classes].map(traitTag)),
+    // Without a portrait, the unit's origin stands in.
+    el('span', 'portrait', portrait === null ? icon(TRAIT_ICONS[def.origin], 'emblem') : portraitImage(portrait)),
+    el('span', 'gem', String(def.cost)),
+    owned.length === 0 ? null : ownedBadge(owned),
+    el('span', 'name', def.name),
+    buy.ok ? el('span', 'card-foot', ...[def.origin, ...def.classes].map(traitTag)) : el('span', 'why', buy.reason.replace(/\.$/, '')),
   );
   const ownedText = owned.length === 0 ? '' : `, you have ${owned.length}${mark === 'completes' ? ', buying it makes a 2★' : ''}`;
   card.setAttribute('aria-label', `${def.name}, ${def.cost} gold${ownedText}${buy.ok ? '' : `: ${buy.reason}`}`);
@@ -198,6 +197,17 @@ function unitCard(id: UnitId, owned: readonly Star[], merges: boolean, result: A
   setTip(card, unitTip(id, buy.ok ? (mark === 'completes' ? { text: 'Buying it makes a 2★.', reason: false } : undefined) : { text: buy.reason, reason: true }));
   card.addEventListener('click', () => onBuy(card));
   return card;
+}
+
+/** A unit's portrait, which the card names, so it says nothing to a screen reader. */
+function portraitImage(src: string): HTMLElement {
+  const image = document.createElement('img');
+  image.className = 'art';
+  image.src = src;
+  image.alt = '';
+  image.decoding = 'async';
+  image.draggable = false;
+  return image;
 }
 
 /** A star badge per copy of the unit the person owns, at its star level. */

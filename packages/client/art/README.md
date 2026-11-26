@@ -744,6 +744,19 @@ node packages/client/art/board.mjs /tmp/board/stars --stars <study.json> --unit=
 
 `board.mjs` renders models on the game's board with three.js in headless Chromium, with the client's camera and lights and each model in its unit's livery (`src/livery.json`), so a model can be judged at the size and in the colour it is played in. `--lineup` puts several side by side, and `--stars` lays a unit out at 1★, 2★ and 3★ with the growth and trim the client gives it (a base too, if the options ask for one, though the client no longer draws one), and a label 1.8 above the ground, times the scale, which the client sets higher for a Large model or to clear a model's clips (`docs/viewer-spec.md` section 4, Star levels); `star-study/options/chosen.json` is an example. Its header lists the options.
 
+## Portraits
+
+The shop's unit cards show each unit's portrait, rendered from its 1★ model (`docs/viewer-spec.md` section 4, Portraits), into `packages/client/public/portraits/<id>.webp`, committed like the models. Render them again after a unit's 1★ model or its livery changes:
+
+```bash
+pnpm portraits            # every unit
+pnpm portraits frodo sam  # some
+```
+
+- `portraits/portraits.mjs` serves the client with Vite, opens `portraits/index.html` in headless Chromium, with the Playwright installed on the machine as `board.mjs` uses, and writes what it draws.
+- `portraits/render.ts` loads the models with the client's own `src/models.ts`, in their livery and trim, poses a rigged one in its `idle` clip and frames its head and shoulders from its `head` and `hips` bones. `SPAN` and `LIFT` at its top set how much of the model shows and where.
+- `portraits/framing.ts` moves or zooms the frame for a unit the bones frame badly, such as an Orc that hunches. Judge a change on the cards in the client (`pnpm dev`), where the card crops the square image to its own shape and lays the name over its foot.
+
 ## Arenas
 
 The arena is the ground the board stands on and what stands round it (`docs/viewer-spec.md` section 3, Arena). Each is a Blender script in `arenas/`, named by its id, that exports `packages/client/public/arenas/<id>.glb`, committed like the models; `packages/client/src/look.ts` names the one the client loads. `pnpm models` builds them with the models, and `pnpm models <id>` one alone:
