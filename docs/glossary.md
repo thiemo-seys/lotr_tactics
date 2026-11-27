@@ -1,6 +1,6 @@
 # Glossary
 
-The words `design.md` and the specs use, each with one meaning. **Status: draft.**
+The words `design.md` and the specs use, each with one meaning. The words still used in more than one way are listed in section 11 until each is settled.
 
 - A term means what it says here in every doc. A doc that uses a term another way has a bug, unless the term is listed in section 11, Terms with more than one meaning.
 - This file defines words. It doesn't restate rules or numbers: those stay in `design.md` and the specs, which the "Defined in" column points to.
