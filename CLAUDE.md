@@ -10,7 +10,7 @@ Browser-based, 8-player auto battler in the style of Teamfight Tactics, with Lor
 - `docs/game-spec.md`: implementation spec for the game around the fights: shop, economy, rounds and bots.
 - `docs/server-spec.md`: spec for online play: lobbies, the match runner, the protocol and the Node server in `packages/server`.
 - `docs/animation-plan.md`: the plan for rigging and animating the units, in two workflows, with where it has got to.
-- `docs/glossary.md`: the terms the design doc and the specs use, each with one meaning, and the words still used in more than one way (its section 11).
+- `docs/glossary.md`: the terms the design doc and the specs use, each with one meaning, and how to say the words that need a qualifier (its section 11).
 
 ## Status
 

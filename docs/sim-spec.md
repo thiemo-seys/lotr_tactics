@@ -37,8 +37,8 @@ These are not in `design.md` yet. They were chosen to remove ambiguity and can b
 | Topic | Default |
 |---|---|
 | Hex layout | Odd-r offset grid, 7 columns × 8 rows |
-| Action order | Units act one at a time in slot order; each tick, the seeded generator picks which team goes first within each slot |
-| Movement | 15 ticks per hex; position updates at the start of the step |
+| Action order | Units act one at a time in action-slot order; each tick, the seeded generator picks which team goes first within each action slot |
+| Movement | 15 ticks per hex; position updates at the start of the move |
 | Projectiles | Ranged attacks and projectile abilities; 12 hexes per second, following their target |
 | Melee blows | Land 7 ticks (0.22 s) after the attack fires, if the attacker is alive and the target still targetable and in range |
 | Mana from damage taken | 6% of post-reduction damage taken, rounded down, max 15 per hit |
@@ -172,7 +172,7 @@ As a result, a board fighting its own mirror image behaves identically on both s
 When candidates tie, prefer in this order:
 
 1. lower row, then lower column, in the acting team's perspective
-2. lower unit `slot` (section 6.3)
+2. lower action slot (`slot`, section 6.3)
 
 ---
 
@@ -191,37 +191,37 @@ Tick 0 only sets up the fight; units start acting at tick 1.
 1. Create units with derived stats (section 7), including static trait, item and Gift bonuses, and Gift mana.
 2. **Gondor:** front-row bonus for allies in their team's row 3.
 3. **Guardian:** shields.
-4. **Gifts, items and the Ring at combat start**, unit by unit in slot order, team A's first: the team's Light of Valinor shield, then the unit's Star of Elendil and Nenya shields, King's Banner buffs and Miruvor stun immunity, in the order it holds them, then the Ring's invisibility on its bearer (sections 12.4 to 12.7).
+4. **Gifts, items and the Ring at combat start**, unit by unit in action-slot order, team A's first: the team's Light of Valinor shield, then the unit's Star of Elendil and Nenya shields, King's Banner buffs and Miruvor stun immunity, in the order it holds them, then the Ring's invisibility on its bearer (sections 12.4 to 12.7).
 5. **Orc:** spawn grunts, team A's first. Then **the Eye's Nazgûl**, if the other team bears the Ring (section 12.6).
 6. **Burglar:** leaps, in action order. Each sets off at once and lands later (section 12.3).
 7. **Rider:** charges, in action order. Each sets off at once, and its bonus damage lands when it arrives (section 12.3).
 8. **Elven Rope:** stuns, in action order.
 9. **Horn of Helm Hammerhand:** stuns every enemy, team A's Horn first (section 12.5).
-10. **Nazgûl, the Phial of Galadriel and Narya:** set the slow and the Magic Resist reduction on enemies in reach, and Narya's Attack Speed on allies in reach (sections 12.3, 12.4 and 12.7).
+10. **Nazgûl, the Phial of Galadriel and Narya:** set the slow and the Magic Resist reduction on enemies within their radius, and Narya's Attack Speed on allies within its radius (sections 12.3, 12.4 and 12.7).
 
 Tick 0 takes one number from the generator to pick the first team for the leaps, charges and Elven Rope stuns (section 6.3), whether or not anyone leaps or charges.
 
 ### 6.3 Action order
 
-- Each unit has a **slot**: its rank within its team.
+- Each unit has an **action slot** (`slot`): its rank within its team.
   - Initial units are ranked by own-perspective row (front first), then by column.
-  - Summons get the next free slot when they spawn.
-- Each tick, before anything else, the seeded generator picks the team that goes first within each slot: team A if `rng() < 0.5`, otherwise team B. Units then act sorted by slot, with the first team's unit before the other team's. Tick 0's leaps and charges use the same rule.
+  - Summons get the next free action slot when they spawn.
+- Each tick, before anything else, the seeded generator picks the team that goes first within each action slot: team A if `rng() < 0.5`, otherwise team B. Units then act sorted by action slot, with the first team's unit before the other team's. Tick 0's leaps and charges use the same rule.
   - Why not a fixed alternation: units with the same attack speed attack on ticks of the same parity (a 50-tick cooldown fires on ticks 1, 51, 101, …), so the same team would always strike first. With team B first on odd ticks, B won 68% of mirrored 1 v 1 duels and 88% of mirrored archer fights.
-- Each unit also has a unique numeric `id` for identity and events. Ids are given in creation order: team A's starting units by slot, then team B's, then summons as they spawn.
+- Each unit also has a unique numeric `id` for identity and events. Ids are given in creation order: team A's starting units by action slot, then team B's, then summons as they spawn.
 
 ### 6.4 Each tick (from tick 1)
 
 First, pick the team that goes first this tick (section 6.3). Then:
 
-1. **Expire** statuses and shields whose `expiresTick` is the current tick, then update the Nazgûl slow, the Phial of Galadriel reduction and Narya's Attack Speed from the units' current hexes (sections 12.3, 12.4 and 12.7).
+1. **Expire** statuses and shields whose `expiresTick` is the current tick, then update the Nazgûl slow, the Phial of Galadriel's Magic Resist reduction and Narya's Attack Speed from the units' current hexes (sections 12.3, 12.4 and 12.7).
 2. **Resolve the queue:** everything due this tick, ordered by due tick, then by creation order: melee blows and projectiles (section 9), abilities' landings, dashes setting off and arriving, charges reaching each hex, Athelas and delayed steps (section 10.6), and Rider charge damage (section 12.3).
 3. **Every second**, on ticks 30, 60, 90, …: Istari mana, Ent, Elven Cloak and Hands of the King healing, Dragon-helm damage, and Nenya and Vilya when theirs are due (sections 12.3 to 12.5 and 12.7).
 4. **Act:** each living unit in action order. A unit that is stunned or busy (moving, winding up or recovering from a cast, dashing or recovering from a dash) does nothing. Otherwise:
    1. If mana ≥ max mana: cast its ability (section 10).
    2. Else make sure it has a target (section 8).
-   3. If the target is in range: basic attack when its cooldown is ready (section 9).
-   4. Else: move one step (section 11).
+   3. If the target is in range: basic attack when its cooldown is up (section 9).
+   4. Else: move one hex (section 11).
 5. **End check:** after every death, check whether a team has no living units left (section 13).
 
 ---
@@ -297,7 +297,7 @@ Grunts don't count toward traits and don't count as survivors for player damage.
 
 PvE monsters (`data/monsters.ts`, from `game-spec.md` section 9.8) can be placed like units:
 
-- They have no origin or classes, so they have no traits, don't count toward traits, and get no trait bonuses. They do get statuses, and other units' amps and reductions apply to them as usual.
+- They have no origin or classes, so they have no traits, don't count toward traits, and get no trait bonuses. They do get statuses, and other units' damage amps and damage reductions apply to them as usual.
 - They are always 1★. Their stats are given directly, not from a template, and their ability values scale like a unit of their listed cost.
 - A monster can grow by a percent of Health and Attack Damage for each stage after a given one (the Balrog).
 - Some are Large, so Dwarves deal bonus damage to them.
@@ -342,8 +342,8 @@ Abilities that dash to a specific enemy (Grishnákh, the Witch-king) make that e
 
 - **In range:** hex distance to the target ≤ Range.
 - **Cooldown:**
-  - The first attack is ready at tick 1.
-  - After each attack, the next one is ready at `now + 30 / AttackSpeed` ticks.
+  - The cooldown is first up at tick 1.
+  - After each attack, it is up again at `now + 30 / AttackSpeed` ticks.
   - Keep this as a fraction and compare with `≥`.
 - **When an attack fires:**
   - The attacker gains 10 mana, plus 5 for each Palantír it holds, even if the attack is later wasted.
@@ -418,7 +418,7 @@ final      = Math.round(reduced × (1 − target's damage reductions)), at least
 
 - Mana is always a whole number: start and max values, +10 per attack, damage mana rounded down (section 9.1) and Istari mana in whole amounts (section 12.3).
 - Mana is capped at max mana; anything beyond is lost.
-- **When mana ≥ max:** at its action step, a unit that isn't stunned or busy casts, even if its target is out of range.
+- **When mana ≥ max:** when it acts, a unit that isn't stunned or busy casts, even if its target is out of range.
   - Mana resets to 0, the ability's targets and areas are chosen and locked, and a `cast` event is emitted.
   - The effects land after the ability's wind-up, or later if they travel, through the queue. Athelas heals as the wind-up ends (section 10.6).
   - The unit is busy until its part of the cast is done plus a short recovery, and gains no mana from the cast tick until then (section 10.6).
@@ -446,7 +446,7 @@ From `design.md` section 5. Each ability number in the table in section 10.5 is 
 
 ### 10.3 Building blocks
 
-Model abilities as data: a list of steps, each with a **selector** (who or where) and **effects** (what happens), plus the ability's **wind-up** (`windupSeconds`) and **delivery** (`delivery`: `strike`, `projectile` or `lob`), whose timing is in section 10.6. Only use custom code for something that genuinely doesn't fit.
+Model abilities as data: a list of **ability steps** (*steps* for short in sections 10.3 to 10.6 and the aims), each with a **selector** (who or where) and **effects** (what happens), plus the ability's **wind-up** (`windupSeconds`) and **delivery** (`delivery`: `strike`, `projectile` or `lob`), whose timing is in section 10.6. Only use custom code for something that genuinely doesn't fit.
 
 **Selectors**
 
@@ -480,7 +480,7 @@ How selectors pick:
   - `lowestHealthEnemy` and `highestHealthEnemy`: the enemy nearer the caster, then the section 5 tie-break.
   - `lowestHealthPctAllies` includes the caster and compares Health / max Health exactly; ties go to the ally nearer the caster, then the section 5 tie-break.
   - `bounce`: the enemy nearer the last one hit, then the section 5 tie-break.
-- **Order:** a multi-unit selection is in slot order, except `nearestEnemies` (nearest first), `lowestHealthPctAllies` (lowest first), `line` (from the caster outwards) and `bounce` (in hit order).
+- **Order:** a multi-unit selection is in action-slot order, except `nearestEnemies` (nearest first), `lowestHealthPctAllies` (lowest first), `line` (from the caster outwards) and `bounce` (in hit order).
 
 **Effects**
 
@@ -499,7 +499,7 @@ A step applies each effect in turn to every selected unit before the next effect
 - `dashThroughLine`: with a `line(n)` selector; the step's other effects land on each enemy as the charge reaches its hex (sections 10.4 and 10.6)
 - `summon(unitId, count)`: placed like Orc trait grunts (section 12.3), each on a free hex next to the caster on its own half, otherwise the nearest free hex on its own half. A summon with no free hex on its own half doesn't appear.
   - Neighbours are tried in the caster's perspective direction order. The fallback takes the free hex nearest the caster, then the section 5 tie-break.
-  - A summon takes the team's next slot and the next id (section 6.3), and acts from the next tick.
+  - A summon takes the team's next action slot and the next id (section 6.3), and acts from the next tick.
 - `delay(s, steps)`: a step of its own that runs `steps` `s` seconds after the end of the wind-up, through the queue (section 10.6)
 
 **Passives:** always-on rules attached to the unit (the Witch-king).
@@ -543,7 +543,7 @@ All of these are computed in the caster's perspective (section 5).
 
 **Dashes** (abilities' dashes and charges, and the Burglar leaps and Rider charges at tick 0, section 12.3):
 - The destination is chosen and **claimed** at once: from then on it isn't free to any other unit, for moving, dashing or summoning. A dash from an ability is chosen at the cast and sets off at the end of the wind-up; the caster stays on its own hex until then (section 10.6).
-- When the dash sets off, the unit's hex becomes the destination and its old hex is freed, as when a step starts (section 11).
+- When the dash sets off, the unit's hex becomes the destination and its old hex is freed, as when a move starts (section 11).
 - It arrives `ceil(distance × 30 / 6)` ticks later: 5 ticks per hex, at `MOVEMENT.dashHexesPerSecond` (6).
 - A stun doesn't stop a dash under way, nor what lands when it arrives.
 - `dash` is emitted when the destination is claimed. A unit that stays put emits nothing.
@@ -613,7 +613,7 @@ Every ability has a wind-up and a delivery (section 10.5; monsters' in section 7
 
 A test checks these tick counts, since they are what `Math.round` gives on the data's decimals. With the common 0.4 s wind-up, a strike leaves the caster busy for 15 ticks, as long as a cast did before wind-ups.
 
-**At the cast** (tick `t`, in the caster's action step, section 6.4):
+**At the cast** (tick `t`, as the caster acts, section 6.4, step 4):
 1. Mana resets to 0.
 2. Each step that isn't delayed selects in turn, and what it selects is locked: units for unit selectors, hexes for hex selectors (section 10.3). A dash or charge chooses and claims its destination (section 10.4), and the steps after it measure from that hex, as if the caster stood there: the Witch-king's `adjacentEnemies` are the hexes round where he will land.
 3. The `cast` event is emitted, with what each step locked and when it lands (section 14), then the `dash` event of any dash or charge.
@@ -625,7 +625,7 @@ A test checks these tick counts, since they are what `Math.round` gives on the d
 
 **When a step lands**, its damage, heals, shields and statuses are worked out on that tick, from the caster's stats and the target's then (or the caster's as they were when it died, for a projectile or lob in flight), with that tick's overtime; shields and statuses last from that tick. Sting's crit rolls are made then. The step reaches:
 - a **locked unit** if it is still alive and, for an enemy, still targetable, wherever it now stands; otherwise that unit is missed. A locked ally doesn't need to be targetable. Abilities don't check range, as before.
-- on a **locked hex**, the units of the step's side standing on it then: targetable enemies for enemy selectors, living allies for ally selectors (and only Orcs for Gothmog's). A unit stands on the hex it has claimed (section 11), so one in the middle of a step stands on its destination. A unit that has stepped out of the hexes is missed, and one that has stepped in is reached.
+- on a **locked hex**, the units of the step's side standing on it then: targetable enemies for enemy selectors, living allies for ally selectors (and only Orcs for Gothmog's). A unit stands on the hex it has claimed (section 11), so one in the middle of a move stands on its destination. A unit that has moved out of the hexes is missed, and one that has moved in is reached.
 - each unit at most once per step, even if it moves on into a later hex of a line or charge.
 
 **Deliveries**
@@ -671,14 +671,14 @@ A test checks these tick counts, since they are what `Math.round` gives on the d
 
 ## 11. Movement
 
-- A unit out of range of its target moves one hex per step. Each step takes 15 ticks, and the unit is busy for that time: a step started on tick `t` arrives on tick `t + 15`, when the unit acts again.
+- A unit out of range of its target moves one hex at a time. Each move takes 15 ticks, and the unit is busy for that time: a move started on tick `t` arrives on tick `t + 15`, when the unit acts again.
 - **Pathfinding:**
   - Breadth-first search over free hexes from the unit's hex.
   - Neighbours are visited in perspective direction order.
   - The goal is the first hex found, at the smallest depth, that is within Range of the target.
-  - The unit steps to the first hex on that path.
-- **Claiming:** when a step starts, the unit's position becomes the destination immediately. The old hex is freed and the new hex is occupied, so two units can never move onto the same hex. The renderer animates over the 15 ticks. A hex claimed by a dash or charge (section 10.4), including one still winding up, isn't free either, so pathfinding goes round it.
-- **Re-planning:** the path is recomputed at every step, because targets move.
+  - The unit moves to the first hex on that path.
+- **Claiming:** when a move starts, the unit's position becomes the destination immediately. The old hex is freed and the new hex is occupied, so two units can never move onto the same hex. The renderer animates over the 15 ticks. A hex claimed by a dash or charge (section 10.4), including one still winding up, isn't free either, so pathfinding goes round it.
+- **Re-planning:** the path is recomputed at every move, because targets move.
 - **No path:** see section 8.
 
 ---
@@ -698,7 +698,7 @@ A test checks these tick counts, since they are what `Math.round` gives on the d
 | Untargetable | Can't be chosen as a target. Enemies currently targeting it drop it at once and choose again when they next act. Projectiles and melee blows at it, and enemy abilities that locked it, miss it while it lasts (sections 9 and 10.6), apart from the Eye's Nazgûl's blows at the Ring's bearer (section 12.6). A new one extends the current one only if it lasts longer. |
 
 - **Timing:** a status applied on tick `t` for `s` seconds has `expiresTick = t + Math.round(s × 30)` and is removed at the start of that tick (section 6.4, step 1). A unit stunned for 1 s on tick 10 acts again on tick 40. A status or shield from an ability is applied when the ability lands on the unit, not at the cast (section 10.6).
-- **Stats** are recomputed whenever a buff, slow or reduction starts or ends (section 7.4). An attack's cooldown uses the Attack Speed at the moment it fires.
+- **Stats** are recomputed whenever a buff, slow, or Armor or Magic Resist reduction starts or ends (section 7.4). An attack's cooldown uses the Attack Speed at the moment it fires.
 - **Shields** are rounded to a whole number when applied (section 4). A shield that rounds to 0 isn't added.
 
 ### 12.2 Trait counting
@@ -708,7 +708,7 @@ A test checks these tick counts, since they are what `Math.round` gives on the d
 - A unit id also counts towards Nazgûl if a copy of it on the board wears a Ring of the Nine (section 12.7).
 - The highest breakpoint reached is active.
 - Trait values do not scale with Ability Power.
-- `teamTraitCounts(units, gifts)` gives these counts for a team's units (anything with a `unitId` and `items`, so placements or a player's owned units) and Gifts, and `traitLevelsOf(counts)` the active level of each trait. A fight takes its teams' traits from them (`teamSetup` in `combat/fighters.ts`), and the client's trait tracker shows them (`game-spec.md` section 12), so the two always agree. Both are exported from the package.
+- `teamTraitCounts(units, gifts)` gives these counts for a team's units (anything with a `unitId` and `items`, so placements or a player's owned units) and Gifts, and `traitLevelsOf(counts)` the active trait level of each trait. A fight takes its teams' traits from them (`teamSetup` in `combat/fighters.ts`), and the client's trait tracker shows them (`game-spec.md` section 12), so the two always agree. Both are exported from the package.
 
 ### 12.3 Trait behaviour
 
@@ -722,7 +722,7 @@ Numbers are from `design.md` section 4. Where a trait lists several values, they
 | Gondor | Tick 0 | All allies placed in their team's row 3, Gondor or not, gain flat Armor and Magic Resist for the whole fight. Summons don't. |
 | Rohan | On death | When a non-summon Rohan unit dies, every other living Rohan ally gains a permanent Attack Speed % buff (stacks). Right after the `death` event, each buff emits a `status` event with `expiresTick` null. |
 | Istari | Every 30 ticks | Istari gain the trait's mana per second in one go, on ticks 30, 60, 90, …, in action order. A unit that is casting on that tick gets none: from its cast tick until it is ready again, wind-up and recovery included (section 10.6). |
-| Orc | Tick 0 | Spawn 1 / 2 / 4 grunts. Spread them round-robin across Orc units in slot order, each on a free hex next to that Orc on its own half. Otherwise use the nearest free hex on its own half. |
+| Orc | Tick 0 | Spawn 1 / 2 / 4 grunts. Spread them round-robin across Orc units in action-slot order, each on a free hex next to that Orc on its own half. Otherwise use the nearest free hex on its own half. |
 | Nazgûl | Continuous | Enemies within 2 hexes of any living Nazgûl are slowed. It doesn't stack with itself; the strongest-slow rule applies. It is updated at the start of each tick (section 6.4, step 1) and at the end of tick 0, emits no events, and shows in the unit's stats. |
 | Ent | Every 30 ticks | Treebeard heals 2% of max Health, in action order with the Istari. He is Large. |
 | Dark Lord | Damage | Allies with Orc or Nazgûl origin, including grunts, get a +15% damage amp. Sauron is Large. |
@@ -759,11 +759,11 @@ Numbers are from `design.md` section 6, in `data/items.ts`.
 | Palantír | On attack | Each basic attack the holder fires gives it 5 more mana. |
 | Oakenshield | On hit | After a basic attack hits the holder and deals damage, the attacker takes 30% of that damage as magic item damage, if it is alive. |
 | Mithril Shirt | Damage | A 15% damage reduction on the holder. Crits against the holder deal normal damage (sections 9 and 10.3). |
-| Dragon-helm | Every 30 ticks | Each adjacent targetable enemy takes magic item damage of 2% of the holder's max Health, in slot order. |
+| Dragon-helm | Every 30 ticks | Each adjacent targetable enemy takes magic item damage of 2% of the holder's max Health, in action-slot order. |
 | Star of Elendil | Tick 0 | The holder and its adjacent allies gain a 300 shield that lasts 8 seconds. |
 | Elven Cloak | Every 30 ticks | The holder heals 2% of its max Health. |
 | Elven Rope | Tick 0 | The farthest targetable enemy from the holder, with the section 5 tie-break, is stunned for 3s. |
-| Phial of Galadriel | Continuous | Enemies within 2 hexes of any living holder have their Magic Resist reduced by 30%. It is a reduction, so only the strongest one counts (section 12.1). It is updated with the Nazgûl slow, emits no events, and shows in the unit's stats. |
+| Phial of Galadriel | Continuous | Enemies within 2 hexes of any living holder have their Magic Resist reduced by 30%. It is a Magic Resist reduction, so only the strongest one counts (section 12.1). It is updated with the Nazgûl slow, emits no events, and shows in the unit's stats. |
 | Ent-draught | Static | Its stats include +300 Health. |
 | Athelas | After a cast | At the release of the holder's ability, the end of its wind-up, after the effects that land then, the ally with the lowest Health % at that tick, the holder included, heals 200. It doesn't wait for projectiles, lobs, dashes or charges, and doesn't heal if the holder died during the wind-up (section 10.6). The tie-break is `lowestHealthPctAllies`'s (section 10.3). |
 | Wizard's Staff | Static | Its stats include +40 Ability Power. |
@@ -801,7 +801,7 @@ Numbers are from `design.md` section 9, in `data/ring.ts`. A placed unit with `r
 - **Invisibility:** at tick 0 (section 6.2, step 4) the bearer becomes untargetable for 3 seconds.
 - **Burden**, from drawback level 4: the bearer's max Health is lowered by 5% per point above 3, when it is created, after every other bonus: a flat bonus of `−round(max Health × pct / 100)`. It starts at full Health.
 - **Grip**, from drawback level 7: heals and shields from any source other than the bearer itself do nothing to it, and emit no event.
-- **Betrayal**, at drawback level 9: for the first 3 seconds (ticks 1 to 90), the bearer neither casts nor moves, nor chooses an enemy target. When its attack is ready and an ally (not itself) is within its Range, it attacks the nearest ally, by the section 5 tie-break, as a basic attack (section 9). Otherwise it waits.
+- **Betrayal**, at drawback level 9: for the first 3 seconds (ticks 1 to 90), the bearer neither casts nor moves, nor chooses an enemy target. When its cooldown is up and an ally (not itself) is within its Range, it attacks the nearest ally, by the section 5 tie-break, as a basic attack (section 9). Otherwise it waits.
 - **The Eye's Nazgûl:** when one team has a bearer and the other team placed at least one unit that isn't a monster, the other team gets the summon `eye-nazgul` at tick 0, step 5, after its grunts.
   - It is placed like a summon of the bearer (section 10.3), but on its own team's half: the first free hex next to the bearer on that half, in its team's neighbour order, otherwise the free hex on its half nearest the bearer. It doesn't appear if its half is full.
   - Nazgûl origin, no classes and no ability. It counts as a living unit, like a grunt, but not for traits or player damage.
@@ -818,7 +818,7 @@ Rings of Power are items in `data/items.ts`, from `design.md` section 9. A place
 | Ring | When | Behaviour |
 |---|---|---|
 | Narya | Continuous | Allies within 2 hexes of a living bearer, the bearer and summons included, gain +20% Attack Speed. With two Naryas on a team, only the strongest counts. It is updated with the Nazgûl slow, emits no events, and shows in the unit's stats. |
-| Nenya | Tick 0; every 6 seconds | At tick 0 (section 6.2, step 4) and on ticks 180, 360, 540, …, the bearer and its allies within 2 hexes, in slot order, gain a 120 shield that lasts 6 seconds. |
+| Nenya | Tick 0; every 6 seconds | At tick 0 (section 6.2, step 4) and on ticks 180, 360, 540, …, the bearer and its allies within 2 hexes, in action-slot order, gain a 120 shield that lasts 6 seconds. |
 | Vilya | Every 2 seconds | On ticks 60, 120, 180, …, the ally with the lowest Health %, the bearer included, heals 80. The tie-break is `lowestHealthPctAllies`'s (section 10.3). |
 | Ring of the Nine | Trait counting; continuous; damage | The bearer is a Nazgûl as well as its own origin, for everything that asks whether a unit is a Nazgûl: trait counting (section 12.2), the Nazgûl slow it spreads, the Dark Lord amp, Éowyn's bonus against Nazgûl and The Fellowship's origin count. While `CombatInput.oneRingCorruption` is set, the bearer gets a damage amp of 5% per point of it (section 9.1). |
 
@@ -834,7 +834,7 @@ Rings of Power are items in `data/items.ts`, from `design.md` section 9. A place
 - If tick 1349 finishes with both teams alive, the outcome is a draw. Both players take damage outside the sim.
 - **The result contains:**
   - the outcome: `A`, `B` or `draw`
-  - for each team, the surviving **non-summon** units (monsters included) with unit id and star level, in slot order (the round system uses this for player damage)
+  - for each team, the surviving **non-summon** units (monsters included) with unit id and star level, in action-slot order (the round system uses this for player damage)
   - the final tick
   - the event log
 
@@ -905,7 +905,7 @@ Every event has a `tick`.
 | `heal` | source, target, amount |
 | `shield` | source, target, amount, expiresTick |
 | `cast` | unit, ability (its name), releaseTick (the end of the wind-up), readyTick (when the caster acts again), aims (what each step locked, below; section 10.6) |
-| `status` | source, target, status (`stun`, `stunImmune`, `untargetable`, `slow`, `reduce` or `buff`), stat (for `reduce` and `buff`, otherwise null), value (the slow or reduction percent, or the buff amount, otherwise null), expiresTick (null for the Rohan, Archer and item buffs that last the rest of the fight). A reduction of both Armor and Magic Resist emits one event per stat. A stun, stun immunity or untargetable that doesn't outlast the current one emits nothing. |
+| `status` | source, target, status (`stun`, `stunImmune`, `untargetable`, `slow`, `reduce` or `buff`), stat (for `reduce` and `buff`, otherwise null), value (the slow or Armor or Magic Resist reduction percent, or the buff amount, otherwise null), expiresTick (null for the Rohan, Archer and item buffs that last the rest of the fight). A reduction of both Armor and Magic Resist emits one event per stat. A stun, stun immunity or untargetable that doesn't outlast the current one emits nothing. |
 | `death` | unit |
 | `end` | outcome |
 
@@ -950,9 +950,9 @@ Every event has a `tick`.
 - Attack cooldown timing.
 - Projectile travel and wasted projectiles.
 - Melee blows land 7 ticks after the attack, with `hitTick` set to that tick; mana, Archer, Grond and Palantír gains come at the attack, and dodge, crit, damage, defender mana and the Oakenshield at the blow.
-- A melee blow is wasted, with no event, if by then the attacker has died, the target has died or become untargetable, or it has stepped out of the attacker's Range; one at a target that stepped and is still in range lands. The Eye's Nazgûl's blows land on the invisible bearer, and Betrayal's on allies.
+- A melee blow is wasted, with no event, if by then the attacker has died, the target has died or become untargetable, or it has moved out of the attacker's Range; one at a target that moved and is still in range lands. The Eye's Nazgûl's blows land on the invisible bearer, and Betrayal's on allies.
 - A melee attacker isn't held by its swing: it can cast or move before its blow lands, and the blow still lands if the target is in range.
-- Resolution order (dodge → crit → reduction → damage → mana).
+- Resolution order (dodge → crit → resists → damage → mana).
 - Armor and Magic Resist formula; damage amps; overtime multiplier; shields absorbing first; Witch-king reduction.
 
 **Statuses**
@@ -991,11 +991,11 @@ Every event has a `tick`.
 - Nothing lands at the cast: a strike's effects land at the release, a projectile at `release + ceil(d × 2.5)` with `d` from the cast, following a target that has moved, and a lob 23 ticks after the release.
 - A caster killed during its wind-up: nothing lands, no dash or charge sets off and its claimed hex is free again, no Athelas, no delayed steps, and its mana stays spent. A stun during the wind-up changes nothing.
 - A projectile or lob that has left lands after its caster dies, with the caster's stats at its death; a dash's or charge's effects still to land don't.
-- Locked single targets: one that has died or become untargetable by the landing is missed, and a wasted bounce hop doesn't stop the later ones; one that has stepped away is still reached, out of range or not.
-- Locked hexes (area, line, cone, within, adjacent): an enemy that steps out before the landing is missed, and one that steps in is reached; a unit in the middle of a step counts on its destination; each unit is reached at most once per step.
+- Locked single targets: one that has died or become untargetable by the landing is missed, and a wasted bounce hop doesn't stop the later ones; one that has moved away is still reached, out of range or not.
+- Locked hexes (area, line, cone, within, adjacent): an enemy that moves out before the landing is missed, and one that moves in is reached; a unit in the middle of a move counts on its destination; each unit is reached at most once per step.
 - Haldir's three arrows land on their own ticks by distance; Pippin's hops land at cumulative distances; Lurtz's arrow reaches each line hex by its distance; Gorbag's and Legolas's arrows leave 3 ticks apart and land 3 ticks apart, and Gollum's stabs land 3 ticks apart, healing him from each; the caster is busy until its last hit has gone, a caster that dies loses the hits not yet struck or loosed, and the hits stop when the target dies.
-- Steps on the caster and allies land at the release even in a projectile or lob ability; `allAllies` reaches only the allies locked at the cast.
-- Dashes: the destination is claimed at the cast, so no other unit steps, dashes or is summoned onto it, and pathfinding goes round it; the caster stays on its hex during the wind-up and its hex becomes the destination at the release; the effects after the dash land on arrival; the Witch-king's adjacent hexes are those round his destination.
+- Ability steps on the caster and allies land at the release even in a projectile or lob ability; `allAllies` reaches only the allies locked at the cast.
+- Dashes: the destination is claimed at the cast, so no other unit moves, dashes or is summoned onto it, and pathfinding goes round it; the caster stays on its hex during the wind-up and its hex becomes the destination at the release; the effects after the dash land on arrival; the Witch-king's adjacent hexes are those round his destination.
 - Charges: the enemy on line hex `i` is struck at `release + 5i`, including one past the destination; an enemy that leaves the line first is missed; if the charger dies mid-charge, the hexes ahead aren't struck.
 - Delayed steps are due from the release, choose their target when they run, and don't run once the caster has died: Frodo strikes on the tick his untargetability ends.
 - Athelas heals at the release, after the strike's effects and before any projectile lands.
@@ -1020,11 +1020,11 @@ Every event has a `tick`.
 - Gifts that act outside the fight change nothing in it.
 
 **The One Ring**
-- The bearer's invisibility and damage; Burden, Grip and Betrayal at their levels, and Sam lowering them by 2.
+- The bearer's invisibility and damage; Burden, Grip and Betrayal at their drawback levels, and Sam lowering them by 2.
 - The Eye's Nazgûl: when it appears, where, its stats by Corruption, and it targeting the bearer through invisibility.
 
 **Rings of Power**
-- Narya's Attack Speed on allies in reach as they move, Nenya's shields at tick 0 and every 6 seconds, and Vilya's heals every 2 seconds, each 150% on an Elf or Istari.
+- Narya's Attack Speed on allies within its radius as they move, Nenya's shields at tick 0 and every 6 seconds, and Vilya's heals every 2 seconds, each 150% on an Elf or Istari.
 - A Ring of the Nine counting towards Nazgûl, spreading the slow, getting the Dark Lord amp and Éowyn's bonus, and its damage amp by the One Ring's Corruption.
 - The Seven change nothing in the fight; two Rings of Power on a unit and a bad `oneRingCorruption` throw.
 

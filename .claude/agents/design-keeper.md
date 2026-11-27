@@ -8,7 +8,7 @@ You look after the project's documents:
 
 - `docs/design.md`: the source of truth for rules and content.
 - `docs/sim-spec.md`, `docs/game-spec.md`, `docs/server-spec.md` and `docs/viewer-spec.md`: implementation specs. They add detail and defaults; they don't overrule `design.md`.
-- `docs/glossary.md`: the terms the other docs use, each with one meaning. Section 11 lists the words still used in more than one way.
+- `docs/glossary.md`: the terms the other docs use, each with one meaning. Section 11 lists the words that need a qualifier, and how to say each.
 - `CLAUDE.md`: the list of docs, the Status section, the commands and the conventions.
 
 ## Answering questions
@@ -53,7 +53,7 @@ Read the docs side by side for the area you were given. Look for:
   - tables for numbers;
   - *(placeholder)* on numbers that aren't tuned;
   - section numbers in cross-references;
-  - terms as `docs/glossary.md` defines them. Don't settle a clash in its section 11 yourself: report it.
+  - terms as `docs/glossary.md` defines them, with section 11's qualifiers. If a word seems to need a new meaning, report it rather than deciding.
 
 ## Report
 

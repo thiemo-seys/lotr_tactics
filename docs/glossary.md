@@ -1,8 +1,8 @@
 # Glossary
 
-The words `design.md` and the specs use, each with one meaning. The words still used in more than one way are listed in section 11 until each is settled.
+The words `design.md` and the specs use, each with one meaning. Section 11 lists the words that are only clear with a qualifier, and how to say each.
 
-- A term means what it says here in every doc. A doc that uses a term another way has a bug, unless the term is listed in section 11, Terms with more than one meaning.
+- A term means what it says here in every doc. A doc that uses a term another way, or a section 11 word without its qualifier, has a bug.
 - This file defines words. It doesn't restate rules or numbers: those stay in `design.md` and the specs, which the "Defined in" column points to.
 - Names of content (units, traits, items, Gifts, rings, monsters) are in `design.md` sections 4 to 9 and are not repeated here.
 
@@ -37,7 +37,7 @@ The words `design.md` and the specs use, each with one meaning. The words still 
 | Streak | A signed count of a player's PvP results in a row: positive for wins, negative for losses. | `game-spec.md` 5, 8.2 |
 | Knocked out | A player that this round's fights have brought to 0 HP or below. They are eliminated when the fight phase ends. | `game-spec.md` 9.4, 9.9 |
 | Eliminated | Out of the game, with a final placement. | `game-spec.md` 9.9 |
-| Placement (final) | A player's final rank, from 1st to 8th. See section 11. | `game-spec.md` 5, 9.9 |
+| Final place | A player's final rank, from 1st to 8th (`placement` in code). See *placement* in section 11. | `game-spec.md` 5, 9.9 |
 | Driver | Whatever calls the game's actions and ends planning: the server's match runner, the balance runner or a test. | `game-spec.md` 9.3 |
 
 ## 2. Players, the shop and owned units
@@ -114,7 +114,7 @@ The words `design.md` and the specs use, each with one meaning. The words still 
 | Queue | Everything due on a later tick, such as blows, projectiles, landings, dash departures and delayed steps, resolved at the start of that tick in a fixed order. | `sim-spec.md` 6.4 |
 | Due | Scheduled in the queue for a given tick. | `sim-spec.md` 6.4 |
 | Living | Alive: Health above 0. A living unit counts towards a fight going on, summons included. | `sim-spec.md` 9.1, 13 |
-| Move (movement step) | One hex of movement, taking 15 ticks. The unit claims the hex as it starts. See *step* in section 11. | `sim-spec.md` 11 |
+| Move | One hex of movement, taking 15 ticks, and the verb for it. The unit claims the hex as it starts. See *step* in section 11. | `sim-spec.md` 11 |
 | Seeded generator | The fight's or game's random number generator (mulberry32), started from a seed. Each game-layer stream has its own generator. | `sim-spec.md` 4; `game-spec.md` 4 |
 | Roll (chance) | One draw from the generator against a chance, such as a dodge or crit roll. It succeeds when `rng() < chance`. | `sim-spec.md` 4 |
 
@@ -127,7 +127,7 @@ The words `design.md` and the specs use, each with one meaning. The words still 
 | Resist | Armor or Magic Resist. | `design.md` 7 |
 | Basic attack | An attack made on the Attack Speed timer: a blow for melee units, a projectile for ranged ones. | `sim-spec.md` 9 |
 | Fire (an attack) | The moment a basic attack starts, when the cooldown is ready. Mana and stacks are gained then. | `sim-spec.md` 9 |
-| Cooldown | The time until a unit's next basic attack is ready. | `sim-spec.md` 9 |
+| Cooldown | The time until a unit's next basic attack. Once it has passed, the cooldown is up. | `sim-spec.md` 9 |
 | Blow | A melee basic attack's hit, landing a fixed time after the attack fires. | `sim-spec.md` 9 |
 | Projectile | Something flying to its target, such as an arrow, stone or bolt. It follows its target and lands when it arrives. | `sim-spec.md` 9, 10.6 |
 | Hit | A blow, projectile or ability hit arriving at its target, when dodge, crit and damage are worked out. | `sim-spec.md` 9 |
@@ -271,29 +271,27 @@ The words `design.md` and the specs use, each with one meaning. The words still 
 
 ---
 
-## 11. Terms with more than one meaning
+## 11. Words to qualify
 
-These are the clashes found while drafting. Each needs a decision: keep both meanings and always qualify the word, or rename one. Some suggestions are renames of rules or content, which go through `game-designer`; renames in code are out of scope for a docs change.
+Each of these words has more than one meaning, so the docs always say it as the second column does. Bare words not listed here mean what sections 1 to 10 say.
 
-| Term | Meanings now | Suggestion |
-|---|---|---|
-| **slot** | A bench slot; a shop slot; an item slot ("takes one of the 3 item slots", `design.md` 9); a unit's rank in the action order (`sim-spec.md` 6.3). | Call the last one the **action slot** in prose, keeping `slot` in code. The others are always said with their owner (bench, shop, item). |
-| **step** | One hex of movement (`sim-spec.md` 11); one part of an ability (10.3); a numbered stage of the tick loop (6.4); a match step (`server-spec.md` 5.1); `Combat.step()`. | **Move** for movement (the event is already `move`), **ability step**, **match step**. Keep "step" for numbered lists only. |
-| **level** | A player's level; a trait's level (`traitLevelsOf`); the One Ring's drawback level; and "star level". | Bare "level" means the player's. Always say **trait level**, **drawback level** and **star level**. |
-| **placement** | A player's final rank (`game-spec.md` 5, 9.9); a unit put on the board for a fight (`PlacedUnit`, "a placement outside the team's half"). | **Final place** for the rank, keeping "placement" for units on the board. |
-| **board** | The whole 7 × 8 grid of a fight (`sim-spec.md` 5); one player's half (`game-spec.md` 5); `design.md` 7 calls the whole grid the "arena", which the viewer uses for the scenery. | **Board** for the whole grid in a fight, **half** for one team's part of it, **a player's board** in the game layer. Keep **arena** for the scenery and fix `design.md` 7. |
-| **charge** | An ability's ride along a line (`dashThroughLine`); a Rider's dash next to its target at tick 0, which follows no line. | Keep both, since the Rider trait's name for it is a charge, but say **Rider charge** for the trait's. |
-| **leap** | A Burglar's dash at tick 0; `design.md` 5 says the Witch-king "leaps" in Morgul mace, which is a dash (`dashAdjacentTo`). `design.md` 12 also talks of Grishnákh's and the Witch-king's leaps. | Keep **leap** for Burglars, and say **dash** for the two abilities. |
-| **miss / wasted** | `design.md` 7 says a melee blow "misses" when its target is gone; `sim-spec.md` 9 calls that "wasted" and keeps "missed" for abilities (10.6). | **Wasted** for basic attacks, **missed** for ability steps, **dodged** for a dodge. Fix `design.md` 7. |
-| **reduction** | A damage reduction (the Witch-king's passive, the Mithril Shirt); a status lowering Armor or Magic Resist. | Always qualify: **damage reduction**, **Armor reduction**, **Magic Resist reduction**. |
-| **in reach / out of reach** | `design.md` 7 says a blow misses if the target has "moved out of reach", meaning out of the attacker's Range; `sim-spec.md` 6.2 says "enemies in reach" for the radius of a continuous effect. | **In range** for Range, **within *n* hexes** for radii. Drop "reach" for distances, keeping it as the verb for an ability step arriving at a unit. |
-| **holder** | The unit holding an item (`sim-spec.md` 12.4); the player holding the One Ring (`game-spec.md` 9.11). | Keep both, since the subject is always clear, but never call a unit the Ring's holder: that's its **bearer**. |
-| **tier** | Cost tier (`design.md` 5, 8); Gift tier (Silver, Gold, Mithril); Corruption tier. | Always qualify: **cost tier**, **Gift tier**, **Corruption tier**. |
-| **ready** | A unit acting again after a cast or dash (`readyTick`); an attack whose cooldown is up; a person's Ready vote. | **Ready** for the unit, **cooldown is up** for attacks, **Ready vote**, capitalised, for people. |
-| **host** | The lobby host (a person); the `Host` interface (time and randomness). | Say **lobby host** for the person, and always write the interface as `` `Host` ``. |
-| **draw** | A fight with no winner; a random draw from a generator ("drawn with the game generator"). | Low risk, since the context is always clear. Keep both. |
-| **fight / combat** | The same thing: one battle between two teams. | **Fight** in prose; **combat** only in code names. |
-| **unit** | A unit definition (`unitId`, such as `gimli`); an owned unit; a unit in a fight, summons and monsters included. "Your units" in Gifts means the non-summon units on the board at the start (`design.md` 9). | Say **unit id** for the definition and **owned unit** for the game layer, and say whether summons count wherever it matters. |
-| **id** | A unit id (a string); an owned unit's numeric id, stable through moves and merges; a fighting unit's numeric `id` within one fight. | Always qualify: **unit id**, **owned unit's id**, **fight id**. |
-| **Health / HP** | Distinct already: Health for units, HP for players. | Keep. Never use HP for a unit. |
-| **invisible / untargetable** | Invisibility is the One Ring's untargetability, which the Eye's Nazgûl sees through. | Keep both: **invisible** only for the Ring's, **untargetable** for everything else. |
+| Word | How to say it |
+|---|---|
+| **slot** | A **bench slot**, **shop slot** or **item slot**. A unit's rank in the action order is its **action slot** (`slot` in code), and the order it sets is **action-slot order**. |
+| **step** | **Move** for one hex of movement, and as the verb (the event is `move`). **Ability step** for a part of an ability; in `sim-spec.md` sections 10.3 to 10.6 and the aims, *step* alone means one. **Match step** for `council`, `planning`, `fight` or `over`; in `server-spec.md` section 5, *step* alone means one. Otherwise *step* is a numbered step of a list, such as the tick loop's (`sim-spec.md` 6.4). |
+| **level** | Bare *level* is a player's level. Otherwise **star level**, **trait level** or **drawback level**. |
+| **placement** | A unit put on the board for a fight (`PlacedUnit`). A player's rank is their **final place**, though the code calls it `placement`. |
+| **board** | In a fight, the whole 7 × 8 grid; one team's part of it is its **half**. In the game layer, **a player's board** is their half. The **arena** is only the scenery round the board. |
+| **charge** | An ability's ride along a line (`dashThroughLine`). The Rider trait's dash next to its target at tick 0 is a **Rider charge**. |
+| **leap** | Only a Burglar's dash at tick 0. An ability that moves its caster next to a unit **dashes**. |
+| **wasted, missed, dodged** | **Wasted** for a basic attack's blow or projectile that doesn't land, **missed** for a locked unit or hex an ability step doesn't reach, **dodged** for a successful dodge roll. |
+| **reduction** | A **damage reduction** (the Witch-king's passive, the Mithril Shirt), or an **Armor reduction** or **Magic Resist reduction** (a status). What Armor and Magic Resist do to damage in the pipeline is **resists**. |
+| **range, radius, reach** | **In range** for a target within the unit's Range. **Within *n* hexes**, or **within its radius**, for an area or a continuous effect. *Reach* is a verb: an ability step, heal or shield arriving at a unit, or a unit able to get within range of an enemy. |
+| **holder, bearer** | An item's **holder** is the unit holding it. The One Ring's **holder** is the player who has it. The unit wearing the One Ring or a Ring of Power is its **bearer**, never its holder. |
+| **tier** | **Cost tier**, **Gift tier** (Silver, Gold, Mithril) or **Corruption tier** (Boon to Consumed). |
+| **ready** | A unit is **ready** when it can act again after a cast or dash (`readyTick`). An attack's **cooldown is up**. A person's **Ready vote** is capitalised. |
+| **host** | The **lobby host** is a person. **`Host`**, in code format, is the interface for time and randomness. |
+| **unit, id** | A **unit id** names a unit's definition, such as `gimli`. An **owned unit** is one a player has, with its own numeric id. A unit in a fight has a **fight id**. Where it matters, say whether summons and monsters count. |
+| **fight, combat** | **Fight** in prose. *Combat* only in code names and the phrase *combat start*. |
+
+These stay as they are, since the context always tells them apart: **draw** (a fight's outcome, or a random draw), **Health** and **HP** (a unit's and a player's), and **invisible** (only the One Ring's untargetability) and **untargetable** (everything else).

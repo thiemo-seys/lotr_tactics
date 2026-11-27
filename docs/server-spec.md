@@ -11,7 +11,7 @@ Implementation spec for online play: lobbies, a server that runs games authorita
 
 **In scope**
 
-- Lobbies of 8 seats that people create and join with a code. When the host starts, bots take the empty seats.
+- Lobbies of 8 seats that people create and join with a code. When the lobby host starts, bots take the empty seats.
 - The match runner: it runs one game on the server (`createGame` from `game-spec.md` section 10), with the timers, the bots and the Ready votes.
 - What each player is allowed to see, and the messages between client and server.
 - Disconnecting and rejoining. A bot plays the seat while its person is away.
@@ -37,8 +37,8 @@ These are not in `design.md` yet. They were chosen to remove ambiguity and can b
 | Transport | Plain WebSockets (the `ws` package) with JSON messages, at `/ws` on the page's own origin |
 | Lobby size | 8 seats. Bots take the empty seats when the game starts |
 | Joining | With a 5-character code, or a link to `play.html#lobby=CODE`. No public lobby list |
-| Host | The person who created the lobby. If the host leaves before the start, the person in the lowest seat becomes host |
-| Starting | The host starts with 1 to 8 people. Nobody can join after the start |
+| Lobby host | The person who created the lobby. If the lobby host leaves before the start, the person in the lowest seat becomes lobby host |
+| Starting | The lobby host starts with 1 to 8 people. Nobody can join after the start |
 | Council turn | 15 seconds for each group, as in the offline game. Bots pick at once |
 | Planning | 30 seconds (`design.md` section 9), or 45 in a round with a Gift offer. It ends early once every connected person still in the game is Ready |
 | Fight step | The round's longest fight, plus 1 second, 4 seconds of results and 2 seconds of slack. It ends early once every connected person still in the game has finished watching |
@@ -78,7 +78,7 @@ packages/server/
 
 ---
 
-## 4. Host
+## 4. `Host`
 
 The browser-safe code gets time and randomness from a `Host`:
 
@@ -91,7 +91,7 @@ interface Host {
 ```
 
 - The Node server uses `performance.now`, `crypto.randomInt` and `crypto.randomUUID`. An offline game uses `performance.now`, `Math.random` and `crypto.randomUUID`.
-- Nothing has its own timers. The owner calls `update()` about every 100 ms, which runs anything whose time has come. Tests use a fake host and move its clock forward.
+- Nothing has its own timers. The owner calls `update()` about every 100 ms, which runs anything whose time has come. Tests use a fake `Host` and move its clock forward.
 - A game's seed comes from `random`. It is never sent to clients.
 
 ---
@@ -172,7 +172,7 @@ type PublicPlayer = Omit<PlayerView, 'shop' | 'shopLocked' | 'xp' | 'giftOffer' 
 - **Seats:** 8, numbered 0 to 7. A person joining takes the lowest free seat. Leaving before the start frees the seat.
 - **Names:** trimmed, with control characters removed, and cut to 20 characters. An empty name becomes "Player n", where n is the seat plus 1.
 - **Tokens:** each person in a lobby gets a token when they join. `rejoin` with the code and the token gives them their seat back on a new connection. If the seat is still connected somewhere else, that older connection is told so and dropped.
-- **Start:** only the host can start, before the game has started. Empty seats become bots, named Bot 1, Bot 2 and so on, in seat order.
+- **Start:** only the lobby host can start, before the game has started. Empty seats become bots, named Bot 1, Bot 2 and so on, in seat order.
 - **One lobby per connection:** a connection that is in a lobby has to leave before it can create or join another.
 - **Closing:** a lobby closes 60 seconds after its last person disconnects or leaves. A lobby whose game is over closes as soon as nobody is connected.
 - **Limits:** at most 200 open lobbies on a server.
@@ -201,7 +201,7 @@ type ClientMessage =
 ```ts
 type ServerMessage =
   | { type: 'joined'; code: string; seat: number; token: string }   // after create, join or rejoin
-  | { type: 'lobby'; lobby: LobbyView }      // whenever seats, the host or connections change
+  | { type: 'lobby'; lobby: LobbyView }      // whenever seats, the lobby host or connections change
   | { type: 'state'; state: MatchView }      // whenever the game, the step or Ready votes change
   | { type: 'round'; round: RoundRecord }    // when a round with fights ends its planning, just before the fight step's state
   | { type: 'left'; reason: string }         // the connection is no longer in a lobby
@@ -209,7 +209,7 @@ type ServerMessage =
 
 interface LobbyView {
   code: string;
-  host: number;                // seat of the host
+  host: number;                // seat of the lobby host
   started: boolean;
   seats: SeatView[];           // 8, in seat order
 }
@@ -257,15 +257,15 @@ The play page (`game-spec.md` section 12) talks to a `Connection`. The connectio
   - `play.html#lobby=CODE` opens the menu with the code filled in.
 - **Lobby screen:**
   - the code, large, and an icon button that copies the join link;
-  - the 8 seats as cards, with names and icons for people, bots and empty seats, the host, and whether each person is connected or away;
-  - Start, for the host only;
+  - the 8 seats as cards, with names and icons for people, bots and empty seats, the lobby host, and whether each person is connected or away;
+  - Start, for the lobby host only;
   - Leave.
 - **The game** works as it does offline, but it follows the server's steps and timers:
   - Ready sends `ready` and shows how many others are still planning.
   - After a fight and its results, the client sends `ready` and waits for the next step. Skipping the fight brings the results forward. The person can shop until the next step starts.
   - If the next step starts before the client has finished showing the fight, it moves on to the new step at once.
   - Names come from the lobby. The players list shows bots, and people who are disconnected.
-- **Offline:** a `LocalConnection` creates a lobby in the page, with one person called You, and starts it at once. Its host uses the browser's clock. With nobody else in the game, Ready and skipping end steps at once, so it plays like the old offline game.
+- **Offline:** a `LocalConnection` creates a lobby in the page, with one person called You, and starts it at once. Its `Host` uses the browser's clock. With nobody else in the game, Ready and skipping end steps at once, so it plays like the old offline game.
 - **Reconnecting:**
   - The client keeps the code and token in session storage.
   - If the WebSocket closes during a game, the client reconnects after 1, 2, 4 and 8 seconds and rejoins.
@@ -285,7 +285,7 @@ The play page (`game-spec.md` section 12) talks to a `Connection`. The connectio
 ## 12. Tests and acceptance criteria
 
 **Match**
-- Steps and their timers with a fake host: a Council turn, planning, the fight step, and the next round.
+- Steps and their timers with a fake `Host`: a Council turn, planning, the fight step, and the next round.
 - Planning ends early when every connected person is Ready, and not when nobody is connected.
 - Actions are refused during a fight step.
 - Bots act for empty seats and for disconnected people, and stop when the person rejoins.
@@ -298,7 +298,7 @@ The play page (`game-spec.md` section 12) talks to a `Connection`. The connectio
 
 **Lobbies and protocol**
 - Creating, joining, the lowest free seat, a full lobby, unknown codes, joining after the start, and codes that ignore case.
-- The host passing on, starting by the host only, and bots taking the empty seats.
+- The lobby host passing on, starting by the lobby host only, and bots taking the empty seats.
 - Rejoining with a token, a wrong token, and dropping the older connection.
 - Idle lobbies closing.
 - Malformed messages are refused without changing anything.
