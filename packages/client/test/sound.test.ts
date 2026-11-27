@@ -1,5 +1,7 @@
+import type { Host } from '@lotr-tactics/server';
 import type { Action, OwnedUnit, PlayerView, Star } from '@lotr-tactics/sim';
 import { afterEach, describe, expect, it } from 'vitest';
+import { LocalConnection } from '../src/connection.js';
 import { PlayFlow } from '../src/flow.js';
 import {
   CUES,
@@ -101,7 +103,7 @@ describe('action sounds', () => {
     expect(actionCue({ type: 'move', from: { col: 1, row: 2 }, to: { col: 2, row: 2 } }, false)).toBe('denied');
   });
 
-  it('play as the flow sends an action, and as Ready is sent', () => {
+  it('play as the flow sends an action, or a soft no when it can’t be sent now', () => {
     const heard: Cue[] = [];
     listen((name) => heard.push(name));
     const sent: string[] = [];
@@ -112,6 +114,40 @@ describe('action sounds', () => {
     flow.act({ type: 'pick', option: 0 });
     expect(heard).toEqual(['denied', 'pick']);
     expect(sent).toEqual(['act']);
+  });
+
+  it('play a soft no in planning for an action the rules refuse, and a sound as Ready is sent', async () => {
+    const time = 0;
+    const host: Host = { now: () => time, random: () => 0.5, token: () => 'token' };
+    const heard: Cue[] = [];
+    listen((name) => heard.push(name));
+    const sent: string[] = [];
+    let connection: LocalConnection | null = null;
+    const flow = new PlayFlow({
+      send: (m) => {
+        sent.push(m.type === 'act' ? m.action.type : m.type);
+        connection!.send(m);
+      },
+      fight: () => {},
+      menu: () => {},
+      joined: () => {},
+    });
+    connection = new LocalConnection(5, { message: (m) => flow.receive(m, time), closed: () => {} }, { host, autoUpdate: false });
+    await new Promise((done) => setTimeout(done, 0));
+    expect(flow.show.kind).toBe('planning');
+    heard.length = 0;
+    // Selling from an empty bench slot is refused by the rules; it is still sent, and the game refuses it too.
+    const refused: Action = { type: 'sell', from: { bench: flow.me().bench.length - 1 } };
+    expect(flow.me().bench.at(-1)).toBeNull();
+    expect(flow.check(refused).ok).toBe(false);
+    flow.act(refused);
+    const allowed: Action = { type: 'lock', locked: true };
+    expect(flow.check(allowed).ok).toBe(true);
+    flow.act(allowed);
+    flow.ready();
+    expect(heard).toEqual(['denied', 'lock', 'ready']);
+    expect(sent).toEqual(['sell', 'lock', 'ready']);
+    connection.close();
   });
 
   it('reach nothing while nothing listens', () => {
@@ -176,6 +212,21 @@ describe('the sounds that follow the game', () => {
     lost.hear(hearing({ step: 'results' }));
     expect(lost.hear(hearing({ step: 'over', me: { ...player(3), placement: 5 } as PlayerView, secondsLeft: null }))).toEqual(['knockedOut']);
     expect(lost.hear(hearing({ step: 'over', me: { ...player(3), placement: 5 } as PlayerView, secondsLeft: null }))).toEqual([]);
+  });
+
+  it('play the toll once for a person who is out, though each round’s results take them out of the end and back', () => {
+    const watch = new SoundWatch();
+    const out = { ...player(3), placement: 6 } as PlayerView;
+    watch.hear(hearing({ step: 'results' }));
+    expect(watch.hear(hearing({ step: 'over', me: out, secondsLeft: null }))).toEqual(['knockedOut']);
+    for (let round = 0; round < 3; round++) {
+      expect(watch.hear(hearing({ step: 'results', me: out, secondsLeft: null }))).toEqual([]);
+      expect(watch.hear(hearing({ step: 'over', me: out, secondsLeft: null }))).toEqual([]);
+    }
+    // A new game, after the menu, plays it again.
+    watch.hear(hearing({ step: 'menu', me: null, secondsLeft: null }));
+    watch.hear(hearing({ step: 'results' }));
+    expect(watch.hear(hearing({ step: 'over', me: out, secondsLeft: null }))).toEqual(['knockedOut']);
   });
 });
 

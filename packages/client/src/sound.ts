@@ -364,12 +364,18 @@ export class SoundWatch {
   private last: Hearing | null = null;
   /** The fight whose ending has been heard. */
   private ended: object | null = null;
+  /**
+   * Whether the end of the game has been heard. A person who is out keeps getting each round's
+   * results, which take the page out of `over` until the next state brings it back.
+   */
+  private endHeard = false;
 
   hear(now: Hearing): Cue[] {
     const last = this.last;
     this.last = now;
     if (now.me === null) {
       this.ended = null;
+      this.endHeard = false;
       return [];
     }
     const cues: Cue[] = [];
@@ -393,7 +399,8 @@ export class SoundWatch {
       cues.push(s <= TICK_LAST_FROM ? 'tickLast' : 'tick');
     }
 
-    if (now.step === 'over' && last !== null && last.step !== 'over' && last.me !== null) {
+    if (now.step === 'over' && last !== null && last.step !== 'over' && last.me !== null && !this.endHeard) {
+      this.endHeard = true;
       cues.push(now.me.placement === 1 ? 'champion' : 'knockedOut');
     }
     return cues;
