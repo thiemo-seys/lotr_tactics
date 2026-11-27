@@ -20,7 +20,7 @@ The words `design.md` and the specs use, each with one meaning. Section 11 lists
 | Council round, Council | A round of the Council of Elrond: players pick from shared options in pairs, lowest HP first, with no fight. | `game-spec.md` 9.6 |
 | Gift round | A PvP or PvE round whose planning starts with a Gift offer (2-1, 3-2 and 4-2). | `game-spec.md` 9.10 |
 | Planning | The part of a PvP or PvE round before the fights, when players can take every action. | `game-spec.md` 9.3 |
-| Fight phase | The part of a round after the fights have run and before the driver advances. Players can act only on their bench, shop and items. | `game-spec.md` 9.4 |
+| Fight phase | The part of a round after the fights have run and before the driver advances. Players can act only on their bench, shop, items and XP. | `game-spec.md` 9.4 |
 | Phase | Which part of a round the game is in: `council`, `planning`, `fight` (the fight phase) or `over` once the game has ended (`Phase` in `game/game.ts`). The match steps have the same names. | `game-spec.md` 9.3, 9.4 |
 | Fight | One battle between two teams, run by the sim from start to result. *Combat* means the same thing, in code names (`createCombat`, `CombatInput`). | `sim-spec.md` 6, 13 |
 | Outcome | How a fight ends: team A wins, team B wins, or a draw. | `sim-spec.md` 13 |
@@ -48,7 +48,7 @@ The words `design.md` and the specs use, each with one meaning. Section 11 lists
 | Person | A human player. | `server-spec.md` 5 |
 | Bot | A program that plays a seat. Bots and people are interchangeable. | `game-spec.md` 11 |
 | Pool | The shared supply of unit copies that shops and Councils draw from. | `game-spec.md` 6.1 |
-| Copy | One unit's worth of the pool. A 1★ unit is 1 copy, a 2★ is 3 and a 3★ is 9. The total number of copies is always the same. | `game-spec.md` 6.1 |
+| Copy | One of a unit's instances, at any star level, as in three copies merging. Counted against the pool, a copy is one unit's worth: a 1★ unit is 1 copy, a 2★ is 3 and a 3★ is 9, and the total is always the same. See section 11. | `game-spec.md` 6.1, 7.3 |
 | Shop | A player's 5 shop slots, with a lock. | `game-spec.md` 6 |
 | Roll (shop) | Filling every shop slot from the pool. | `game-spec.md` 6.2 |
 | Refresh | The free roll at the start of a PvP or PvE round. A locked shop isn't refreshed. | `game-spec.md` 6.3 |
@@ -89,7 +89,7 @@ The words `design.md` and the specs use, each with one meaning. Section 11 lists
 | Within *n* hexes | At distance *n* or less. | `sim-spec.md` 10.3 |
 | In range | At a distance no greater than the unit's Range from its target. | `sim-spec.md` 9 |
 | Free hex | A hex on the board with no living unit on it, not claimed by a moving or dashing unit, nor by a dash still winding up. | `sim-spec.md` 10.4 |
-| Claim | To reserve a hex for a step or dash so that no other unit can take it. A unit stands on the hex it has claimed. | `sim-spec.md` 10.4, 11 |
+| Claim | To reserve a hex for a move or dash so that no other unit can take it. A moving unit stands on the hex it has claimed. An ability's dash claims its destination at the cast, while the caster stays on its own hex until the release. | `sim-spec.md` 10.4, 10.6, 11 |
 | Tie-break | The fixed order that settles ties: lower row, then lower column in the acting team's perspective, then lower action slot. | `sim-spec.md` 5 |
 | Facing direction | The neighbour direction closest to the target, used for cones. | `sim-spec.md` 10.4 |
 | Line | Hexes on a straight hex line from the caster through its target and beyond it. | `sim-spec.md` 10.4 |
@@ -132,7 +132,7 @@ The words `design.md` and the specs use, each with one meaning. Section 11 lists
 | Projectile | Something flying to its target, such as an arrow, stone or bolt. It follows its target and lands when it arrives. | `sim-spec.md` 9, 10.6 |
 | Hit | A blow, projectile or ability hit arriving at its target, when dodge, crit and damage are worked out. | `sim-spec.md` 9 |
 | Land | For a blow, projectile or ability, to reach its target and take effect. | `sim-spec.md` 9, 10.6 |
-| Wasted | A basic attack's blow or projectile that doesn't land, because the attacker or target died, or the target became untargetable or left the attacker's Range. See *miss* in section 11. | `sim-spec.md` 9 |
+| Wasted | A basic attack's blow or projectile that doesn't land. A melee blow is wasted if, when it lands, the attacker or target has died, or the target has become untargetable or left the attacker's Range. A projectile is wasted only if its target is dead or untargetable on arrival: it still lands if its attacker has died. See *wasted, missed, dodged* in section 11. | `sim-spec.md` 9 |
 | Dodge | A successful dodge roll: the basic attack deals no damage and triggers no on-hit effects. Abilities can't be dodged. | `sim-spec.md` 9 |
 | Crit | A successful crit roll: the damage is multiplied by Crit Damage. | `sim-spec.md` 9 |
 | On hit | Effects triggered by a basic attack hitting, such as the Oakenshield's. | `sim-spec.md` 9 |
@@ -171,16 +171,16 @@ The words `design.md` and the specs use, each with one meaning. Section 11 lists
 | Ready (unit) | The tick a caster or dasher acts again, after its recovery. See section 11. | `sim-spec.md` 10.6 |
 | Ability step | One part of an ability: a selector and its effects. See *step* in section 11. | `sim-spec.md` 10.3 |
 | Selector | What an ability step picks at the cast: a unit selector or a hex selector. | `sim-spec.md` 10.3 |
-| Unit selector | A selector that locks units, which the step reaches wherever they now stand. | `sim-spec.md` 10.3 |
-| Hex selector | A selector that locks hexes, reaching the units standing on them when the step lands. | `sim-spec.md` 10.3 |
-| Lock | To fix, at the cast, the units or hexes a step will reach. | `sim-spec.md` 10.3, 10.6 |
+| Unit selector | A selector that locks units, which the ability step reaches wherever they now stand. | `sim-spec.md` 10.3 |
+| Hex selector | A selector that locks hexes, reaching the units standing on them when the ability step lands. | `sim-spec.md` 10.3 |
+| Lock | To fix, at the cast, the units or hexes an ability step will reach. | `sim-spec.md` 10.3, 10.6 |
 | Effect | What a step does to each unit it reaches: damage, stun, slow, shield, heal, buff, reduction, untargetable, stun immunity, dash, summon or delay. | `sim-spec.md` 10.3 |
 | Reach | For an ability step, to arrive at a locked unit or hex and apply its effects. | `sim-spec.md` 10.6 |
-| Missed | A locked unit that a step doesn't reach, because it has died or, for an enemy, become untargetable, or because it stepped out of a locked hex. See section 11. | `sim-spec.md` 10.6 |
+| Missed | A locked unit that an ability step doesn't reach, because it has died or, for an enemy, become untargetable, or because it stepped out of a locked hex. See section 11. | `sim-spec.md` 10.6 |
 | Multi-hit | A damage effect with several hits, 3 ticks apart: Volley, Flurry and My precious. | `sim-spec.md` 10.6 |
 | Struck, loosed | A multi-hit's hit leaving the caster: struck for a blow, loosed for an arrow. | `sim-spec.md` 10.6 |
 | Delayed step | A step that runs a set time after the release, and selects when it runs. | `sim-spec.md` 10.6 |
-| Aims | What a `cast` event says each step locked and when it lands, so the client can show it. | `sim-spec.md` 14 |
+| Aims | What a `cast` event says each ability step locked and when it lands, so the client can show it. | `sim-spec.md` 14 |
 | Passive | An always-on rule attached to a unit (the Witch-king's). | `sim-spec.md` 10.3 |
 | D, S, H | The base values for ability damage, shields and heals. An ability's number is a multiple of one. | `design.md` 5; `sim-spec.md` 10.2 |
 | Cost factor, star factor | The multipliers that scale an ability's value by the unit's cost and star level. | `sim-spec.md` 10.2 |
@@ -213,7 +213,7 @@ The words `design.md` and the specs use, each with one meaning. Section 11 lists
 | Origin | A unit's race or faction trait. Each unit has one. | `design.md` 4 |
 | Class | A unit's role trait. Each unit has one or two. | `design.md` 4 |
 | Unique trait | An origin with one unit and one breakpoint: Ent and Dark Lord. | `design.md` 4 |
-| Count (trait) | The number of distinct unit ids on a team with the trait, plus crests and Rings of the Nine. Summons and monsters don't count. | `sim-spec.md` 12.2 |
+| Count (trait) | The number of distinct unit ids on a team with the trait, plus one for each crest. A unit id also has Nazgûl if any copy of it on the board wears a Ring of the Nine. Summons and monsters don't count. | `sim-spec.md` 12.2 |
 | Breakpoint | A count at which a trait's bonus starts or grows. | `design.md` 4 |
 | Active | A trait whose count has reached its first breakpoint. | `sim-spec.md` 12.2 |
 | Trait level | Which of a trait's breakpoints is active. See *level* in section 11. | `sim-spec.md` 12.2, 14 |
@@ -241,7 +241,7 @@ The words `design.md` and the specs use, each with one meaning. Section 11 lists
 | Holder (One Ring) | The player who has the One Ring. See section 11. | `game-spec.md` 9.11 |
 | Bearer | The unit that wears the One Ring, or a Ring of Power. | `design.md` 9; `sim-spec.md` 12.6, 12.7 |
 | Ring state | Where the One Ring is: waiting for a Council, offered in one, held by a player, or destroyed. | `game-spec.md` 9.11 |
-| Corruption | The One Ring's counter, rising each round it has a bearer. It belongs to the Ring, not the unit. | `design.md` 9 |
+| Corruption | The One Ring's counter, rising in the rounds it has a bearer, every other round for a Hobbit bearer. It belongs to the Ring, not the unit. | `design.md` 9; `game-spec.md` 9.11 |
 | Corruption tier | One of the bands of Corruption: Boon, Burden, Grip, Betrayal and Consumed. | `design.md` 9 |
 | Drawback level | The Corruption the drawbacks act at: the Corruption, or 2 lower with Sam next to the bearer. See *level* in section 11. | `sim-spec.md` 12.6 |
 | Equip itself | A held Ring with no bearer going to a random unit on the holder's board before the fights. | `game-spec.md` 9.11 |
@@ -294,4 +294,4 @@ Each of these words has more than one meaning, so the docs always say it as the 
 | **unit, id** | A **unit id** names a unit's definition, such as `gimli`. An **owned unit** is one a player has, with its own numeric id. A unit in a fight has a **fight id**. Where it matters, say whether summons and monsters count. |
 | **fight, combat** | **Fight** in prose. *Combat* only in code names and the phrase *combat start*. |
 
-These stay as they are, since the context always tells them apart: **draw** (a fight's outcome, or a random draw), **Health** and **HP** (a unit's and a player's), and **invisible** (only the One Ring's untargetability) and **untargetable** (everything else).
+These stay as they are, since the context always tells them apart: **copy** (a unit a player owns at any star level, or a unit's worth of the pool, so a 2★ unit is 3 copies), **lock** (the shop lock, or an ability step fixing what it will reach at the cast), **roll** (a shop roll, or a roll against a chance), **draw** (a fight's outcome, or a random draw), **Health** and **HP** (a unit's and a player's), and **invisible** (only the One Ring's untargetability) and **untargetable** (everything else).
