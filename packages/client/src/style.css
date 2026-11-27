@@ -1587,100 +1587,40 @@ kbd {
   position: relative;
   display: inline-flex;
   flex: none;
-  align-items: center;
-  justify-content: center;
   width: var(--size);
   height: var(--size);
-  color: #fff;
-  border: 1px solid rgba(0, 0, 0, 0.6);
-  border-radius: 5px;
-  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.28), 0 1px 2px rgba(0, 0, 0, 0.55);
+  /* The art's frame has rounded corners; the chip follows them, so glows and rings hug the frame. */
+  border-radius: 16%;
   cursor: help;
 }
 
 .chip.sm {
-  --size: 16px;
-  border-radius: 4px;
+  --size: 18px;
 }
 
 .chip.lg {
   --size: 32px;
-  border-radius: 7px;
 }
 
-.chip .icon {
-  width: 74%;
-  height: 74%;
-  stroke-width: 2.1;
-  filter: drop-shadow(0 1px 0 rgba(0, 0, 0, 0.5));
+/* An item's art (item-art.ts): its frame, background and object are all in the picture. */
+.chip .chip-art {
+  display: block;
+  width: 100%;
+  height: 100%;
+  filter: drop-shadow(0 1px 1.5px rgba(0, 0, 0, 0.6));
+  pointer-events: none;
+  user-select: none;
 }
 
-.chip .icon .f {
-  fill-opacity: 0.35;
-}
-
-.chip.component {
-  background: radial-gradient(circle at 32% 24%, color-mix(in srgb, var(--a) 65%, white), var(--a) 55%, color-mix(in srgb, var(--a) 72%, black));
-}
-
-/* A combined item: its two components' colours, split, with each one's icon on its half. */
-.chip.combined {
-  background:
-    linear-gradient(135deg, rgba(255, 255, 255, 0.22), transparent 45%),
-    linear-gradient(135deg, var(--a) 0 50%, var(--b) 50% 100%);
-}
-
-.chip.combined .icon {
-  position: absolute;
-  width: 56%;
-  height: 56%;
-}
-
-.chip.combined .icon.a {
-  top: 5%;
-  left: 5%;
-}
-
-.chip.combined .icon.b {
-  right: 5%;
-  bottom: 5%;
-}
-
-.chip.sm.combined .icon {
-  width: 60%;
-  height: 60%;
-  stroke-width: 2.4;
-}
-
-/* A Ring of Power: a gold disc with the ring, its gem in its stone. */
-.chip.ring-of-power {
-  color: #2b1e04;
-  background: radial-gradient(circle at 35% 28%, #fff3c4, var(--gold) 52%, color-mix(in srgb, var(--gold) 55%, black));
-  border-color: #6b4f12;
+/* Rings of Power and the One Ring have round frames. */
+.chip.ring-of-power,
+.chip.one-ring {
   border-radius: 50%;
 }
 
-.chip.ring-of-power .icon {
-  filter: none;
-}
-
-.chip.ring-of-power .icon .s {
-  fill: var(--stone);
-  stroke: #2b1e04;
-}
-
-/* The One Ring: a gold band on black, its Corruption in its tier's colour. */
+/* The One Ring's Corruption badge takes its tier's colour; the art burns hotter at each tier. */
 .chip.one-ring {
   --tier: var(--ring-gift);
-  color: #ffd977;
-  background: radial-gradient(circle at 50% 40%, #3b2a10, #0b0805 70%);
-  border-color: color-mix(in srgb, var(--tier) 70%, black);
-  border-radius: 50%;
-  box-shadow: 0 0 8px color-mix(in srgb, var(--tier) 55%, transparent), inset 0 0 6px rgba(255, 190, 80, 0.25);
-}
-
-.chip.one-ring .icon {
-  filter: drop-shadow(0 0 2px rgba(255, 190, 80, 0.8));
 }
 
 .chip.one-ring.ring-burden {
@@ -1737,7 +1677,7 @@ kbd {
 
 .chip.draggable:hover {
   transform: translateY(-2px) scale(1.06);
-  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.3), 0 4px 10px rgba(0, 0, 0, 0.55), 0 0 0 1px var(--gold-bright);
+  box-shadow: 0 4px 10px rgba(0, 0, 0, 0.55), 0 0 0 1px var(--gold-bright);
 }
 
 /* A trait's icon on a hexagon in its tone; grey while the trait isn't active. */

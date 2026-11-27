@@ -1,6 +1,6 @@
-import { COMPONENTS, GIFT_IDS, GIFTS, TRAITS, type TraitId } from '@lotr-tactics/sim';
+import { GIFT_IDS, GIFTS, TRAITS, type TraitId } from '@lotr-tactics/sim';
 import { describe, expect, it } from 'vitest';
-import { COMPONENT_ICONS, GIFT_TIER_ICONS, ICONS, ROUND_ICONS, STATUS_ICONS, STAR_BADGE_DEFS, TRAIT_ICONS, iconSvg, starBadgeSvg, type IconName } from '../src/icons.js';
+import { GIFT_TIER_ICONS, ICONS, ROUND_ICONS, STATUS_ICONS, STAR_BADGE_DEFS, TRAIT_ICONS, iconSvg, starBadgeSvg, type IconName } from '../src/icons.js';
 
 describe('icons', () => {
   it('give every trait its own icon', () => {
@@ -9,14 +9,6 @@ describe('icons', () => {
     for (const trait of traits) expect(Object.hasOwn(ICONS, TRAIT_ICONS[trait])).toBe(true);
     expect(new Set(traits.map((t) => TRAIT_ICONS[t])).size).toBe(traits.length);
     expect(Object.keys(TRAIT_ICONS).sort()).toEqual([...traits].sort());
-  });
-
-  it('give every item component its own icon, apart from the traits', () => {
-    for (const id of COMPONENTS) expect(Object.hasOwn(ICONS, COMPONENT_ICONS[id])).toBe(true);
-    const icons = COMPONENTS.map((id) => COMPONENT_ICONS[id]);
-    expect(new Set(icons).size).toBe(COMPONENTS.length);
-    for (const icon of icons) expect(Object.values(TRAIT_ICONS)).not.toContain(icon);
-    expect(Object.keys(COMPONENT_ICONS).sort()).toEqual([...COMPONENTS].sort());
   });
 
   it('cover every Gift tier, round type and label status', () => {

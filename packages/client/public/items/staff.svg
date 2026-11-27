@@ -1,0 +1,39 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64" width="64" height="64"><defs><linearGradient id="i-rim" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="#e3b48a"/><stop offset="0.25" stop-color="#9a6238"/><stop offset="0.5" stop-color="#4a2c16"/><stop offset="0.75" stop-color="#a87148"/><stop offset="1" stop-color="#3a2210"/></linearGradient>
+    <radialGradient id="i-bg" cx=".42" cy=".36" r=".78"><stop offset="0" stop-color="#163b8d" stop-opacity=".95"/><stop offset=".55" stop-color="#133276" stop-opacity=".55"/><stop offset="1" stop-color="#07040a"/></radialGradient>
+    <radialGradient id="i-vig" cx=".5" cy=".5" r=".72"><stop offset=".55" stop-color="#000" stop-opacity="0"/><stop offset="1" stop-color="#000" stop-opacity=".75"/></radialGradient>
+    <radialGradient id="i-fgem" cx=".35" cy=".3" r=".8"><stop offset="0" stop-color="#fff"/><stop offset=".35" stop-color="#4e6598"/><stop offset="1" stop-color="#05030a"/></radialGradient>
+    <filter id="i-grain" x="0" y="0" width="100%" height="100%"><feTurbulence type="fractalNoise" baseFrequency=".85" numOctaves="3" seed="7"/><feColorMatrix type="saturate" values="0"/><feComponentTransfer><feFuncA type="table" tableValues="0 .22"/></feComponentTransfer><feComposite in2="SourceGraphic" operator="in"/></filter>
+    <clipPath id="i-clip"><rect x="5" y="5" width="54" height="54" rx="6"/></clipPath></defs>
+    <rect x="1.2" y="1.2" width="61.6" height="61.6" rx="10" fill="#120a04"/>
+    <rect x="2.4" y="2.4" width="59.2" height="59.2" rx="9" fill="url(#i-rim)"/>
+    <rect x="2.4" y="2.4" width="59.2" height="59.2" rx="9" fill="none" stroke="rgba(255,240,200,.55)" stroke-width=".7"/>
+    <rect x="4.6" y="4.6" width="54.8" height="54.8" rx="6.6" fill="#0b0604"/>
+    <g clip-path="url(#i-clip)">
+      <rect x="5" y="5" width="54" height="54" fill="url(#i-bg)"/>
+      <rect x="5" y="5" width="54" height="54" fill="#fff" filter="url(#i-grain)"/>
+      <defs><linearGradient id="i-wood" x1="0" y1="0" x2="1" y2="0"><stop offset="0" stop-color="#c58a52"/><stop offset=".35" stop-color="#8a5228"/><stop offset="1" stop-color="#3d200c"/></linearGradient>
+  <linearGradient id="i-leather" x1="0" y1="0" x2="1" y2="0"><stop offset="0" stop-color="#7a4426"/><stop offset=".4" stop-color="#4b2412"/><stop offset="1" stop-color="#1d0c05"/></linearGradient><linearGradient id="i-iron" x1="0" y1="0" x2="1" y2="0"><stop offset="0" stop-color="#e6eaef"/><stop offset=".35" stop-color="#a7b0bc"/><stop offset=".7" stop-color="#606a77"/><stop offset="1" stop-color="#363d47"/></linearGradient><radialGradient id="i-gem-bead" cx=".35" cy=".3" r=".8"><stop offset="0" stop-color="#fff"/><stop offset=".3" stop-color="#75cec1"/><stop offset=".65" stop-color="#2bb3a0"/><stop offset="1" stop-color="#0d3630"/></radialGradient></defs>
+    <g transform="rotate(10 32 32)">
+    <path d="M30 25C30 13 36.6 7.4 42.6 8.8C48.4 10.2 48.8 18 43.6 20.2C39.4 22 36.4 18.4 38.8 15.4" fill="none" stroke="#120904" stroke-width="5.6" stroke-linecap="round"/>
+    <path d="M30 25C30 13 36.6 7.4 42.6 8.8C48.4 10.2 48.8 18 43.6 20.2C39.4 22 36.4 18.4 38.8 15.4" fill="none" stroke="#7d4a22" stroke-width="3.8" stroke-linecap="round"/>
+    <path d="M29.2 22C29.6 13.4 35.4 8.4 41.6 9.2" fill="none" stroke="#e0a868" stroke-width=".9" stroke-linecap="round" opacity=".85"/>
+    <path d="M45.6 17.4C44.2 19.6 41.8 20.2 40.2 19" fill="none" stroke="#3d200c" stroke-width=".6"/>
+    <rect x="28.2" y="22" width="3.6" height="37.6" rx="1.2" fill="url(#i-wood)" stroke="#120904" stroke-width="0.9" stroke-linejoin="round" stroke-linecap="round"/>
+    <path d="M29 24V57M30.8 28V40M31 46V56" stroke="#3d200c" stroke-width=".4" opacity=".7"/>
+    <path d="M28.9 23V58" stroke="#f0c48e" stroke-width=".5" opacity=".7"/>
+    <path d="M28.6 27.6l1.4 1.2 1.4-1.2M28.6 31l1.4 1.2 1.4-1.2" fill="none" stroke="#f3d3a3" stroke-width=".55"/>
+    <rect x="27.6" y="34" width="4.8" height="8.4" rx="1" fill="url(#i-leather)" stroke="#120904" stroke-width="0.8" stroke-linejoin="round" stroke-linecap="round"/>
+    <path d="M27.8 36.1L32.2 34.7M27.8 38.2L32.2 36.8M27.8 40.3L32.2 38.9" stroke="#c48d5a" stroke-width=".6" opacity=".85"/>
+    <path d="M28.4 41.4C24.6 43 22.4 46.4 22.2 49.6" fill="none" stroke="#5a2f17" stroke-width=".8"/>
+    <circle cx="22.4" cy="50.6" r="1.5" fill="url(#i-gem-bead)" stroke="#120904" stroke-width="0.5" stroke-linejoin="round" stroke-linecap="round"/>
+    <path d="M22.4 52.2C19.4 53.6 18 57 18.6 59.4C21.4 58.4 23 55.2 22.4 52.2z" fill="#e8e2d6" stroke="#120904" stroke-width="0.6" stroke-linejoin="round" stroke-linecap="round"/>
+    <path d="M22.4 52.2L19.4 58.6" stroke="#8d8a83" stroke-width=".4"/>
+    <rect x="27.8" y="57.4" width="4.4" height="3.4" rx=".8" fill="url(#i-iron)" stroke="#120904" stroke-width="0.8" stroke-linejoin="round" stroke-linecap="round"/>
+    </g>
+    <g opacity="0.85"><path d="M17 11.6Q17.288 13.712 19.4 14Q17.288 14.288 17 16.4Q16.712 14.288 14.6 14Q16.712 13.712 17 11.6z" fill="#fff"/><circle cx="17" cy="14" r="0.672" fill="#fff"/></g>
+      <rect x="5" y="5" width="54" height="54" fill="url(#i-vig)"/>
+      <path d="M5 5h54v14C40 14 22 15 5 24z" fill="#fff" opacity=".07"/>
+    </g>
+    <rect x="5" y="5" width="54" height="54" rx="6" fill="none" stroke="rgba(0,0,0,.8)" stroke-width="1.1"/>
+    <rect x="5.8" y="5.8" width="52.4" height="52.4" rx="5.4" fill="none" stroke="rgba(255,230,170,.18)" stroke-width=".6"/>
+    <g transform=""><circle cx="6.6" cy="6.6" r="1.9" fill="url(#i-rim)" stroke="#1a0e05" stroke-width=".6"/><circle cx="6.1" cy="6.1" r=".55" fill="#fff" opacity=".5"/></g><g transform="translate(64 0) scale(-1 1)"><circle cx="6.6" cy="6.6" r="1.9" fill="url(#i-rim)" stroke="#1a0e05" stroke-width=".6"/><circle cx="6.1" cy="6.1" r=".55" fill="#fff" opacity=".5"/></g><g transform="translate(0 64) scale(1 -1)"><circle cx="6.6" cy="6.6" r="1.9" fill="url(#i-rim)" stroke="#1a0e05" stroke-width=".6"/><circle cx="6.1" cy="6.1" r=".55" fill="#fff" opacity=".5"/></g><g transform="translate(64 64) scale(-1 -1)"><circle cx="6.6" cy="6.6" r="1.9" fill="url(#i-rim)" stroke="#1a0e05" stroke-width=".6"/><circle cx="6.1" cy="6.1" r=".55" fill="#fff" opacity=".5"/></g></svg>

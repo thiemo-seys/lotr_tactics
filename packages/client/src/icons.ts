@@ -1,10 +1,10 @@
 // The client's icons (docs/viewer-spec.md section 2): one set of inline SVGs drawn on a 24-unit
 // grid in one style, a rounded 1.8-unit stroke in `currentColor` with a light fill on the main
-// shape, plus which icon stands for each trait, item component, Gift tier, round type and status.
-// The mappings are keyed by the sim's ids, so a new trait or component fails the typecheck until it
-// has an icon. No Three.js or DOM, so it can be tested.
+// shape, plus which icon stands for each trait, Gift tier, round type and status. The mappings are
+// keyed by the sim's ids, so a new trait fails the typecheck until it has an icon. Items have art
+// of their own instead (item-art.ts). No Three.js or DOM, so it can be tested.
 
-import type { ComponentId, GiftTier, RoundType, Star, TraitId } from '@lotr-tactics/sim';
+import type { GiftTier, RoundType, Star, TraitId } from '@lotr-tactics/sim';
 
 // Shapes with class "f" get a light fill and shapes with class "s" a solid one (style.css).
 const HEART = 'M12 20.3C6.9 17 3.5 13.6 3.5 9.6 3.5 6.8 5.6 4.7 8.2 4.7c1.6 0 3 .8 3.8 2.1.8-1.3 2.2-2.1 3.8-2.1 2.6 0 4.7 2.1 4.7 4.9 0 4-3.4 7.4-8.5 10.7z';
@@ -107,13 +107,8 @@ export const ICONS = {
   captain: '<path d="M6 21.5V2.5"/><path class="f" d="M6 3.5h12.5l-3 4.3 3 4.2H6"/>',
   sorcerer:
     '<path class="f" d="M10 3Q11.5 9 17.5 10.5Q11.5 12 10 18Q8.5 12 2.5 10.5Q8.5 9 10 3z"/><path class="f" d="M18.5 13.9Q19.2 16.8 22.1 17.5Q19.2 18.2 18.5 21.1Q17.8 18.2 14.9 17.5Q17.8 16.8 18.5 13.9z"/><path class="s" d="M18.5 2.8Q18.95 4.55 20.7 5Q18.95 5.45 18.5 7.2Q18.05 5.45 16.3 5Q18.05 4.55 18.5 2.8z"/>',
-  // Item components
+  // The damage meter
   blade: '<path class="f" d="M12 2.5l2.2 2.6V15H9.8V5.1z"/><path d="M7 15h10M12 15v4.2"/><circle cx="12" cy="20.6" r="1.3"/>',
-  bow: '<path class="f" d="M7 2.8c6 2.3 9.5 5.6 9.5 9.2S13 18.9 7 21.2c4.2-2.8 6.3-5.9 6.3-9.2S11.2 5.6 7 2.8z"/><path d="M7 2.8v18.4"/>',
-  mail: '<path class="f" d="M8.5 3.5L4 6.2l1.8 4.6 1.7-.8v10.5h9V10l1.7.8L20 6.2l-4.5-2.7c-.6 1.5-1.9 2.4-3.5 2.4s-2.9-.9-3.5-2.4z"/><path d="M10 12.5l2 1.5 2-1.5M10 16l2 1.5 2-1.5"/>',
-  cloak: '<path class="f" d="M12 2.8c-2.6 0-4.3 2.1-4.3 4.7L4 20.8c2.6.9 5.3 1 8 .2 2.7.8 5.4.7 8-.2L16.3 7.5c0-2.6-1.7-4.7-4.3-4.7z"/><path d="M9.5 10c1.6.9 3.4.9 5 0M12 13v7.8"/><circle class="s" cx="12" cy="11.3" r="1.1"/>',
-  lembas: '<rect class="f" x="4" y="4" width="16" height="16" rx="3"/><path d="M8 16c.5-4.5 3.5-7.5 8-8-.5 4.5-3.5 7.5-8 8zM8 16l8-8"/>',
-  staff: '<path d="M8.5 21.5l5.6-12.8"/><circle class="f" cx="15.6" cy="5.8" r="3.3"/><path d="M12.4 2.9c.6-.6 1.3-.9 2.1-1M19.6 7.7c.3-.6.4-1.3.4-2"/>',
   // Other
   brooch: '<circle class="f" cx="12" cy="12" r="9"/><path d="M12 18.5c-3-1.8-4.2-4.6-3.4-7.3.8-2.4 3.4-4.7 3.4-4.7s2.6 2.3 3.4 4.7c.8 2.7-.4 5.5-3.4 7.3zM12 18.5V9.5"/>',
 } as const satisfies Record<string, string>;
@@ -138,16 +133,6 @@ export const TRAIT_ICONS: Readonly<Record<TraitId, IconName>> = {
   burglar: 'burglar',
   captain: 'captain',
   sorcerer: 'sorcerer',
-};
-
-/** Each item component's icon; a combined item shows both of its components'. */
-export const COMPONENT_ICONS: Readonly<Record<ComponentId, IconName>> = {
-  blade: 'blade',
-  bow: 'bow',
-  mail: 'mail',
-  cloak: 'cloak',
-  lembas: 'lembas',
-  staff: 'staff',
 };
 
 export const GIFT_TIER_ICONS: Readonly<Record<GiftTier, IconName>> = {

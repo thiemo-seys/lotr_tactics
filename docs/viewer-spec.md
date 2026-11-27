@@ -34,8 +34,10 @@ packages/client/
   play.html        the play page (game-spec.md section 12)
   art/             the models' and arenas' Blender scripts, the rig kit, the clip library and the clash check (art/README.md, sections 3 and 4)
     portraits/     renders the shop cards' portraits from the 1★ models (section 4, Portraits)
+    items/         draws the item chips' art, three designs to an item, and picks.json, which chooses one (section 2, Item art)
   public/models/   one .glb per unit and star level (<id>, <id>-2, <id>-3), built from art/ and committed, which both pages load
   public/portraits/  one .webp portrait per unit, rendered by art/portraits/ and committed, which the shop's unit cards show
+  public/items/    one .svg per item, and one per Corruption tier for the One Ring, written by art/items/ and committed, which the item chips show
   public/arenas/   one .glb per arena, built from art/arenas/ and committed (section 3, Arena)
   src/
     main.ts        viewer page setup, controls, URL state
@@ -68,8 +70,9 @@ packages/client/
     hud.ts         the HUD's stats, streak, timer, One Ring status and stage tracker
     shop.ts        how a shop card marks a unit the person already has, and what a click on one does
     portraits.ts   where a unit's portrait is, if it has one
+    item-art.ts    where an item's art is, and the One Ring's at each Corruption tier
     players.ts     the players list's rows
-    icons.ts       the icon set, and the icon for each trait, component, Gift tier, round type and status
+    icons.ts       the icon set, and the icon for each trait, Gift tier, round type and status
     log.ts         event log text
     style.css      the design system and both pages' styles
     ui/            DOM pieces both pages use
@@ -96,7 +99,8 @@ packages/client/
 
 - flow.ts, playback.ts, animation.ts, effects.ts, drawing.ts, frame-cap.ts, stars.ts, look.ts and the modules from units.ts to log.ts use neither Three.js nor the DOM, so they are tested (section 7). models.ts and arena.ts, which load the models and the arena, post.ts and tiles.ts, and scene.ts, fx.ts and the modules in ui/ and play/, which draw what those work out, are checked in a browser.
 - **Look:** both pages share one design system in style.css: a deep slate background with gold accents; tokens for colours, spacing, radii, shadows and motion; buttons (primary, secondary, ghost, danger and icon-only), fields, panels and chips. Headings use Cinzel and everything else Inter, both bundled from `@fontsource` packages, so the built client needs nothing from the network. Text has a contrast of at least 4.5:1, focus shows a gold ring, and motion stops when the system asks for reduced motion. The play page has its own look, Banner & Seal (`game-spec.md` section 12): stitched leather, parchment, ink and wax seals, with tokens of their own. On that page the surface and text tokens turn from slate to leather, so everything drawn from them follows, and its panels, side-panel rows, tooltips, damage meter and fight banner get leather edges and stitching; the fight viewer keeps the slate look.
-- **Icons:** inline SVGs from icons.ts, all drawn on one 24-unit grid with a rounded stroke in `currentColor`. Each trait and item component has its own icon, keyed by its id, so a new one fails the typecheck until it has an icon. Icons next to text are hidden from screen readers; buttons with only an icon have a label.
+- **Icons:** inline SVGs from icons.ts, all drawn on one 24-unit grid with a rounded stroke in `currentColor`. Each trait has its own icon, keyed by its id, so a new one fails the typecheck until it has an icon. Icons next to text are hidden from screen readers; buttons with only an icon have a label.
+- **Item art:** every item's chip is a small painted picture of the item rather than an icon (item-art.ts, ui/chips.ts): the object itself, shaded in its own materials (steel, gold, wood, glass, cloth) with an ink outline, glints and glows, on a well tinted by the item's colours, with grain and a vignette, in a frame for its kind. A part has a bronze frame with rivets; a finished item a gold one with curled corners and gems in its colour; a Ring of Power a round gold one with four gems. The One Ring has a round dark iron frame in its tier's colour, and the Ring burns hotter at each tier: embers at Burden, flames at Grip, and smoke and taller flames at Betrayal; its chip carries its Corruption in the corner. Each picture is drawn on a 64-unit grid by the scripts in `art/items/`, which hold three designs per item; `art/items/picks.json` chooses one, and `pnpm items` writes the chosen designs to `public/items/<id>.svg` and `public/items/one-ring-<tier>.svg`, committed like the portraits (`pnpm items --gallery` also writes `art/items/gallery.html`, every design side by side). Chips come in three sizes: 18 px on unit labels, other players' bars and tooltips' recipes, 22 px in the Council, and 32 px in the item tray, at the head of a tooltip and while dragging. The chip names its item for screen readers; the picture itself is decorative.
 - **Tooltips:** hovering or focusing anything with a tip shows one card for it (ui/tooltip.ts), laid out from tips.ts: an icon, name and subtitle, a recipe, stats, effects, a trait's breakpoints, a key, and a hint or the reason a button can't be used. It stays on screen, follows chips on moving units, never takes the mouse, and hides while something is dragged. Buttons that can't be used now are marked `aria-disabled` rather than disabled, so they can still say why.
 
 ---
