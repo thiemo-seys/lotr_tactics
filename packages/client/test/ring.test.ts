@@ -3,7 +3,7 @@ import { ringInfo, ringText, ringTier } from '../src/ring.js';
 
 describe('ring text', () => {
   it('names the tier of each Corruption', () => {
-    expect([0, 3, 4, 6, 7, 8, 9].map(ringTier)).toEqual(['Gift', 'Gift', 'Burden', 'Burden', 'Grip', 'Grip', 'Betrayal']);
+    expect([0, 3, 4, 6, 7, 8, 9].map(ringTier)).toEqual(['Boon', 'Boon', 'Burden', 'Burden', 'Grip', 'Grip', 'Betrayal']);
   });
 
   it('lists the drawbacks that apply', () => {

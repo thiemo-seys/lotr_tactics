@@ -521,7 +521,7 @@ One per lobby. Its power grows the longer it is worn, but so do its drawbacks. A
 
   | Corruption | Tier | Damage | Drawback added |
   |---|---|---|---|
-  | 1–3 | Gift | +10% to +30% | None |
+  | 1–3 | Boon | +10% to +30% | None |
   | 4–6 | Burden | +40% to +60% | Stretched thin: −5% max Health per point above 3 |
   | 7–8 | Grip | +70% to +80% | "Mine!": allies' heals and shields don't reach the bearer |
   | 9 | Betrayal | +90% | Attacks its nearest ally, and can't cast, for the first 3 seconds of each fight |

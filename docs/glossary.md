@@ -232,7 +232,7 @@ The words `design.md` and the specs use, each with one meaning. The words still 
 | Holder (item) | The unit that holds an item. See section 11. | `sim-spec.md` 12.4 |
 | Player's items | The items a player holds that aren't on a unit. | `game-spec.md` 5, 7.7 |
 | Give (an item) | To move an item from the player's items onto a unit. Only selling the unit takes it off again. | `game-spec.md` 7.7 |
-| Gift | One of the Gifts of Lothlórien: a lasting bonus a player picks. See section 11. | `design.md` 9 |
+| Gift | One of the Gifts of Lothlórien: a lasting bonus a player picks. | `design.md` 9 |
 | Tier (Gift) | Silver, Gold or Mithril. See *tier* in section 11. | `design.md` 9 |
 | Offer | The 3 Gifts of a tier a player chooses between. | `game-spec.md` 9.10 |
 | Pick | To take one option: a Gift from an offer, or a unit from a Council. | `game-spec.md` 9.6, 9.10 |
@@ -242,7 +242,7 @@ The words `design.md` and the specs use, each with one meaning. The words still 
 | Bearer | The unit that wears the One Ring, or a Ring of Power. | `design.md` 9; `sim-spec.md` 12.6, 12.7 |
 | Ring state | Where the One Ring is: waiting for a Council, offered in one, held by a player, or destroyed. | `game-spec.md` 9.11 |
 | Corruption | The One Ring's counter, rising each round it has a bearer. It belongs to the Ring, not the unit. | `design.md` 9 |
-| Corruption tier | One of the bands of Corruption: Gift, Burden, Grip, Betrayal and Consumed. See *Gift* in section 11. | `design.md` 9 |
+| Corruption tier | One of the bands of Corruption: Boon, Burden, Grip, Betrayal and Consumed. | `design.md` 9 |
 | Drawback level | The Corruption the drawbacks act at: the Corruption, or 2 lower with Sam next to the bearer. See *level* in section 11. | `sim-spec.md` 12.6 |
 | Equip itself | A held Ring with no bearer going to a random unit on the holder's board before the fights. | `game-spec.md` 9.11 |
 | The Eye's Nazgûl | The summon the other team gets in a fight against the One Ring's bearer. | `sim-spec.md` 12.6 |
@@ -288,7 +288,6 @@ These are the clashes found while drafting. Each needs a decision: keep both mea
 | **reduction** | A damage reduction (the Witch-king's passive, the Mithril Shirt); a status lowering Armor or Magic Resist. | Always qualify: **damage reduction**, **Armor reduction**, **Magic Resist reduction**. |
 | **in reach / out of reach** | `design.md` 7 says a blow misses if the target has "moved out of reach", meaning out of the attacker's Range; `sim-spec.md` 6.2 says "enemies in reach" for the radius of a continuous effect. | **In range** for Range, **within *n* hexes** for radii. Drop "reach" for distances, keeping it as the verb for an ability step arriving at a unit. |
 | **holder** | The unit holding an item (`sim-spec.md` 12.4); the player holding the One Ring (`game-spec.md` 9.11). | Keep both, since the subject is always clear, but never call a unit the Ring's holder: that's its **bearer**. |
-| **Gift** | One of the Gifts of Lothlórien; the One Ring's first Corruption tier, also named Gift (`design.md` 9). | Rename the Corruption tier, for example to **Boon**. That changes content, so it goes through `game-designer`. |
 | **tier** | Cost tier (`design.md` 5, 8); Gift tier (Silver, Gold, Mithril); Corruption tier. | Always qualify: **cost tier**, **Gift tier**, **Corruption tier**. |
 | **ready** | A unit acting again after a cast or dash (`readyTick`); an attack whose cooldown is up; a person's Ready vote. | **Ready** for the unit, **cooldown is up** for attacks, **Ready vote**, capitalised, for people. |
 | **host** | The lobby host (a person); the `Host` interface (time and randomness). | Say **lobby host** for the person, and always write the interface as `` `Host` ``. |
