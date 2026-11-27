@@ -30,9 +30,9 @@ const CREATURE_IDS: readonly CreatureId[] = [...(Object.keys(MONSTERS) as Monste
 type FighterId = UnitId | CreatureId;
 
 /**
- * The monsters and summons whose models have landed, which must stay there and rigged. Workflow 3 of
- * docs/animation-plan.md builds them run by run, and each is added here as it lands. Every monster or summon whose
- * .glb is in public/models is checked in full whether it is listed or not.
+ * The monsters and summons whose models must be there and rigged: all of them, since Workflow 3 of
+ * docs/animation-plan.md built them. Every monster or summon whose .glb is in public/models is checked in full
+ * whether it is listed or not.
  */
 const MONSTERS_MUST_BE_RIGGED: readonly CreatureId[] = ['goblin', 'goblin-archer', 'orc-grunt', 'eye-nazgul', 'warg', 'cave-troll', 'balrog', 'mumak', 'watcher'];
 
@@ -640,7 +640,7 @@ describe.each(UNIT_IDS)('%s’s gear model, rigged', (id) => {
   });
 });
 
-/** The monsters and summons whose models are in public/models now: none, or more as Workflow 3 lands them. */
+/** The monsters and summons whose models are in public/models: all of them since Workflow 3. */
 const CREATURES_WITH_MODELS = CREATURE_IDS.filter((id) => existsSync(modelFile(id)));
 
 describe('monster and summon models', () => {
