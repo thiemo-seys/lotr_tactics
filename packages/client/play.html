@@ -110,11 +110,12 @@
         </span>
       </span>
       <span id="stat-gold" class="hud-tile stat gold"><span data-icon="gold"></span><span class="value"></span><span class="sale" hidden><span class="plus"></span><span class="arrow">→</span><span class="total"></span></span></span>
-      <div id="timer" class="hud-tile timer" role="timer" hidden>
+      <button id="timer" data-sound="own" class="hud-tile timer" type="button" hidden>
         <span data-icon="timer"></span>
         <span class="seconds"></span>
+        <span class="ready-part"><span data-icon="ready"></span><span class="label">Ready</span><kbd>Space</kbd></span>
         <span class="drain" aria-hidden="true"><i></i></span>
-      </div>
+      </button>
     </div>
     <footer id="shop-bar" hidden>
       <div class="shop-actions">
@@ -128,7 +129,6 @@
           <span class="tray-label">Items</span>
           <div id="items"></div>
         </div>
-        <button id="ready" data-sound="own" class="btn btn-primary btn-lg ready-button"><span data-icon="ready"></span><span class="label">Ready</span><kbd>Space</kbd></button>
       </div>
       <div class="sell-offer" aria-hidden="true"><span data-icon="coin"></span><span class="sell-text"></span><span class="sep"></span><span class="sell-price"><span class="value"></span><span data-icon="coin"></span></span></div>
     </footer>

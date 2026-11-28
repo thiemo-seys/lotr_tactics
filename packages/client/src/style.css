@@ -1322,6 +1322,78 @@ kbd {
   background: linear-gradient(90deg, #ffb3a0, #fff0d8);
 }
 
+/*
+ * In planning the timer is the Ready button: after the seconds, a brass Ready with its key. Once the
+ * person is Ready it turns to green wax and says how many others are still planning. Out of planning
+ * it is only a timer.
+ */
+button.timer {
+  margin: 0;
+  cursor: default;
+  appearance: none;
+}
+
+.player-bar .timer .ready-part {
+  display: none;
+  gap: 6px;
+  align-items: center;
+  height: 24px;
+  padding-left: 12px;
+  margin-left: 6px;
+  font: 800 16px/1 var(--font-display);
+  color: var(--brass);
+  letter-spacing: 0.04em;
+  border-left: 1.5px dashed rgba(240, 200, 140, 0.35);
+}
+
+.player-bar .timer.planning .ready-part {
+  display: inline-flex;
+}
+
+.player-bar .timer .ready-part .icon {
+  width: 18px;
+  height: 18px;
+}
+
+.player-bar .timer .ready-part kbd {
+  font-size: 10.5px;
+}
+
+.player-bar .timer.planning:not([aria-disabled="true"]) {
+  cursor: pointer;
+  transition:
+    transform var(--fast) var(--ease),
+    box-shadow var(--fast) var(--ease);
+}
+
+.player-bar .timer.planning:not([aria-disabled="true"]):hover {
+  transform: translateY(-2px);
+  box-shadow: var(--hud-drop), 0 0 0 2px var(--gold-bright), 0 0 16px rgba(243, 210, 122, 0.35);
+}
+
+.player-bar .timer.planning:not([aria-disabled="true"]):hover .ready-part {
+  color: var(--gold-bright);
+}
+
+.player-bar .timer.is-ready {
+  color: #e3f7e6;
+  background: linear-gradient(180deg, #3f8a52, #1f5230);
+  animation: none;
+}
+
+.player-bar .timer.is-ready .ready-part {
+  color: #e3f7e6;
+  border-left-color: rgba(200, 240, 210, 0.4);
+}
+
+.player-bar .timer.is-ready .ready-part kbd {
+  display: none;
+}
+
+.player-bar .timer.is-ready .drain i {
+  background: linear-gradient(90deg, #9fd6ac, #e3f7e6);
+}
+
 @keyframes hud-urgent {
   0%,
   100% {
@@ -1602,6 +1674,10 @@ kbd {
   --size: 32px;
 }
 
+.chip.xl {
+  --size: 44px;
+}
+
 /* An item's art (item-art.ts): its frame, background and object are all in the picture. */
 .chip .chip-art {
   display: block;
@@ -1665,6 +1741,16 @@ kbd {
   height: 16px;
   font-size: 10.5px;
   line-height: 14px;
+}
+
+.chip.xl .corruption {
+  right: -4px;
+  bottom: -4px;
+  min-width: 19px;
+  height: 19px;
+  font-size: 12px;
+  line-height: 17px;
+  border-radius: 10px;
 }
 
 .chip.draggable {
@@ -4110,7 +4196,7 @@ body.play #traits {
   display: flex;
   flex-direction: column;
   gap: 8px;
-  width: 186px;
+  width: 314px;
   padding: 9px 10px;
   background: linear-gradient(180deg, #1c110a, #26170d);
   border-radius: 10px;
@@ -4125,7 +4211,7 @@ body.play #traits {
 }
 
 /*
- * Two rows of chips, then it scrolls. The padding, taken back by the margin, keeps a chip grown or
+ * Two rows of 44px chips, then it scrolls. The padding, taken back by the margin, keeps a chip grown or
  * raised by a hover or a combine inside the box, so it shows no scrollbar and its ring isn't cut off.
  */
 #items {
@@ -4133,7 +4219,7 @@ body.play #traits {
   flex-wrap: wrap;
   gap: 5px;
   align-content: flex-start;
-  max-height: 78px;
+  max-height: 101px;
   padding: 4px;
   margin: -4px;
   overflow-x: hidden;
@@ -4153,60 +4239,6 @@ body.play #traits {
 .tray-empty {
   font-size: 12px;
   color: var(--text-dim);
-}
-
-.ready-button {
-  flex-direction: column;
-  gap: 4px;
-  width: 116px;
-  height: auto;
-  padding: 8px;
-  color: var(--ink);
-  text-shadow: 0 1px 0 rgba(255, 245, 210, 0.5);
-  background: linear-gradient(180deg, #f6dc8e, #d4a648 50%, #a8782a);
-  border: 2px solid var(--leather-edge);
-  border-radius: 10px;
-  outline: 1.5px dashed rgba(90, 58, 30, 0.55);
-  outline-offset: -6px;
-  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.55), 0 3px 0 #140b05, 0 0 18px rgba(243, 210, 122, 0.25);
-}
-
-.ready-button:hover {
-  background: linear-gradient(180deg, #fde7a2, #e0b456 50%, #b5852f);
-  border-color: var(--leather-edge);
-}
-
-.ready-button kbd {
-  color: var(--ink);
-  background: rgba(255, 248, 225, 0.4);
-  border-color: rgba(70, 50, 10, 0.35);
-}
-
-.ready-button .icon {
-  width: 26px;
-  height: 26px;
-}
-
-.ready-button .label {
-  font: 800 18px/1 var(--font-display);
-  letter-spacing: 0.04em;
-}
-
-.ready-button.is-ready {
-  color: #e3f7e6;
-  text-shadow: 0 1px 0 rgba(0, 0, 0, 0.4);
-  background: linear-gradient(180deg, #3f8a52, #1f5230);
-  outline-color: rgba(200, 240, 210, 0.45);
-  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.25), 0 3px 0 #140b05;
-  opacity: 1;
-}
-
-.ready-button.is-ready kbd {
-  display: none;
-}
-
-.ready-button.is-ready .label {
-  font-size: 12.5px;
 }
 
 /* While a unit that can be sold is dragged, the bar's stitching turns to brass, its contents dim,
@@ -4354,7 +4386,7 @@ body.play #traits {
   gap: 6px;
   align-items: center;
   pointer-events: none;
-  margin: -16px 0 0 -16px;
+  margin: -22px 0 0 -22px;
 }
 
 .drag-ghost .chip {
@@ -4375,7 +4407,7 @@ body.play #traits {
 }
 
 .drag-ghost .ghost-caption {
-  margin-left: 32px;
+  margin-left: 44px;
 }
 
 .drag-ghost.refused .ghost-caption,
@@ -5195,11 +5227,7 @@ body.play #traits {
 /* Narrower windows: shorter side panels and smaller cards, so the board stays clear. */
 @media (max-width: 1400px) {
   .tray {
-    width: 156px;
-  }
-
-  .ready-button {
-    width: 104px;
+    width: 272px;
   }
 }
 
@@ -5236,11 +5264,7 @@ body.play #traits {
   }
 
   .tray {
-    width: 150px;
-  }
-
-  .ready-button {
-    width: 96px;
+    width: 256px;
   }
 
   .shop-button kbd {

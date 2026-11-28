@@ -11,7 +11,7 @@ import type { TraitTone } from '../traits.js';
 import { el, icon } from './dom.js';
 import { setTip } from './tooltip.js';
 
-export type ChipSize = 'sm' | 'md' | 'lg';
+export type ChipSize = 'sm' | 'md' | 'lg' | 'xl';
 
 /** A chip's picture: decorative, since the chip names what it shows. */
 function art(src: string): HTMLImageElement {

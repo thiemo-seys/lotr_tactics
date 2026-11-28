@@ -62,7 +62,7 @@ export class DragAndDrop {
   startItem(item: TrayItem, event: PointerEvent): void {
     if (!this.canDrag() || event.button !== 0 || this.unit !== null) return;
     event.preventDefault();
-    const chip = item === 'ring' ? ringChip(this.flow.state!.ring.corruption, 'lg', false) : itemChip(this.flow.me().items[item]!, 'lg', false);
+    const chip = item === 'ring' ? ringChip(this.flow.state!.ring.corruption, 'xl', false) : itemChip(this.flow.me().items[item]!, 'xl', false);
     const caption = el('span', 'ghost-caption');
     const ghost = el('div', 'drag-ghost', chip, caption);
     document.body.append(ghost);

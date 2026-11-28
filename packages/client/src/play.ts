@@ -149,7 +149,7 @@ element('reroll-gifts').addEventListener('click', () => flow.act({ type: 'reroll
 element('mount-doom').addEventListener('click', () => flow.act({ type: 'destroyRing' }));
 element('buy-xp').addEventListener('click', () => flow.act({ type: 'buyXp' }));
 element('lock').addEventListener('click', () => flow.act({ type: 'lock', locked: !flow.me().shopLocked }));
-element('ready').addEventListener('click', () => flow.ready());
+element('timer').addEventListener('click', () => flow.ready());
 speedButton.addEventListener('click', () => {
   if (flow.show.kind !== 'fight') return;
   flow.show.playback.speed = flow.show.playback.speed >= 4 ? 1 : flow.show.playback.speed * 2;

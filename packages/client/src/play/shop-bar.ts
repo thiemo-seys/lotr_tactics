@@ -1,5 +1,6 @@
 // The shop bar while planning and while the fights play (docs/game-spec.md section 12): Buy XP, Reroll and Lock, the shop's
-// unit cards with their portraits, the person's items and the One Ring to drag onto units, and Ready. While a unit that
+// unit cards with their portraits, and the person's items and the One Ring to drag onto units. Ready is on the timer
+// above the bar, which this draws too, since it changes with the same state. While a unit that
 // can be sold is dragged, the bar is framed in gold and offers the sale with its price; dropping the
 // unit on the bar sells it. Buying with the bench full says so over the bench.
 
@@ -26,13 +27,14 @@ export class ShopBar {
   private readonly buyXp = element('buy-xp');
   private readonly reroll = element('reroll');
   private readonly lock = element('lock');
-  private readonly ready = element('ready');
+  /** The timer above the bar, which is the Ready button in planning (the HUD draws its time). */
+  private readonly ready = element('timer');
   private readonly sellText = this.bar.querySelector('.sell-text') as HTMLElement;
   private readonly sellPrice = this.bar.querySelector('.sell-price .value') as HTMLElement;
   private readonly xpCost = this.buyXp.querySelector('.cost') as HTMLElement;
   private readonly rerollCost = this.reroll.querySelector('.cost') as HTMLElement;
   private readonly lockLabel = this.lock.querySelector('.label') as HTMLElement;
-  private readonly readyLabel = this.ready.querySelector('.label') as HTMLElement;
+  private readonly readyLabel = this.ready.querySelector('.ready-part .label') as HTMLElement;
   /** The state, lobby and step last drawn, and whether the person's bench was on screen: the bar changes only when one of them does. */
   private drawn: { state: unknown; lobby: unknown; step: string; ownBench: boolean } = { state: null, lobby: null, step: '', ownBench: true };
 
@@ -59,9 +61,9 @@ export class ShopBar {
         : actionTip('Lock the shop', 'Keep these units in the shop for the next round.', null),
     );
     setTip(this.ready, () => {
-      if (flow.show.kind !== 'planning') return actionTip('Ready', 'End your planning, once it starts.', 'The fights are still on.', 'Space');
+      if (flow.show.kind !== 'planning') return actionTip('Timer', 'The time left in this step. In planning, click it or press Space to be Ready.', null);
       const isReady = flow.state!.ready.includes(flow.you);
-      return actionTip('Ready', isReady ? 'You are Ready. Planning ends once everyone is.' : 'End your planning now.', null, 'Space');
+      return actionTip('Ready', isReady ? 'You are Ready. Planning ends once everyone is.' : 'End your planning now, before the timer runs out.', null, 'Space');
     });
   }
 
@@ -104,9 +106,9 @@ export class ShopBar {
     const ring = flow.planningRing();
     rebuild(this.items, JSON.stringify([p.items, ring]), () => {
       const chips = [
-        ...(ring === null ? [] : [this.trayChip(ringChip(ring.corruption, 'lg', `Drag onto a unit to ${ring.bearer === null ? 'give it' : 'move'} the Ring.`), 'ring')]),
+        ...(ring === null ? [] : [this.trayChip(ringChip(ring.corruption, 'xl', `Drag onto a unit to ${ring.bearer === null ? 'give it' : 'move'} the Ring.`), 'ring')]),
         ...p.items.map((id, index) =>
-          this.trayChip(itemChip(id, 'lg', isComponent(id) ? 'Drag onto a unit to give it this item, or onto another component to combine them.' : 'Drag onto a unit to give it this item.'), index),
+          this.trayChip(itemChip(id, 'xl', isComponent(id) ? 'Drag onto a unit to give it this item, or onto another component to combine them.' : 'Drag onto a unit to give it this item.'), index),
         ),
       ];
       return chips.length > 0 ? chips : [el('span', 'tray-empty', 'None yet')];
@@ -116,6 +118,7 @@ export class ShopBar {
     const planning = flow.show.kind === 'planning';
     const isReady = planning && flow.state!.ready.includes(flow.you);
     setEnabled(this.ready, planning && !isReady);
+    toggle(this.ready, 'planning', planning);
     toggle(this.ready, 'is-ready', isReady);
     const others = flow.planners().filter((seat) => seat !== flow.you && !flow.state!.ready.includes(seat)).length;
     setText(this.readyLabel, isReady ? (others > 0 ? `Waiting for ${others}` : 'Ready') : 'Ready');
