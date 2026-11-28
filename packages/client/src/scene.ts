@@ -2,8 +2,8 @@
 // effects are worked out in effects.ts and drawn by fx.ts), the
 // marker that shows where a dragged unit or item would go while planning, and which unit is under
 // the pointer, for its hover card and for dragging. Units are drawn as the model for their star
-// level once loaded (models.ts), playing the clips animation.ts picks if it is rigged,
-// and as pawns until then.
+// level once loaded (models.ts), monsters and summons as their 1★ models, playing the clips
+// animation.ts picks if it is rigged, and as pawns until then.
 
 import {
   BOARD_HEXES,
@@ -23,7 +23,7 @@ import * as THREE from 'three';
 import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
 import { CSS2DObject, CSS2DRenderer } from 'three/addons/renderers/CSS2DRenderer.js';
 import { loadArena } from './arena.js';
-import { CLIPS, fightFacing, fightPoseInto, newPose, planningPoseInto, sinkDelay, type ClipLengths, type ClipName, type PoseBuffer } from './animation.js';
+import { CLIPS, fightFacing, fightPoseInto, newPose, planningPoseInto, sinkDelay, type ClipLengths, type ClipSet, type PoseBuffer } from './animation.js';
 import { benchToWorld, hexToWorld, type Point } from './layout.js';
 import { ModelSwaps, Redraws } from './drawing.js';
 import type { PlanningRing } from './flow.js';
@@ -35,10 +35,10 @@ import { EFFECT_TICKS, FLOATING_TEXT, type FloatingText, type MutablePoint, type
 import { ATMOSPHERE, BENCH_NOTE_HEIGHT, CAMERA, CAMERA_LIMITS, EFFECTS, LIGHTS, PAWN_COLOUR, type Framing } from './look.js';
 import { Post } from './post.js';
 import { stoneTiles } from './tiles.js';
-import { LABEL, LARGE_PAWN_SCALE } from './stars.js';
+import { LABEL, LARGE_PAWN_SCALE, MINOR_PAWN_SCALE } from './stars.js';
 import { FloatView } from './ui/float.js';
 import { UnitLabel } from './ui/labels.js';
-import { displayName, isLarge } from './units.js';
+import { displayName, isLarge, modelStar } from './units.js';
 
 /**
  * Each half of the board in two shades of stone, alternating by column: the near side's half as A,
@@ -96,9 +96,9 @@ interface UnitView {
   /** The team whose half it faces from. */
   readonly team: Team;
   readonly look: Team;
-  /** Summons, which have no models. */
+  /** Summons, which have no star level. */
   readonly summon: boolean;
-  /** Summons without a name, which are drawn smaller. */
+  /** Summons without a name, which have no name plate and are smaller pawns. */
   readonly minor: boolean;
   /** The unit's id: its index in the fight, or its owned unit's id while planning. */
   readonly key: number;
@@ -122,8 +122,8 @@ interface TextView extends EffectView {
 }
 
 /**
- * What draws a unit: its model, or a pawn for monsters, summons and units whose model
- * isn't there.
+ * What draws a unit, monster or summon: its model, or a pawn while its model is missing or
+ * loading.
  */
 interface Body {
   /** What the unit's group holds: the model or the pawn. */
@@ -937,7 +937,7 @@ export class FightScene {
    * would start again, after its death clip.
    */
   private readonly swapInModel = (view: UnitView): boolean => {
-    if (view.body.model || view.summon) return false;
+    if (view.body.model) return false;
     if (this.playback !== null && this.playback.history(view.key).death !== null) return false;
     if (!this.modelReady(view.unitId, view.star)) return false;
     const copy = copyModel(view.unitId, view.star);
@@ -945,7 +945,7 @@ export class FightScene {
     const facing = facingOf(view.body);
     view.squash.remove(view.body.object);
     this.retired.push(view.body);
-    view.body = modelBody(copy, view.unitId, view.star);
+    view.body = modelBody(copy, view.unitId, modelStar(view.unitId, view.star));
     view.body.turn.rotation.y = facing - view.body.aim;
     view.squash.add(view.body.object);
     view.label.position.y = view.body.labelHeight;
@@ -955,20 +955,20 @@ export class FightScene {
   /**
    * A body for a unit at a star level: the model of one just taken off the scene if there is one,
    * from either side, since units look the same on both, else a copy of its model, or a pawn until that has loaded and its shader is ready, which
-   * `swapInModels` then swaps for the model. Summons are always pawns.
+   * `swapInModels` then swaps for the model. Monsters and summons are drawn with their 1★ model, at
+   * the size it is built, as Large units are; only their pawns are scaled.
    */
-  private bodyFor(unitId: UnitState['unitId'], star: Star, summon: boolean, minor: boolean): Body {
-    if (!summon) {
-      const i = this.retired.findIndex((body) => body.model && body.unitId === unitId && body.star === star);
-      if (i >= 0) {
-        const body = this.retired.splice(i, 1)[0]!;
-        body.reset();
-        return body;
-      }
-      const copy = this.modelReady(unitId, star) ? copyModel(unitId, star) : null;
-      if (copy !== null) return modelBody(copy, unitId, star);
+  private bodyFor(unitId: UnitState['unitId'], given: Star, minor: boolean): Body {
+    const star = modelStar(unitId, given);
+    const i = this.retired.findIndex((body) => body.model && body.unitId === unitId && body.star === star);
+    if (i >= 0) {
+      const body = this.retired.splice(i, 1)[0]!;
+      body.reset();
+      return body;
     }
-    return pawnBody(isLarge(unitId) ? LARGE_PAWN_SCALE : minor ? 0.75 : 1);
+    const copy = this.modelReady(unitId, star) ? copyModel(unitId, star) : null;
+    if (copy !== null) return modelBody(copy, unitId, star);
+    return pawnBody(isLarge(unitId) ? LARGE_PAWN_SCALE : minor ? MINOR_PAWN_SCALE : 1);
   }
 
   private createUnit(unit: UnitState): UnitView {
@@ -981,7 +981,7 @@ export class FightScene {
   /**
    * A unit's model for its star level, or a pawn until it has loaded, with its label
    * above it, facing the other team, its health bar coloured as the near (`look` A) or far team's. Summons have no
-   * model and are smaller pawns, unnamed apart from the Eye's Nazgûl. `bars` adds health, mana and
+   * star badge, and those other than the Eye's Nazgûl no name plate, and are smaller pawns until their models load. `bars` adds health, mana and
    * statuses for fights.
    */
   private createView(
@@ -997,7 +997,7 @@ export class FightScene {
     mana = false,
   ): UnitView {
     const minor = summon && unitId !== 'eye-nazgul';
-    const body = this.bodyFor(unitId, star, summon, minor);
+    const body = this.bodyFor(unitId, star, minor);
 
     const overlay = new UnitLabel({
       name: minor ? null : displayName(unitId),
@@ -1191,19 +1191,21 @@ function modelBody(copy: ModelCopy, unitId: UnitState['unitId'], star: Star): Bo
  */
 class Animator {
   private readonly mixer: THREE.AnimationMixer;
-  /** In the order of CLIPS. */
-  private readonly actions: readonly THREE.AnimationAction[];
+  /** In the order of CLIPS; null for a clip the model hasn't, `cast` for a fighter with no ability. */
+  private readonly actions: readonly (THREE.AnimationAction | null)[];
   /** The pose last applied, so a paused fight doesn't pose its units again. */
   private readonly shown = newPose();
 
   constructor(
     private readonly root: THREE.Object3D,
-    clips: Readonly<Record<ClipName, THREE.AnimationClip>>,
+    clips: ClipSet<THREE.AnimationClip>,
     readonly lengths: ClipLengths,
   ) {
     this.mixer = new THREE.AnimationMixer(root);
     this.actions = CLIPS.map((name) => {
-      const action = this.mixer.clipAction(clips[name]);
+      const clip = clips[name];
+      if (clip === undefined) return null;
+      const action = this.mixer.clipAction(clip);
       action.weight = 0;
       action.play();
       return action;
@@ -1234,7 +1236,9 @@ class Animator {
     shown.weight = pose.weight;
     for (let i = 0; i < CLIPS.length; i++) {
       const clip = CLIPS[i];
-      const action = this.actions[i]!;
+      const action = this.actions[i];
+      // animation.ts never plays a clip the model hasn't (ClipLengths).
+      if (action === null || action === undefined) continue;
       if (clip === pose.clip) {
         action.time = pose.time;
         action.weight = pose.weight;

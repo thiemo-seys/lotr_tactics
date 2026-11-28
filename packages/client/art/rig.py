@@ -24,6 +24,18 @@ feet are placed, and its hands' paths in the model's frame drawn, on the seat's 
 with the mount; and the mount's legs are posed by IK on the ground as the rider's legs are on foot.
 mounts.py builds the horse and units/eomer.py, the reference rider, rides it.
 
+Beasts. A beast with no rider, the warg and the Mûmak, is rigged as a mount alone: its script binds
+its parts to mount_... bones and passes its Mount to `Rig(kind='beast', mount=...)`, or 'large-beast'
+for a Large one. It has `root` and the mount's bones, hanging from it as they would under a rider, and
+none of the 16 bones of a figure, so the mounted clip styles drive it without their rider (clips.py,
+Beasts). beasts.py builds the warg and units/warg.py rigs it, and units/mumak.py builds and rigs the
+Mûmak.
+
+Creatures of their own shape. The Watcher in the Water is neither a figure nor a beast: its script binds
+its parts to bones of its own (`body`, and its tentacles' chains) and passes them to
+`Rig(kind='large-creature', bones=...)`. It has `root` and those bones alone, and its clips are its own
+functions (units/watcher.py).
+
 Poses. A clip gives, for each frame, a few channels (clips.py lists them); `Rig.solve()` turns them
 into a motion for each bone, with two-bone IK for arms and legs that have a target. Turns are in
 degrees about the armature's own axes, in the rest pose, relative to the parent bone:
@@ -66,7 +78,15 @@ BONES = {
     'foot_r': ('shin_r', 'ankle_r', 'toe_r'),
 }
 BONE_NAME = re.compile(r'^[a-z][a-z0-9_]*$')
-MAX_BONES = {'foot': 24, 'large': 32, 'mounted': 40}  # placeholders
+MAX_BONES = {'foot': 24, 'large': 32, 'mounted': 40, 'beast': 24, 'large-beast': 32,
+             'large-creature': 32}  # placeholders
+# A beast with no rider, the warg and the Mûmak, has a mount's bones and none of the 16 above
+# (docs/viewer-spec.md section 4, Bones): `root`, and its mount_... bones hanging from it as they would
+# under a rider. A Large beast has a Large model's budgets.
+BEASTS = ('beast', 'large-beast')
+# A creature of its own shape, the Watcher, has neither a figure's bones nor a mount's: `root` and the
+# script's own bones alone, with clips of its own. It has a Large model's budgets.
+CREATURES = ('large-creature',)
 
 # The clips, in order, with their lengths in seconds and whether they loop (placeholders).
 CLIPS = ('idle', 'move', 'attack', 'cast', 'stun', 'death', 'victory')
@@ -88,7 +108,8 @@ LOOPS = ('idle', 'move', 'stun')
 # viewer's, so the clips keep in step with them.
 STRIKE = 7  # the frame a melee attack's blow lands on, as the sim has it today (timing() reads it)
 SHOT = 3  # the frame a ranged attack's shot leaves on
-MAX_BYTES = {'foot': 200_000, 'large': 300_000, 'mounted': 300_000}  # a rigged model's .glb, by kind (placeholders)
+MAX_BYTES = {'foot': 200_000, 'large': 300_000, 'mounted': 300_000, 'beast': 200_000,
+             'large-beast': 300_000, 'large-creature': 300_000}  # a rigged model's .glb, by kind (placeholders)
 # A rigged gear model (<id>-2, README.md, Gear models) has a triangle budget 12.5% above its 1★ model's, and
 # as much more room: 225,000 bytes on foot and 337,500 for a Large or mounted model (placeholders).
 GEAR_BYTES = {kind: limit * 9 // 8 for kind, limit in MAX_BYTES.items()}
@@ -138,14 +159,24 @@ DATA = os.path.join(CLIENT, '..', 'sim', 'src', 'data')
 
 
 class Timing:
-    """When a unit's attack strikes and its cast is at its height, in frames, from the sim's data and the
-    viewer's (timing()): `melee` (range 1) or not, `strike` (the frame its blow lands or its shot leaves),
-    `release` (the frame its ability's effects leave or land, or its dash or charge sets off: its wind-up),
-    `hits` (the frames each of its ability's hits is struck or loosed on, the first at the release),
-    and `dash`, whether its ability dashes or charges, so `move` carries it on from the release."""
+    """When a fighter's attack strikes and its cast is at its height, in frames, from the sim's data and
+    the viewer's (timing()): `melee` (range 1) or not, `strike` (the frame its blow lands or its shot
+    leaves), `release` (the frame its ability's effects leave or land, or its dash or charge sets off: its
+    wind-up), `hits` (the frames each of its ability's hits is struck or loosed on, the first at the
+    release), and `dash`, whether its ability dashes or charges, so `move` carries it on from the release.
+    A fighter with no ability (`ability` False: some monsters and the summons) never casts, so it has no
+    release or hits, and its model no `cast` (wanted())."""
 
     def __init__(self, unit, melee, strike, release, hits, dash):
         self.unit, self.melee, self.strike, self.release, self.hits, self.dash = unit, melee, strike, release, hits, dash
+
+    @property
+    def ability(self) -> bool:
+        return self.release is not None
+
+    def wanted(self) -> tuple:
+        """The clips its model has, in order: all of CLIPS, or without `cast` for a fighter with no ability."""
+        return CLIPS if self.ability else tuple(c for c in CLIPS if c != 'cast')
 
 
 def ticks(seconds: float) -> int:
@@ -166,12 +197,16 @@ def _number(text: str, name: str) -> float:
 
 
 _TIMINGS = {}
+# Where each summon's stats are, in the sim's data: the file and the name of their block, for its range.
+SUMMON_STATS = {'orc-grunt': ('templates.ts', 'ORC_GRUNT_STATS'), 'eye-nazgul': ('ring.ts', 'eye')}
 
 
 def timing(unit: str) -> Timing:
-    """A unit's Timing, read from packages/sim/src/data (units.ts for each unit's classes, wind-up, hits
-    and dash; templates.ts for the range each class's template gives; rules.ts for the ticks a second, the
-    melee blow's delay and the gap between hits) and the viewer's playback.ts (SHOT_DELAY_TICKS)."""
+    """A unit's, monster's or summon's Timing, read from packages/sim/src/data (units.ts for each unit's
+    classes, wind-up, hits and dash; templates.ts for the range each class's template gives; monsters.ts
+    for each monster's range, and its ability's wind-up, hits and dash if it has one; SUMMONS in units.ts
+    for the summons, which have none, with their range from SUMMON_STATS; rules.ts for the ticks a second,
+    the melee blow's delay and the gap between hits) and the viewer's playback.ts (SHOT_DELAY_TICKS)."""
     if not _TIMINGS:
         rules = _read(DATA, 'rules.ts')
         if _number(rules, 'TICKS_PER_SECOND') != FPS:
@@ -199,8 +234,35 @@ def timing(unit: str) -> Timing:
             melee = int(ranges[template[first]]) == 1
             _TIMINGS[found.group(1)] = Timing(found.group(1), melee, melee_hit if melee else shot, release,
                                              [release + i * gap for i in range(hits)], 'DASH_' in chunk)
+        # The PvE monsters (monsters.ts): melee or ranged by their own stats' range, and an ability if
+        # they have one, which may dash.
+        monsters = _read(DATA, 'monsters.ts').split('export const MONSTERS')[1]
+        for chunk in re.split(r'\n  [\w\']+[\w\'-]*: \{\n', monsters)[1:]:
+            found = re.search(r"\bid: '([\w-]+)'", chunk)
+            reach = re.search(r'\brange: (\d+)', chunk)
+            if not (found and reach):
+                continue
+            melee = int(reach.group(1)) == 1
+            windup = re.search(r'\bwindupSeconds: ([0-9.]+)', chunk)
+            if windup is None:
+                _TIMINGS[found.group(1)] = Timing(found.group(1), melee, melee_hit if melee else shot, None, [], False)
+                continue
+            release = ticks(float(windup.group(1)))
+            hits = max([int(h) for h in re.findall(r'\bhits: (\d+)', chunk)] or [1])
+            dash = 'dashAdjacentTo' in chunk or 'dashThroughLine' in chunk
+            _TIMINGS[found.group(1)] = Timing(found.group(1), melee, melee_hit if melee else shot, release,
+                                             [release + i * gap for i in range(hits)], dash)
+        # The summons (units.ts, SUMMONS), which have no ability, each with the stats it is made with.
+        summons = _read(DATA, 'units.ts').split('export const SUMMONS')[1]
+        for summon in re.findall(r"\bid: '([\w-]+)'", summons):
+            if summon not in SUMMON_STATS:
+                raise RuntimeError(f'the summon "{summon}" has no stats the rig kit knows of (rig.SUMMON_STATS)')
+            path, name = SUMMON_STATS[summon]
+            block = re.search(rf'\b{name}\s*[:=][^{{]*\{{([^}}]*)\}}', _read(DATA, path))
+            melee = int(_number(block.group(1), 'range')) == 1
+            _TIMINGS[summon] = Timing(summon, melee, melee_hit if melee else shot, None, [], False)
     if unit not in _TIMINGS:
-        raise RuntimeError(f'"{unit}" is no unit of the sim\'s, so its clips have no timing')
+        raise RuntimeError(f'"{unit}" is no unit, monster or summon of the sim\'s, so its clips have no timing')
     return _TIMINGS[unit]
 
 
@@ -304,10 +366,13 @@ class Mount:
     that the mount stands on its three bones from the body down, (upper, lower, foot), which clips
     pose by IK on the ground as they pose a rider's legs (clips.py), and `bends` the way each leg's
     middle joint points as it bends: forward for a horse's knee, back for its hock. `raised` names a
-    leg the mount holds up as it stands, ready to charge, or None."""
+    leg the mount holds up as it stands, ready to charge, or None. `free` names bones of the mount's
+    that its script moves itself, such as the Mûmak's trunk, which clips.mount_grounded() doesn't hold
+    the body up by (the script keeps them out of the ground)."""
 
-    def __init__(self, bones, legs, bends, seat: str = 'mount_body', raised=None):
+    def __init__(self, bones, legs, bends, seat: str = 'mount_body', raised=None, free=()):
         self.bones = {name: tuple(spec) for name, spec in bones.items()}
+        self.free = tuple(free)
         self.legs = {leg: tuple(chain) for leg, chain in legs.items()}
         self.bends = {leg: Vector(bend).normalized() for leg, bend in bends.items()}
         self.seat = seat
@@ -324,6 +389,9 @@ class Mount:
                 raise ValueError(f'leg "{leg}" needs the way its middle joint bends')
         if raised is not None and raised not in self.legs:
             raise ValueError(f'the raised leg "{raised}" is not one of the mount\'s legs')
+        for name in self.free:
+            if name not in self.bones:
+                raise ValueError(f'the free bone "{name}" is not one of the mount\'s bones')
 
 
 class Clip:
@@ -354,19 +422,32 @@ class Clip:
 
 class Rig:
     """A model's skeleton and clips. `clips` gives each of CLIPS a style from clips.py, as
-    `(name, {options})` or a name alone, or a function `rig -> Clip` of the script's own. `bones`
+    `(name, {options})` or a name alone, or a function `rig -> Clip` of the script's own: all seven,
+    or the six without `cast` for a monster or summon with no ability (Timing.wanted()). `bones`
     adds the script's own bones, `{name: (parent, head joint, tail joint)}`, such as a cape's.
-    `kind` sets the bone budget and the size limit: 'foot', 'large' or 'mounted'. A rider passes
-    its `mount` (Mount), whose bones join the rig and whose seat its hips hang from. A 2★ gear model
-    finishes with its 1★ model's rig, `geared()`, which raises the size limit to GEAR_BYTES.
+    `kind` sets the bone budget and the size limit: 'foot', 'large' or 'mounted', or 'beast' or
+    'large-beast' for a beast with no rider, or 'large-creature' for a creature of its own shape. A
+    rider passes its `mount` (Mount), whose bones join the rig and whose seat its hips hang from. A beast
+    passes its own body as `mount` too, and has its bones and `root` alone, none of a figure's (`beast`).
+    A creature has no mount, and `root` and its own `bones` alone (`figure` is false for both). A 2★
+    gear model finishes with its 1★ model's rig,
+    `geared()`, which raises the size limit to GEAR_BYTES.
 
     finish() reads the joints, after which the rig's measurements (`joint()`, `held()`, `rest`,
     `height`) are there for the clip styles."""
 
     def __init__(self, clips, bones=None, kind: str = 'foot', mount=None):
+        if kind not in MAX_BONES:
+            raise ValueError(f'a rig\'s kind is one of {", ".join(MAX_BONES)}, not "{kind}"')
+        self.beast = kind in BEASTS  # a beast with no rider: its mount's bones and root alone
+        self.figure = kind not in BEASTS + CREATURES  # the 16 bones, on foot, Large or mounted
+        if self.beast and mount is None:
+            raise ValueError('a beast is rigged as a mount: pass its bones as `mount`')
+        if kind in CREATURES and mount is not None:
+            raise ValueError('a creature of its own shape has no mount: pass its bones as `bones`')
         self.specs = dict(clips)
-        self.bones = dict(BONES)
-        self.limbs = dict(LIMBS)  # the limbs IK can pose: an arm or leg, or a mount's leg
+        self.bones = dict(BONES) if self.figure else {'root': BONES['root']}
+        self.limbs = dict(LIMBS) if self.figure else {}  # the limbs IK can pose: an arm or leg, or a mount's leg
         self.mount = mount
         self.seat = 'root'  # the bone the hips hang from: the root, or a rider's mount
         self._bends = {}  # the way each of a mount's legs bends, by limb
@@ -376,8 +457,9 @@ class Rig:
                 if name in BONES:
                     raise ValueError(f'"{name}" is one of the bones every model has')
                 self.bones[name] = spec
-            self.seat = mount.seat
-            self.bones['hips'] = (mount.seat,) + BONES['hips'][1:]
+            if not self.beast:
+                self.seat = mount.seat
+                self.bones['hips'] = (mount.seat,) + BONES['hips'][1:]
             for leg, chain in mount.legs.items():
                 limb = f'mount_{leg}'
                 self.limbs[limb] = chain
@@ -492,11 +574,11 @@ class Rig:
     @property
     def rest(self) -> dict:
         """Every channel's value in the rest pose (clips.py lists the channels)."""
-        r = {'hips_at': V(0, 0, 0)}
+        r = {'hips_at': V(0, 0, 0)} if self.figure else {}
         for bone in self.bones:
             if bone != 'root':
                 r[bone] = V(0, 0, 0)
-        for s in ('l', 'r'):
+        for s in ('l', 'r') if self.figure else ():
             r[f'hand_{s}_at'] = self.joint(f'wrist_{s}')
             r[f'hand_{s}_aim'] = Quaternion()
             r[f'hand_{s}_world'] = 0.0
@@ -575,6 +657,9 @@ class Rig:
         motions['root'] = Motion(turn_of(ch.get('root', (0, 0, 0))), origin.copy(), origin)
         if self.mount is not None:  # the mount first, as the rider's hips hang from it
             self._own(motions, ch, fk, self.mount.bones)
+        if not self.figure:  # a beast is its mount's bones alone, with any of its own; a creature its own
+            self._own(motions, ch, fk, self.bones)
+            return motions
         seat = motions[self.seat]  # the root, unless the model rides
         seated = self.seat != 'root'
         pelvis = j['pelvis']
@@ -737,7 +822,7 @@ class Rig:
         for name, spec in self.specs.items():
             self.clips[name] = self._clip(name, spec)
         self._check_clips()
-        for name in CLIPS:
+        for name in self.timing.wanted():
             self._keyframe(name, self.clips[name])
         self._check_frames(model)
         marks = ', '.join(
@@ -753,7 +838,7 @@ class Rig:
               f'over every frame, radius {self.radius:.3f} and base {base:+.4f}; between frames, '
               f'radius {self.radius_between:.3f} and base {base_between:+.4f}; '
               + ', '.join(f'{name} reaches {self.reaches[name][0]:.3f} (frame {self.reaches[name][1]:g})'
-                          for name in ACTIONS)
+                          for name in ACTIONS if name in self.reaches)
               + (f'; its shot leaves from {self.muzzle()}' if self.clips['attack'].muzzle is not None else ''))
 
     def _measure(self, model) -> None:
@@ -823,8 +908,11 @@ class Rig:
         return library.made(self, name, spec)  # a style's attack and cast retimed to the unit's Timing
 
     def _check_clips(self) -> None:
-        if sorted(self.clips) != sorted(CLIPS):
-            raise RuntimeError(f'clips must be exactly {", ".join(CLIPS)}, not {", ".join(sorted(self.clips))}')
+        t = self.timing
+        wanted = t.wanted()  # all seven, or six without `cast` for a fighter with no ability
+        if sorted(self.clips) != sorted(wanted):
+            why = '' if t.ability else f', since {t.unit} has no ability and never casts'
+            raise RuntimeError(f'clips must be exactly {", ".join(wanted)}{why}, not {", ".join(sorted(self.clips))}')
         for name, clip in self.clips.items():
             low, high = LENGTHS[name]
             if not low - 1e-9 <= clip.seconds <= high + 1e-9:
@@ -837,12 +925,13 @@ class Rig:
                     a, b = first[bone], last[bone]
                     if a.turn.rotation_difference(b.turn).angle > 1e-4 or (a.at - b.at).length > 1e-5:
                         raise RuntimeError(f'{name} loops but ends away from where it starts ({bone})')
-        t = self.timing
         strike = self.clips['attack'].marks.get('strike')
         if strike != t.strike:
             what = 'blow lands' if t.melee else 'shot leaves'
             raise RuntimeError(f'attack must strike on frame {t.strike} ({t.strike / FPS:.2f} s), when its {what}, '
                                f'and mark it, not on {strike}')
+        if not t.ability:
+            return
         cast = self.clips['cast']
         height = cast.marks.get('height')
         if height != t.release:
@@ -875,7 +964,8 @@ class Rig:
                 if values and values[-1].dot(q) < 0:  # keep each curve continuous
                     q = -q
                 values.append(q)
-            locations.append(pose['hips'][1])
+            if 'hips' in pose:  # a beast has none
+                locations.append(pose['hips'][1])
             for b in moving:
                 moved[b].append(pose[b][1])
         # A bone that stays at rest all through the clip gets no curves, so its track is left out.
@@ -926,7 +1016,7 @@ class Rig:
         self.radius, self.bottom = 0.0, math.inf
         self.radius_between, self.bottom_between = 0.0, math.inf
         self.reaches = {}  # each clip's furthest from the centre, on frames or between them: (how far, frame)
-        for name in CLIPS:
+        for name in self.timing.wanted():
             clip = self.clips[name]
             ahead = name in ACTIONS
             self._play(name)
@@ -1009,14 +1099,16 @@ class Rig:
         """Exports the mesh, its skin and one animation per clip, sampled on every frame. The
         armature's extras carry `reach`: the furthest from its centre any frame of any clip takes the
         model, on frames or between them as the client shows them, which the client bounds its meshes
-        by (docs/viewer-spec.md section 4, "Models"); `strike` and `hits`, when it strikes and casts;
+        by (docs/viewer-spec.md section 4, "Models"); `strike` and `hits`, when it strikes and casts (no
+        `hits` for a fighter with no ability, which has no cast);
         and for a ranged attack `muzzle`, where its shot leaves (muzzle())."""
         for o in bpy.context.scene.objects:
             o.select_set(o in (model, self.armature))
         self.armature['reach'] = round(max(self.radius, self.radius_between), 4)
         # When it strikes and casts, for the client's tests (test/models.test.ts) to check against the sim.
         self.armature['strike'] = self.clips['attack'].marks['strike']
-        self.armature['hits'] = self.clips['cast'].hits or [self.clips['cast'].marks['height']]
+        if 'cast' in self.clips:  # a fighter with no ability has no cast, and no hits
+            self.armature['hits'] = self.clips['cast'].hits or [self.clips['cast'].marks['height']]
         muzzle = self.muzzle()
         if muzzle is not None:  # where a ranged attack's shot leaves, for the client to fly it from
             self.armature['muzzle'] = muzzle

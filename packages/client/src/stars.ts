@@ -9,8 +9,11 @@ export const HEX_RADIUS = 0.94;
 /** How much bigger 2★ and 3★ models are drawn, before clamping to the hex. */
 export const STAR_GROW = 1.1;
 
-/** The scale of a Large unit's pawn. Large models are drawn unscaled. */
+/** The scale of a Large unit's or monster's pawn. Large models are drawn unscaled. */
 export const LARGE_PAWN_SCALE = 1.35;
+
+/** The scale of the pawn of a summon without a name, the Orc grunt. Its model is drawn unscaled. */
+export const MINOR_PAWN_SCALE = 0.75;
 
 /**
  * Where the label sits above the ground, before scaling; how far above a Large model's top; and how far

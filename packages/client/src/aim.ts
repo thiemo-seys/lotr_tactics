@@ -3,14 +3,15 @@
 
 /**
  * How many degrees to its own left an archer's model points its arrow, by model name: its script's
- * AIM_YAW (packages/client/art/units/), the gear model's its 1★ model's. An archer is built in an open
- * stance, its arrow turned this far from straight ahead so its bow shows its curve to the camera
- * rather than standing edge-on; the viewer turns the model this far back to its right as it faces its
+ * AIM_YAW (packages/client/art/units/), a unit's, a gear model's its 1★ model's, or a monster's,
+ * such as the goblin archer's. An archer is built in an open stance, its arrow turned this far from
+ * straight ahead so its bow shows its curve to the camera rather than standing edge-on; the viewer turns the model this far back to its right as it faces its
  * target, so the arrow points at the target. Models not listed shoot straight ahead.
  */
 export const AIM_YAWS: Readonly<Record<string, number>> = {
   faramir: 52,
   'faramir-2': 52,
+  'goblin-archer': 55,
   gorbag: 60,
   'gorbag-2': 60,
   'gorbag-3': 60,

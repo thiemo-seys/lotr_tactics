@@ -9,14 +9,14 @@ A browser tool that runs one fight with `packages/sim` and plays it back in 3D. 
 - Pick both boards from presets, plus seed and stage, and run the fight.
 - Play it back at 30 ticks per second with pause, single-step and speed control.
 - Show the board, units, health, shields, mana, attacks, projectiles, abilities (their wind-up, where they will land, their travel and their impact), statuses, deaths and the result.
-- Each unit as its own model for its star level (section 4), playing its clips from the fight's events if it is rigged (section 5).
+- Each unit as its own model for its star level, and each monster and summon as its own model (section 4), playing its clips from the fight's events if it is rigged (section 5).
 - A readable event log.
 - A damage meter (section 8).
 
 **Out of scope (later)**
 
 - Placing units by drag and drop, the shop and the rest of a round.
-- Models for monsters and summons, and sound in fights. The viewer is silent; the play page has sounds for its interface and music (`game-spec.md` section 12, Sound).
+- Sound in fights. The viewer is silent; the play page has sounds for its interface and music (`game-spec.md` section 12, Sound).
 - Networking. The viewer runs the sim itself, as the game client will (`sim-spec.md` section 14).
 
 ---
@@ -43,7 +43,7 @@ packages/client/
     flow.ts        the play page's steps from the game's messages, what it sends back, the timer, a round's results with what it does to the person's HP and gold, what the HUD shows while a fight plays, and whose board is on screen (no Three.js, no DOM)
     connection.ts  offline and WebSocket connections to a game (server-spec.md section 10)
     fights.ts      which fight in a round is the person's
-    boards.ts      preset and random boards
+    boards.ts      preset, PvE round and random boards
     layout.ts      hex and bench positions, and finding the place under a point
     playback.ts    stepping the fight, what to draw at a moment, and what each unit has done, for animation.ts (no Three.js, no DOM)
     animation.ts   which clip each unit plays at a display time, and how far into it (no Three.js, no DOM)
@@ -58,7 +58,7 @@ packages/client/
     post.ts        the blur, grade and vignette laid over each frame
     tiles.ts       the stone pattern on the board's hexes, in their shader
     scene.ts       Three.js scene, units as models or pawns, playing their clips, the planning view, the marker where a drag would drop, and the unit under the pointer
-    units.ts       names and sizes of units, monsters and summons
+    units.ts       names and sizes of units, monsters and summons, whether each has an ability, and the star level its model is drawn at
     items.ts       item and Ring of Power colours, and what each item is and does, from the item data
     gifts.ts       Gift tiers and effects from the Gift data
     ring.ts        the One Ring's tier and effects at a Corruption
@@ -130,7 +130,7 @@ The board stands in an arena, as a lens with a shallow focus would see it: the b
 
 ## 4. Units
 
-- **Body:** the unit's model for its star level (Models and Star levels below), standing on its tile, with its `team` material in its livery colour (Livery below). A unit looks the same on either side. Its health bar, green for the near side and red for the far side, is what tells the sides apart, helped by the border of its name plate, red for the far side. `public/models/` is listed when the client is built, so a missing model is never requested. Monsters and summons, which have no models yet, and any unit whose model is missing or still loading, are low-poly pawns in one stone colour, the same on both sides. Large pawns are drawn bigger; summons other than the Eye's Nazgûl are smaller and have no name.
+- **Body:** the unit's model for its star level (Models and Star levels below), standing on its tile, with its `team` material in its livery colour (Livery below). A unit looks the same on either side. Its health bar, green for the near side and red for the far side, is what tells the sides apart, helped by the border of its name plate, red for the far side. `public/models/` is listed when the client is built, so a missing model is never requested. Monsters and summons are drawn as their models too (Models below). Any unit, monster or summon whose model is missing or still loading is a low-poly pawn in one stone colour, the same on both sides. Large pawns are drawn bigger; summons other than the Eye's Nazgûl are smaller pawns. Summons other than the Eye's Nazgûl have no name, as model or pawn.
 - **Overlay** above each unit (ui/labels.ts):
   - a name plate with its star badge, one icon for the star level (icons.ts): the Star of Elendil, a four-pointed bronze star at 1★, an eight-pointed silver star round a dark setting at 2★, and a gold sunburst of sixteen points with a white gem and a soft glow at 3★; summons have no badge, and those without a name no plate. The same badge, one per copy, marks the copies a person owns on the shop's cards and in a trait's tooltip
   - its items as chips, each naming its effect when hovered, and the One Ring with its Corruption on the Ring's bearer
@@ -146,25 +146,32 @@ The board stands in an arena, as a lens with a shallow focus would see it: the b
 
 ### Models
 
-Each unit, monster and summon gets its own model in the **Faceted** art style, chosen from a study that built Gimli in five styles (`packages/client/art/style-study/`, with the comparison in its `results/`). The roster's 36 units have their models, one for each star level (`packages/client/art/`, whose README lists them), with Gimli (`art/units/gimli.py`) as the reference model. Monsters and summons have none yet.
+Each unit, monster and summon gets its own model in the **Faceted** art style, chosen from a study that built Gimli in five styles (`packages/client/art/style-study/`, with the comparison in its `results/`). The roster's 36 units have their models, one for each star level (`packages/client/art/`, whose README lists them), with Gimli (`art/units/gimli.py`) as the reference model. Monsters and summons have theirs (`docs/animation-plan.md`, Workflow 3): one model each, since they are always 1★, rigged.
 
 - **Look:** classic low-poly. Every form is built from low-segment shapes and hand-placed vertices and shaded flat, so the facets show. No smooth shading, bevels or textures.
 - **Proportions:** grounded and heroic, with each people's own build: Hobbits short and round, Dwarves stocky, Elves tall and slim, Orcs hunched, Nazgûl hooded and faceless, Istari robed. Heads and hands are a little big, so they read at game size.
 - **Heights,** to the top of the head, hood, helm or hat brim (weapons, crests and a hat's point go higher): Hobbits 0.88, Dwarves 1.15, Orcs about 1.2 as they stoop and Uruk-hai about 1.4, Men 1.42, Istari 1.45, Elves 1.48 and Nazgûl 1.55.
 - **Large units** are built at their full size, Treebeard and Sauron about 2.1 to 2.4 tall, so the viewer doesn't enlarge their models as it does their pawns (Star levels below).
+- **Monsters and summons** are built at their full size, as Large units are, so the viewer doesn't scale their models as it does their pawns *(heights are placeholders)*:
+  - Moria goblins and goblin archers: smaller and scrawnier than the Orcs of the roster, of Gorbag's family (sallow skin, big ears, tusked jaw), more stooped, with long arms and big pale eyes for the dark, about 1.0 tall as they stoop. The archer is the goblin with a bow.
+  - The Orc grunt: a plain Orc of Mordor, a little smaller than the roster's Orcs, about 1.1. The Eye's Nazgûl: a Ringwraith on foot, hooded and faceless, built on the Ringwraith but stooping as it hunts, so about 1.45 to the peak of its hood, with red eyes in the dark of its hood and a long pale blade.
+  - The warg: a riderless warg, as Sharku's, its back about 0.6 off the ground.
+  - The Large monsters, within the same hex as every unit (Size below): the Cave Troll, a hulking biped with dark greenish scaly hide and great flat toeless feet, about 2.2 tall; the Balrog, after the films' (chosen by the user on 26 November 2026 from five concepts): a massive, hunched, bestial demon with a broad bull's skull carried low, a glowing mouth and great thick horns sweeping out from the brow and curving forward, a charred, rocky hide with molten cracks glowing through it, fire rising from the back of its head, its shoulders and its back, bat wings of shadow raised up and back but never spread past its hex, long heavy arms with clawed fists, digitigrade legs on clawed feet and a long tail curled round behind it, a sword of flame in its right hand and a whip of many thongs, of flame too, in its left, about 2.7 to the tips of its horns and 3.0 to the tips of its wings, its livery the crust of plates over its shoulders and down its spine and a girdle with a tattered hanging, its fire and cracks faceted faces in emissive materials, flat shaded and without textures, the one bright part of a model besides its livery; the Mûmak, chunky and stylised so it fits the hex, with tusks, red and gold trappings (its livery: the cloth over its back, a back-cloth down its rump, a band round its breast, its frontlet and its howdah's hangings and canopy) and for its war-tower a low open howdah with a light canopy, about 1.9 to the canopy's tip, so the beast is the main mass and a unit behind it shows over it from the game's camera, its trunk and ears on bones of their own; and the Watcher in the Water, six pale green tentacles, faintly emissive, rising from a dark mass in a dark pool on its hex that goes where it goes, the pool's rim its livery, about 2.1 tall.
 - **Riders** ride: the Rohirrim and the Nazgûl on horses, and Sharku on a warg. The horse is shared (`art/mounts.py`); its back is at about 0.72 and its rider's head at about 1.6.
 - **Size:** a model, with its weapons and mount, stays within 0.94 of its centre, the radius the hexes are drawn with, as it stands and in its clips, so neighbours have room on a full board. Its `attack` and `cast` may reach further ahead, towards what they strike: up to 1.3 from its centre within 30 degrees of straight ahead *(placeholders)*, the wedge that points at the hex in front of it, since a blow is meant to reach its target and a melee lunge carries the whole unit out of its hex anyway (section 5). To its sides and behind, they keep to the hex as the other clips do. This is each clip's room.
 - **Colour:** a muted, earthy palette in which the livery is the only saturated part. Steel is a light grey with a metalness of 0.15 or less, because the scene has no environment map and metal would draw dark.
 - **Livery:** on parts every model has, seen from the front, from behind and from above, in a material named `team` that the viewer gives the unit's livery colour, the same on both sides. Gimli's are his hood, cape and shield face. The material keeps its name, and its colour in the `.glb` (the authoring blue in `kit.py`), since the viewer recolours it, so the models need no rebuild. It should stand out from the rest of the model, which a near-black livery on dark robes doesn't.
   - Each unit wears its faction's (origin's) colour or one of its own, a shade of its faction's or another. `src/livery.json` holds them, naming each unit's faction or giving its colour, and the client (`livery.ts`) and the art tools (`art/board.mjs`, `art/preview.py`) all read it, so a model is reviewed in the colour it is played in.
   - The factions' colours: Hobbits hearth red `#a35a33`, Gondor steel blue-grey `#5d6a7c`, Rohan green `#3f6b3a`, Orcs bile olive `#6b6a2c`, Elves Lórien silver `#8c9590`, Dwarves Durin blue `#3f5d8a`, Nazgûl black `#25252a`, the Ent moss green `#4f6b3a` and the Dark Lord dark ember red `#591f16`. Each of the Istari has his own: Radagast brown `#7a5530`, Saruman white `#c9c6be` and Gandalf grey `#8a8c8e`.
+  - Monsters are always the enemy, so a team colour means nothing on them, and each wears a colour of its own, which `livery.json` gives as it does a unit's *(placeholders)*: the goblins, goblin archers, wargs and the Cave Troll of Moria wear Moria rust `#7a3f2a`, as one warband; the Watcher murky water green `#4d6b5c`; the Mûmak's trappings Harad crimson `#8a2a22`; and the Balrog ember `#b0471c`. Summons wear their faction's colour: the Orc grunt the Orcs' and the Eye's Nazgûl the Nazgûl's.
 - **Role:** shows in the silhouette: shields for Guardians, bows for Archers, staffs for Sorcerers, mounts for Riders, hoods and daggers for Burglars, banners or capes for Captains.
-- **Budget** *(placeholder)*: about 800 triangles for a unit, 1,200 for a mounted unit and 2,000 for a Large unit or monster.
+- **Budget** *(placeholder)*: about 800 triangles for a unit, a summon or a monster that isn't Large, 1,200 for a mounted unit and 2,000 for a Large unit or monster.
 - **Build:** Blender 4.5 LTS, one Python script per model in `packages/client/art/`, exported as glTF binary. 1 Blender unit is 1 game unit, the origin is the centre of the model's footprint on the ground, and a model faces +Z in the game (−Y in Blender). One mesh per model, with colour from materials named after what they are; a rigged model adds its armature (Rigs and clips below). No model shows the One Ring or a Ring of Power, since any unit can carry them.
 - **In the viewer** (models.ts), in fights and on the planning board and bench:
-  - Both pages load every unit's 1★ model once, in the background. A unit's 2★ and 3★ models load once the unit is drawn: its own level's and the next one's, so a unit that is upgraded has its model sooner. Each file loads once.
+  - Both pages load every unit's, monster's and summon's 1★ model once, in the background. A unit's 2★ and 3★ models load once the unit is drawn: its own level's and the next one's, so a unit that is upgraded has its model sooner. Each file loads once. Monsters and summons are always 1★, and have their 1★ model only (`<id>.glb`).
+  - A monster's or summon's model is drawn at the size it is built, as a Large unit's is: a Large monster's starts from 1, not its pawn's 1.35, and the Orc grunt's isn't shrunk to its pawn's 0.75. It has no name plate where it has no name (section 4, Overlay), as model or pawn.
   - Until a unit's model has loaded, or if it is missing, the unit is a pawn, so a model never breaks a fight. A unit that died as a pawn stays one, so it breaks up once.
-  - Rigged or static, at any star level: a model with a rig and all seven clips plays them (section 5, Animation). Any other is drawn still, a rigged model without all seven included. Today the 1★ and 2★ models are rigged and the 3★ static; the client assumes neither.
+  - Rigged or static, at any star level: a model with a rig and all its clips plays them (section 5, Animation): all seven, or the six without `cast` for a monster or summon that has no ability (Rigs and clips below). Any other is drawn still, a rigged model without all its clips included. Today the 1★ and 2★ models are rigged and the 3★ static; the client assumes neither.
   - Models that load together, or that waited together for their shader, replace pawns at most 3 units a frame, so no frame stalls setting them all up.
   - Before a model is drawn, the scene compiles the shader it needs from a copy of the first model to load that needs it, for the texture the scene is drawn into (section 3, Arena), since three.js builds a different program for it than for the canvas. One shader serves every rigged model, skinned on the GPU, and one every static model, while their materials are all of one kind. It compiles in the background where the browser can, for up to 3 seconds, or else a frame ahead. Until its shader is ready a unit is a pawn, even if its model has loaded; then the pawns swap for their models as they do when models load.
   - Each unit gets its own copy, which shares geometry and clips with the other copies but has its own materials: `team` in its livery colour, `trim` for its star level, and every material able to fade without a new shader, for untargetable and dying units.
@@ -184,7 +191,7 @@ The shop's unit cards (`game-spec.md` section 12) show each unit's head and shou
 
 ### Rigs and clips
 
-Every unit's 1★ model is rigged and carries its own animations, which the viewer plays (section 5, Animation). Its 2★ gear model is rigged too, with the 1★ model's rig: the same bones and clips (Star levels below). `docs/animation-plan.md` tells how they were rigged and checked. The 3★ book models are static for now. Gimli's is the reference rig (`art/units/gimli.py`), and each people has a reference of its own that the others follow (`art/README.md`).
+Every unit's 1★ model is rigged and carries its own animations, as every monster's and summon's model does (`docs/animation-plan.md`, Workflow 3), which the viewer plays (section 5, Animation). Its 2★ gear model is rigged too, with the 1★ model's rig: the same bones and clips (Star levels below). `docs/animation-plan.md` tells how they were rigged and checked. The 3★ book models are static for now. Gimli's is the reference rig (`art/units/gimli.py`), and each people has a reference of its own that the others follow (`art/README.md`).
 
 - **Rigid skinning:** a model is one skinned mesh on one armature. Every vertex follows exactly one bone with weight 1, so parts move as solid pieces, like the facets they're built from. Where pieces meet they overlap, so nothing has to stretch. A vertex may follow another bone on purpose, such as the middle of a bowstring following the hand that draws it.
 - **Rest pose as built:** bones sit at the joints of the model as it stands, after `lean()`, `turn()` and `stoop()`, and clips turn them from there. Nothing is rebuilt in a T-pose, but a part that has to bend is built as two that overlap where it bends, such as Gimli's legs, a thigh and a shin, and his mail, a skirt on his hips and a chest on his spine.
@@ -196,9 +203,12 @@ Every unit's 1★ model is rigged and carries its own animations, which the view
     - `robe`, the part of a robe or long coat below the knees, hanging from `root`, so it hangs upright as the legs stride under it;
     - `string` and `arrow`, an archer's bowstring and nocked arrow, hanging from the bow hand, for an archer built at the draw;
     - `stone`, `bird` and `boulder`, which a hand throws or lets fly, hanging from that hand.
+  - The Balrog has nine of its own: its whip, a chain of three, `whip_1` to `whip_3`, hanging from `hand_l`; its wings, `wing_l` and `wing_r`, from `spine`; the fire of its head, `mane`, from `head`; and its tail, a chain of three, `tail_1` to `tail_3`, the first hanging from `root` and carried where the hips go, as a robe is, so the hips can sink past it (`art/README.md`, Balrog).
   - A rider and its mount are one model on one armature, and the rider's `hips` hang from the mount's body. The mount's bones are named `mount_…`: `mount_body` (hanging from `root`); `mount_neck` and `mount_head` on it, and `mount_tail`; and for each leg, `fore` and `hind` on its left (`_l`) and right (`_r`), an upper leg from the body, a lower leg and a foot, such as `mount_fore_upper_l`, `mount_fore_lower_l` and `mount_fore_foot_l`. The horse has these 16, and Sharku's warg adds `mount_jaw`.
-  - At most 24 bones on foot, 32 for a Large unit and 40 for a mounted one.
-- **Clips:** a rigged model's `.glb` holds exactly these animations, by name, at 30 frames a second, one frame per tick, each starting at frame 0:
+  - A beast with no rider, the warg and the Mûmak, has a mount's bones and none of the 16 a figure has: `root`, and the `mount_…` bones hanging from it as they would under a rider, so the mounted clips' beast half drives it. Its `mount_body` stands where a figure's `hips` would. The Mûmak adds five of its own on `mount_head`: its trunk, a chain of three, `mount_trunk_1` to `mount_trunk_3`, and its ears, `mount_ear_l` and `mount_ear_r` (`art/README.md`, Mûmak).
+  - The Watcher has neither a figure's bones nor a mount's: `root`; `body`, its mass in the pool; and its tentacles, each a chain of bones `tentacle_<n>_<k>` from the body out (`n` from 1, `k` from 1 at the body): six arms of four, `tentacle_1_1` to `tentacle_6_4`, the first the foremost, with the pool and its rim on `root`. Its clips are its own (`art/README.md`, Watcher in the Water).
+  - At most 24 bones on foot, 32 for a Large unit or monster and 40 for a mounted one.
+- **Clips:** a rigged model's `.glb` holds exactly these animations, by name (without `cast` for a monster or summon with no ability, which never casts: the goblins, goblin archers, wargs, Orc grunts and the Eye's Nazgûl), at 30 frames a second, one frame per tick, each starting at frame 0:
 
 | Clip | When it plays (section 5) | How | Length *(placeholder)* | What it shows |
 |---|---|---|---|---|
@@ -226,7 +236,7 @@ Every unit's 1★ model is rigged and carries its own animations, which the view
 A unit's star level shows four ways at once, chosen from a study of Frodo, Aragorn and Éomer on the board (`packages/client/art/star-study/`, with the comparison in its `results/`). Each is for units with a model; a unit drawn as a pawn shows its stars in its label only.
 
 - **Label:** the name plate shows the star badge, and in fights the health bar is framed bronze, silver or gold for the star level (section 4, overlay). This is where the board shows star level at a glance; there is no stand under the model.
-- **Model:** a 2★ unit uses its gear model and a 3★ unit its book model, falling back to the level below when one doesn't exist yet. A gear or book model with a rig and all seven clips plays them as a 1★ model does; today the gear models are rigged and the book models static.
+- **Model:** a 2★ unit uses its gear model and a 3★ unit its book model, falling back to the level below when one doesn't exist yet. A gear or book model with a rig and all its clips plays them as a 1★ model does; today the gear models are rigged and the book models static.
   - **Gear** (`<id>-2.glb`): the 1★ model with one piece added that reads at game size, such as shoulder plates, a helm or a mantle. Aragorn's is steel shoulder plates. It is the rigged 1★ model with the piece on, each part of the piece bound to the bone it moves with. It keeps the 1★ model's rig, so it has the same bones and clips and moves as the 1★ model does (`art/README.md`, Gear models).
   - **Book moment** (`<id>-3.glb`): the unit as itself at its height in the books, drawn from the books and not the films, and still recognisably the same unit: Frodo in the mithril coat, Aragorn as King Elessar with the winged crown and Arwen's standard, Éomer as Éomer King with the royal banner. It need not keep the 2★ piece.
   - **Budgets** *(placeholder)*: a gear model has 12.5% more triangles than its unit's budget (900, 1,350 for a mounted unit, 2,250 for a Large one), and a book model 25% more (1,000, 1,500 and 2,500). Both keep every other rule in this section, the hex included.
@@ -298,16 +308,22 @@ Which clip (section 4, Rigs and clips) each unit's model plays, and how far into
   - an archer's model is built with its arrow turned to its left of straight ahead (its script's `AIM_YAW`, listed in `aim.ts`), so its bow shows its curve to the camera. Wherever it faces its target, and as it stands in planning, the model turns that far back to its right, so its arrow points where it faces. Facing its target, a rigged archer turns a little further, so its arrow's line, which runs to the side of its centre, goes through the target: by asin(the line's distance from its centre over the distance to the target). While a step or dash moves it, its front faces the way it goes, as any other unit's.
 - **Planning:** on the planning board and bench, units play `idle` in real time, staggered by 0.37 s × their id.
 - **Reduced motion:** when the system asks for it, `idle` and `stun` hold their first frame. `move`, `attack`, `cast`, `death` and `victory` still play, since they show what happens.
-- **Static models,** such as today's 3★ ones, **and pawns** have no clips, and are drawn as before: turning, lunging and fading, and dying as above (Death).
+- **Static models,** such as today's 3★ ones, **and pawns** have no clips, and are drawn as before: turning, lunging and fading, and dying as above (Death). Monsters and summons are pawns only while their models are missing or loading (section 4, In the viewer).
+- **Without `cast`:** a model with the six clips without `cast`, a monster's or summon's with no ability, is never asked for it. Such a fighter never casts; were it to, it would play on as if it hadn't.
 - **API,** which the tests use:
 
 ```ts
 export const CLIPS = ['idle', 'move', 'attack', 'cast', 'stun', 'death', 'victory'] as const;
 export type ClipName = (typeof CLIPS)[number];
-/** Each clip's length in seconds, from the unit's model. */
-export type ClipLengths = Readonly<Record<ClipName, number>>;
+/** Something for each clip a rigged model plays: all seven, or the six without `cast` for a monster or summon with no ability. */
+export type ClipSet<T> = Readonly<Record<Exclude<ClipName, 'cast'>, T> & Partial<Record<'cast', T>>>;
+/** Each clip's length in seconds, from the unit's model; no `cast` for a model without one. */
+export type ClipLengths = ClipSet<number>;
 /** How long a fade between two clips lasts, in ticks. */
 export const FADE_TICKS = 3;
+
+/** The clips a fighter's model needs to play them: all seven for one that casts, or the six without `cast`. */
+export function clipsNeeded(casts: boolean): readonly ClipName[];
 
 export interface Pose {
   readonly clip: ClipName;
@@ -394,6 +410,7 @@ How abilities, hits and statuses look: the **punchy** style, chosen on 6 Novembe
 
 - **Fight:** team A board, team B board, seed, stage, and a New fight button.
   - Presets: duel, tanks, archers, mixed, full, items (all 21 combined items), ring (a One Ring bearer), rings (the Three, the Seven and the Nine), stars (Frodo, Aragorn and Éomer at 1★, 2★ and 3★, for star levels on models), traits.
+  - PvE rounds: `pve-1-1`, `pve-1-2`, `pve-1-3`, `pve-2-7`, `pve-3-7`, `pve-4-7`, `pve-5-7` and `pve-later`, one for each round in the sim's `PVE_ROUNDS` (`data/pve.ts`, `game-spec.md` section 9.7) and built from it, so they follow the data: the round's monsters as the game places them, 1★ and without items, on its hexes in the team's own perspective, so they fit either side. The pickers list them in a group of their own, as "PvE 1-1" to "PvE later". For example `#a=full&b=pve-later` is the Balrog's round. The stage is still the one picked.
   - Random: 7 units with star levels from 1 to 3 and up to 3 random items each, placed at random on their half, from the seed and the team.
 - **Playback:**
   - Play/pause, an icon button that the space bar also toggles.
@@ -413,16 +430,20 @@ How abilities, hits and statuses look: the **punchy** style, chosen on 6 Novembe
 The parts without Three.js are tested with Vitest:
 - the hex layout;
 - random boards, which are valid and the same for the same seed;
+- the PvE round boards: one for each round in `PVE_ROUNDS`, the game's monsters for that round at 1★ without items on the data's hexes, the same on either side, and a fight against each that plays to its end with them on either side;
 - playback timing, interpolated positions and projectiles, a unit that dies mid-step or mid-dash staying where it died, a dash the fight ends before never setting off, floating texts on a unit starting clear of each other, and that frames between ticks keep the same lists of effects and events, so they allocate nothing;
 - that a floating number pops in on its inner element, never the one `CSS2DRenderer` positions (ui/float.ts);
 - the frame rate cap: every frame while off; 30 a second while on at 60, 120 and 144 Hz, on a steady grid, with frames a little early or late; a frame up to 2 ms early runs; every frame of a slower screen; no burst after a long gap; switching on and off from the next frame;
 - when the scene draws a frame (a fight as its display time moves, planning while a unit idles and motion isn't reduced, otherwise only after a change), and that pawns swap for their models only once a shader is ready, at most 3 a frame, and again as more load;
 - which effects are live at a display time and how far through (effects.ts): telegraphs and aim lines through a wind-up, a cast whose caster dies in its wind-up, projectiles and lobs in flight as their caster dies landing with their impacts, nothing of a cast still to come as the fight ends, projectiles (one a hit for several hits, and a bounce's hops) and lobs to their landings, a charge's ribbon between its ticks, impacts (a cone's sweep over its hexes, an ally wave's dimness), hits (flash, a hit while still flashing flashing less, push, squash, the draining chunk, popping numbers) and big moments (shake, hit-stop, the screen flash) and small abilities without them, status marks and their end as their unit dies, shards, reduced motion, that every ability has a look, a ranged basic attack's sparks as its shot lands, that every unit and monster with range has a shot look, and that frames between ticks keep the same lists;
-- which clip each unit plays at a display time and how far into it, fades and cuts, an action before a stun on the same tick, reduced motion, planning's `idle`, dying units breaking up from halfway through their clip (`sinkDelay`), and which way units face as they step, dash and turn back (section 5, Animation);
+- which clip each unit plays at a display time and how far into it, fades and cuts, an action before a stun on the same tick, reduced motion, planning's `idle`, dying units breaking up from halfway through their clip (`sinkDelay`), and which way units face as they step, dash and turn back (section 5, Animation); the clips a fighter's model needs, seven or the six without `cast`, and that a model without `cast` is never asked for it, through a goblin's whole fight and even for a cast it should never have;
+- which fighters have an ability, and that monsters and summons are drawn with their 1★ model (units.ts);
+- the livery: every faction, roster unit, monster and summon in `livery.json` and nothing else, a roster unit in its own faction or a colour, each monster in a colour of its own and each summon in its faction's (livery.ts);
 - the 1★ model files: every unit has one, a single mesh with a `team` material on it, and every one is rigged: one skinned mesh with the 16 bones within the budget, `root` at the origin with every bone below it, exactly the seven clips at their lengths keyed on whole frames, loops that end where they start, one bone per vertex, under its size, its attack striking and its cast's hits on the sim's ticks, as its armature's extras `strike` and `hits` give them, with each clip playing on past them (section 4, Rigs and clips), and its `reach` in its armature's extras (section 4, Models), and, for a ranged unit, its `muzzle` ahead of it, above the ground and within its reach, and none for a melee unit (section 4, Rigs and clips);
 - the arena file: within its budget, with its baked occlusion and no normals; the court round the board and bench clear, the band round it low, and nothing under a hex reaching its top (section 3, Arena);
 - the camera: every view starts within the limits, the fog never reaches a unit on the board or the bench, and the whole board and bench are in focus from each view's starting point (look.ts);
 - the portrait files: every unit has one, a square WebP of 384 pixels (section 4, Portraits), and a unit without one gets no portrait's address;
+- the monster and summon model files: each whose `.glb` is in `public/models/` is checked as fully as a unit's 1★ model: one mesh with a `team` material, rigged, one skinned mesh with its bones within the budget (the 16 for a figure, a mount's and none of a figure's but `root` for a beast, the warg and the Mûmak, with `mount_body` hanging from `root`, and `root`, `body` and tentacles for the Watcher), exactly its clips (the six without `cast` for one with no ability, with no `hits`, or the seven), its strike and hits against the sim (a monster's range from its own stats, its ability from `data/monsters.ts`; summons are melee with none), its `reach`, a `muzzle` only if it attacks from range, and under 200,000 bytes, or 300,000 for a Large monster. None has a 2★ or 3★ file, and those listed in the test's `MONSTERS_MUST_BE_RIGGED`, all nine, must be there;
 - the 2★ gear model files: every unit's is rigged, with the same checks as a 1★ model's rig but under a gear model's size, and has its 1★ model's bones, each hanging from the same one, and clips as long (section 4, Star levels);
 - the event log text;
 - the damage meter's rows: totals and parts per tab, summons in their owner's row, the Eye's Nazgûl in its own, order and ties;

@@ -446,6 +446,11 @@ kbd {
   background-size: 14px;
 }
 
+.select optgroup {
+  color: var(--text-muted);
+  background: var(--surface-2);
+}
+
 .select option {
   color: var(--text);
   background: var(--surface-2);
@@ -2268,7 +2273,8 @@ kbd {
   display: inline-flex;
   gap: 4px;
   align-items: center;
-  max-width: 100%;
+  /* Wider than the label for the longest monster names, centred over it. */
+  max-width: 140px;
   height: 16px;
   padding: 0 6px;
   background: rgba(9, 12, 18, 0.8);

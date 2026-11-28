@@ -10,10 +10,27 @@ import { facing, type MutablePoint, type Playback, type StepRecord, type UnitHis
 
 export const CLIPS = ['idle', 'move', 'attack', 'cast', 'stun', 'death', 'victory'] as const;
 export type ClipName = (typeof CLIPS)[number];
-/** Each clip's length in seconds, from the unit's model. */
-export type ClipLengths = Readonly<Record<ClipName, number>>;
+/**
+ * Something for each clip a rigged model plays: all seven, or the six without `cast` for a monster or
+ * summon with no ability, which never casts (docs/viewer-spec.md section 4, Rigs and clips).
+ */
+export type ClipSet<T> = Readonly<Record<Exclude<ClipName, 'cast'>, T> & Partial<Record<'cast', T>>>;
+/** Each clip's length in seconds, from the unit's model; no `cast` for a model without one. */
+export type ClipLengths = ClipSet<number>;
 /** How long a fade between two clips lasts, in ticks. */
 export const FADE_TICKS = 3;
+
+/** The clips of a model without `cast`. */
+const SIX_CLIPS: readonly ClipName[] = CLIPS.filter((clip) => clip !== 'cast');
+
+/**
+ * The clips a fighter's model needs to play them (docs/viewer-spec.md section 4, In the viewer): all
+ * seven for one that casts, or the six without `cast` for one with no ability (units.ts, hasAbility).
+ * A rigged model without all of them is drawn static.
+ */
+export function clipsNeeded(casts: boolean): readonly ClipName[] {
+  return casts ? CLIPS : SIX_CLIPS;
+}
 
 export interface Pose {
   readonly clip: ClipName;
@@ -170,7 +187,10 @@ function classify(out: Segment, history: UnitHistory, won: number | null, length
 
   const action = latest(history.actions, t, just);
   const actionClip = action?.cast === true ? 'cast' : 'attack';
-  const actionEnd = action === undefined ? -Infinity : action.tick + lengths[actionClip] * TICKS_PER_SECOND;
+  // A model without a `cast` clip is a fighter with no ability, which never casts: were one to, it
+  // would play on as if it hadn't, rather than ask for a clip it hasn't got.
+  const actionLength = lengths[actionClip];
+  const actionEnd = action === undefined || actionLength === undefined ? -Infinity : action.tick + actionLength * TICKS_PER_SECOND;
   const acting = action !== undefined && lasts(actionEnd, t, just);
 
   // 3. Stunned. A stunned unit can't act, so an action on a tick a stun of the stretch starts on came
@@ -217,8 +237,9 @@ function timeInto(segment: Segment, t: number, lengths: ClipLengths, idleOffset:
       return span > 0 ? wrap(((t - segment.start) / span) * lengths.move, lengths.move) : 0;
     }
     default:
-      // attack, cast, death and victory play once and hold on their last frame.
-      return Math.min((t - segment.start) / TICKS_PER_SECOND, lengths[segment.clip]);
+      // attack, cast, death and victory play once and hold on their last frame. A cast plays only
+      // for a model with the clip (classify).
+      return Math.min((t - segment.start) / TICKS_PER_SECOND, lengths[segment.clip] ?? 0);
   }
 }
 
