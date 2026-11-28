@@ -1,0 +1,38 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64" width="64" height="64"><defs><linearGradient id="i-rim" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="#e3b48a"/><stop offset="0.25" stop-color="#9a6238"/><stop offset="0.5" stop-color="#4a2c16"/><stop offset="0.75" stop-color="#a87148"/><stop offset="1" stop-color="#3a2210"/></linearGradient>
+    <radialGradient id="i-bg" cx=".42" cy=".36" r=".78"><stop offset="0" stop-color="#581f8c" stop-opacity=".95"/><stop offset=".55" stop-color="#4a1a75" stop-opacity=".55"/><stop offset="1" stop-color="#07040a"/></radialGradient>
+    <radialGradient id="i-vig" cx=".5" cy=".5" r=".72"><stop offset=".55" stop-color="#000" stop-opacity="0"/><stop offset="1" stop-color="#000" stop-opacity=".75"/></radialGradient>
+    <radialGradient id="i-fgem" cx=".35" cy=".3" r=".8"><stop offset="0" stop-color="#fff"/><stop offset=".35" stop-color="#775398"/><stop offset="1" stop-color="#05030a"/></radialGradient>
+    <filter id="i-grain" x="0" y="0" width="100%" height="100%"><feTurbulence type="fractalNoise" baseFrequency=".85" numOctaves="3" seed="7"/><feColorMatrix type="saturate" values="0"/><feComponentTransfer><feFuncA type="table" tableValues="0 .22"/></feComponentTransfer><feComposite in2="SourceGraphic" operator="in"/></filter>
+    <clipPath id="i-clip"><rect x="5" y="5" width="54" height="54" rx="6"/></clipPath></defs>
+    <rect x="1.2" y="1.2" width="61.6" height="61.6" rx="10" fill="#120a04"/>
+    <rect x="2.4" y="2.4" width="59.2" height="59.2" rx="9" fill="url(#i-rim)"/>
+    <rect x="2.4" y="2.4" width="59.2" height="59.2" rx="9" fill="none" stroke="rgba(255,240,200,.55)" stroke-width=".7"/>
+    <rect x="4.6" y="4.6" width="54.8" height="54.8" rx="6.6" fill="#0b0604"/>
+    <g clip-path="url(#i-clip)">
+      <rect x="5" y="5" width="54" height="54" fill="url(#i-bg)"/>
+      <rect x="5" y="5" width="54" height="54" fill="#fff" filter="url(#i-grain)"/>
+      <defs><linearGradient id="i-cloth" x1="0" y1="0" x2="1" y2=".25"><stop offset="0" stop-color="#9a8fbb"/><stop offset=".45" stop-color="#4e4470"/><stop offset="1" stop-color="#1d1630"/></linearGradient><radialGradient id="i-gem-brooch" cx=".35" cy=".3" r=".8"><stop offset="0" stop-color="#fff"/><stop offset=".3" stop-color="#94c1ef"/><stop offset=".65" stop-color="#5aa0e6"/><stop offset="1" stop-color="#1b3045"/></radialGradient>
+    <radialGradient id="i-hole" cx=".5" cy=".4" r=".6"><stop offset="0" stop-color="#000"/><stop offset=".7" stop-color="#0d0918"/><stop offset="1" stop-color="#2a2244"/></radialGradient>
+    <linearGradient id="i-lining" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#2a1d45"/><stop offset="1" stop-color="#0b0714"/></linearGradient>
+    <clipPath id="i-cc"><path d="M32 6.4C26 6.4 22.5 11 22 17C21.5 22 19 26 16 30C12 36 10 46 9 56.6Q14.5 58.8 20.5 57.4Q26 59.4 32 58Q38 59.4 43.5 57.4Q49.5 58.8 55 56.6C54 46 52 36 48 30C45 26 42.5 22 42 17C41.5 11 38 6.4 32 6.4z"/></clipPath></defs>
+    <path d="M32 6.4C26 6.4 22.5 11 22 17C21.5 22 19 26 16 30C12 36 10 46 9 56.6Q14.5 58.8 20.5 57.4Q26 59.4 32 58Q38 59.4 43.5 57.4Q49.5 58.8 55 56.6C54 46 52 36 48 30C45 26 42.5 22 42 17C41.5 11 38 6.4 32 6.4z" fill="url(#i-cloth)"/>
+    <g clip-path="url(#i-cc)">
+      <path d="M32 25L28.6 60H35.4z" fill="url(#i-lining)"/>
+      <path d="M20.4 32Q16.8 44 15.6 58M25.4 30Q23.6 44 23.2 58M43.6 32Q47.2 44 48.4 58M38.6 30Q40.4 44 40.8 58" fill="none" stroke="#120c22" stroke-width="1.1" opacity=".6"/>
+      <path d="M22.4 32Q19.6 44 18.8 58M27.2 31Q26.2 44 26 58M41.4 31Q43.6 44 44.4 58" fill="none" stroke="#c9bfe6" stroke-width=".8" opacity=".35"/>
+      <path d="M23 18C22.4 24 19 28 15.6 33" fill="none" stroke="#d8d0f0" stroke-width="1" opacity=".5"/>
+      <path d="M29 26.2Q26 40 25 59M35 26.2Q38 40 39 59" fill="none" stroke="#0b0714" stroke-width=".7" opacity=".7"/>
+    </g>
+    <path d="M32 6.4C26 6.4 22.5 11 22 17C21.5 22 19 26 16 30C12 36 10 46 9 56.6Q14.5 58.8 20.5 57.4Q26 59.4 32 58Q38 59.4 43.5 57.4Q49.5 58.8 55 56.6C54 46 52 36 48 30C45 26 42.5 22 42 17C41.5 11 38 6.4 32 6.4z" fill="none" stroke="#120904" stroke-width="1.1" stroke-linejoin="round" stroke-linecap="round"/>
+    <path d="M32 10.6C28.4 10.6 26.3 13.8 26.1 17.8C25.9 21 28.4 23.8 32 23.8S38.1 21 37.9 17.8C37.7 13.8 35.6 10.6 32 10.6z" fill="url(#i-hole)" stroke="#120904" stroke-width="0.9" stroke-linejoin="round" stroke-linecap="round"/>
+    <path d="M27.4 14.4C28.4 12.2 30 11.4 32 11.4" fill="none" stroke="#b7aedb" stroke-width=".6" opacity=".6"/>
+    <circle cx="32" cy="26.4" r="2.6" fill="#d9a640" stroke="#120904" stroke-width="0.8" stroke-linejoin="round" stroke-linecap="round"/>
+    <circle cx="32" cy="26.4" r="1.5" fill="url(#i-gem-brooch)"/>
+    <circle cx="31.4" cy="25.8" r=".5" fill="#fff"/>
+    <g opacity="0.7"><path d="M46.5 16.3Q46.764 18.236 48.7 18.5Q46.764 18.764 46.5 20.7Q46.236 18.764 44.3 18.5Q46.236 18.236 46.5 16.3z" fill="#fff"/><circle cx="46.5" cy="18.5" r="0.6160000000000001" fill="#fff"/></g>
+      <rect x="5" y="5" width="54" height="54" fill="url(#i-vig)"/>
+      <path d="M5 5h54v14C40 14 22 15 5 24z" fill="#fff" opacity=".07"/>
+    </g>
+    <rect x="5" y="5" width="54" height="54" rx="6" fill="none" stroke="rgba(0,0,0,.8)" stroke-width="1.1"/>
+    <rect x="5.8" y="5.8" width="52.4" height="52.4" rx="5.4" fill="none" stroke="rgba(255,230,170,.18)" stroke-width=".6"/>
+    <g transform=""><circle cx="6.6" cy="6.6" r="1.9" fill="url(#i-rim)" stroke="#1a0e05" stroke-width=".6"/><circle cx="6.1" cy="6.1" r=".55" fill="#fff" opacity=".5"/></g><g transform="translate(64 0) scale(-1 1)"><circle cx="6.6" cy="6.6" r="1.9" fill="url(#i-rim)" stroke="#1a0e05" stroke-width=".6"/><circle cx="6.1" cy="6.1" r=".55" fill="#fff" opacity=".5"/></g><g transform="translate(0 64) scale(1 -1)"><circle cx="6.6" cy="6.6" r="1.9" fill="url(#i-rim)" stroke="#1a0e05" stroke-width=".6"/><circle cx="6.1" cy="6.1" r=".55" fill="#fff" opacity=".5"/></g><g transform="translate(64 64) scale(-1 -1)"><circle cx="6.6" cy="6.6" r="1.9" fill="url(#i-rim)" stroke="#1a0e05" stroke-width=".6"/><circle cx="6.1" cy="6.1" r=".55" fill="#fff" opacity=".5"/></g></svg>

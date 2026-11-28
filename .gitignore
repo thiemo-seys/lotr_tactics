@@ -4,3 +4,4 @@ coverage/
 *.tsbuildinfo
 __pycache__/
 .env
+packages/client/art/items/gallery.html
