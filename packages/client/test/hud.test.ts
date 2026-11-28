@@ -74,7 +74,7 @@ describe('the HUD', () => {
   it("shows the One Ring's tier and whether it is worn", () => {
     expect(ringStatus(null)).toBeNull();
     expect(ringStatus({ bearer: null, corruption: 7 })).toEqual({ corruption: 7, tier: 'Grip', unworn: true });
-    expect(ringStatus({ bearer: 4, corruption: 1 })).toEqual({ corruption: 1, tier: 'Gift', unworn: false });
+    expect(ringStatus({ bearer: 4, corruption: 1 })).toEqual({ corruption: 1, tier: 'Boon', unworn: false });
   });
 });
 

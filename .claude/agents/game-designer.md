@@ -32,7 +32,8 @@ Follow the pattern of earlier design changes, such as the Gifts of Lothlórien, 
    - `game-spec.md`: anything outside a fight, such as the shop, rounds, Councils and bots;
    - `server-spec.md`: anything some players see and others don't;
    - `viewer-spec.md` or `game-spec.md` section 12: what the client shows.
-3. **`CLAUDE.md`:** the Status section, which lists what is designed and what is built.
+3. **`docs/glossary.md`:** an entry for each new term, and use existing terms as it defines them. Don't give a word a second meaning; pick another word instead.
+4. **`CLAUDE.md`:** the Status section, which lists what is designed and what is built.
 
 Don't write code.
 

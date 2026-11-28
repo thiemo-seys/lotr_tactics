@@ -3,14 +3,14 @@
 
 import { RING } from '@lotr-tactics/sim';
 
-export type RingTier = 'Gift' | 'Burden' | 'Grip' | 'Betrayal';
+export type RingTier = 'Boon' | 'Burden' | 'Grip' | 'Betrayal';
 
 /** The tier of the drawbacks at a Corruption (design.md section 9). */
 export function ringTier(corruption: number): RingTier {
   if (corruption >= RING.betrayal.at) return 'Betrayal';
   if (corruption >= RING.gripFrom) return 'Grip';
   if (corruption >= RING.burden.from) return 'Burden';
-  return 'Gift';
+  return 'Boon';
 }
 
 /** What the One Ring does at a Corruption, in parts a tooltip can lay out. */

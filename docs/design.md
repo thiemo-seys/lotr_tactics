@@ -152,7 +152,7 @@ A unit tag for Treebeard, Sauron and the big PvE enemies (Cave Troll, Watcher in
 |---|---|---|---|
 | Gandalf | Istari | Sorcerer | **You shall not pass:** 1.0 D magic damage to enemies within 2 hexes of the target, and a 2s stun |
 | Galadriel | Elf | Sorcerer | **Light of the Eldar:** shields all allies for 0.5 S; 0.8 D magic damage to enemies within 3 hexes |
-| Witch-king | Nazgûl | Rider, Sorcerer | **Morgul mace:** leaps next to the enemy with the most health; 1.0 D magic damage to adjacent enemies, and they attack 30% slower for 3s. **Passive:** takes 50% less damage from Gondor and Rohan units, except Éowyn |
+| Witch-king | Nazgûl | Rider, Sorcerer | **Morgul mace:** dashes next to the enemy with the most health; 1.0 D magic damage to adjacent enemies, and they attack 30% slower for 3s. **Passive:** takes 50% less damage from Gondor and Rohan units, except Éowyn |
 | Treebeard | Ent | Guardian | **Boulder:** throws a boulder at the largest group of enemies; 1.0 D and a 1.5s stun to a hex and its neighbours |
 | Sauron | Dark Lord | Captain | **Sweep:** mace swing in a 6-hex cone; 1.2 D and a 1s stun to enemies hit |
 
@@ -279,7 +279,7 @@ All numbers are *(placeholder)*.
 
 ### Board and timing
 
-- Each side is 7 hexes wide and 4 rows deep, so the arena is 7 × 8. Each player has a bench of 9.
+- Each half is 7 hexes wide and 4 rows deep, so the board is 7 × 8. Each player has a bench of 9.
 - Each player sees their own side at the bottom; the opponent's side is mirrored.
 - The simulation runs at 30 ticks per second.
 - A fight lasts 30 seconds, then 15 seconds of overtime in which all damage ramps up. If both sides still have units at the end, both players lose the round.
@@ -327,7 +327,7 @@ All numbers are *(placeholder)*.
 - At full mana, the unit casts its ability instead of its next basic attack, even if its target is out of range, then mana resets to 0. No mana is gained while casting.
 - **Wind-up:** a cast starts a wind-up of 0.35 to 0.6 seconds, by ability (section 5, Ability timing). The ability goes off as it ends: effects at the strike land, and projectiles, lobs, dashes and charges set off. The caster does nothing else until its part is done (the wind-up, and any dash or charge), and for 0.1 s after *(placeholders)*.
 - **Interruptions:** a stun doesn't stop a wind-up, dash or charge under way. If the caster dies during its wind-up, the ability doesn't happen, and the mana is spent. A projectile or lob already in the air still lands; a dash or charge cut short by the caster's death strikes no more.
-- **Aim:** targets and areas are chosen at the cast, so players can see where an ability will land. A target that has died or become untargetable by the time the ability reaches it is missed. An area, line or cone stays where it was aimed and hits the enemies standing in it when the ability lands there, so a unit can step out of it, or into it. Effects that come later, such as Frodo's strike after Slip away, are timed from the end of the wind-up and pick their target when they happen.
+- **Aim:** targets and areas are chosen at the cast, so players can see where an ability will land. A target that has died or become untargetable by the time the ability reaches it is missed. An area, line or cone stays where it was aimed and hits the enemies standing in it when the ability lands there, so a unit can move out of it, or into it. Effects that come later, such as Frodo's strike after Slip away, are timed from the end of the wind-up and pick their target when they happen.
 - Untargetable units can't be hit by enemy abilities either.
 - Abilities are built from shared building blocks. Most abilities are data combining these; the few that don't fit get custom code.
   - **Shapes:** single target, area, line, cone, bounce
@@ -350,9 +350,9 @@ All numbers are *(placeholder)*.
 ### Attacks
 
 - Attacks fire on a timer set by Attack Speed.
-- A melee blow lands 0.22 seconds *(placeholder)* after the attack starts, as the swing connects. It misses if by then the attacker has died, or the target has died, become untargetable or moved out of reach. Ranged attacks fire a projectile and the damage lands when it arrives; a projectile whose target has died is wasted. A projectile still lands if its attacker has died.
-- The attacker gains its mana as the attack starts, even if the blow or projectile then misses. Dodge and crit are rolled when it lands.
-- Resolution order for a basic attack: dodge roll → crit roll → resist reduction → damage → mana gain.
+- A melee blow lands 0.22 seconds *(placeholder)* after the attack starts, as the swing connects. It is wasted if by then the attacker has died, or the target has died, become untargetable or moved out of the attacker's Range. Ranged attacks fire a projectile and the damage lands when it arrives; a projectile whose target has died is wasted. A projectile still lands if its attacker has died.
+- The attacker gains its mana as the attack starts, even if the blow or projectile is then wasted. Dodge and crit are rolled when it lands.
+- Resolution order for a basic attack: dodge roll → crit roll → resists → damage → mana gain.
 
 ---
 
@@ -380,7 +380,7 @@ All numbers are *(placeholder)*.
 - 5 units per shop. It refreshes for free each round and can be locked to carry over to the next round.
 - A reroll costs 2 gold.
 - Buying a third copy merges it immediately, even if the bench is full.
-- A unit gained with no room on the bench, from the Council of Elrond or a Gift, waits for room instead of being lost: it goes to the bench as soon as a slot frees up, or merges as soon as the player owns two copies. Units waiting for room don't fight and can't be moved or sold.
+- A unit gained with no room on the bench, from the Council of Elrond or a Gift, waits for room instead of being lost: it goes to the bench as soon as a bench slot frees up, or merges as soon as the player owns two copies. Units waiting for room don't fight and can't be moved or sold.
 - **During fights**, as in TFT, players can still buy, reroll, buy XP, lock the shop, and use their bench and items: move and sell bench units, give items to them and combine components. The board stays as it fought: board units can't be moved, sold or given items until the fight ends. Copies on the bench still merge at once, but copies on the board wait: a purchase that would merge with a copy on the board stays on the bench until the fight ends, and the merge happens then. With a full bench, such a purchase isn't allowed. Gifts and the One Ring wait for planning. A player the fight knocks out can shop too, and is out once it ends.
 - The gold a fight earns (win and streak gold, PvE loot and the Seven's gold) and PvE loot items arrive when the fights end, so they can't be spent during the fight that earns them, and they count towards the next round's interest.
 
@@ -521,7 +521,7 @@ One per lobby. Its power grows the longer it is worn, but so do its drawbacks. A
 
   | Corruption | Tier | Damage | Drawback added |
   |---|---|---|---|
-  | 1–3 | Gift | +10% to +30% | None |
+  | 1–3 | Boon | +10% to +30% | None |
   | 4–6 | Burden | +40% to +60% | Stretched thin: −5% max Health per point above 3 |
   | 7–8 | Grip | +70% to +80% | "Mine!": allies' heals and shields don't reach the bearer |
   | 9 | Betrayal | +90% | Attacks its nearest ally, and can't cast, for the first 3 seconds of each fight |
@@ -639,7 +639,7 @@ Built from day one to:
 
 1. **PvE enemies:** stats and loot tables (placeholders in [`game-spec.md`](game-spec.md) section 9)
 2. **Unit models:** whether Riders stay mounted, as their models are, at a larger triangle budget ([`viewer-spec.md`](viewer-spec.md) section 4)
-3. **Leap speed:** *chosen on 6 November 2026: one speed for all, for now, to look at again once balance runs and the viewer show how long leaps feel.* Leaps move at the charge speed of 6 hexes a second (section 7, Movement), so a Burglar leaping to the far back row at combat start, or Grishnákh or the Witch-king leaping across the board, is in the air for up to about 1.2 s and can't act until it lands. The options were:
+3. **Leap speed:** *chosen on 6 November 2026: one speed for all, for now, to look at again once balance runs and the viewer show how long leaps feel.* Leaps move at the charge speed of 6 hexes a second (section 7, Movement), so a Burglar leaping to the far back row at combat start, or Grishnákh or the Witch-king dashing across the board, is in the air for up to about 1.2 s and can't act until it lands. The options were:
    - *one speed for all* (as now): simplest, and a leap is easy to follow, but Burglars and long leaps start their work later than before;
    - *leaps at 12 hexes a second*, the projectile speed, and charges at 6: leaps stay quick, for one more number;
    - *a fixed leap time*, such as 0.5 s whatever the distance, like a lob: every leap reads the same, but a short hop is as slow as a long one.

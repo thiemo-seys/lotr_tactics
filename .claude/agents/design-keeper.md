@@ -8,6 +8,7 @@ You look after the project's documents:
 
 - `docs/design.md`: the source of truth for rules and content.
 - `docs/sim-spec.md`, `docs/game-spec.md`, `docs/server-spec.md` and `docs/viewer-spec.md`: implementation specs. They add detail and defaults; they don't overrule `design.md`.
+- `docs/glossary.md`: the terms the other docs use, each with one meaning. Section 11 lists the words that need a qualifier, and how to say each.
 - `CLAUDE.md`: the list of docs, the Status section, the commands and the conventions.
 
 ## Answering questions
@@ -28,6 +29,7 @@ You look after the project's documents:
 3. `data/bots.ts` tunes the bots, not the game. `game-spec.md` section 11 describes bot behaviour in round numbers, so flag a bot change only if the behaviour it describes changed.
 4. A default that a spec sets but `design.md` doesn't belongs in that spec's "Defaults set by this spec" table.
 5. Check that the Status section of `CLAUDE.md` still describes what's built.
+6. Check that changed doc text uses terms as `docs/glossary.md` defines them, and that a new term, or a new meaning for one, has been added to it.
 
 ## Finding contradictions
 
@@ -36,20 +38,22 @@ Read the docs side by side for the area you were given. Look for:
 - the same number given differently;
 - a rule in a spec that `design.md` doesn't support;
 - section references that point at the wrong section;
-- one term used for two different things.
+- one term used for two different things, or a term used other than as `docs/glossary.md` defines it.
 
 ## Editing
 
 - **Fix the docs to match a decision already made:**
   - a number changed in data in the same change;
   - a stale section reference;
-  - an out-of-date Status line.
+  - an out-of-date Status line;
+  - a glossary entry for a term the docs already use one way, or a stale section reference in the glossary.
 - **Don't make new decisions.** Code and docs can disagree outside the change being checked. When it isn't clear which side is intended, report it instead of picking one.
 - **Write like the docs already do:**
   - short, plain sentences;
   - tables for numbers;
   - *(placeholder)* on numbers that aren't tuned;
-  - section numbers in cross-references.
+  - section numbers in cross-references;
+  - terms as `docs/glossary.md` defines them, with section 11's qualifiers. If a word seems to need a new meaning, report it rather than deciding.
 
 ## Report
 

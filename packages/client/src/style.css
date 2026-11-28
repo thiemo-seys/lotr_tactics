@@ -73,7 +73,7 @@
   --tone-unique: linear-gradient(160deg, #ffd6fb 0%, #c58cf5 45%, #6fb8f6 100%);
 
   /* The One Ring's tiers */
-  --ring-gift: #f3d27a;
+  --ring-boon: #f3d27a;
   --ring-burden: #f2a14a;
   --ring-grip: #f06a4c;
   --ring-betrayal: #e0457a;
@@ -1558,7 +1558,7 @@ kbd {
 }
 
 .ring-status {
-  --tier: var(--ring-gift);
+  --tier: var(--ring-boon);
   color: var(--tier);
   border-color: color-mix(in srgb, var(--tier) 55%, transparent);
   background: color-mix(in srgb, var(--tier) 12%, var(--surface-2));
@@ -1671,7 +1671,7 @@ kbd {
 
 /* The One Ring: a gold band on black, its Corruption in its tier's colour. */
 .chip.one-ring {
-  --tier: var(--ring-gift);
+  --tier: var(--ring-boon);
   color: #ffd977;
   background: radial-gradient(circle at 50% 40%, #3b2a10, #0b0805 70%);
   border-color: color-mix(in srgb, var(--tier) 70%, black);
@@ -1864,8 +1864,8 @@ kbd {
 }
 
 .tip-card.tone-ring-of-power,
-.tip-card.tone-ring-gift {
-  --accent: var(--ring-gift);
+.tip-card.tone-ring-boon {
+  --accent: var(--ring-boon);
 }
 
 .tip-card.tone-ring-burden {
@@ -4611,7 +4611,7 @@ body.play #traits {
 }
 
 .council-card.one-ring {
-  border-color: var(--ring-gift);
+  border-color: var(--ring-boon);
   box-shadow: var(--shadow-2), 0 0 16px rgba(243, 210, 122, 0.35);
 }
 

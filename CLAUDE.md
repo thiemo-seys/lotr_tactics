@@ -10,6 +10,7 @@ Browser-based, 8-player auto battler in the style of Teamfight Tactics, with Lor
 - `docs/game-spec.md`: implementation spec for the game around the fights: shop, economy, rounds and bots.
 - `docs/server-spec.md`: spec for online play: lobbies, the match runner, the protocol and the Node server in `packages/server`.
 - `docs/animation-plan.md`: the plan for rigging and animating the units, in two workflows, with where it has got to.
+- `docs/glossary.md`: the terms the design doc and the specs use, each with one meaning, and how to say the words that need a qualifier (its section 11).
 
 ## Status
 
@@ -43,6 +44,7 @@ Online play (`docs/server-spec.md`), lobbies with bots in the empty seats, is in
 - Game numbers live in data files (`packages/sim/src/data/`), not hard-coded in logic. All numbers are placeholders until balancing.
 - In data, percentages and multipliers are whole-number percents (25 for 25%, 70 for 0.7 D) and durations are in seconds (`docs/sim-spec.md` section 4).
 - When a rule or number changes, update `docs/design.md` (and `docs/sim-spec.md` if it affects the sim) in the same change.
+- In the docs, use terms as `docs/glossary.md` defines them. A new term, or a new meaning for one, goes into the glossary in the same change.
 - Pull requests are merged by rebase only. Each commit lands on `main` as it is, so give each one a clear message and keep it passing `pnpm check`. To bring a branch up to date, rebase it on `main`; don't merge `main` into it. If you merge a pull request, use the rebase method.
 - Rebase a branch on the latest `main` just before opening its pull request. GitHub runs no workflows for a pull request opened with a merge conflict, and the automated review (`.github/workflows/claude-code-review.yml`) runs only when a pull request is opened, reopened or marked ready for review, not on later pushes, so one opened with a conflict misses it. If a pull request has no review from it, comment `@claude review` on the pull request to start one, from an account with write access to the repository: the workflow ignores comments from bots, and comments posted by GitHub Actions start no workflow.
 
@@ -56,7 +58,7 @@ The automated review (`.github/workflows/claude-code-review.yml`) follows this s
    - no random draw added to, removed from or moved within a generator stream unless the change means to, since it shifts every later draw;
    - geometric choices made in the acting team's perspective.
    A sim change that alters fights it shouldn't is a bug; say which fights.
-2. **Rules match the docs.** Behaviour matches `docs/design.md` and the spec it implements. A changed rule or number is updated in `docs/design.md` (and the spec) in the same change. Numbers live in `packages/sim/src/data/`, with whole-number percents and durations in seconds.
+2. **Rules match the docs.** Behaviour matches `docs/design.md` and the spec it implements. A changed rule or number is updated in `docs/design.md` (and the spec) in the same change. Numbers live in `packages/sim/src/data/`, with whole-number percents and durations in seconds. New or changed doc text uses terms as `docs/glossary.md` defines them, and a new term is added to it.
 3. **Bugs.**
    - wrong results and crashes;
    - broken invariants, such as unit copies and item and ring counts being conserved;
