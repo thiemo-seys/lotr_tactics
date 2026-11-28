@@ -427,11 +427,12 @@ The parts without Three.js are tested with Vitest:
 - the arena file: within its budget, with its baked occlusion and no normals; the court round the board and bench clear, the band round it low, and nothing under a hex reaching its top (section 3, Arena);
 - the camera: every view starts within the limits, the fog never reaches a unit on the board or the bench, and the whole board and bench are in focus from each view's starting point (look.ts);
 - the portrait files: every unit has one, a square WebP of 384 pixels (section 4, Portraits), and a unit without one gets no portrait's address;
+- the item art files: every item has one, and the One Ring one per Corruption tier (section 2, Item art), each a standalone SVG on the 64-unit grid whose `url(#…)` references resolve within it, all different, with nothing else in `public/items/`;
 - the 2★ gear model files: every unit's is rigged, with the same checks as a 1★ model's rig but under a gear model's size, and has its 1★ model's bones, each hanging from the same one, and clips as long (section 4, Star levels);
 - the event log text;
 - the damage meter's rows: totals and parts per tab, summons in their owner's row, the Eye's Nazgûl in its own, order and ties;
 - item and Ring of Power colours and descriptions, Gift descriptions, and the One Ring's;
-- the icons: every trait, item component, Gift tier, round type and label status has one, each trait and component its own;
+- the icons: every trait, Gift tier, round type and label status has one, each trait its own;
 - trait text and the trait tracker's rows;
 - tooltip content, the HUD's values, the players list's rows, a round's results and the timer, and what the HUD, the players list and the trait tracker show while the person's fight plays;
 - the model a star level uses, falling back to the level below, its scale within the hex, and its label height: 1.8 above the ground, clear of the attack and cast clips, and a winner's rise to clear its victory pose (stars.ts);
